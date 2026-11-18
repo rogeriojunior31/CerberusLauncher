@@ -44,6 +44,17 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
         });
     };
 
+    let set_number = move |setting: String, value: f64| {
+        busy.set(true);
+        spawn_local(async move {
+            let result = api::set_setting_number(&id.get_value(), setting, value).await;
+            busy.set(false);
+            if let Some(now) = library.report(result) {
+                state.set(Some(Ok(Some(now))));
+            }
+        });
+    };
+
     let running = move || library.running.with(|all| all.contains(&id.get_value()));
 
     move || match state.get() {
@@ -67,7 +78,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
                 .map(|s| {
                     let heading = (s.group != last_group && !s.group.is_empty()).then(|| view! { <h4 class="gs-group">{s.group.clone()}</h4> });
                     last_group = s.group.clone();
-                    view! { {heading} <SettingRow setting=s busy apply=apply /> }
+                    view! { {heading} <SettingRow setting=s busy apply=apply set_number=set_number /> }
                 })
                 .collect_view();
             let reset_label = move || if armed_reset.get() { "Clique de novo para confirmar" } else { "Restaurar padrão" };
@@ -105,14 +116,28 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
 }
 
 #[component]
-fn SettingRow<F>(setting: GameSetting, busy: RwSignal<bool>, apply: F) -> impl IntoView
+fn SettingRow<F, N>(setting: GameSetting, busy: RwSignal<bool>, apply: F, set_number: N) -> impl IntoView
 where
     F: Fn(Option<String>, Option<usize>) + Copy + Send + Sync + 'static,
+    N: Fn(String, f64) + Copy + Send + Sync + 'static,
 {
     let id = StoredValue::new(setting.id.clone());
     let current = setting.current;
     let applies = setting.applies;
-    let control = if setting.choices.len() <= AS_BUTTONS {
+    let control = if let Some(slider) = setting.slider.clone() {
+        let shown = RwSignal::new(slider.text.clone());
+        view! {
+            <div class="gs-slider">
+                <input type="range" min=slider.min.to_string() max=slider.max.to_string() step=slider.step.to_string()
+                    prop:value=slider.value.to_string() aria-label=setting.label.clone()
+                    disabled=move || busy.get() || !applies
+                    on:input=move |e| shown.set(event_target_value(&e))
+                    on:change=move |e| { if let Ok(v) = event_target_value(&e).parse::<f64>() { set_number(id.get_value(), v) } } />
+                <span class="gs-value">{move || shown.get()}</span>
+            </div>
+        }
+        .into_any()
+    } else if setting.choices.len() <= AS_BUTTONS {
         let buttons = setting
             .choices
             .iter()

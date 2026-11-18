@@ -98,6 +98,19 @@ pub struct GameSetting {
     pub current: usize,
     /// False while another setting makes this one irrelevant (shown greyed out).
     pub applies: bool,
+    /// A number on a slider instead of choices.
+    #[serde(default)]
+    pub slider: Option<SettingSlider>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SettingSlider {
+    pub min: f64,
+    pub max: f64,
+    pub step: f64,
+    pub value: f64,
+    /// The value as the game writes it ("0.50", "80").
+    pub text: String,
 }
 
 /// A game on SteamGridDB.

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cerberus_shared::{GameSetting, GameSettings};
+use cerberus_shared::{GameSetting, GameSettings, SettingSlider};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -65,6 +65,50 @@ pub struct SettingSpec {
     group: String,
     #[serde(default)]
     advanced: bool,
+    /// A number between two ends instead of choices.
+    #[serde(default)]
+    slider: Option<SliderSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SliderSpec {
+    /// The key it is written to; the setting's id when empty.
+    #[serde(default)]
+    key: String,
+    min: f64,
+    max: f64,
+    #[serde(default)]
+    step: f64,
+    /// printf style: "%d", "%.2f"; plain otherwise.
+    #[serde(default)]
+    format: String,
+}
+
+impl SliderSpec {
+    fn step(&self) -> f64 {
+        if self.step > 0.0 && self.step.is_finite() { self.step } else { (self.max - self.min) / 100.0 }
+    }
+
+    /// A number moved to: inside the ends, on a step.
+    fn snap(&self, value: f64) -> f64 {
+        let step = self.step();
+        let n = ((value.clamp(self.min, self.max) - self.min) / step).round();
+        let x = (self.min + n * step).clamp(self.min, self.max);
+        (x * 1e6).round() / 1e6
+    }
+
+    /// The number written the game's way: "%d" -> "80", "%.2f" -> "0.50".
+    fn text(&self, value: f64) -> String {
+        let format = self.format.trim();
+        if format.contains("%d") || format.contains("%i") {
+            return format!("{}", value.round() as i64);
+        }
+        if let Some(digits) = format.split_once("%.").and_then(|(_, rest)| rest.split('f').next()).and_then(|d| d.parse::<usize>().ok()) {
+            return format!("{value:.digits$}");
+        }
+        let plain = format!("{value}");
+        if plain.contains('.') { plain.trim_end_matches('0').trim_end_matches('.').to_string() } else { plain }
+    }
 }
 
 /// What a catalog entry offers, already checked: files only in the game's or
@@ -111,8 +155,9 @@ pub fn offer_of(value: Option<&Value>) -> Offer {
         .map(|list| list.iter().filter_map(|s| serde_json::from_value::<SettingSpec>(s.clone()).ok()).collect::<Vec<_>>())
         .unwrap_or_default()
         .into_iter()
-        .filter(|s| s.choices.len() >= 2)
-        .filter(|s| if s.target == "args" { s.choices.iter().any(|c| !c.args.is_empty()) } else { configs.iter().any(|c| c.id == s.target) })
+        .filter(|s| s.choices.len() >= 2 || s.slider.as_ref().is_some_and(|sl| sl.min < sl.max && sl.min.is_finite() && sl.max.is_finite()))
+        // A slider is only offered for a settings file; on the command line it would need more rules.
+        .filter(|s| if s.target == "args" { s.slider.is_none() && s.choices.iter().any(|c| !c.args.is_empty()) } else { configs.iter().any(|c| c.id == s.target) })
         .collect();
     Offer { configs, settings }
 }
@@ -340,7 +385,14 @@ impl Offer {
                     }
                     None => (picks.get(&s.id).copied().filter(|i| *i < s.choices.len()).unwrap_or(0), true),
                 };
+                let slider = s.slider.as_ref().map(|sl| {
+                    let key = if sl.key.is_empty() { s.id.as_str() } else { sl.key.as_str() };
+                    let now = files.get(&s.target).and_then(|f| f.get(key)).or_else(|| s.defaults.get(key).cloned());
+                    let value = now.and_then(|v| v.trim().trim_matches(['"', '\'']).parse::<f64>().ok()).map_or(sl.min, |v| sl.snap(v));
+                    SettingSlider { min: sl.min, max: sl.max, step: sl.step(), value, text: sl.text(value) }
+                });
                 GameSetting {
+                    slider,
                     id: s.id.clone(),
                     label: s.label.clone(),
                     help: s.help.clone(),
@@ -380,6 +432,25 @@ impl Offer {
         for (key, value) in &picked.set {
             file.set(key, value);
         }
+        file.save()
+    }
+
+    /// Moves a slider: the number, on a step and written the game's way, goes
+    /// into its file, quoted when the file had it quoted.
+    pub fn set_number(&self, install: &Path, setting: &str, value: f64) -> Result<(), String> {
+        let spec = self.settings.iter().find(|s| s.id == setting).ok_or("Essa opção não existe mais no catálogo.")?;
+        let slider = spec.slider.as_ref().ok_or("Essa opção não é um controle deslizante.")?;
+        if !value.is_finite() {
+            return Err("Esse valor não é um número.".into());
+        }
+        let config = self.configs.iter().find(|c| c.id == spec.target).ok_or("O arquivo de configuração dessa opção não está no catálogo.")?;
+        let path = self.path_of(config, install).ok_or("A pasta de configuração desse jogo não existe neste sistema.")?;
+        let key = if slider.key.is_empty() { spec.id.as_str() } else { slider.key.as_str() };
+        let mut file = ConfigFile::open(path, &config.format);
+        let text = slider.text(slider.snap(value));
+        let now = file.get(key).unwrap_or_default();
+        let quoted = now.len() >= 2 && (now.starts_with('"') && now.ends_with('"'));
+        file.set(key, &if quoted { format!("\"{text}\"") } else { text });
         file.save()
     }
 
@@ -502,6 +573,22 @@ mod tests {
         assert!(!offer.view(dir.path(), &picks).settings[1].applies);
         offer.reset(dir.path(), &mut picks).unwrap();
         assert_eq!(fs::read_to_string(dir.path().join("game.ini")).unwrap(), "[V]\nmode=window\nsize=1\n");
+    }
+
+    #[test]
+    fn sliders_snap_to_their_steps_and_keep_the_games_format() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("game.ini"), "[audio]\nvolume=80\nmaster=\"0.50\"\n").unwrap();
+        let offer = offer("ini", "game.ini", json!([
+            {"id": "volume", "label": "Volume", "slider": {"key": "audio/volume", "min": 0, "max": 100, "step": 5, "format": "%d"}},
+            {"id": "master", "label": "Master", "slider": {"key": "audio/master", "min": 0, "max": 1, "step": 0.05, "format": "%.2f"}}
+        ]));
+        let now = offer.view(dir.path(), &BTreeMap::new());
+        assert_eq!(now.settings[0].slider.as_ref().unwrap().value, 80.0);
+        assert_eq!(now.settings[1].slider.as_ref().unwrap().text, "0.50");
+        offer.set_number(dir.path(), "volume", 62.0).unwrap();
+        offer.set_number(dir.path(), "master", 0.333).unwrap();
+        assert_eq!(fs::read_to_string(dir.path().join("game.ini")).unwrap(), "[audio]\nvolume=60\nmaster=\"0.35\"\n");
     }
 
     #[test]

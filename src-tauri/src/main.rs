@@ -1006,6 +1006,7 @@ fn set_game_setting(
     id: String,
     setting: Option<String>,
     choice: Option<usize>,
+    value: Option<f64>,
 ) -> Result<cerberus_shared::GameSettings, String> {
     // The game writes its settings when it closes, over whatever was changed meanwhile.
     if sessions.is_running(&id) {
@@ -1014,8 +1015,9 @@ fn set_game_setting(
     let (game, offer) = settings_of(&library, &id)?;
     let install = Path::new(&game.install_dir);
     let mut picks = game.setting_picks.clone();
-    let result = match (&setting, choice) {
-        (Some(setting), Some(choice)) => offer.choose(install, &mut picks, setting, choice),
+    let result = match (&setting, choice, value) {
+        (Some(setting), _, Some(value)) => offer.set_number(install, setting, value),
+        (Some(setting), Some(choice), None) => offer.choose(install, &mut picks, setting, choice),
         _ => offer.reset(install, &mut picks),
     };
     if let Err(error) = &result {

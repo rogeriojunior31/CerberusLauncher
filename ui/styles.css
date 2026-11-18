@@ -838,3 +838,6 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .gp-logo { display: block; max-width: min(520px, 100%); max-height: 150px; object-fit: contain; object-position: left center; margin: 4px 0 6px; filter: drop-shadow(0 6px 24px #000a); }
 @media (max-width: 820px) { .cz-body { grid-template-columns: 1fr; overflow-y: auto; } }
 .set-row > .input { flex: 1; min-width: 0; }
+.gs-slider { display: flex; align-items: center; gap: 12px; flex-shrink: 0; width: min(320px, 100%); }
+.gs-slider input { flex: 1; accent-color: var(--accent); }
+.gs-value { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }

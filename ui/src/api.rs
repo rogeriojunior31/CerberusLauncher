@@ -258,11 +258,17 @@ struct SettingArgs<'a> {
     id: &'a str,
     setting: Option<String>,
     choice: Option<usize>,
+    value: Option<f64>,
 }
 
 /// One setting on a choice, or (both `None`) every setting back on the game's defaults.
 pub async fn set_game_setting(id: &str, setting: Option<String>, choice: Option<usize>) -> Result<cerberus_shared::GameSettings, String> {
-    call("set_game_setting", &SettingArgs { id, setting, choice }).await
+    call("set_game_setting", &SettingArgs { id, setting, choice, value: None }).await
+}
+
+/// Moves a slider setting to a number.
+pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result<cerberus_shared::GameSettings, String> {
+    call("set_game_setting", &SettingArgs { id, setting: Some(setting), choice: None, value: Some(value) }).await
 }
 
 /// What the launcher did for a game lately, newest first.
