@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-use cerberus_shared::{Backup, CopyHandoff, Game, InstallStep, Release, RecompEntry, Source};
+use cerberus_shared::{Backup, CopyHandoff, Game, InstallStep, NextStep, Release, RecompEntry, Source};
 use reqwest::Client;
 
 use crate::library::LocalLibrary;
@@ -218,6 +218,43 @@ pub fn apply_art(game: &mut Game) {
 pub struct LaunchPlan {
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+}
+
+/// What stands between the player and the game. One answer for every screen
+/// and for Play itself, so a button never offers what Play would refuse.
+/// `found` is the player's copy from the ROM folders, if the scan saw one.
+pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
+    let handoff = match &game.source {
+        Source::Recomp { recomp_id, .. } => find(recomp_id).and_then(|e| e.handoff),
+        _ => None,
+    };
+    next_step_with(game, handoff.as_ref(), found)
+}
+
+fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&String>) -> NextStep {
+    let exe = match &game.source {
+        Source::Recomp { exe, .. } | Source::Local { exe } => Path::new(exe),
+        // Store games start through their own launcher.
+        _ => return NextStep::Play,
+    };
+    if !exe.is_file() {
+        let what = if game.setup_pending { "O instalador" } else { "O programa do jogo" };
+        return NextStep::Locate { reason: format!("{what} não está mais em {}.", exe.display()) };
+    }
+    if game.setup_pending {
+        return NextStep::RunInstaller;
+    }
+    let copy_missing = match (handoff, &game.game_copy) {
+        // Passed on every start: the file itself must still be there.
+        (Some(CopyHandoff::Flag { .. } | CopyHandoff::Env { .. }), copy) => !copy.as_deref().is_some_and(|c| Path::new(c).exists()),
+        // Copied into the game's folder once; the original may be gone since.
+        (Some(CopyHandoff::Folder { .. }), copy) => copy.is_none(),
+        (Some(CopyHandoff::AsksItself) | None, _) => false,
+    };
+    if copy_missing {
+        return NextStep::ChooseCopy { found: found.cloned() };
+    }
+    NextStep::Play
 }
 
 pub fn launch_plan(game: &Game) -> LaunchPlan {
@@ -627,6 +664,7 @@ fn register(
         tracking_exe: None,
         game_copy: None,
         setup_pending,
+        next_step: Default::default(),
     };
     apply_art(&mut game);
     library.add(game.clone())?;
@@ -666,6 +704,51 @@ fn is_arm() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn recomp_at(dir: &Path, copy: Option<&Path>) -> Game {
+        let exe = dir.join("Game.exe");
+        fs::write(&exe, b"MZ").unwrap();
+        let mut game = crate::library::game_from_exe(&exe);
+        game.source = Source::Recomp { recomp_id: "x".into(), version: "1".into(), exe: exe.to_string_lossy().into(), generation: Default::default() };
+        game.game_copy = copy.map(|c| c.to_string_lossy().into_owned());
+        game
+    }
+
+    #[test]
+    fn next_step_asks_for_what_each_recomp_lacks() {
+        let dir = tempfile::tempdir().unwrap();
+        let flag = CopyHandoff::Flag { flag: "--rom".into() };
+        let folder = CopyHandoff::Folder { folder: "game".into(), file_name: None, extract: false };
+        let rom = dir.path().join("mk64.z64");
+
+        // No copy yet: the one from the ROM folders is offered.
+        let found = rom.to_string_lossy().into_owned();
+        let game = recomp_at(dir.path(), None);
+        assert_eq!(next_step_with(&game, Some(&flag), Some(&found)), NextStep::ChooseCopy { found: Some(found.clone()) });
+        assert_eq!(next_step_with(&game, Some(&folder), None), NextStep::ChooseCopy { found: None });
+        // A game that asks in its own menu, or has no handoff, just plays.
+        assert_eq!(next_step_with(&game, Some(&CopyHandoff::AsksItself), None), NextStep::Play);
+        assert_eq!(next_step_with(&game, None, None), NextStep::Play);
+
+        // A copy passed on the command line must still exist; one copied into the folder needn't.
+        let game = recomp_at(dir.path(), Some(&rom));
+        assert_eq!(next_step_with(&game, Some(&flag), None), NextStep::ChooseCopy { found: None });
+        assert_eq!(next_step_with(&game, Some(&folder), None), NextStep::Play);
+        fs::write(&rom, b"rom").unwrap();
+        assert_eq!(next_step_with(&game, Some(&flag), None), NextStep::Play);
+    }
+
+    #[test]
+    fn next_step_runs_the_installer_or_asks_where_the_program_went() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut game = recomp_at(dir.path(), None);
+        game.setup_pending = true;
+        assert_eq!(next_step_with(&game, None, None), NextStep::RunInstaller);
+        fs::remove_file(dir.path().join("Game.exe")).unwrap();
+        assert!(matches!(next_step_with(&game, None, None), NextStep::Locate { reason } if reason.starts_with("O instalador")));
+        game.setup_pending = false;
+        assert!(matches!(next_step_with(&game, None, None), NextStep::Locate { reason } if reason.starts_with("O programa")));
+    }
 
     #[test]
     fn bundled_catalog_is_valid() {

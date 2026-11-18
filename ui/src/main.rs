@@ -17,7 +17,7 @@ mod versions;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use cerberus_shared::{Game, InstallStep, RecompEntry};
+use cerberus_shared::{Game, InstallStep, NextStep, RecompEntry};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -132,17 +132,45 @@ impl Library {
     }
 }
 
+/// The main button's label and icon: the step the backend says comes next.
 fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
-    if game.setup_pending {
-        ("Abrir instalador", icons::Icon::External)
-    } else {
-        ("Jogar", icons::Icon::Play)
+    match &game.next_step {
+        NextStep::Play => ("Jogar", icons::Icon::Play),
+        NextStep::RunInstaller => ("Abrir instalador", icons::Icon::External),
+        NextStep::ChooseCopy { found: Some(_) } => ("Usar minha cópia", icons::Icon::Check),
+        NextStep::ChooseCopy { found: None } => ("Escolher cópia do jogo", icons::Icon::Folder),
+        NextStep::Locate { .. } => ("Localizar programa", icons::Icon::Search),
     }
 }
 
+/// The main button everywhere: takes the next step, and plays once nothing is left.
 pub fn play_game(library: Library, game: Game) {
     spawn_local(async move {
-        library.report(api::play(&game).await);
+        let ready = match &game.next_step {
+            NextStep::Play | NextStep::RunInstaller => Some(game),
+            NextStep::ChooseCopy { found } => {
+                let set = library.report(api::set_game_copy(&game.id, found.is_some(), false).await).flatten();
+                library.games.refetch();
+                library.recomps.refetch();
+                if set.is_some() {
+                    library.toast(format!("Cópia de {} configurada.", game.name));
+                }
+                // Plays right away; Play itself refuses if anything is still missing.
+                set
+            }
+            NextStep::Locate { reason } => {
+                library.toast(reason.clone());
+                let found = library.report(api::locate_game(&game.id).await).flatten();
+                library.games.refetch();
+                if let Some(found) = &found {
+                    library.toast(format!("{} está pronto para jogar.", found.name));
+                }
+                None
+            }
+        };
+        if let Some(game) = ready {
+            library.report(api::play(&game).await);
+        }
     });
 }
 

@@ -118,6 +118,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         tracking_exe: None,
         game_copy: None,
         setup_pending: false,
+        next_step: Default::default(),
     }
 }
 

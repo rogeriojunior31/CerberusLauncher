@@ -42,6 +42,10 @@ pub struct Game {
     /// and `exe` points at the installer until then.
     #[serde(default)]
     pub setup_pending: bool,
+    /// What the main button does now. Worked out by the backend each time the
+    /// library is listed, so every screen offers the same action.
+    #[serde(default)]
+    pub next_step: NextStep,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -62,6 +66,22 @@ pub enum CopyHandoff {
         #[serde(default)]
         extract: bool,
     },
+}
+
+/// The one thing that stands between the player and the game, if anything.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NextStep {
+    #[default]
+    Play,
+    /// A release that ships an installer: it runs on the first Play.
+    RunInstaller,
+    /// The recomp needs the player's copy of the game. `found` is one the ROM
+    /// folders have, used with one click; otherwise the player picks a file.
+    ChooseCopy { found: Option<String> },
+    /// The program to open is gone (moved, deleted, or an installer put it
+    /// somewhere unknown); the player points at it.
+    Locate { reason: String },
 }
 
 impl Game {

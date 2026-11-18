@@ -53,8 +53,8 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     };
     let badge = if running {
         Some("Jogando".to_string())
-    } else if game.setup_pending {
-        Some("Instalação pendente".to_string())
+    } else if let Some(waiting) = waiting_for(game) {
+        Some(waiting.to_string())
     } else if has_update(game, library) {
         Some("Atualização".to_string())
     } else {
@@ -173,5 +173,15 @@ pub fn Shelf(
             </div>
             <div class="track" node_ref=track>{cards}</div>
         </section>
+    }
+}
+
+/// The tile's note when a step comes before playing.
+fn waiting_for(game: &Game) -> Option<&'static str> {
+    match game.next_step {
+        cerberus_shared::NextStep::Play => None,
+        cerberus_shared::NextStep::RunInstaller => Some("Instalação pendente"),
+        cerberus_shared::NextStep::ChooseCopy { .. } => Some("Falta sua cópia"),
+        cerberus_shared::NextStep::Locate { .. } => Some("Programa não encontrado"),
     }
 }
