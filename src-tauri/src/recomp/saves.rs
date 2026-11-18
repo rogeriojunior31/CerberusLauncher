@@ -279,6 +279,10 @@ pub fn newest_with_fingerprint(dir: &Path) -> Option<(Backup, String)> {
 fn read_manifest(path: &Path) -> Result<Manifest, String> {
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    manifest_in(&mut zip)
+}
+
+fn manifest_in(zip: &mut zip::ZipArchive<fs::File>) -> Result<Manifest, String> {
     let mut entry = zip.by_name(MANIFEST).map_err(|e| e.to_string())?;
     let mut text = String::new();
     entry.read_to_string(&mut text).map_err(|e| e.to_string())?;
@@ -294,16 +298,23 @@ fn prune(backups: &Path) {
 /// Puts a copy's files back where they belong for the game as installed now.
 /// Returns how many files were written.
 pub fn restore(backups: &Path, name: &str, install: &Path) -> Result<u32, String> {
+    restore_open(open_backup(backups, name)?, install)
+}
+
+pub(super) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<fs::File>, String> {
     // Only a plain file name from our own list, never a path.
     let plain = Path::new(name).components().count() == 1 && name.ends_with(".zip");
     if !plain {
         return Err("Backup inválido.".into());
     }
     let path = backups.join(name);
-    let manifest = read_manifest(&path).map_err(|_| "Esse backup não pode ser lido.".to_string())?;
-    let file = fs::File::open(&path).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    let mut written = 0;
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    zip::ZipArchive::new(file).map_err(|e| format!("Esse backup não pode ser lido: {e}"))
+}
+
+pub(super) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path) -> Result<u32, String> {
+    let manifest = manifest_in(&mut zip)?;
+    let mut staged = Vec::new();
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index).map_err(|e| e.to_string())?;
         if entry.is_dir() || entry.name() == MANIFEST {
@@ -312,12 +323,18 @@ pub fn restore(backups: &Path, name: &str, install: &Path) -> Result<u32, String
         let Some(target) = target_for(entry.name(), &manifest.places, install) else {
             continue;
         };
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        let mut out = fs::File::create(&target).map_err(|e| format!("Não foi possível escrever {}: {e}", target.display()))?;
-        io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
-        written += 1;
+        let parent = target.parent().ok_or("O destino do save é inválido.")?;
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let mut temp = tempfile::Builder::new().prefix(".cerberus-").suffix(".tmp").tempfile_in(parent)
+            .map_err(|e| format!("Não foi possível preparar {}: {e}", target.display()))?;
+        io::copy(&mut entry, temp.as_file_mut()).map_err(|e| format!("Falha ao ler o save {}: {e}", entry.name()))?;
+        temp.as_file().sync_all().map_err(|e| e.to_string())?;
+        staged.push((temp.into_temp_path(), target));
+    }
+    // Finish reading and checking every ZIP entry before replacing the first live save.
+    let written = staged.len() as u32;
+    for (temp, target) in staged {
+        temp.persist(&target).map_err(|e| format!("Não foi possível restaurar {}: {e}", target.display()))?;
     }
     Ok(written)
 }
@@ -374,6 +391,33 @@ mod tests {
         write(&install.join("Save/file1.sav"), "lost");
         restore(&backups, &made.name, &install).unwrap();
         assert_eq!(fs::read_to_string(install.join("Save/file1.sav")).unwrap(), "progress");
+    }
+
+    #[test]
+    fn damaged_second_slot_leaves_both_live_saves_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        let backups = dir.path().join("backups");
+        let slot1 = install.join("Save/a.sav");
+        let slot2 = install.join("Save/b.sav");
+        write(&slot1, "first slot");
+        write(&slot2, "second slot");
+        let made = backup(&backups, &install_saves(), &install, "Manual").unwrap().unwrap();
+
+        let archive = backups.join(&made.name);
+        let offset = {
+            let mut zip = open_backup(&backups, &made.name).unwrap();
+            zip.by_name("0/b.sav").unwrap().data_start()
+        };
+        let mut bytes = fs::read(&archive).unwrap();
+        bytes[offset as usize] ^= 0xff;
+        fs::write(archive, bytes).unwrap();
+        write(&slot1, "current A");
+        write(&slot2, "current B");
+        assert!(restore(&backups, &made.name, &install).is_err());
+        assert_eq!(fs::read_to_string(slot1).unwrap(), "current A");
+        assert_eq!(fs::read_to_string(slot2).unwrap(), "current B");
+        assert_eq!(fs::read_dir(install.join("Save")).unwrap().count(), 2);
     }
 
     #[test]

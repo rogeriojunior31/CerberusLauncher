@@ -78,9 +78,13 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       O teste cobre os códigos de saída, inclusive cancelamento do MSI e sucesso que pede reinício.
 - [ ] Recuperar a espera por um instalador externo após reiniciar o Cerberus e testar com uma instalação anterior presente.
 - [ ] Comparar a próxima partida real do ReStreet com a duração registrada após a correção.
+- [x] Restaurar o mais antigo dos dez backups mesmo quando a cópia de segurança provoca rotação.
+      Se a leitura de um slot falha por corrupção do ZIP, os slots atuais são preservados. Ambos os casos têm testes em pastas temporárias.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
+- [ ] Repetir o envio do backup local quando a pasta sincronizada voltar a ficar disponível,
+      inclusive quando o jogador ainda não alterou o save. Validar a interrupção da cópia entre as duas pastas.
 
 ## Feito
 

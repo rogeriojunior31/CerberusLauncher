@@ -183,8 +183,10 @@ pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
 /// Puts a backup back, after keeping a copy of the saves as they are now, so
 /// restoring the wrong one can be undone.
 pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<u32, String> {
+    // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
+    let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
     backup_saves(folders, recomp_id, install_dir, "Antes de restaurar")?;
-    saves::restore(&folders.backups_dir(recomp_id), name, install_dir)
+    saves::restore_open(selected, install_dir)
 }
 
 pub fn library_id(recomp_id: &str) -> String {
@@ -735,6 +737,30 @@ mod tests {
         fs::create_dir_all(install.join("Save")).unwrap();
         fs::write(install.join("Save/file1.sav"), save).unwrap();
         (folders, install)
+    }
+
+    #[test]
+    fn can_restore_the_oldest_backup_while_saving_current_progress() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(&root.path().join("data"), None);
+        let install = root.path().join("game");
+        fs::create_dir_all(install.join("Save")).unwrap();
+        let slot = install.join("Save/file1.sav");
+        for round in 0..10 {
+            fs::write(&slot, round.to_string()).unwrap();
+            backup_saves(&folders, "shipwright", &install, "Manual").unwrap().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        let backups = list_backups(&folders, "shipwright");
+        assert_eq!(backups.len(), 10);
+        fs::write(&slot, "latest progress").unwrap();
+        restore_backup(&folders, "shipwright", &install, &backups.last().unwrap().name).unwrap();
+        assert_eq!(fs::read_to_string(&slot).unwrap(), "0");
+        let current = list_backups(&folders, "shipwright");
+        assert_eq!(current.len(), 10);
+        let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
+        saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
+        assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");
     }
 
     #[test]
