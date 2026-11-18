@@ -639,3 +639,20 @@ mod tests {
         assert_eq!(bytes_of(""), 0);
     }
 }
+
+#[cfg(test)]
+#[test]
+fn the_own_catalog_reads_whole_and_every_entry_downloads_directly() {
+    let list = built_in();
+    assert!(list.len() >= 72, "only {} entries", list.len());
+    for entry in &list {
+        assert!(!entry.id.is_empty() && !entry.repo.is_empty(), "{entry:?}");
+        assert!(entry.tag.is_some(), "{} has no release", entry.id);
+        let windows = entry.files.get("windows");
+        assert!(windows.is_some_and(|f| f.sha256.len() == 64) || entry.id == "starship" || entry.id == "unleashedrecomp", "{} has no checked Windows file", entry.id);
+    }
+    let mut ids: Vec<&str> = list.iter().map(|e| e.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), list.len(), "two entries share an id");
+}

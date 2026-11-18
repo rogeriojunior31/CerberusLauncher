@@ -117,6 +117,12 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       escolha. O `dxgi.dll` fica ao lado do jogo só durante a partida, nunca substitui um que já exista e
       é retirado no próximo início se o Cerberus fechar no meio. Conferido no SpaghettiKart (CRT e Filme),
       com a pasta do jogo idêntica ao backup depois. Vulkan e OpenGL ficam para depois.
+- [x] Primeira curadoria dos candidatos do catálogo próprio: 62 promovidos (de 10 para 72 jogos).
+      Critério: o repositório já está no catálogo do recomplauncher.com como jogo jogável, instala por
+      arquivo (`portable`), é de console antigo e tem arquivo para Windows com SHA-256. Só fatos (jogo,
+      console, programa) vieram de lá; capas e textos não. Os 52 restantes ficaram em `candidates.json`
+      com o motivo em `review_note`, incluindo 15 de consoles recentes com o padrão de repositórios
+      falsos (estrelas em massa, jogos recém-lançados).
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
