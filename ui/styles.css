@@ -692,3 +692,11 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
   .gp-head { flex-direction: column; align-items: flex-start; }
   .gp-act { justify-content: flex-start; }
 }
+
+/* Gerenciar: histórico do jogo */
+.history .problem { margin: 0; line-height: 1.5; }
+.trail { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.trail li { display: grid; grid-template-columns: 130px 170px 1fr; gap: 10px; font-size: 13px; padding: 6px 8px; border-radius: 8px; }
+.trail li.failed { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.trail .when { color: var(--dim); }
+@media (max-width: 720px) { .trail li { grid-template-columns: 1fr; gap: 2px; } }

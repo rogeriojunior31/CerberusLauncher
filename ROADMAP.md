@@ -80,6 +80,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [ ] Comparar a próxima partida real do ReStreet com a duração registrada após a correção.
 - [x] Restaurar o mais antigo dos dez backups mesmo quando a cópia de segurança provoca rotação.
       Se a leitura de um slot falha por corrupção do ZIP, os slots atuais são preservados. Ambos os casos têm testes em pastas temporárias.
+- [x] Guardar um histórico local por jogo (`trail.jsonl`, até 600 registros): partidas, backups,
+      saves da nuvem, instalação, instalador externo e restauração. A aba Gerenciar mostra a
+      última falha com a causa e a lista completa. Testes cobrem reabertura, linha danificada,
+      limite de tamanho, destino sem escrita e uma sessão cuja gravação de tempo falha. Conferido
+      no app com um backup manual real do ReStreet.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

@@ -113,11 +113,13 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         let folders = app.state::<recomp::Folders>();
         match recomp::pull_from_cloud(&folders, recomp_id, Path::new(&game.install_dir)) {
             Ok(Some(message)) => {
+                crate::trail::note(app, &game.id, "Saves da nuvem", &Ok(message.clone()));
                 let _ = app.emit("toast", message);
             }
             Ok(None) => {}
             // Playing matters more than syncing; say so and carry on.
             Err(error) => {
+                crate::trail::note(app, &game.id, "Saves da nuvem", &Err(error.clone()));
                 let _ = app.emit("toast", format!("Não foi possível conferir os saves da nuvem: {error}"));
             }
         }
@@ -129,7 +131,9 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     command.current_dir(dir).args(plan.args).envs(plan.env);
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
         sessions.lock().remove(&game.id);
-        format!("Não foi possível abrir {}: {e}", exe.display())
+        let message = format!("Não foi possível abrir {}: {e}", exe.display());
+        crate::trail::note(app, &game.id, "Abrir o jogo", &Err(message.clone()));
+        message
     })?;
     notify(app, &game.id, true);
 
@@ -143,7 +147,9 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
             Observation::Closed(duration) => record(&app, &game, duration.as_secs()),
         });
         if let Err(e) = result {
-            let _ = app.emit("toast", format!("Não foi possível acompanhar a sessão de {}: {e}", game.name));
+            let message = format!("Não foi possível acompanhar a sessão de {}: {e}", game.name);
+            crate::trail::note(&app, &game.id, "Partida", &Err(message.clone()));
+            let _ = app.emit("toast", message);
         }
         release(&app, &game.id);
     });
@@ -171,17 +177,59 @@ impl GameProcess {
 
 fn record(app: &AppHandle, game: &Game, seconds: u64) {
     let closed_at = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
-    let library = app.state::<LocalLibrary>();
-    if let Err(e) = app.state::<Sessions>().close_round(&library, &game.id, seconds, closed_at) {
-        let _ = app.emit("toast", format!("Não foi possível gravar o tempo de {}: {e}", game.name));
-    }
-    if let Source::Recomp { recomp_id, .. } = &game.source {
-        let folders = app.state::<recomp::Folders>();
-        if let Err(e) = recomp::backup_saves(&folders, recomp_id, Path::new(&game.install_dir), "Depois de jogar") {
-            let _ = app.emit("toast", format!("Falha no backup de {}: {e}", game.name));
-        }
+    let trail = app.state::<crate::trail::Trail>();
+    let notices = close_session(&app.state::<LocalLibrary>(), &app.state::<Sessions>(), &app.state::<recomp::Folders>(), &trail, game, seconds, closed_at);
+    for notice in notices {
+        let _ = app.emit("toast", notice);
     }
     let _ = app.emit("playtime-updated", &game.id);
+}
+
+/// Everything that happens when a round ends: its time goes into the library,
+/// a recomp's saves are backed up, and both results go into the history. A
+/// failure never stops the next step; it comes back as a notice for the player.
+fn close_session(
+    library: &LocalLibrary,
+    sessions: &Sessions,
+    folders: &recomp::Folders,
+    trail: &crate::trail::Trail,
+    game: &Game,
+    seconds: u64,
+    closed_at: u64,
+) -> Vec<String> {
+    let mut notices = Vec::new();
+    let saved = sessions.close_round(library, &game.id, seconds, closed_at);
+    let played = format!("{} jogados", duration_text(seconds));
+    trail.note(&game.id, "Partida", &saved.as_ref().map(|_| played).map_err(|e| format!("Tempo não gravado: {e}")));
+    if let Err(e) = saved {
+        notices.push(format!("Não foi possível gravar o tempo de {}: {e}", game.name));
+    }
+    if let Source::Recomp { recomp_id, .. } = &game.source {
+        let result = recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), "Depois de jogar");
+        trail.note(&game.id, "Backup depois de jogar", &backup_outcome(&result));
+        if let Err(e) = result {
+            notices.push(format!("Falha no backup de {}: {e}", game.name));
+        }
+    }
+    notices
+}
+
+/// "1 h 5 min", "3 min", "40 s".
+fn duration_text(seconds: u64) -> String {
+    match seconds {
+        0..60 => format!("{seconds} s"),
+        60..3600 => format!("{} min", seconds / 60),
+        _ => format!("{} h {} min", seconds / 3600, seconds % 3600 / 60),
+    }
+}
+
+/// A backup's result as the history shows it.
+pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shared::Backup>, E>) -> Result<String, String> {
+    match result {
+        Ok(Some(backup)) => Ok(format!("{} arquivos copiados", backup.files)),
+        Ok(None) => Ok("Nada novo para copiar".into()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 pub fn release(app: &AppHandle, id: &str) {
@@ -219,6 +267,40 @@ fn checkpoints_survive_restart_and_a_failed_write_without_counting_the_menu() {
     clock.close_round(&library, &game.id, 50, 100).unwrap();
     tick(90);
     assert_eq!((persisted().playtime_secs, persisted().last_session_secs), (50, Some(50)));
+}
+
+#[cfg(test)]
+#[test]
+fn a_failed_write_still_ends_the_session_and_its_cause_survives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = LocalLibrary::load(dir.path());
+    let game = crate::library::game_from_exe(&dir.path().join("Game.exe"));
+    library.add(game.clone()).unwrap();
+    let sessions = Sessions::default();
+    sessions.lock().insert(game.id.clone(), Some(Round { started: Instant::now(), credited: 0 }));
+    let folders = recomp::Folders::new(dir.path(), None);
+    let trail = crate::trail::Trail::new(dir.path());
+    // The library can't be written while a folder sits where its temporary file goes.
+    std::fs::create_dir(dir.path().join("library.json.tmp")).unwrap();
+
+    let notices = close_session(&library, &sessions, &folders, &trail, &game, 125, 100);
+    assert_eq!(notices.len(), 1);
+    // The round is over (a launcher menu may stay open), even though its time wasn't saved.
+    assert!(sessions.lock()[&game.id].is_none());
+
+    let reopened = crate::trail::Trail::new(dir.path());
+    let last = &reopened.for_game(&game.id, 1)[0];
+    assert_eq!(last.step, "Partida");
+    assert!(!last.ok);
+    assert!(last.message.starts_with("Tempo não gravado"));
+}
+
+#[cfg(test)]
+#[test]
+fn durations_read_as_people_say_them() {
+    assert_eq!(duration_text(40), "40 s");
+    assert_eq!(duration_text(125), "2 min");
+    assert_eq!(duration_text(3900), "1 h 5 min");
 }
 
 #[cfg(all(test, windows))]

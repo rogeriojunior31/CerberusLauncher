@@ -153,6 +153,12 @@ pub async fn list_backups(id: &str) -> Result<Vec<Backup>, String> {
 }
 
 /// `None` when there was nothing new to copy.
+/// What the launcher did for a game lately, newest first.
+pub async fn game_trail(id: &str) -> Result<Vec<cerberus_shared::TrailEntry>, String> {
+    call("game_trail", &Id { id }).await
+}
+
+/// `None` when there was nothing new to copy.
 pub async fn backup_now(id: &str) -> Result<Option<Backup>, String> {
     call("backup_now", &Id { id }).await
 }

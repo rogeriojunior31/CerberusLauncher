@@ -14,6 +14,7 @@ mod settings;
 mod setup_runner;
 mod steam;
 mod steam_store;
+mod trail;
 mod xdvdfs;
 
 use std::fs;
@@ -516,9 +517,16 @@ async fn install_recomp(
         Ok(game) => game,
         Err(message) => {
             report(cerberus_shared::InstallStep::Failed { message: message.clone() });
+            // Keyed by the library id a successful install would have had.
+            trail::note(&app, &format!("recomp:{id}"), "Instalação", &Err(message.clone()));
             return Err(message);
         }
     };
+    let version = match &game.source {
+        Source::Recomp { version, .. } => version.clone(),
+        _ => String::new(),
+    };
+    trail::note(&app, &game.id, "Instalação", &Ok(format!("Versão {version} instalada")));
     // Easy Setup: the player's copy was found in their ROM folders, so the recomp
     // is set up with it right away. Failing that only means setting it by hand.
     let found = owned_games(&app).remove(&id);
@@ -747,13 +755,16 @@ fn list_backups(library: State<'_, LocalLibrary>, folders: State<'_, recomp::Fol
 
 /// `None` when there was nothing new to copy.
 #[tauri::command]
-async fn backup_now(library: State<'_, LocalLibrary>, folders: State<'_, recomp::Folders>, id: String) -> Result<Option<Backup>, String> {
+async fn backup_now(app: AppHandle, library: State<'_, LocalLibrary>, folders: State<'_, recomp::Folders>, id: String) -> Result<Option<Backup>, String> {
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
-    recomp::backup_saves(&folders, &recomp_id, &install_dir, "Manual")
+    let result = recomp::backup_saves(&folders, &recomp_id, &install_dir, "Manual");
+    trail::note(&app, &id, "Backup manual", &sessions::backup_outcome(&result));
+    result
 }
 
 #[tauri::command]
 async fn restore_backup(
+    app: AppHandle,
     library: State<'_, LocalLibrary>,
     folders: State<'_, recomp::Folders>,
     sessions: State<'_, sessions::Sessions>,
@@ -765,7 +776,16 @@ async fn restore_backup(
         return Err("Feche o jogo antes de restaurar um backup.".into());
     }
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
-    recomp::restore_backup(&folders, &recomp_id, &install_dir, &name)
+    let result = recomp::restore_backup(&folders, &recomp_id, &install_dir, &name);
+    let outcome = result.as_ref().map(|n| format!("{n} arquivos de {name} restaurados")).map_err(Clone::clone);
+    trail::note(&app, &id, "Restaurar backup", &outcome);
+    result
+}
+
+/// What the launcher did for a game lately, newest first.
+#[tauri::command]
+fn game_trail(trail: State<'_, trail::Trail>, id: String) -> Vec<cerberus_shared::TrailEntry> {
+    trail.for_game(&id, 30)
 }
 
 #[tauri::command]
@@ -832,6 +852,7 @@ fn main() {
             let data_dir = app.path().app_data_dir()?;
             let chosen = settings::load(&data_dir);
             app.manage(LocalLibrary::load(&data_dir));
+            app.manage(trail::Trail::new(&data_dir));
             let folders = recomp::Folders::new(&data_dir, chosen.recomps_dir.clone());
             folders.set_cloud(chosen.cloud_dir.clone());
             app.manage(folders);
@@ -906,6 +927,7 @@ fn main() {
             list_backups,
             backup_now,
             restore_backup,
+            game_trail,
             open_folder,
             open_backups,
             get_settings,
