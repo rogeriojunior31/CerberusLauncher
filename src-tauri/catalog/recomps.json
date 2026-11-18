@@ -14,7 +14,35 @@
     "needs": "Sua ROM de Majora's Mask (Nintendo 64).",
     "saves": [
       "{local}/Zelda64Recompiled/saves"
-    ]
+    ],
+    "tag": "v1.2.2",
+    "released": "2025-08-27",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "Zelda64Recompiled-*-Windows.zip",
+      "linux": "Zelda64Recompiled-*-Linux-X64.zip",
+      "macos": "Zelda64Recompiled-*-macOS.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Zelda64Recompiled-v1.2.2-Windows.zip",
+        "sha256": "d02b95f1cf5e4d44d6587fa6136c6db521f61aa41ba8700c05f91bea8b0a26d0"
+      },
+      "linux": {
+        "name": "Zelda64Recompiled-v1.2.2-Linux-X64.zip",
+        "sha256": "de8b19cdb4e3ad0c10fd6d8127f7a6cc2a9eba106d89c753439178b718887c42"
+      },
+      "macos": {
+        "name": "Zelda64Recompiled-v1.2.2-macOS.zip",
+        "sha256": "f369815d7ba2a1139a6fab8a0aa51c52e5f064dcfcce649eb888fdef9f648689"
+      }
+    },
+    "size_text": "28 MB",
+    "stars": 7733
   },
   {
     "id": "starfox64recomp",
@@ -31,7 +59,35 @@
     "needs": "Sua ROM de Star Fox 64 (Nintendo 64).",
     "saves": [
       "{local}/Starfox64Recompiled/saves"
-    ]
+    ],
+    "tag": "1.0.3",
+    "released": "2025-12-30",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "Starfox64Recompiled-v*-Windows-RelWithDebInfo.zip",
+      "linux": "Starfox64Recompiled-v*-Linux-X64-Release.zip",
+      "macos": "Starfox64Recompiled-v*-macOS-Release.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Starfox64Recompiled-v1.0.3-Windows-RelWithDebInfo.zip",
+        "sha256": "768c18b0aeb325a0102f722338f09a270a76eeebea29154764147a93d0bde530"
+      },
+      "linux": {
+        "name": "Starfox64Recompiled-v1.0.3-Linux-X64-Release.zip",
+        "sha256": "e74932bd0edb6186a015dabaa87b6b24af3d3b5511ff3b0293a2c3331840cdf0"
+      },
+      "macos": {
+        "name": "Starfox64Recompiled-v1.0.3-macOS-Release.zip",
+        "sha256": "36d9da91eb4a895440f96092ef66729bdc69b814a8d6b076810f2ad3cf198b18"
+      }
+    },
+    "size_text": "24 MB",
+    "stars": 409
   },
   {
     "id": "mariokart64recomp",
@@ -49,7 +105,35 @@
     "saves": [
       "{local}/MarioKart64Recompiled/saves",
       "{install}/controllerPak*.sav"
-    ]
+    ],
+    "tag": "v0.9.2",
+    "released": "2026-02-13",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "MarioKart64Recompiled-*-Windows-RelWithDebInfo.zip",
+      "linux": "MarioKart64Recompiled-*-Linux-X64-Release.zip",
+      "macos": "MarioKart64Recompiled-*-macOS-Release.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "MarioKart64Recompiled-v0.9.2-Windows-RelWithDebInfo.zip",
+        "sha256": "4b41226ad7d4c6012878194fa88fe1a83c1fa8f425dfbaa2a7ea87eb01c1c2b4"
+      },
+      "linux": {
+        "name": "MarioKart64Recompiled-v0.9.2-Linux-X64-Release.zip",
+        "sha256": "46d4c34f755111daa460c64d34c1e97a932a3406995936ae1f059453a4fba819"
+      },
+      "macos": {
+        "name": "MarioKart64Recompiled-v0.9.2-macOS-Release.zip",
+        "sha256": "4e27d59d9fb4f13d4519b46a3bc06275bc794d32eff5c7179835a1ee6ecbe8e8"
+      }
+    },
+    "size_text": "23 MB",
+    "stars": 639
   },
   {
     "id": "banjorecomp",
@@ -66,7 +150,35 @@
     "needs": "Sua ROM de Banjo-Kazooie (Nintendo 64).",
     "saves": [
       "{local}/BanjoRecompiled/saves"
-    ]
+    ],
+    "tag": "v1.0.2",
+    "released": "2026-07-31",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "BanjoRecompiled-*-Windows.zip",
+      "linux": "BanjoRecompiled-*-Linux-X64.tar.gz",
+      "macos": "BanjoRecompiled-*-macOS.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "BanjoRecompiled-v1.0.2-Windows.zip",
+        "sha256": "fc34aad48e06681878bedd13b88d5332a2f21f6a98cafc931c94d54892a4dd92"
+      },
+      "linux": {
+        "name": "BanjoRecompiled-v1.0.2-Linux-X64.tar.gz",
+        "sha256": "a34a4d361221171ea638e0165301fff817c53b9cd46167c5affd37867cfc7ad0"
+      },
+      "macos": {
+        "name": "BanjoRecompiled-v1.0.2-macOS.zip",
+        "sha256": "5e0bbcf671064f05d7bf61c39b9c8f9eb851b0f9de4545882a607b78de8f8072"
+      }
+    },
+    "size_text": "18 MB",
+    "stars": 2146
   },
   {
     "id": "goemon64recomp",
@@ -83,7 +195,35 @@
     "needs": "Sua ROM de Mystical Ninja Starring Goemon (Nintendo 64).",
     "saves": [
       "{local}/Goemon64Recompiled/saves"
-    ]
+    ],
+    "tag": "v0.2.0-dev",
+    "released": "2026-01-31",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "Goemon64Recompiled-Windows-RelWithDebInfo.zip",
+      "linux": "Goemon64Recompiled-AppImage-X64-Release.zip",
+      "macos": "Goemon64Recompiled-macOS-Release.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Goemon64Recompiled-Windows-RelWithDebInfo.zip",
+        "sha256": "f74041842f059e65be3cc2ba3d51a82c543a3b16406189afe45951cb40ac5896"
+      },
+      "linux": {
+        "name": "Goemon64Recompiled-AppImage-X64-Release.zip",
+        "sha256": "8d9d056ecea6b3d5805d12cc273238e6e8c9b0b9a62d919125dfaaa0737fdd9d"
+      },
+      "macos": {
+        "name": "Goemon64Recompiled-macOS-Release.zip",
+        "sha256": "1c2e89a02580da024bdd2f18e2457aaaaf9864120745c04f67778794508717be"
+      }
+    },
+    "size_text": "24 MB",
+    "stars": 340
   },
   {
     "id": "shipwright",
@@ -100,7 +240,35 @@
     "needs": "Sua ROM de Ocarina of Time (Nintendo 64).",
     "saves": [
       "{install}/Save"
-    ]
+    ],
+    "tag": "9.3.1",
+    "released": "2026-10-18",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "SoH-Dewey-Bravo-Win64.zip",
+      "linux": "SoH-Dewey-Bravo.appimage",
+      "macos": "SoH-Dewey-Bravo-Mac.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "SoH-Dewey-Bravo-Win64.zip",
+        "sha256": "429292a0bfbdfcda283b33c1538ecdc49163b9ed53e8702cac80b2489d9fe26c"
+      },
+      "linux": {
+        "name": "SoH-Dewey-Bravo.appimage",
+        "sha256": "e4bb775c9a0c3629ebac57e4b6ccba6d0b621d71ab201e9105aceef9141ad1f4"
+      },
+      "macos": {
+        "name": "SoH-Dewey-Bravo-Mac.zip",
+        "sha256": "6d9b69b7037d3af863c1767829af42666732c9f4651468a7e086c3e11268bd4b"
+      }
+    },
+    "size_text": "70 MB",
+    "stars": 6102
   },
   {
     "id": "2ship2harkinian",
@@ -115,7 +283,35 @@
     "about": "Majora's Mask reconstruído a partir da decompilação, da mesma equipe do Ship of Harkinian.",
     "adds": "Reconstrução a partir da decompilação · melhorias e opções extras",
     "needs": "Sua ROM de Majora's Mask (Nintendo 64).",
-    "saves": []
+    "saves": [],
+    "tag": "5.0.1",
+    "released": "2026-08-25",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "2Ship-Battler-Bravo-Win64.zip",
+      "linux": "2Ship-Battler-Bravo-Linux.zip",
+      "macos": "2Ship-Battler-Bravo-Mac.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "2Ship-Battler-Bravo-Win64.zip",
+        "sha256": "a46664a01623ad5d7cc82d29a9889699f6a98c9501c7a959a089f34380c1f078"
+      },
+      "linux": {
+        "name": "2Ship-Battler-Bravo-Linux.zip",
+        "sha256": "6cdd4fe06f3f9b095e99c86fef70b9265cc921fb6faa7ba1e18e94e90ed0b345"
+      },
+      "macos": {
+        "name": "2Ship-Battler-Bravo-Mac.zip",
+        "sha256": "b6019b4339d06ce0a476299a5be7b35629dff2fb779acb3da219da3cfcf1f84a"
+      }
+    },
+    "size_text": "43 MB",
+    "stars": 2490
   },
   {
     "id": "starship",
@@ -130,7 +326,20 @@
     "about": "Star Fox 64 reconstruído a partir da decompilação, pela Harbour Masters.",
     "adds": "Reconstrução a partir da decompilação, pela Harbour Masters",
     "needs": "Sua ROM de Star Fox 64 (Nintendo 64).",
-    "saves": []
+    "saves": [],
+    "tag": "v2.0.0",
+    "released": "2025-05-25",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Starship-Barnard-Alfa-Windows.zip",
+      "linux": "Starship-Barnard-Alfa-Linux.zip"
+    },
+    "files": {},
+    "size_text": "5 MB",
+    "stars": 2151
   },
   {
     "id": "spaghettikart",
@@ -145,7 +354,35 @@
     "about": "Mario Kart 64 reconstruído a partir da decompilação, com pistas personalizadas e mais opções.",
     "adds": "Reconstrução a partir da decompilação · pistas personalizadas",
     "needs": "Sua ROM de Mario Kart 64 (Nintendo 64).",
-    "saves": []
+    "saves": [],
+    "tag": "1.0.0",
+    "released": "2026-02-25",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "spaghetti-windows.zip",
+      "linux": "spaghetti-linux.zip",
+      "macos": "spaghetti-mac-intel-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "spaghetti-windows.zip",
+        "sha256": "bf7bd7cdb5f412c7b370af92949b9431ce7503968631f8cacd607933fb32aff3"
+      },
+      "linux": {
+        "name": "spaghetti-linux.zip",
+        "sha256": "54e249bd4aa71e55c63239c9c1c0eb522b07497d85f2ede193907059e4de250c"
+      },
+      "macos": {
+        "name": "spaghetti-mac-intel-x64.zip",
+        "sha256": "6ca0cf6747cf3081a65a7324a6c0c891be75465966fa4872fb57f9e58966cd90"
+      }
+    },
+    "size_text": "8 MB",
+    "stars": 2504
   },
   {
     "id": "unleashedrecomp",
@@ -163,6 +400,17 @@
     "saves": [
       "{appdata}/UnleashedRecomp/save",
       "{install}/save"
-    ]
+    ],
+    "tag": "v1.0.3",
+    "released": "2025-04-03",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "UnleashedRecomp-Windows.zip"
+    },
+    "files": {},
+    "size_text": "51 MB",
+    "stars": 5393
   }
 ]

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["shared", "ui", "src-tauri"]
+members = ["shared", "ui", "src-tauri", "tools/catalog-builder"]
 
 [workspace.package]
 version = "0.1.0"

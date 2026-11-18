@@ -63,3 +63,47 @@ real, não só compilação.
 - [x] Imagens ISO 9660 (PS2, PSP): cobre todos os formatos de extração que o catálogo usa hoje.
 - [x] Catálogo próprio atualizável sem nova versão: o app busca `src-tauri/catalog/recomps.json`
       deste repositório a cada 6 h (a versão embutida fica de reserva).
+
+## Onda 4: catálogo próprio, sem depender de servidor de ninguém
+
+Hoje o catálogo grande vem do site do RecompLauncher, e os dois launchers de referência dependem de
+um servidor fechado para montar o deles. A ideia é juntar o melhor dos dois sem servidor:
+automação como o Hydra (bases públicas, arte da comunidade) e curadoria como o RecompLauncher
+(entradas revisadas, só releases dos desenvolvedores, com checksum). O "servidor" é este
+repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
+
+### 4.1 Gerador do catálogo (`tools/catalog-builder`)
+
+- [x] Ferramenta em Rust no próprio repositório: `cargo run -p catalog-builder`.
+- [x] Atualiza o que é automático em cada entrada a partir do GitHub do projeto: versão (tag),
+      arquivo de cada sistema com SHA-256 (download direto), padrão do nome do arquivo, tamanho,
+      estrelas, sistemas.
+- [x] Descobre projetos novos no GitHub (busca por nomes `*Recomp*`/`*Recompiled*`, tópicos de
+      recompilação/decompilação, ports nativos) e grava em `catalog/candidates.json` para revisão,
+      sem colocar nada no catálogo sozinho.
+- [x] Usa `GITHUB_TOKEN` quando houver (limite de 5000 consultas/h em vez de 60).
+
+### 4.2 Revisão sem servidor (GitHub Actions)
+
+- [x] Action semanal (e manual) que roda o gerador e abre um Pull Request com as atualizações e os
+      candidatos. Aprovar o PR = publicar no app.
+- [x] Formulário de issue "Pedir um recomp" no repositório, e botão no Descobrir que abre esse
+      formulário (o "Request a Recomp" do RecompLauncher, sem servidor).
+- [x] Guia de curadoria no README: como completar uma entrada (jogo, console, como entregar a ROM,
+      locais de save, passos de configuração).
+
+### 4.3 Base de jogos e arte (estilo Hydra)
+
+- [ ] Arte da comunidade pelo SteamGridDB (chave gratuita do usuário em Configurações; o gerador
+      pode usar uma chave de CI para preencher capas/fundos do catálogo).
+- [ ] Base de jogos de console do LaunchBox Games Database (`Metadata.zip`): nomes alternativos,
+      plataformas e imagens, para reconhecer melhor as ROMs. Confirmar os termos de uso antes.
+- [ ] Busca com índice local (SQLite com busca de texto) se a base passar de algumas dezenas de
+      milhares de jogos; para os recomps a busca em memória continua bastando.
+
+### 4.4 Transição
+
+- [ ] Quando o catálogo próprio cobrir os recomps principais, o do recomplauncher.com vira opcional
+      (fonte nas Configurações) em vez de padrão.
+- [ ] Pedir permissão ao mantenedor do RecompLauncher para usar a lista de repositórios deles como
+      ponto de partida da descoberta (só os fatos: quais projetos existem; nunca textos ou arte).

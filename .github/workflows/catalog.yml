@@ -1,0 +1,42 @@
+# Keeps the recomp catalog current without a server: once a week (or by hand),
+# refresh what GitHub knows about each entry and look for new projects, then
+# open a pull request. Merging it publishes the changes to every launcher,
+# which reads src-tauri/catalog/recomps.json from this repository.
+name: Catálogo
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Atualizar entradas e procurar projetos novos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo run -q -p catalog-builder -- update
+          cargo run -q -p catalog-builder -- discover
+
+      - name: Abrir pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: catalogo/atualizacao-semanal
+          commit-message: "Catálogo: atualização semanal"
+          title: "Catálogo: atualização semanal"
+          body: |
+            Gerado pelo `catalog-builder`.
+
+            - `recomps.json`: versões, arquivos com SHA-256, tamanhos e estrelas atualizados a partir do GitHub. Campos escritos à mão não são tocados.
+            - `candidates.json`: projetos novos encontrados no GitHub. Para incluir um, complete os campos vazios (jogo, console, o que o jogador precisa) e mova a entrada para `recomps.json`.
+          delete-branch: true

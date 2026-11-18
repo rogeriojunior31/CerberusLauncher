@@ -127,6 +127,11 @@ pub async fn open_project(id: &str) -> Result<(), String> {
     call("open_project", &Id { id }).await
 }
 
+/// Opens the "Pedir um recomp" form on GitHub.
+pub async fn open_recomp_request() -> Result<(), String> {
+    call("open_recomp_request", &()).await
+}
+
 pub async fn cancel_install(id: &str) -> Result<(), String> {
     call("cancel_install", &Id { id }).await
 }
