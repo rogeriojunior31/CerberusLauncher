@@ -259,12 +259,17 @@ fn clear_art_cache(app: AppHandle) -> Result<SettingsView, String> {
 }
 
 #[tauri::command]
+fn library_recovery_notice(library: State<'_, LocalLibrary>) -> Option<String> {
+    library.recovery_notice()
+}
+
+#[tauri::command]
 async fn list_games(
     library: State<'_, LocalLibrary>,
     art: State<'_, Arc<ArtCache>>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Vec<Game>, String> {
-    let mut games = library.games();
+    let mut games = library.games()?;
     games.iter_mut().for_each(recomp::apply_art);
     // Scanning library folders touches the disk; keep it off the async runtime.
     let scan = tauri::async_runtime::spawn_blocking(|| {
@@ -321,7 +326,7 @@ async fn find_cover(
     folder: State<'_, CoverFolder>,
     id: String,
 ) -> Result<Game, String> {
-    let game = library.get(&id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let art = steam_store::art_for_name(&http, &game.name).await?;
     let Some(art) = art.filter(|art| art.cover.is_some()) else {
         return Err(format!("Nenhuma capa encontrada na Steam para \"{}\".", game.name));
@@ -366,7 +371,7 @@ fn remove_game(
     sessions: State<'_, sessions::Sessions>,
     id: String,
 ) -> Result<(), String> {
-    let Some(game) = library.get(&id) else {
+    let Some(game) = library.get(&id)? else {
         return Ok(());
     };
     if sessions.is_running(&id) {
@@ -408,7 +413,7 @@ async fn list_recomps(
             }
         });
     }
-    let mut entries = recomp::entries(&library, &owned_games(&app));
+    let mut entries = recomp::entries(&library, &owned_games(&app))?;
     // Copies already on disk are used, but 1900 recomps' art is not fetched
     // ahead: the window loads what it shows, and games in the library keep theirs.
     let mut not_fetched = Vec::new();
@@ -454,7 +459,7 @@ async fn install_recomp(
 /// when `folder`).
 #[tauri::command]
 async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: String, use_found: bool, folder: bool) -> Result<Option<Game>, String> {
-    let game = library.get(&id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err("Só recomps usam uma cópia do jogo.".into());
     };
@@ -486,7 +491,7 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
 /// The mod source and mods folder of an installed recomp; `None` when it has no mods.
 async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(mods::ModSource, PathBuf, PathBuf)>, String> {
     let library = app.state::<LocalLibrary>();
-    let game = library.get(id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, exe, .. } = &game.source else {
         return Ok(None);
     };
@@ -618,7 +623,7 @@ fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
 
 /// The recomp behind a library entry, and where it is installed.
 fn recomp_of(library: &LocalLibrary, id: &str) -> Result<(String, PathBuf), String> {
-    let game = library.get(id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, .. } = game.source else {
         return Err("Só os recomps têm backup de saves.".into());
     };
@@ -656,7 +661,7 @@ async fn restore_backup(
 
 #[tauri::command]
 fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<(), String> {
-    let game = library.get(&id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     app.opener()
         .open_path(game.install_dir, None::<&str>)
         .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
@@ -769,6 +774,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             list_games,
+            library_recovery_notice,
             add_local_game,
             rename_game,
             find_cover,

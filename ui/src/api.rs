@@ -73,6 +73,10 @@ struct Id<'a> {
     id: &'a str,
 }
 
+pub async fn library_recovery_notice() -> Result<Option<String>, String> {
+    call("library_recovery_notice", &()).await
+}
+
 pub async fn list_games() -> Result<Vec<Game>, String> {
     call("list_games", &()).await
 }

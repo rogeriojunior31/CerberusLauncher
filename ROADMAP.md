@@ -41,10 +41,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Publicar alterações de `LocalLibrary` em memória somente depois da gravação em disco.
       A regressão em `library.rs` força uma falha real no arquivo temporário ao adicionar,
       renomear e remover jogos. Depois libera o destino, repete as operações e reabre a biblioteca.
-- [ ] Recuperar a biblioteca na abertura. Um registro incompatível hoje faz toda a lista
-      parecer vazia. Preservar o original, recuperar entradas legíveis e informar onde ficou a
-      cópia. Cobrir arquivo ausente, JSON truncado, leitura negada e um registro inválido entre
-      dois válidos. Uma tentativa frustrada de recuperação deve preservar os dados para nova tentativa.
+- [x] Recuperar registros válidos na abertura, inclusive os completos antes de um fim de
+      arquivo truncado. A tela Biblioteca mostra o caminho da cópia original numerada. Um arquivo
+      ilegível ou sem jogos recuperáveis permanece intacto e a leitura pode ser repetida. Testes
+      cobrem primeira execução, bloqueio de leitura no Windows, registros incompatíveis, truncamento,
+      falha ao criar a cópia, falha ao gravar a recuperação e reabertura.
 - [ ] Levar as etapas de atualização de `recomp/mod.rs` para um módulo que responda pela
       preparação, validação e confirmação. Exercitá-lo com duas releases locais e falhas antes e
       depois da troca. Manter os comandos Tauri como pontos de entrada usados pela UI.

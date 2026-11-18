@@ -261,7 +261,7 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
     if !copy.exists() {
         return Err(format!("{} não existe mais.", copy.display()));
     }
-    let game = library.get(game_id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(game_id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err("Só recomps usam uma cópia do jogo.".into());
     };
@@ -336,10 +336,10 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 /// Every recomp in the catalog, with what this PC has: straight from the
 /// catalog, with no question to GitHub, so 1900 entries list at once.
 /// `owned` maps a recomp id to the player's copy of its game, found in their ROM folders.
-pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Vec<RecompEntry> {
-    let installed = installed_versions(library);
+pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Result<Vec<RecompEntry>, String> {
+    let installed = installed_versions(library)?;
     let all = catalog::all();
-    all.iter().filter(|entry| !entry.soon).map(|entry| to_entry(entry, &installed, owned)).collect()
+    Ok(all.iter().filter(|entry| !entry.soon).map(|entry| to_entry(entry, &installed, owned)).collect())
 }
 
 /// Why a recomp can't be installed here, if it can't.
@@ -401,12 +401,12 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     }
 }
 
-fn installed_versions(library: &LocalLibrary) -> Vec<(String, String)> {
-    let recomps = library.games().into_iter().filter_map(|game| match game.source {
+fn installed_versions(library: &LocalLibrary) -> Result<Vec<(String, String)>, String> {
+    let recomps = library.games()?.into_iter().filter_map(|game| match game.source {
         Source::Recomp { recomp_id, version, .. } => Some((recomp_id, version)),
         _ => None,
     });
-    recomps.collect()
+    Ok(recomps.collect())
 }
 
 /// Installs, or updates, a recomp to its newest release and puts it in the library.
@@ -445,7 +445,7 @@ async fn install_now(
     // An update goes where the game already is, even if new installs now go
     // elsewhere, and keeps a copy of the saves first in case the new version
     // changes or breaks them.
-    let installed = installed_game(library, entry);
+    let installed = installed_game(library, entry)?;
     let target = match &installed {
         Some(game) => PathBuf::from(&game.install_dir),
         None => folders.install_dir(&entry.id),
@@ -531,11 +531,11 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
 }
 
 /// The library's game for this recomp, under its current id or an older one.
-fn installed_game(library: &LocalLibrary, entry: &CatalogEntry) -> Option<Game> {
-    library.games().into_iter().find(|game| match &game.source {
+fn installed_game(library: &LocalLibrary, entry: &CatalogEntry) -> Result<Option<Game>, String> {
+    Ok(library.games()?.into_iter().find(|game| match &game.source {
         Source::Recomp { recomp_id, .. } => entry.is(recomp_id),
         _ => false,
-    })
+    }))
 }
 
 /// Adds the recomp to the library, or updates the entry already there while
