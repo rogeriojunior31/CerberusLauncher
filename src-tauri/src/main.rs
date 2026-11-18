@@ -333,12 +333,21 @@ fn library_recovery_notice(library: State<'_, LocalLibrary>) -> Option<String> {
 
 #[tauri::command]
 async fn list_games(
+    app: AppHandle,
     library: State<'_, LocalLibrary>,
     art: State<'_, Arc<ArtCache>>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Vec<Game>, String> {
     let mut games = library.games()?;
     games.iter_mut().for_each(recomp::apply_art);
+    let owned = owned_games(&app);
+    for game in &mut games {
+        let found = match &game.source {
+            Source::Recomp { recomp_id, .. } => owned.get(recomp_id),
+            _ => None,
+        };
+        game.next_step = recomp::next_step(game, found);
+    }
     // Scanning library folders touches the disk; keep it off the async runtime.
     let scan = tauri::async_runtime::spawn_blocking(|| {
         let mut found = steam::installed_games();
@@ -651,7 +660,7 @@ async fn remove_mod(app: AppHandle, id: String, full_name: String) -> Result<(),
 /// After an installer ran and the game wasn't found: the player points at its program.
 #[tauri::command]
 async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
-    let dialog = app.dialog().file().set_title("Onde o instalador colocou o jogo? Escolha o programa do jogo");
+    let dialog = app.dialog().file().set_title("Onde está o jogo? Escolha o programa dele");
     let dialog = if cfg!(windows) { dialog.add_filter("Programa", &["exe"]) } else { dialog };
     let Some(program) = pick_one(dialog).await? else {
         return Ok(None);
@@ -712,12 +721,14 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         Source::Local { .. } => {
             let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+            ready_to_play(&current)?;
             let Source::Local { exe } = &current.source else { return Err("Registro do jogo inválido.".into()) };
             return sessions::start(&app, &current, Path::new(exe));
         }
         Source::Recomp { recomp_id, .. } => {
             return app.state::<recomp::Installing>().while_idle(recomp_id, || {
                 let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+                ready_to_play(&current)?;
                 let Source::Recomp { exe, .. } = &current.source else { return Err("Registro do recomp inválido.".into()) };
                 sessions::start(&app, &current, Path::new(exe))
             });
@@ -726,6 +737,16 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| format!("Não foi possível abrir o launcher da loja: {e}"))
+}
+
+/// Play refuses what the button wouldn't offer: a recomp without its game copy
+/// would open to an error, a missing program can't open at all.
+fn ready_to_play(game: &Game) -> Result<(), String> {
+    match recomp::next_step(game, None) {
+        cerberus_shared::NextStep::ChooseCopy { .. } => Err(format!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
+        cerberus_shared::NextStep::Locate { reason } => Err(format!("{reason} Use \"Localizar programa\" na página do jogo.")),
+        _ => Ok(()),
+    }
 }
 
 #[tauri::command]

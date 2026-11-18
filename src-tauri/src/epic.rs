@@ -101,6 +101,7 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         tracking_exe: None,
         game_copy: None,
         setup_pending: false,
+        next_step: Default::default(),
     }
 }
 

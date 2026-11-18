@@ -85,6 +85,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       última falha com a causa e a lista completa. Testes cobrem reabertura, linha danificada,
       limite de tamanho, destino sem escrita e uma sessão cuja gravação de tempo falha. Conferido
       no app com um backup manual real do ReStreet.
+- [x] Decidir no backend o próximo passo de cada jogo (`NextStep`): jogar, abrir o instalador,
+      escolher a cópia do jogo (com um clique quando as pastas de ROMs já têm) ou localizar o
+      programa que sumiu. Início, Biblioteca, Tela Grande e a página do jogo mostram o mesmo botão,
+      e Jogar recusa o que o botão não ofereceria. Testes cobrem cópia por argumento, por pasta,
+      arquivo que sumiu, instalador pendente e programa ausente.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
