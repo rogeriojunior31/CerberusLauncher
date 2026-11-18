@@ -789,3 +789,20 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 @media (prefers-reduced-motion: reduce) {
   .fr-aurora i, .fr-step, .fr-cover, .fr-logo.done { animation: none; }
 }
+
+/* Trazer seus recomps */
+.dialog.adopt { width: min(640px, calc(100vw - 32px)); }
+.adopt-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; margin: 6px 0 4px; }
+.adopt-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; background: var(--fill); border: 2px solid transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), background 0.15s var(--ease); }
+.adopt-row:hover { background: var(--fill2); }
+.adopt-row.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--fill)); }
+.adopt-cover { width: 48px; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.adopt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.adopt-text small { color: var(--muted); font-size: 12.5px; }
+.adopt-text small.path { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adopt-maybe { color: #f5b14c !important; }
+.adopt-check { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; border: 2px solid var(--line2); color: transparent; flex-shrink: 0; }
+.adopt-row.on .adopt-check { background: var(--grad); border-color: transparent; color: var(--accent-ink); }
+.adopt-folder { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--fill); font-size: 13px; }
+.adopt-folder svg { color: var(--accent); flex-shrink: 0; }
+.adopt-folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

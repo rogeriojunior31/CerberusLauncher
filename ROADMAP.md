@@ -97,6 +97,12 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Configuração guiada na primeira abertura: como joga (mesa ou TV), pastas de ROMs com os
       jogos que já têm recomp, pasta de instalação com espaço livre e saves na nuvem. Quem escolhe
       TV abre direto na Tela grande (também em Configurações). Instalações existentes não veem a tela.
+- [x] Trazer recomps instalados sem o Cerberus: "Trazer seus recomps" no Descobrir procura numa
+      pasta pelo nome do programa que o catálogo dá (607 recomps o informam) e "Já tenho instalado"
+      na página de cada recomp. O jogo fica marcado como externo: o Cerberus abre, conta tempo e faz
+      backup, mas nunca atualiza nem apaga a pasta. Trazer duas vezes mantém um registro, e um jogo
+      adicionado à mão vira o recomp mantendo o tempo de jogo. Conferido no app com o Zelda 64.
+- [x] Busca do Descobrir procura em todas as versões de um jogo ("Zelda 64" acha o Zelda 64: Recompiled).
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

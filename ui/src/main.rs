@@ -5,6 +5,7 @@ mod bigpicture;
 mod discover;
 mod format;
 mod game;
+mod adopt;
 mod first_run;
 mod game_settings;
 mod home;
@@ -76,6 +77,8 @@ pub struct Library {
     history: RwSignal<Vec<Route>>,
     editing: RwSignal<Option<Game>>,
     toasts: RwSignal<Vec<Toast>>,
+    /// The "Trazer seus recomps" window is open.
+    adopting: RwSignal<bool>,
 }
 
 impl Library {
@@ -187,6 +190,7 @@ fn App() -> impl IntoView {
         history: RwSignal::new(Vec::new()),
         editing: RwSignal::new(None),
         toasts: RwSignal::new(Vec::new()),
+        adopting: RwSignal::new(false),
     };
     provide_context(library);
     provide_context(library_page::LibraryView::default());
@@ -294,6 +298,7 @@ fn App() -> impl IntoView {
         </div>
         {big_picture}
         {setup}
+        <Show when=move || library.adopting.get()><adopt::AdoptDialog /></Show>
         <shell::Toasts />
         {editor}
         {locate}

@@ -487,7 +487,10 @@ fn remove_game(
                 return Err("Feche o jogo antes de removê-lo.".into());
             }
             recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
-            recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            // A folder the player installed on their own stays theirs: only the link goes.
+            if !game.external {
+                recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            }
             library.remove(&id)
         })?;
     } else {
@@ -830,6 +833,80 @@ async fn restore_backup(
     result
 }
 
+fn found_view(found: recomp::adopt::Found) -> Option<cerberus_shared::AdoptFound> {
+    let entry = recomp::find(&found.recomp_id)?;
+    Some(cerberus_shared::AdoptFound {
+        recomp_id: entry.id,
+        name: entry.name,
+        game: entry.game,
+        console: entry.console,
+        cover: entry.cover,
+        program: found.program.to_string_lossy().into_owned(),
+        sure: found.sure,
+    })
+}
+
+/// Looks through a folder the player picks for recomps installed without
+/// Cerberus. `None` when the picker is cancelled.
+#[tauri::command]
+async fn scan_for_recomps(app: AppHandle) -> Result<Option<cerberus_shared::AdoptScan>, String> {
+    let dialog = app.dialog().file().set_title("Em que pasta estão os recomps que você já instalou?");
+    let Some(folder) = pick_folder(dialog).await? else {
+        return Ok(None);
+    };
+    let shown = folder.display().to_string();
+    let found = tauri::async_runtime::spawn_blocking(move || recomp::adopt::scan(&folder, &recomp::catalog::all()))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Some(cerberus_shared::AdoptScan { folder: shown, found: found.into_iter().filter_map(found_view).collect() }))
+}
+
+/// Brings one recomp in, from its program: one found by the scan, or (with no
+/// `program`) one the player picks.
+#[tauri::command]
+async fn adopt_recomp(app: AppHandle, recomp_id: String, program: Option<String>) -> Result<Option<Game>, String> {
+    let entry = recomp::find(&recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let program = match program {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let title = format!("Onde está o {}? Escolha o programa dele", entry.name);
+            let dialog = app.dialog().file().set_title(&title);
+            let dialog = if cfg!(windows) { dialog.add_filter("Programa", &["exe"]) } else { dialog };
+            let Some(program) = pick_one(dialog).await? else {
+                return Ok(None);
+            };
+            program
+        }
+    };
+    let library = app.state::<LocalLibrary>();
+    let result = recomp::adopt::adopt(&library, &entry, &program);
+    let outcome = result.as_ref().map(|_| format!("Trazido de {}", program.display())).map_err(Clone::clone);
+    trail::note(&app, &recomp::library_id(&entry.id), "Trazer recomp", &outcome);
+    let _ = app.emit("catalog-changed", ());
+    result.map(Some)
+}
+
+/// The catalog recomps a game added by hand could be, the surest first.
+#[tauri::command]
+fn recomp_suggestions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::AdoptFound>, String> {
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Local { exe } = &game.source else { return Ok(Vec::new()) };
+    let found = recomp::adopt::candidates(Path::new(exe), &recomp::catalog::all());
+    Ok(found.into_iter().filter_map(found_view).collect())
+}
+
+/// Turns a game added by hand into the catalog recomp it is, keeping its play time.
+#[tauri::command]
+fn link_to_recomp(app: AppHandle, library: State<'_, LocalLibrary>, id: String, recomp_id: String) -> Result<Game, String> {
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Local { exe } = &game.source else { return Err("Só jogos adicionados à mão podem ser vinculados.".into()) };
+    let entry = recomp::find(&recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let linked = recomp::adopt::adopt(&library, &entry, Path::new(exe))?;
+    trail::note(&app, &linked.id, "Vincular ao catálogo", &Ok(entry.name.clone()));
+    let _ = app.emit("catalog-changed", ());
+    Ok(linked)
+}
+
 /// A recomp's catalog settings offer and where it is installed.
 fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings::Offer), String> {
     let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
@@ -910,6 +987,14 @@ fn open_backups(app: AppHandle, library: State<'_, LocalLibrary>, folders: State
 /// The native file dialog blocks until closed, so it must not run on an async worker.
 async fn pick_one(dialog: FileDialogBuilder<tauri::Wry>) -> Result<Option<PathBuf>, String> {
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file());
+    let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    picked.into_path().map(Some).map_err(|e| e.to_string())
+}
+
+async fn pick_folder(dialog: FileDialogBuilder<tauri::Wry>) -> Result<Option<PathBuf>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
     let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
         return Ok(None);
     };
@@ -1030,6 +1115,10 @@ fn main() {
             restore_backup,
             game_trail,
             game_settings,
+            scan_for_recomps,
+            adopt_recomp,
+            recomp_suggestions,
+            link_to_recomp,
             set_game_setting,
             open_folder,
             open_backups,

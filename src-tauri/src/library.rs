@@ -120,6 +120,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         setup_pending: false,
         next_step: Default::default(),
         setting_picks: Default::default(),
+        external: false,
     }
 }
 

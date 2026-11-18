@@ -49,6 +49,10 @@ pub struct Game {
     /// The game's command-line settings the player picked: setting id -> choice.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub setting_picks: std::collections::BTreeMap<String, usize>,
+    /// A recomp installed outside Cerberus and linked to the catalog: its files
+    /// are the player's, so Cerberus never updates or deletes them.
+    #[serde(default)]
+    pub external: bool,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -91,6 +95,26 @@ pub struct GameSetting {
     pub current: usize,
     /// False while another setting makes this one irrelevant (shown greyed out).
     pub applies: bool,
+}
+
+/// What a look through one of the player's folders found.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AdoptScan {
+    pub folder: String,
+    pub found: Vec<AdoptFound>,
+}
+
+/// A recomp found among the player's own programs, to bring into the library.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AdoptFound {
+    pub recomp_id: String,
+    pub name: String,
+    pub game: String,
+    pub console: String,
+    pub cover: Option<String>,
+    pub program: String,
+    /// The program has the exact name the catalog gives; otherwise it only looks alike.
+    pub sure: bool,
 }
 
 /// The one thing that stands between the player and the game, if anything.

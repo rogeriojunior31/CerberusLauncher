@@ -2,6 +2,7 @@
 //! developer's own GitHub releases. The player brings their own copy of the
 //! game; every recomp in the catalog asks for it the first time it opens.
 
+pub mod adopt;
 mod assets;
 pub mod catalog;
 pub(crate) mod cloud;
@@ -491,7 +492,14 @@ pub async fn install(
         if busy.contains_key(&entry.id) {
             return Err(format!("{} já está sendo instalado.", entry.name));
         }
-        if installed_game(library, &entry)?.is_some_and(|game| sessions.is_running(&game.id)) {
+        let installed = installed_game(library, &entry)?;
+        if installed.as_ref().is_some_and(|game| game.external) {
+            return Err(format!(
+                "{} foi instalado fora do Cerberus, então as atualizações dele ficam por sua conta. Para o Cerberus cuidar delas, remova o vínculo e instale por aqui.",
+                entry.name
+            ));
+        }
+        if installed.is_some_and(|game| sessions.is_running(&game.id)) {
             return Err("Feche o jogo antes de atualizá-lo.".into());
         }
         busy.insert(entry.id.clone(), cancel.clone());
@@ -677,6 +685,7 @@ fn register(
         setup_pending,
         next_step: Default::default(),
         setting_picks: Default::default(),
+        external: false,
     };
     apply_art(&mut game);
     library.add(game.clone())?;

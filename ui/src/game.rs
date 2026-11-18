@@ -151,7 +151,8 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
         }
         if let Some(game) = game.clone() {
             let running = library.running.with(|all| all.contains(&game.id));
-            let update = entry.as_ref().and_then(|e| {
+            // Installed outside Cerberus: its updates are the player's.
+            let update = entry.as_ref().filter(|_| !game.external).and_then(|e| {
                 let newest = e.latest.as_ref()?;
                 (e.installed.as_ref() != Some(&newest.version)).then(|| newest.version.clone())
             });
@@ -178,6 +179,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
             Some(release) => {
                 let rid = entry.id.clone();
                 view! {
+                    <AlreadyInstalled recomp_id=entry.id.clone() />
                     <button type="button" class="btn main big play" on:click=move |_| start_install(library, rid.clone())>
                         <Svg icon=Icon::Download size=20 />{format!("Instalar · {}", megabytes(release.size))}
                     </button>
@@ -202,7 +204,8 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             stats.push(("Última vez", g.last_played.map(format::ago).unwrap_or_else(|| "—".to_string())));
         }
         if let Source::Recomp { version, .. } = &g.source {
-            stats.push(("Versão", version.clone()));
+            let shown = if g.external && version.is_empty() { "Instalado por você".to_string() } else { version.clone() };
+            stats.push(("Versão", shown));
         }
         stats.push(("Fonte", source_name(&g.source).to_string()));
     } else if let Some(e) = &entry {
@@ -547,7 +550,10 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
                 }
             });
         };
-        let (title, detail) = if is_recomp {
+        let external = g.external;
+        let (title, detail) = if external {
+            ("Remover da biblioteca", "A pasta é sua e continua no PC. Os backups de saves continuam guardados.")
+        } else if is_recomp {
             ("Desinstalar", "Apaga a pasta do jogo. Os backups de saves continuam guardados.")
         } else {
             ("Remover da biblioteca", "Os arquivos do jogo continuam no seu PC.")
@@ -574,7 +580,14 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         _ => None,
     });
     let history = game.as_ref().filter(|g| g.is_tracked()).map(|g| view! { <History id=g.id.clone() /> });
-    view! { <div class="manage">{program}{options}{history}{folder}{edit}{project}{remove}</div> }
+    let link = game.as_ref().filter(|g| matches!(g.source, Source::Local { .. })).map(|g| view! { <LinkToCatalog id=g.id.clone() /> });
+    let outside = game.as_ref().filter(|g| g.external).map(|_| view! {
+        <div class="card">
+            <h3>"Instalado fora do Cerberus"</h3>
+            <p class="muted small">"Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele."</p>
+        </div>
+    });
+    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{edit}{project}{remove}</div> }
 }
 
 #[component]
@@ -680,6 +693,72 @@ fn History(id: String) -> impl IntoView {
                 <Show when=move || open.get()>
                     <ul class="trail">{rows.clone()}</ul>
                 </Show>
+            </div>
+        })
+    }
+}
+
+/// For a recomp not installed by Cerberus: the player already has it somewhere.
+#[component]
+fn AlreadyInstalled(recomp_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let rid = StoredValue::new(recomp_id);
+    let on_click = move |_| {
+        spawn_local(async move {
+            if let Some(game) = library.report(api::adopt_recomp(&rid.get_value(), None).await).flatten() {
+                library.games.refetch();
+                library.recomps.refetch();
+                library.toast(format!("{} está na Biblioteca, de onde você instalou.", game.name));
+                library.go(crate::Route::Game(game.id));
+            }
+        });
+    };
+    view! {
+        <button type="button" class="btn big" title="Escolha o programa do recomp que você já tem" on:click=on_click>
+            <Svg icon=Icon::Folder size=18 />"Já tenho instalado"
+        </button>
+    }
+}
+
+/// A game added by hand that is a catalog recomp: linking it brings its
+/// settings, saves, mods and art, and keeps its play time.
+#[component]
+fn LinkToCatalog(id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(id);
+    let suggestions = LocalResource::new(move || async move { api::recomp_suggestions(&id.get_value()).await.unwrap_or_default() });
+    move || {
+        let list = suggestions.get().unwrap_or_default();
+        if list.is_empty() {
+            return None;
+        }
+        let buttons = list
+            .into_iter()
+            .map(|s| {
+                let rid = StoredValue::new(s.recomp_id.clone());
+                let on_click = move |_| {
+                    spawn_local(async move {
+                        if let Some(game) = library.report(api::link_to_recomp(&id.get_value(), &rid.get_value()).await) {
+                            library.games.refetch();
+                            library.recomps.refetch();
+                            library.toast(format!("Vinculado a {}.", game.name));
+                        }
+                    });
+                };
+                let note = if s.sure { "Mesmo programa do catálogo" } else { "Nome parecido" };
+                view! {
+                    <button type="button" class="row-btn" on:click=on_click>
+                        <Svg icon=Icon::Check />
+                        <span><b>{format!("É o {}", s.name)}</b><small>{format!("{} · {} · {note}", s.game, s.console)}</small></span>
+                    </button>
+                }
+            })
+            .collect_view();
+        Some(view! {
+            <div class="card">
+                <h3>"É um recomp do catálogo?"</h3>
+                <p class="muted small">"Vinculado, ele ganha ajustes, mods, backups de saves e a arte do catálogo. O tempo de jogo continua."</p>
+                <div class="manage">{buttons}</div>
             </div>
         })
     }

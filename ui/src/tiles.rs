@@ -35,6 +35,9 @@ fn has_update(game: &Game, library: Library) -> bool {
     let Source::Recomp { recomp_id, version, .. } = &game.source else {
         return false;
     };
+    if game.external {
+        return false;
+    }
     library.recomps.with_untracked(|list| {
         let Some(Ok(entries)) = list else {
             return false;

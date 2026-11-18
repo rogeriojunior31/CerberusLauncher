@@ -153,6 +153,42 @@ pub async fn list_backups(id: &str) -> Result<Vec<Backup>, String> {
 }
 
 /// `None` when there was nothing new to copy.
+/// Looks through a folder the player picks for recomps installed without Cerberus.
+/// `None` when the picker is cancelled.
+pub async fn scan_for_recomps() -> Result<Option<cerberus_shared::AdoptScan>, String> {
+    call("scan_for_recomps", &()).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdoptArgs<'a> {
+    recomp_id: &'a str,
+    program: Option<String>,
+}
+
+/// Brings a recomp installed without Cerberus into the library; with no
+/// `program`, the player picks it. `None` when cancelled.
+pub async fn adopt_recomp(recomp_id: &str, program: Option<String>) -> Result<Option<Game>, String> {
+    call("adopt_recomp", &AdoptArgs { recomp_id, program }).await
+}
+
+/// The catalog recomps a game added by hand could be.
+pub async fn recomp_suggestions(id: &str) -> Result<Vec<cerberus_shared::AdoptFound>, String> {
+    call("recomp_suggestions", &Id { id }).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkArgs<'a> {
+    id: &'a str,
+    recomp_id: &'a str,
+}
+
+/// Turns a game added by hand into the catalog recomp it is.
+pub async fn link_to_recomp(id: &str, recomp_id: &str) -> Result<Game, String> {
+    call("link_to_recomp", &LinkArgs { id, recomp_id }).await
+}
+
 /// The game's own settings; `None` when the catalog offers none.
 pub async fn game_settings(id: &str) -> Result<Option<cerberus_shared::GameSettings>, String> {
     call("game_settings", &Id { id }).await
