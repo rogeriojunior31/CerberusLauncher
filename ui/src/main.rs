@@ -159,6 +159,7 @@ fn App() -> impl IntoView {
         toasts: RwSignal::new(Vec::new()),
     };
     provide_context(library);
+    provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.
     spawn_local(async move {

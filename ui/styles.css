@@ -388,6 +388,21 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
 .catalog-results { display: grid; gap: 18px; }
 .catalog-results h2 { font-size: 20px; }
 
+.library-modes { display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line2); }
+.library-modes button { display: grid; place-items: center; width: 36px; height: 32px; border-radius: 8px; color: var(--muted); }
+.library-modes button:hover, .library-modes .on { background: var(--card3); color: var(--ink); }
+.library-list { display: flex; flex-direction: column; gap: 5px; }
+.library-row { display: flex; align-items: center; gap: 16px; padding: 8px 16px 8px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-align: left; }
+.library-row:hover, .library-row:focus-visible { background: var(--card2); border-color: var(--line2); }
+.library-cover { width: 38px; flex: none; }
+.library-cover .poster { border-radius: 6px; }
+.library-cover .ph { padding: 2px; font-size: 9px; }
+.library-title { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.library-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-title small, .library-time, .library-row > svg { color: var(--muted); }
+.library-time { font-size: 13px; }
+.library-status { border-radius: 6px; padding: 3px 8px; background: var(--card3); color: var(--ink); font-size: 12px; }
+
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 70px 20px; color: var(--dim); }
 .empty h2, .empty h3 { color: var(--ink); }
 .empty p { margin: 0; max-width: 480px; }
