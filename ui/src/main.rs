@@ -5,6 +5,7 @@ mod bigpicture;
 mod discover;
 mod format;
 mod game;
+mod customize;
 mod adopt;
 mod first_run;
 mod game_settings;
@@ -79,6 +80,8 @@ pub struct Library {
     toasts: RwSignal<Vec<Toast>>,
     /// The "Trazer seus recomps" window is open.
     adopting: RwSignal<bool>,
+    /// The game whose art is being customized.
+    customizing: RwSignal<Option<Game>>,
 }
 
 impl Library {
@@ -191,6 +194,7 @@ fn App() -> impl IntoView {
         editing: RwSignal::new(None),
         toasts: RwSignal::new(Vec::new()),
         adopting: RwSignal::new(false),
+        customizing: RwSignal::new(None),
     };
     provide_context(library);
     provide_context(library_page::LibraryView::default());
@@ -299,6 +303,7 @@ fn App() -> impl IntoView {
         {big_picture}
         {setup}
         <Show when=move || library.adopting.get()><adopt::AdoptDialog /></Show>
+        {move || library.customizing.get().map(|game| view! { <customize::CustomizeDialog game /> })}
         <shell::Toasts />
         {editor}
         {locate}

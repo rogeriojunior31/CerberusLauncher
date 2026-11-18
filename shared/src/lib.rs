@@ -53,6 +53,9 @@ pub struct Game {
     /// are the player's, so Cerberus never updates or deletes them.
     #[serde(default)]
     pub external: bool,
+    /// The game's logo, when the player picked one; shown in place of its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_path: Option<String>,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -95,6 +98,28 @@ pub struct GameSetting {
     pub current: usize,
     /// False while another setting makes this one irrelevant (shown greyed out).
     pub applies: bool,
+}
+
+/// A game on SteamGridDB.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtGame {
+    pub id: u64,
+    pub name: String,
+    pub year: Option<u32>,
+}
+
+/// A picture on SteamGridDB: a small one to choose from, the full one to keep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtPic {
+    pub url: String,
+    pub thumb: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArtOptions {
+    pub covers: Vec<ArtPic>,
+    pub heroes: Vec<ArtPic>,
+    pub logos: Vec<ArtPic>,
 }
 
 /// What a look through one of the player's folders found.
@@ -222,6 +247,9 @@ pub struct SettingsView {
     pub setup_done: bool,
     #[serde(default)]
     pub start_in_tv: bool,
+    /// The player's own SteamGridDB key, for picking art.
+    #[serde(default)]
+    pub steamgriddb_key: Option<String>,
 }
 
 /// A catalog source the player added.

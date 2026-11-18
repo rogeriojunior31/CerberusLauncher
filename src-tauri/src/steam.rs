@@ -111,6 +111,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         next_step: Default::default(),
         setting_picks: Default::default(),
         external: false,
+        logo_path: None,
     })
 }
 

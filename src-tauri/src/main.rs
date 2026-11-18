@@ -16,6 +16,7 @@ mod steam;
 mod steam_store;
 mod trail;
 mod game_settings;
+mod art_custom;
 mod xdvdfs;
 
 use std::fs;
@@ -91,6 +92,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
         setup_done: chosen.setup_done,
         start_in_tv: chosen.start_in_tv,
+        steamgriddb_key: chosen.steamgriddb_key.clone(),
         sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
@@ -283,6 +285,64 @@ async fn refresh_catalog(app: AppHandle, http: State<'_, reqwest::Client>) -> Re
     Ok(settings_view(&app))
 }
 
+fn steamgriddb_key(app: &AppHandle) -> Result<String, String> {
+    settings::load(&app.state::<DataDir>().0)
+        .steamgriddb_key
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| "Coloque sua chave do SteamGridDB primeiro (é gratuita).".to_string())
+}
+
+/// Keeps the player's SteamGridDB key after checking SteamGridDB takes it;
+/// an empty key forgets it.
+#[tauri::command]
+async fn set_steamgriddb_key(app: AppHandle, http: State<'_, reqwest::Client>, key: String) -> Result<SettingsView, String> {
+    let key = key.trim().to_string();
+    if !key.is_empty() {
+        art_custom::search(&http, &key, "Mario").await?;
+    }
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.steamgriddb_key = (!key.is_empty()).then_some(key);
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+async fn art_search(app: AppHandle, http: State<'_, reqwest::Client>, term: String) -> Result<Vec<cerberus_shared::ArtGame>, String> {
+    let key = steamgriddb_key(&app)?;
+    art_custom::search(&http, &key, &term).await
+}
+
+#[tauri::command]
+async fn art_options(app: AppHandle, http: State<'_, reqwest::Client>, game: u64) -> Result<cerberus_shared::ArtOptions, String> {
+    let key = steamgriddb_key(&app)?;
+    art_custom::options(&http, &key, game).await
+}
+
+/// A SteamGridDB picture as a `data:` address the window can frame.
+#[tauri::command]
+async fn art_fetch(http: State<'_, reqwest::Client>, url: String) -> Result<String, String> {
+    art_custom::fetch(&http, &url).await
+}
+
+/// A picture file the player picks, as a `data:` address. `None` when cancelled.
+#[tauri::command]
+async fn art_pick_file(app: AppHandle) -> Result<Option<String>, String> {
+    let dialog = app.dialog().file().set_title("Escolha uma imagem").add_filter("Imagens", &["png", "jpg", "jpeg", "webp"]);
+    let Some(path) = pick_one(dialog).await? else {
+        return Ok(None);
+    };
+    let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    art_custom::data_url(&bytes).map(Some)
+}
+
+/// Keeps the framed picture for one kind of a game's art (`data: None` puts the
+/// game's own art back). The window reloads the library to show it.
+#[tauri::command]
+fn art_save(art: State<'_, art_custom::CustomArt>, id: String, kind: String, data: Option<String>) -> Result<(), String> {
+    art.set(&id, &kind, data.as_deref())
+}
+
 /// Ends the first-run setup with how the player plays (desk or TV).
 #[tauri::command]
 fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, String> {
@@ -382,6 +442,9 @@ async fn list_games(
     games.sort_by_key(|game| game.name.to_lowercase());
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
+    // The player's own pictures win over every other art.
+    let custom = app.state::<art_custom::CustomArt>();
+    games.iter_mut().for_each(|game| custom.apply(game));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
 }
@@ -734,6 +797,12 @@ fn open_recomp_request(app: AppHandle) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Opens SteamGridDB's page where players make their free API key.
+#[tauri::command]
+fn open_steamgriddb_keys(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url("https://www.steamgriddb.com/profile/preferences/api", None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Opens a catalog recomp's project page; only catalog repos, never an arbitrary link.
 #[tauri::command]
 fn open_project(app: AppHandle, id: String) -> Result<(), String> {
@@ -1083,6 +1152,7 @@ fn main() {
             let covers = data_dir.join("covers");
             fs::create_dir_all(&covers)?;
             app.asset_protocol_scope().allow_directory(&covers, true)?;
+            app.manage(art_custom::CustomArt::new(&data_dir, &covers));
             app.manage(CoverFolder(covers));
 
             let art = data_dir.join("cache").join("art");
@@ -1115,6 +1185,13 @@ fn main() {
             restore_backup,
             game_trail,
             game_settings,
+            set_steamgriddb_key,
+            art_search,
+            art_options,
+            art_fetch,
+            art_pick_file,
+            art_save,
+            open_steamgriddb_keys,
             scan_for_recomps,
             adopt_recomp,
             recomp_suggestions,

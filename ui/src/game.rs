@@ -75,7 +75,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let pill = entry.clone().filter(|_| siblings > 1).map(|current| view! { <VersionPill current /> });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
     let has_settings = has_saves && entry.as_ref().is_some_and(|e| e.settings_count > 0);
-    let manageable = game.as_ref().is_some_and(|g| matches!(g.source, Source::Local { .. } | Source::Recomp { .. })) || entry.is_some();
+    let manageable = game.is_some() || entry.is_some();
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
         || tab.get_untracked() == Tab::Settings && !has_settings
@@ -128,7 +128,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                 <div class="gp-cover"><Poster sources=covers title=title.clone() /></div>
                 <div class="gp-info">
                     <span class="kick">{kicker}</span>
-                    <h1>{title.clone()}</h1>
+                    {match game.as_ref().and_then(|g| g.logo_path.clone()) {
+                        Some(logo) => view! { <img class="gp-logo" src=crate::art::src(&logo) alt=title.clone() /> }.into_any(),
+                        None => view! { <h1>{title.clone()}</h1> }.into_any(),
+                    }}
                     {based}
                     {pill}
                 </div>
@@ -507,6 +510,14 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    let customize = game.clone().map(|g| {
+        view! {
+            <button type="button" class="row-btn" on:click=move |_| library.customizing.set(Some(g.clone()))>
+                <Svg icon=Icon::Edit />
+                <span><b>"Personalizar arte"</b><small>"Capa, fundo e logo do SteamGridDB ou de um arquivo seu, com recorte e zoom"</small></span>
+            </button>
+        }
+    });
     let edit = game.clone().filter(|_| editable).map(|g| {
         view! {
             <button type="button" class="row-btn" on:click=move |_| library.editing.set(Some(g.clone()))>
@@ -587,7 +598,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <p class="muted small">"Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele."</p>
         </div>
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{edit}{project}{remove}</div> }
+    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{customize}{edit}{project}{remove}</div> }
 }
 
 #[component]

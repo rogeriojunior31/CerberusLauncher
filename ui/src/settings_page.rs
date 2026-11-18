@@ -105,6 +105,7 @@ pub fn SettingsPage() -> impl IntoView {
                 </div>
                 {rom_rows}
             </section>
+            <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) />
             <section class="card set">
                 <h3>"Saves na nuvem"</h3>
                 <div class="set-row">
@@ -317,5 +318,48 @@ fn HydraListings(url: String) -> impl IntoView {
                 on:input=move |e| { offset.set(0); query.set(event_target_value(&e)); } />
             {results}
         </div>
+    }
+}
+
+/// The player's SteamGridDB key, for picking community art.
+#[component]
+fn SteamGridDbKey(has: bool) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let saved = RwSignal::new(has);
+    let input = RwSignal::new(String::new());
+    let busy = RwSignal::new(false);
+    let store = move |key: String| {
+        busy.set(true);
+        spawn_local(async move {
+            let done = library.report(api::set_steamgriddb_key(key.clone()).await);
+            busy.set(false);
+            if done.is_some() {
+                saved.set(!key.trim().is_empty());
+                input.set(String::new());
+                library.toast(if key.trim().is_empty() { "Chave do SteamGridDB removida." } else { "Chave do SteamGridDB guardada." });
+            }
+        });
+    };
+    view! {
+        <section class="card set">
+            <h3>"Arte dos jogos"</h3>
+            <div class="set-row">
+                <div>
+                    <b>"Chave do SteamGridDB"</b>
+                    <small>{move || if saved.get() { "Guardada. Use \"Personalizar arte\" na aba Gerenciar de cada jogo." } else { "Gratuita: crie uma conta no SteamGridDB e gere a chave de API." }}</small>
+                </div>
+                <div class="row">
+                    <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_steamgriddb_keys().await); })>"Pegar chave"</button>
+                    <Show when=move || saved.get()>
+                        <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| store(String::new())>"Remover"</button>
+                    </Show>
+                </div>
+            </div>
+            <form class="set-row sub" on:submit=move |e: leptos::ev::SubmitEvent| { e.prevent_default(); store(input.get_untracked()); }>
+                <input class="input" type="password" placeholder=move || if saved.get() { "Trocar a chave" } else { "Cole a chave aqui" }
+                    prop:value=move || input.get() on:input=move |e| input.set(event_target_value(&e)) />
+                <button type="submit" class="btn sm main" disabled=move || busy.get() || input.get().trim().is_empty()>"Guardar"</button>
+            </form>
+        </section>
     }
 }

@@ -27,6 +27,9 @@ pub struct Settings {
     /// Opens in the TV screen (Tela grande) instead of the desktop window.
     #[serde(default)]
     pub start_in_tv: bool,
+    /// The player's own SteamGridDB API key (free, from their account there).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steamgriddb_key: Option<String>,
 }
 
 fn yes() -> bool {

@@ -189,6 +189,65 @@ pub async fn link_to_recomp(id: &str, recomp_id: &str) -> Result<Game, String> {
     call("link_to_recomp", &LinkArgs { id, recomp_id }).await
 }
 
+#[derive(Serialize)]
+struct KeyArg {
+    key: String,
+}
+
+/// Keeps the player's SteamGridDB key once SteamGridDB takes it; empty forgets it.
+pub async fn set_steamgriddb_key(key: String) -> Result<SettingsView, String> {
+    call("set_steamgriddb_key", &KeyArg { key }).await
+}
+
+pub async fn open_steamgriddb_keys() -> Result<(), String> {
+    call("open_steamgriddb_keys", &()).await
+}
+
+#[derive(Serialize)]
+struct TermArg<'a> {
+    term: &'a str,
+}
+
+pub async fn art_search(term: &str) -> Result<Vec<cerberus_shared::ArtGame>, String> {
+    call("art_search", &TermArg { term }).await
+}
+
+#[derive(Serialize)]
+struct GameArg {
+    game: u64,
+}
+
+pub async fn art_options(game: u64) -> Result<cerberus_shared::ArtOptions, String> {
+    call("art_options", &GameArg { game }).await
+}
+
+#[derive(Serialize)]
+struct UrlRef<'a> {
+    url: &'a str,
+}
+
+/// A SteamGridDB picture as a `data:` address, fetched by the backend.
+pub async fn art_fetch(url: &str) -> Result<String, String> {
+    call("art_fetch", &UrlRef { url }).await
+}
+
+/// A picture file the player picks, as a `data:` address; `None` when cancelled.
+pub async fn art_pick_file() -> Result<Option<String>, String> {
+    call("art_pick_file", &()).await
+}
+
+#[derive(Serialize)]
+struct ArtSaveArgs<'a> {
+    id: &'a str,
+    kind: &'a str,
+    data: Option<String>,
+}
+
+/// Keeps the framed picture for one kind of art; `None` puts the original back.
+pub async fn art_save(id: &str, kind: &str, data: Option<String>) -> Result<(), String> {
+    call("art_save", &ArtSaveArgs { id, kind, data }).await
+}
+
 /// The game's own settings; `None` when the catalog offers none.
 pub async fn game_settings(id: &str) -> Result<Option<cerberus_shared::GameSettings>, String> {
     call("game_settings", &Id { id }).await

@@ -103,6 +103,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       backup, mas nunca atualiza nem apaga a pasta. Trazer duas vezes mantém um registro, e um jogo
       adicionado à mão vira o recomp mantendo o tempo de jogo. Conferido no app com o Zelda 64.
 - [x] Busca do Descobrir procura em todas as versões de um jogo ("Zelda 64" acha o Zelda 64: Recompiled).
+- [x] Personalizar arte de qualquer jogo (inclusive Steam e Epic): capa, fundo e logo do SteamGridDB,
+      com a chave gratuita do próprio jogador, ou de um arquivo, enquadrados com arrastar e zoom numa
+      moldura do formato certo. O logo aparece no lugar do nome na página do jogo. "Restaurar original"
+      apaga só as imagens feitas pelo Cerberus. Conferido no app com o Alan Wake (Steam); a busca no
+      SteamGridDB ainda precisa de uma chave real para ser vista funcionando.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
