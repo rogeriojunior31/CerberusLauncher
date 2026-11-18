@@ -1,4 +1,4 @@
-# Keeps the recomp catalog current without a server: once a week (or by hand),
+# Keeps the recomp catalog current without a server: once a day (or by hand),
 # refresh what GitHub knows about each entry and look for new projects, then
 # open a pull request. Merging it publishes the changes to every launcher,
 # which reads src-tauri/catalog/recomps.json from this repository.
@@ -6,7 +6,8 @@ name: Catálogo
 
 on:
   schedule:
-    - cron: "0 9 * * 1"
+    # 12:00 UTC = 9h in Brasília.
+    - cron: "0 12 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,9 +32,9 @@ jobs:
       - name: Abrir pull request
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: catalogo/atualizacao-semanal
-          commit-message: "Catálogo: atualização semanal"
-          title: "Catálogo: atualização semanal"
+          branch: catalogo/atualizacao-diaria
+          commit-message: "Catálogo: atualização diária"
+          title: "Catálogo: atualização diária"
           body: |
             Gerado pelo `catalog-builder`.
 

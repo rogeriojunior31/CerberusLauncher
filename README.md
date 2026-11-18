@@ -53,7 +53,7 @@ GITHUB_TOKEN=... cargo run -p catalog-builder -- discover   # procura projetos n
 - `update` só mexe no que vem do GitHub: versão, arquivo de cada sistema com SHA-256, padrão do nome,
   tamanho, estrelas e sistemas. O que foi escrito à mão nunca é alterado.
 - `discover` grava `src-tauri/catalog/candidates.json` e não coloca nada no catálogo sozinho.
-- A Action `Catálogo` roda os dois toda segunda-feira (ou à mão, em Actions) e abre um Pull Request.
+- A Action `Catálogo` roda os dois todo dia às 9h de Brasília (ou à mão, em Actions) e abre um Pull Request.
 
 **Para aceitar um candidato**, copie a entrada de `candidates.json` para `recomps.json` e complete:
 

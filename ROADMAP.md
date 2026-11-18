@@ -85,7 +85,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 
 ### 4.2 Revisão sem servidor (GitHub Actions)
 
-- [x] Action semanal (e manual) que roda o gerador e abre um Pull Request com as atualizações e os
+- [x] Action diária (e manual) que roda o gerador e abre um Pull Request com as atualizações e os
       candidatos. Aprovar o PR = publicar no app.
 - [x] Formulário de issue "Pedir um recomp" no repositório, e botão no Descobrir que abre esse
       formulário (o "Request a Recomp" do RecompLauncher, sem servidor).
