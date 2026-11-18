@@ -175,7 +175,12 @@ pub fn BigPicture() -> impl IntoView {
             {info}
             <div class="bp-row">{row}</div>
             <footer class="bp-hints">
-                <span><b class="key">"A"</b>" Jogar"</span>
+                {move || {
+                    let list = games();
+                    list.get(selected.get().min(list.len().saturating_sub(1))).map(|game| view! {
+                        <span><b class="key">"A"</b>{crate::launch_action(game).0}</span>
+                    })
+                }}
                 <span><b class="key">"◀ ▶"</b>" Navegar"</span>
                 <span><b class="key">"B"</b>" Sair"</span>
             </footer>

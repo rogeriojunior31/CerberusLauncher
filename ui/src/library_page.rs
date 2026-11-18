@@ -2,10 +2,12 @@
 
 use cerberus_shared::{Game, Source};
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 
-use crate::Library;
+use crate::{Library, Route, format};
+use crate::art::Poster;
 use crate::icons::{Icon, Svg};
-use crate::tiles::{Tile, game_tile};
+use crate::tiles::{Tile, game_tile, source_name};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Filter {
@@ -45,91 +47,181 @@ impl Filter {
 enum Sort {
     Name,
     Recent,
+    Playtime,
+}
+
+#[derive(Clone, Copy)]
+pub struct LibraryView {
+    search: RwSignal<String>,
+    filter: RwSignal<Filter>,
+    sort: RwSignal<Sort>,
+    compact: RwSignal<bool>,
+}
+
+impl Default for LibraryView {
+    fn default() -> Self {
+        Self {
+            search: RwSignal::new(String::new()),
+            filter: RwSignal::new(Filter::All),
+            sort: RwSignal::new(Sort::Name),
+            compact: RwSignal::new(false),
+        }
+    }
+}
+
+fn navigate_rows(event: web_sys::KeyboardEvent) {
+    if event.alt_key() || event.ctrl_key() || event.meta_key() || event.shift_key() {
+        return;
+    }
+    let Some(row) = event.target().and_then(|target| target.dyn_into::<web_sys::HtmlButtonElement>().ok()) else {
+        return;
+    };
+    let next = match event.key().as_str() {
+        "ArrowDown" => row.next_element_sibling(),
+        "ArrowUp" => row.previous_element_sibling(),
+        "Home" => row.parent_element().and_then(|list| list.first_element_child()),
+        "End" => row.parent_element().and_then(|list| list.last_element_child()),
+        _ => return,
+    };
+    event.prevent_default();
+    if let Some(button) = next.and_then(|el| el.dyn_into::<web_sys::HtmlButtonElement>().ok()) {
+        let _ = button.focus();
+    }
 }
 
 #[component]
 pub fn LibraryPage() -> impl IntoView {
     let library = expect_context::<Library>();
-    let search = RwSignal::new(String::new());
-    let filter = RwSignal::new(Filter::All);
-    let sort = RwSignal::new(Sort::Name);
-
-    let shown = move || {
-        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
-        let needle = search.get().to_lowercase();
-        let mut kept: Vec<Game> = games
-            .into_iter()
-            .filter(|g| filter.get().keeps(g))
-            .filter(|g| needle.is_empty() || g.name.to_lowercase().contains(&needle))
-            .collect();
-        if sort.get() == Sort::Recent {
-            kept.sort_by_key(|g| std::cmp::Reverse(g.last_played));
+    let LibraryView { search, filter, sort, compact } = expect_context();
+    let input = NodeRef::<leptos::html::Input>::new();
+    let clear = move |_| {
+        search.set(String::new());
+        filter.set(Filter::All);
+        if let Some(input) = input.get_untracked() {
+            let _ = input.focus();
         }
-        kept
     };
-    let count = move || library.games.get().and_then(Result::ok).map(|g| g.len()).unwrap_or(0);
-
-    let chips = Filter::ALL
-        .into_iter()
-        .map(|which| {
-            view! {
-                <button type="button" class="chip-btn" class:on=move || filter.get() == which on:click=move |_| filter.set(which)>
-                    {which.label()}
-                </button>
-            }
-        })
-        .collect_view();
-
-    let grid = move || {
-        let games = shown();
-        if library.games.get().is_none() {
-            return view! { <p class="muted">"Procurando jogos..."</p> }.into_any();
+    let chips = Filter::ALL.into_iter().map(|which| {
+        let active = move || filter.get() == which;
+        view! {
+            <button type="button" class="chip-btn" class:on=active aria-pressed=move || active().to_string()
+                on:click=move |_| filter.set(which)>{which.label()}</button>
         }
+    }).collect_view();
+
+    let results = move || {
+        let mut games = match library.games.get() {
+            None => return view! { <p class="muted" role="status">"Procurando jogos…"</p> }.into_any(),
+            Some(Err(error)) => return view! {
+                <div class="empty">
+                    <h2>"Não foi possível carregar a biblioteca"</h2>
+                    <p class="problem" role="alert">{error}</p>
+                    <button type="button" class="btn" on:click=move |_| library.games.refetch()>"Tentar novamente"</button>
+                </div>
+            }.into_any(),
+            Some(Ok(games)) => games,
+        };
         if games.is_empty() {
             return view! {
                 <div class="empty">
-                    <h2>"Nada por aqui"</h2>
-                    <p class="muted">"Nenhum jogo combina com a busca ou o filtro."</p>
+                    <Svg icon=Icon::Library size=32 />
+                    <h2>"Sua biblioteca está vazia"</h2>
+                    <p class="muted">"Adicione um jogo do PC ou encontre um recomp no catálogo."</p>
+                    <button type="button" class="btn" on:click=move |_| library.go(Route::Discover)>"Explorar catálogo"</button>
                 </div>
-            }
-            .into_any();
+            }.into_any();
         }
-        let tiles = games.iter().map(|g| view! { <Tile info=game_tile(g, library) /> }).collect_view();
-        view! { <div class="grid">{tiles}</div> }.into_any()
+        let needle = search.get().trim().to_lowercase();
+        let source = filter.get();
+        games.retain(|g| source.keeps(g) && (needle.is_empty() || g.name.to_lowercase().contains(&needle)));
+        if games.is_empty() {
+            return view! {
+                <div class="empty">
+                    <Svg icon=Icon::Search size=32 />
+                    <h2>"Nenhum jogo encontrado"</h2>
+                    <button type="button" class="btn" on:click=clear>"Limpar busca e filtros"</button>
+                </div>
+            }.into_any();
+        }
+        // list_games already returns alphabetical order, including ties below.
+        match sort.get() {
+            Sort::Name => {}
+            Sort::Recent => games.sort_by_key(|g| std::cmp::Reverse(g.last_played)),
+            Sort::Playtime => games.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
+        }
+        let count = games.len();
+        let list = compact.get();
+        let items = games.iter().map(|g| {
+            let info = game_tile(g, library);
+            if !list {
+                return view! { <Tile info /> }.into_any();
+            }
+            let hours = if g.playtime_secs > 0 {
+                format::playtime(g.playtime_secs)
+            } else if g.is_tracked() {
+                "Sem tempo registrado".into()
+            } else {
+                "—".into()
+            };
+            let badge = info.badge.map(|text| view! { <span class="library-status">{text}</span> });
+            view! {
+                <button type="button" class="library-row" on:click=move |_| library.go(info.open.clone())>
+                    <span class="library-cover" aria-hidden="true"><Poster sources=info.covers title=g.name.clone() /></span>
+                    <span class="library-title"><strong>{g.name.clone()}</strong><small>{source_name(&g.source)}</small></span>
+                    {badge}
+                    <span class="library-time" title="Tempo de jogo">{hours}</span>
+                    <Svg icon=Icon::Right size=16 />
+                </button>
+            }.into_any()
+        }).collect_view();
+        view! {
+            <section class="catalog-results">
+                <h2>{if count == 1 { "1 jogo".into() } else { format!("{count} jogos") }}</h2>
+                <div class=if list { "library-list" } else { "grid" }
+                    on:keydown=move |e| { if list { navigate_rows(e); } }>{items}</div>
+            </section>
+        }.into_any()
+    };
+
+    let mode = move |list, icon, label: &'static str| {
+        let active = move || compact.get() == list;
+        view! {
+            <button type="button" class:on=active aria-pressed=move || active().to_string()
+                title=label aria-label=label on:click=move |_| compact.set(list)><Svg icon size=18 /></button>
+        }
     };
 
     view! {
         <div class="page">
             <header class="page-h">
-                <div>
-                    <h1>"Biblioteca"</h1>
-                    <p class="muted">{move || format!("{} jogos", count())}</p>
-                </div>
+                <h1>"Biblioteca"</h1>
                 <button type="button" class="btn" on:click=move |_| library.add_game()>
                     <Svg icon=Icon::Plus size=18 />"Adicionar jogo"
                 </button>
             </header>
-            <div class="toolbar">
-                <label class="search">
-                    <Svg icon=Icon::Search size=18 />
-                    <input
-                        type="search"
-                        placeholder="Buscar na biblioteca"
-                        prop:value=move || search.get()
-                        on:input=move |e| search.set(event_target_value(&e))
-                    />
-                </label>
-                <div class="chips">{chips}</div>
-                <select
-                    class="select"
-                    aria-label="Ordenar"
-                    on:change=move |e| sort.set(if event_target_value(&e) == "recent" { Sort::Recent } else { Sort::Name })
-                >
-                    <option value="name">"A a Z"</option>
-                    <option value="recent">"Jogados recentemente"</option>
-                </select>
-            </div>
-            {grid}
+            <section class="catalog-filters" aria-label="Filtros da biblioteca">
+                <div class="toolbar">
+                    <label class="search">
+                        <Svg icon=Icon::Search size=18 />
+                        <input node_ref=input type="search" placeholder="Buscar na biblioteca" aria-label="Buscar na biblioteca"
+                            prop:value=move || search.get() on:input=move |e| search.set(event_target_value(&e)) />
+                    </label>
+                    <select class="select" aria-label="Ordenar biblioteca"
+                        on:change=move |e| sort.set(match event_target_value(&e).as_str() {
+                            "recent" => Sort::Recent, "time" => Sort::Playtime, _ => Sort::Name,
+                        })>
+                        <option value="name" selected=move || sort.get() == Sort::Name>"A a Z"</option>
+                        <option value="recent" selected=move || sort.get() == Sort::Recent>"Jogados recentemente"</option>
+                        <option value="time" selected=move || sort.get() == Sort::Playtime>"Mais jogados"</option>
+                    </select>
+                    <div class="library-modes" role="group" aria-label="Visualização">
+                        {mode(false, Icon::Library, "Ver em grade")}
+                        {mode(true, Icon::List, "Ver em lista")}
+                    </div>
+                </div>
+                <div class="chips" role="group" aria-label="Origem do jogo">{chips}</div>
+            </section>
+            {results}
         </div>
     }
 }

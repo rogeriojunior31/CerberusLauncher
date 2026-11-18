@@ -6,11 +6,13 @@ use leptos::prelude::*;
 pub enum Icon {
     Home,
     Library,
+    List,
     Discover,
     Download,
     Saves,
     Plus,
     Play,
+    Pause,
     Back,
     Left,
     Right,
@@ -32,11 +34,13 @@ impl Icon {
     fn path(self) -> &'static str {
         match self {
             Icon::Home => "M4 10.5 12 4l8 6.5V20h-5.5v-5.5h-5V20H4z",
+            Icon::List => "M4 6h2m4 0h10M4 12h2m4 0h10M4 18h2m4 0h10",
             Icon::Library => "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
             Icon::Discover => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM15.5 8.5l-2 5-5 2 2-5z",
             Icon::Download => "M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14",
             Icon::Saves => "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
             Icon::Plus => "M12 5v14M5 12h14",
+            Icon::Pause => "M9 5v14m6-14v14",
             Icon::Play => "M8 5.5v13l11-6.5z",
             Icon::Back | Icon::Left => "M15 18l-6-6 6-6",
             Icon::Right => "M9 18l6-6-6-6",

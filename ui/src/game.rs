@@ -150,16 +150,11 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
                     </button>
                 }
             });
-            // An installer release: the first Play opens its installer.
-            let label = match (running, game.setup_pending) {
-                (true, _) => "Jogando",
-                (false, true) => "Instalar",
-                (false, false) => "Jogar",
-            };
+            let (label, icon) = if running { ("Jogando", Icon::Play) } else { crate::launch_action(&game) };
             return view! {
                 {update_button}
                 <button type="button" class="btn main big play" disabled=running on:click=move |_| play_game(library, game.clone())>
-                    <Svg icon=Icon::Play size=20 />{label}
+                    <Svg icon size=20 />{label}
                 </button>
             }
             .into_any();
@@ -331,7 +326,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
         (Some(path), _) => view! {
             <div class="need found">
                 <Svg icon=Icon::Check size=18 />
-                <div><b>"Pronto para jogar"</b><span class="path">{path}</span></div>
+                <div><b>"Cópia selecionada"</b><span class="path">{path}</span></div>
             </div>
             <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| choose(false)>"Trocar arquivo..."</button>
         }

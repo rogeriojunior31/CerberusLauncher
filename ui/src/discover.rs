@@ -23,7 +23,11 @@ pub fn start_install(library: Library, id: String) {
         library.games.refetch();
         library.recomps.refetch();
         if let Some(game) = library.report(result) {
-            library.toast(format!("{} está pronto para jogar.", game.name));
+            if game.setup_pending {
+                library.toast(format!("Download de {} concluído. Abra o instalador na página do jogo.", game.name));
+            } else {
+                library.toast(format!("{} foi instalado.", game.name));
+            }
         }
     });
 }
@@ -41,13 +45,14 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
     let cancellable = matches!(step, InstallStep::Downloading { .. });
     let (label, percent) = match step {
         InstallStep::Downloading { done, total } if total > 0 => {
-            let percent = done * 100 / total;
-            (format!("Baixando {percent}% · {} de {}", megabytes(done), megabytes(total)), percent)
+            let percent = u128::from(done.min(total)) * 100 / u128::from(total);
+            (format!("Baixando {percent}% · {} de {}", megabytes(done), megabytes(total)), Some(percent))
         }
-        InstallStep::Downloading { .. } => ("Preparando...".to_string(), 0),
-        InstallStep::Unpacking => ("Instalando...".to_string(), 100),
-        InstallStep::Finished => ("Pronto".to_string(), 100),
-        InstallStep::Failed { .. } => ("Falhou".to_string(), 0),
+        InstallStep::Downloading { done, .. } if done > 0 => (format!("Baixando · {}", megabytes(done)), None),
+        InstallStep::Downloading { .. } => ("Iniciando download…".into(), None),
+        InstallStep::Unpacking => ("Preparando arquivos…".into(), None),
+        InstallStep::Finished => ("Concluído".into(), Some(100)),
+        InstallStep::Failed { message } => (format!("Falha na instalação · {message}"), Some(0)),
     };
     let cancel = cancellable.then(|| {
         view! {
@@ -56,10 +61,10 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
     });
     view! {
         <div class="progress-row">
-            <div class="progress" role="progressbar" aria-valuenow=percent aria-valuemin="0" aria-valuemax="100">
-                <div class="bar" style:width=format!("{percent}%")></div>
+            <label class="install-progress">
                 <span>{label}</span>
-            </div>
+                <progress max="100" value=percent.map(|n| n.to_string())></progress>
+            </label>
             {cancel}
         </div>
     }
@@ -139,6 +144,13 @@ pub fn DiscoverPage() -> impl IntoView {
         games
     };
 
+    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get();
+    let clear = move |_| {
+        search.set(String::new());
+        console.set(String::new());
+        only_owned.set(false);
+    };
+
     let grid = move || {
         if library.recomps.get().is_none() {
             return view! { <p class="muted">"Carregando o catálogo..."</p> }.into_any();
@@ -151,18 +163,18 @@ pub fn DiscoverPage() -> impl IntoView {
         if total == 0 {
             return view! {
                 <div class="empty">
-                    <h2>"Nada encontrado"</h2>
+                    <Svg icon=Icon::Search size=32 />
+                    <h2>"Nenhum jogo encontrado"</h2>
                     <p class="muted">"Tente outro nome ou tire os filtros."</p>
                 </div>
             }
             .into_any();
         }
-        let progress = library.progress.get();
         let tiles = games
             .into_iter()
             .take(shown.get())
             .map(|(entry, versions)| {
-                let mut info = recomp_tile(&entry, progress.get(&entry.id));
+                let mut info = recomp_tile(&entry);
                 info.sub = match (&entry.latest, &entry.problem) {
                     _ if versions > 1 => format!("{} · {versions} versões", entry.console),
                     (Some(release), _) if release.size > 0 => format!("{} · {}", entry.console, megabytes(release.size)),
@@ -184,26 +196,14 @@ pub fn DiscoverPage() -> impl IntoView {
                 </div>
             }
         });
-        view! { <div class="grid">{tiles}</div>{more} }.into_any()
+        view! {
+            <section class="catalog-results">
+                <h2>{if total == 1 { "1 jogo".into() } else { format!("{total} jogos") }}</h2>
+                <div class="grid">{tiles}</div>
+                {more}
+            </section>
+        }.into_any()
     };
-
-    let console_chips = move || {
-        let all = consoles();
-        let top: Vec<_> = all.into_iter().take(9).collect();
-        let chip = move |id: String, label: String| {
-            let value = id.clone();
-            view! {
-                <button type="button" class="chip-btn" class:on=move || console.get() == id on:click=move |_| console.set(value.clone())>
-                    {label}
-                </button>
-            }
-        };
-        let mut chips = vec![chip(String::new(), "Todos".to_string()).into_any()];
-        chips.extend(top.into_iter().map(|(id, name, n)| chip(id, format!("{name} · {n}")).into_any()));
-        chips
-    };
-
-    let count = move || one_each(&entries()).len();
 
     view! {
         <div class="page">
@@ -211,8 +211,7 @@ pub fn DiscoverPage() -> impl IntoView {
                 <div>
                     <h1>"Descobrir"</h1>
                     <p class="muted">
-                        {move || format!("{} jogos com versão nativa para PC. ", count())}
-                        "Você precisa da sua própria cópia do jogo. Catálogo: recomplauncher.com."
+                        "Jogue no PC com sua cópia original. Catálogo de recomplauncher.com."
                     </p>
                 </div>
                 <button type="button" class="btn" title="Sugerir um projeto para o catálogo"
@@ -220,36 +219,51 @@ pub fn DiscoverPage() -> impl IntoView {
                     <Svg icon=Icon::Plus size=18 />"Pedir um recomp"
                 </button>
             </header>
-            <div class="toolbar">
-                <label class="search">
-                    <Svg icon=Icon::Search size=18 />
-                    <input
-                        type="search"
-                        placeholder="Buscar jogo, recomp ou autor"
-                        prop:value=move || search.get()
-                        on:input=move |e| search.set(event_target_value(&e))
-                    />
-                </label>
-                <button type="button" class="chip-btn" class:on=move || only_owned.get() on:click=move |_| only_owned.update(|o| *o = !*o)>
-                    "Tenho o jogo"
-                </button>
-                <select
-                    class="select"
-                    aria-label="Ordenar"
-                    on:change=move |e| sort.set(match event_target_value(&e).as_str() {
-                        "new" => Sort::Newest,
-                        "updated" => Sort::Updated,
-                        "name" => Sort::Name,
-                        _ => Sort::Popular,
-                    })
-                >
-                    <option value="popular">"Populares"</option>
-                    <option value="new">"Adicionados recentemente"</option>
-                    <option value="updated">"Atualizados recentemente"</option>
-                    <option value="name">"A a Z"</option>
-                </select>
-            </div>
-            <div class="chips">{console_chips}</div>
+            <section class="catalog-filters" aria-label="Filtros do catálogo">
+                <div class="toolbar">
+                    <label class="search">
+                        <Svg icon=Icon::Search size=18 />
+                        <input
+                            type="search"
+                            aria-label="Buscar jogo, recomp ou autor"
+                            placeholder="Buscar jogo, recomp ou autor"
+                            prop:value=move || search.get()
+                            on:input=move |e| search.set(event_target_value(&e))
+                        />
+                    </label>
+                    <button type="button" class="chip-btn" aria-pressed=move || only_owned.get().to_string() class:on=move || only_owned.get() on:click=move |_| only_owned.update(|o| *o = !*o)>
+                        "Tenho o jogo"
+                    </button>
+                    <select
+                        class="select"
+                        aria-label="Ordenar"
+                        on:change=move |e| sort.set(match event_target_value(&e).as_str() {
+                            "new" => Sort::Newest,
+                            "updated" => Sort::Updated,
+                            "name" => Sort::Name,
+                            _ => Sort::Popular,
+                        })
+                    >
+                        <option value="popular">"Populares"</option>
+                        <option value="new">"Adicionados recentemente"</option>
+                        <option value="updated">"Atualizados recentemente"</option>
+                        <option value="name">"A a Z"</option>
+                    </select>
+                </div>
+                <div class="catalog-platform">
+                    <label for="catalog-console">"Plataforma"</label>
+                    <select id="catalog-console" class="select" prop:value=move || console.get()
+                        on:change=move |e| console.set(event_target_value(&e))>
+                        <option value="">"Todas as plataformas"</option>
+                        {move || consoles().into_iter().map(|(id, name, n)| view! {
+                            <option value=id>{format!("{name} ({n})")}</option>
+                        }).collect_view()}
+                    </select>
+                    <Show when=has_filters>
+                        <button type="button" class="link" on:click=clear>"Limpar filtros"</button>
+                    </Show>
+                </div>
+            </section>
             {grid}
         </div>
     }

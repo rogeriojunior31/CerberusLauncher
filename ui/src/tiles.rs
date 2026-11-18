@@ -17,8 +17,8 @@ pub struct TileInfo {
     /// A corner chip: "Atualização", "Jogando"...
     pub badge: Option<String>,
     pub open: Route,
-    /// Download progress, 0 to 100, while installing.
-    pub progress: Option<u64>,
+    /// Catalog tiles follow installation events without rebuilding the surrounding shelf.
+    recomp_id: Option<String>,
 }
 
 pub fn source_name(source: &Source) -> &'static str {
@@ -53,6 +53,8 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     };
     let badge = if running {
         Some("Jogando".to_string())
+    } else if game.setup_pending {
+        Some("Instalação pendente".to_string())
     } else if has_update(game, library) {
         Some("Atualização".to_string())
     } else {
@@ -64,11 +66,11 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         covers: cover_sources(game),
         badge,
         open: Route::Game(game.id.clone()),
-        progress: None,
+        recomp_id: None,
     }
 }
 
-pub fn recomp_tile(entry: &RecompEntry, step: Option<&InstallStep>) -> TileInfo {
+pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
     let update = match (&entry.installed, &entry.latest) {
         (Some(have), Some(newest)) => *have != newest.version,
         _ => false,
@@ -80,18 +82,13 @@ pub fn recomp_tile(entry: &RecompEntry, step: Option<&InstallStep>) -> TileInfo 
     } else {
         None
     };
-    let progress = match step {
-        Some(InstallStep::Downloading { done, total }) if *total > 0 => Some(done * 100 / total),
-        Some(_) => Some(100),
-        None => None,
-    };
     TileInfo {
         title: entry.name.clone(),
         sub: entry.console.clone(),
         covers: recomp_covers(entry),
         badge,
         open: Route::Game(format!("recomp:{}", entry.id)),
-        progress,
+        recomp_id: Some(entry.id.clone()),
     }
 }
 
@@ -100,17 +97,32 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
     let library = expect_context::<Library>();
     let open = info.open.clone();
     let on_open = move |_| library.go(open.clone());
-    let badge = info.badge.clone().map(|text| view! { <span class="chip">{text}</span> });
-    let progress = info.progress.map(|percent| {
-        view! { <span class="bar-p"><i style:width=format!("{percent}%")></i></span> }
+    let step = Memo::new(move |_| {
+        info.recomp_id.as_ref().and_then(|id| library.progress.with(|all| all.get(id).cloned()))
     });
+    let overlay = move || {
+        let step = step.get();
+        let text = match step {
+            Some(InstallStep::Downloading { .. }) => Some("Baixando"),
+            Some(InstallStep::Unpacking) => Some("Preparando"),
+            _ => info.badge.as_deref(),
+        };
+        let badge = text.map(|text| view! { <span class="chip">{text.to_owned()}</span> });
+        let bar = match step {
+            Some(InstallStep::Downloading { done, total }) if total > 0 => {
+                let percent = u128::from(done.min(total)) * 100 / u128::from(total);
+                Some(view! { <span class="bar-p"><i style:width=format!("{percent}%")></i></span> })
+            }
+            _ => None,
+        };
+        (badge, bar)
+    };
     view! {
         <div class="tile">
             <button type="button" class="tile-b" on:click=on_open title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
-                    {badge}
-                    {progress}
+                    {overlay}
                 </div>
                 <span class="t">{info.title.clone()}</span>
                 <span class="s">{info.sub.clone()}</span>
