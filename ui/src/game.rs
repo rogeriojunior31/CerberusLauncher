@@ -557,7 +557,8 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         }),
         _ => None,
     });
-    view! { <div class="manage">{program}{options}{folder}{edit}{project}{remove}</div> }
+    let history = game.as_ref().filter(|g| g.is_tracked()).map(|g| view! { <History id=g.id.clone() /> });
+    view! { <div class="manage">{program}{options}{history}{folder}{edit}{project}{remove}</div> }
 }
 
 #[component]
@@ -613,5 +614,57 @@ fn LaunchOptions(game: Game) -> impl IntoView {
                 <button type="submit" class="btn main">"Salvar"</button>
             </div>
         </form>
+    }
+}
+
+/// The launcher's recent steps for this game, kept across restarts, with the
+/// last failure up top so its cause can still be read after the notice is gone.
+#[component]
+fn History(id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let open = RwSignal::new(false);
+    let entries = LocalResource::new(move || {
+        // Sessions and backups end by reloading the library.
+        library.games.track();
+        let id = id.clone();
+        async move { api::game_trail(&id).await.unwrap_or_default() }
+    });
+    move || {
+        let list = entries.get().unwrap_or_default();
+        if list.is_empty() {
+            return None;
+        }
+        let failure = list.iter().find(|e| !e.ok).cloned();
+        let latest_failed = list.first().is_some_and(|e| !e.ok);
+        let summary = match &failure {
+            Some(f) if latest_failed => view! {
+                <p class="problem">{format!("Última falha · {} · {}", f.step, format::date_time(f.at))}<br/>{f.message.clone()}</p>
+            }.into_any(),
+            Some(f) => view! {
+                <p class="muted">{format!("Tudo certo desde a última falha ({}, {}).", f.step, format::ago(f.at))}</p>
+            }.into_any(),
+            None => view! { <p class="muted">"Nenhuma falha registrada."</p> }.into_any(),
+        };
+        let rows = list.into_iter().map(|e| view! {
+            <li class:failed=!e.ok>
+                <span class="when">{format::date_time(e.at)}</span>
+                <b>{e.step}</b>
+                <span>{e.message}</span>
+            </li>
+        }).collect_view();
+        Some(view! {
+            <div class="card history">
+                <div class="card-h">
+                    <h3>"Histórico"</h3>
+                    <button type="button" class="link" on:click=move |_| open.update(|o| *o = !*o)>
+                        {move || if open.get() { "Esconder" } else { "Ver tudo" }}
+                    </button>
+                </div>
+                {summary}
+                <Show when=move || open.get()>
+                    <ul class="trail">{rows.clone()}</ul>
+                </Show>
+            </div>
+        })
     }
 }

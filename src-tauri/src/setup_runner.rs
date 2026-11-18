@@ -37,6 +37,7 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
         let outcome = child.wait()
             .map_err(|e| format!("Falha ao aguardar o instalador: {e}"))
             .and_then(|status| installer_result(status.code(), msi_package));
+        crate::trail::note(&app, &game.id, "Instalador", &outcome.clone().map(|()| "Instalador concluído".to_string()));
         match outcome {
             Ok(()) => finish(&app, &game),
             Err(message) => { let _ = app.emit("toast", message); }
@@ -58,14 +59,17 @@ fn installer_result(code: Option<i32>, msi_package: bool) -> Result<(), String> 
 
 fn finish(app: &AppHandle, game: &Game) {
     let Some(program) = locate(game) else {
+        crate::trail::note(app, &game.id, "Localizar o jogo", &Err("O instalador terminou, mas o jogo instalado não foi encontrado. Escolha o programa dele.".into()));
         let _ = app.emit(NEEDS_LOCATION, game.id.clone());
         return;
     };
     match use_program(app, &game.id, &program) {
         Ok(_) => {
+            crate::trail::note(app, &game.id, "Localizar o jogo", &Ok(program.display().to_string()));
             let _ = app.emit("toast", format!("{} foi instalado e está pronto para jogar.", game.name));
         }
         Err(error) => {
+            crate::trail::note(app, &game.id, "Localizar o jogo", &Err(error.clone()));
             let _ = app.emit("toast", error);
         }
     }

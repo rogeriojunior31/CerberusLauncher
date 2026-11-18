@@ -83,6 +83,19 @@ pub struct Backup {
     pub bytes: u64,
 }
 
+/// One step the launcher took for a game (a session, a backup, an install), kept
+/// on disk so a failure can still be looked up after the notice is gone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrailEntry {
+    /// Unix seconds.
+    pub at: u64,
+    pub game_id: String,
+    /// What was being done, as the player reads it: "Backup", "Partida"...
+    pub step: String,
+    pub ok: bool,
+    pub message: String,
+}
+
 /// A mod from Thunderstore, as the game's Mods tab shows it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModItem {
