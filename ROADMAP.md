@@ -59,8 +59,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Abrir FIFA Street pelo ReStreet. O jogador confirmou o funcionamento no Windows.
       A biblioteca gravou o caminho de `FifaStreetLauncher.exe`, a conclusão da instalação
       e 3 segundos de tempo de jogo.
-- [ ] Conferir a duração da sessão do ReStreet. Medir uma partida e comparar com o tempo
-      registrado, verificando se o executável inicial entrega o jogo a outro processo.
+- [x] Corrigir o encerramento prematuro da sessão no Windows. No ReStreet, o Cerberus
+      acompanha `fifastreet.exe` aberto por `FifaStreetLauncher.exe` e grava cada partida ao
+      fechar o jogo, inclusive quando o menu fica aberto. Testes com processos reais no Windows
+      cobrem a saída antecipada do launcher e duas partidas no mesmo menu.
+- [ ] Comparar a próxima partida real do ReStreet com a duração registrada após a correção.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

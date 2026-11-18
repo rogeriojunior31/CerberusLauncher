@@ -57,6 +57,10 @@ pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
 }
 
+pub fn on_playtime_updated(mut handler: impl FnMut() + 'static) {
+    on_event("playtime-updated", move |_: String| handler());
+}
+
 /// The catalog or the ROM folders' matches changed; the recomp list should be read again.
 pub fn on_catalog_changed(mut handler: impl FnMut() + 'static) {
     on_event("catalog-changed", move |_: serde::de::IgnoredAny| handler());

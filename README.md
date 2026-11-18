@@ -22,7 +22,7 @@ O catálogo de recomps fica em `src-tauri/catalog/recomps.json`.
 
 ## Rodando
 
-Precisa de Rust, do target WASM, do Trunk e do Tauri CLI:
+Precisa de Rust (1.100 ou superior no Windows), do target WASM, do Trunk e do Tauri CLI:
 
 ```sh
 rustup target add wasm32-unknown-unknown
