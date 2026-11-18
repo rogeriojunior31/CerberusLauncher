@@ -1,0 +1,168 @@
+[
+  {
+    "id": "zelda64recomp",
+    "title": "majoras-mask",
+    "name": "Zelda 64: Recompiled",
+    "game": "The Legend of Zelda: Majora's Mask",
+    "console": "Nintendo 64",
+    "repo": "Zelda64Recomp/Zelda64Recomp",
+    "icon": "https://raw.githubusercontent.com/Zelda64Recomp/Zelda64Recomp/dev/icons/512.png",
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Legend%20of%20Zelda%2C%20The%20-%20Majora%27s%20Mask%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Legend%20of%20Zelda%2C%20The%20-%20Majora%27s%20Mask%20%28USA%29.png",
+    "about": "Majora's Mask recompilado para rodar nativo no PC, com widescreen, alta taxa de quadros e suporte a mods.",
+    "adds": "Recompilação do jogo original · mods, widescreen, alta taxa de quadros",
+    "needs": "Sua ROM de Majora's Mask (Nintendo 64).",
+    "saves": [
+      "{local}/Zelda64Recompiled/saves"
+    ]
+  },
+  {
+    "id": "starfox64recomp",
+    "title": "star-fox-64",
+    "name": "Starfox 64: Recompiled",
+    "game": "Star Fox 64",
+    "console": "Nintendo 64",
+    "repo": "sonicdcer/Starfox64Recomp",
+    "icon": "https://raw.githubusercontent.com/sonicdcer/Starfox64Recomp/main/icons/512.png",
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Star%20Fox%2064%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Star%20Fox%2064%20%28USA%29%20%28Rev%201%29.png",
+    "about": "Star Fox 64 recompilado para rodar nativo no PC, com widescreen e alta taxa de quadros.",
+    "adds": "Recompilação do jogo original",
+    "needs": "Sua ROM de Star Fox 64 (Nintendo 64).",
+    "saves": [
+      "{local}/Starfox64Recompiled/saves"
+    ]
+  },
+  {
+    "id": "mariokart64recomp",
+    "title": "mario-kart-64",
+    "name": "Mario Kart 64: Recompiled",
+    "game": "Mario Kart 64",
+    "console": "Nintendo 64",
+    "repo": "sonicdcer/MarioKart64Recomp",
+    "icon": "https://raw.githubusercontent.com/sonicdcer/MarioKart64Recomp/main/icons/512.png",
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Mario%20Kart%2064%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Mario%20Kart%2064%20%28USA%29.png",
+    "about": "Mario Kart 64 recompilado para rodar nativo no PC, com widescreen e alta taxa de quadros.",
+    "adds": "Recompilação do jogo original",
+    "needs": "Sua ROM de Mario Kart 64 (Nintendo 64).",
+    "saves": [
+      "{local}/MarioKart64Recompiled/saves",
+      "{install}/controllerPak*.sav"
+    ]
+  },
+  {
+    "id": "banjorecomp",
+    "title": "banjo-kazooie",
+    "name": "Banjo: Recompiled",
+    "game": "Banjo-Kazooie",
+    "console": "Nintendo 64",
+    "repo": "BanjoRecomp/BanjoRecomp",
+    "icon": "https://raw.githubusercontent.com/BanjoRecomp/BanjoRecomp/main/icons/app.png",
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Banjo-Kazooie%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Banjo-Kazooie%20%28USA%29.png",
+    "about": "Banjo-Kazooie recompilado com o N64: Recompiled, rodando nativo no PC com widescreen e alta taxa de quadros.",
+    "adds": "Recompilação do jogo original",
+    "needs": "Sua ROM de Banjo-Kazooie (Nintendo 64).",
+    "saves": [
+      "{local}/BanjoRecompiled/saves"
+    ]
+  },
+  {
+    "id": "goemon64recomp",
+    "title": "goemon",
+    "name": "Goemon 64: Recompiled",
+    "game": "Mystical Ninja Starring Goemon",
+    "console": "Nintendo 64",
+    "repo": "klorfmorf/Goemon64Recomp",
+    "icon": "https://raw.githubusercontent.com/klorfmorf/Goemon64Recomp/dev/icons/512.png",
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Mystical%20Ninja%20Starring%20Goemon%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Mystical%20Ninja%20Starring%20Goemon%20%28USA%29.png",
+    "about": "Mystical Ninja Starring Goemon recompilado para rodar nativo no PC. Ainda em desenvolvimento.",
+    "adds": "Recompilação do jogo original",
+    "needs": "Sua ROM de Mystical Ninja Starring Goemon (Nintendo 64).",
+    "saves": [
+      "{local}/Goemon64Recompiled/saves"
+    ]
+  },
+  {
+    "id": "shipwright",
+    "title": "ocarina-of-time",
+    "name": "Ship of Harkinian",
+    "game": "The Legend of Zelda: Ocarina of Time",
+    "console": "Nintendo 64",
+    "repo": "HarbourMasters/Shipwright",
+    "icon": "https://raw.githubusercontent.com/HarbourMasters/Shipwright/develop/soh/macosx/sohIcon.png",
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Legend%20of%20Zelda%2C%20The%20-%20Ocarina%20of%20Time%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Legend%20of%20Zelda%2C%20The%20-%20Ocarina%20of%20Time%20%28USA%29.png",
+    "about": "Ocarina of Time reconstruído a partir da decompilação, com melhorias, randomizer e muitas opções.",
+    "adds": "Reconstrução a partir da decompilação · randomizer e melhorias",
+    "needs": "Sua ROM de Ocarina of Time (Nintendo 64).",
+    "saves": [
+      "{install}/Save"
+    ]
+  },
+  {
+    "id": "2ship2harkinian",
+    "title": "majoras-mask",
+    "name": "2 Ship 2 Harkinian",
+    "game": "The Legend of Zelda: Majora's Mask",
+    "console": "Nintendo 64",
+    "repo": "2ship2harkinian/2ship2harkinian",
+    "icon": null,
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Legend%20of%20Zelda%2C%20The%20-%20Majora%27s%20Mask%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Legend%20of%20Zelda%2C%20The%20-%20Majora%27s%20Mask%20%28USA%29.png",
+    "about": "Majora's Mask reconstruído a partir da decompilação, da mesma equipe do Ship of Harkinian.",
+    "adds": "Reconstrução a partir da decompilação · melhorias e opções extras",
+    "needs": "Sua ROM de Majora's Mask (Nintendo 64).",
+    "saves": []
+  },
+  {
+    "id": "starship",
+    "title": "star-fox-64",
+    "name": "Starship",
+    "game": "Star Fox 64",
+    "console": "Nintendo 64",
+    "repo": "HarbourMasters/Starship",
+    "icon": null,
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Star%20Fox%2064%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Star%20Fox%2064%20%28USA%29%20%28Rev%201%29.png",
+    "about": "Star Fox 64 reconstruído a partir da decompilação, pela Harbour Masters.",
+    "adds": "Reconstrução a partir da decompilação, pela Harbour Masters",
+    "needs": "Sua ROM de Star Fox 64 (Nintendo 64).",
+    "saves": []
+  },
+  {
+    "id": "spaghettikart",
+    "title": "mario-kart-64",
+    "name": "SpaghettiKart",
+    "game": "Mario Kart 64",
+    "console": "Nintendo 64",
+    "repo": "HarbourMasters/SpaghettiKart",
+    "icon": null,
+    "cover": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Boxarts/Mario%20Kart%2064%20%28USA%29.png",
+    "hero": "https://raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Nintendo_64/master/Named_Snaps/Mario%20Kart%2064%20%28USA%29.png",
+    "about": "Mario Kart 64 reconstruído a partir da decompilação, com pistas personalizadas e mais opções.",
+    "adds": "Reconstrução a partir da decompilação · pistas personalizadas",
+    "needs": "Sua ROM de Mario Kart 64 (Nintendo 64).",
+    "saves": []
+  },
+  {
+    "id": "unleashedrecomp",
+    "title": "sonic-unleashed",
+    "name": "Unleashed Recompiled",
+    "game": "Sonic Unleashed",
+    "console": "Xbox 360",
+    "repo": "hedge-dev/UnleashedRecomp",
+    "icon": null,
+    "cover": "https://raw.githubusercontent.com/hedge-dev/UnleashedRecompResources/refs/heads/main/images/logo/Logo.png",
+    "hero": null,
+    "about": "A versão de Xbox 360 de Sonic Unleashed recompilada para rodar nativo no PC.",
+    "adds": "Recompilação da versão de Xbox 360",
+    "needs": "Os arquivos do seu Sonic Unleashed de Xbox 360 (o jogo e a atualização).",
+    "saves": [
+      "{appdata}/UnleashedRecomp/save",
+      "{install}/save"
+    ]
+  }
+]
