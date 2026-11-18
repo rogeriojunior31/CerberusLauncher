@@ -20,12 +20,29 @@ pub struct Settings {
     /// Catalog sources the player added, by URL.
     #[serde(default)]
     pub sources: Vec<String>,
+    /// The first-run setup was finished (or skipped). A settings file from before
+    /// the setup existed counts as done: that player already set things up.
+    #[serde(default = "yes")]
+    pub setup_done: bool,
+    /// Opens in the TV screen (Tela grande) instead of the desktop window.
+    #[serde(default)]
+    pub start_in_tv: bool,
+    /// The player's own SteamGridDB API key (free, from their account there).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steamgriddb_key: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 pub fn load(data_dir: &Path) -> Settings {
-    let text = fs::read_to_string(file(data_dir)).unwrap_or_default();
+    let Ok(text) = fs::read_to_string(file(data_dir)) else {
+        // No file yet: a new player, who gets the first-run setup.
+        return Settings::default();
+    };
     // A broken file just means the defaults; never refuse to start over it.
-    serde_json::from_str(&text).unwrap_or_default()
+    serde_json::from_str(&text).unwrap_or(Settings { setup_done: true, ..Settings::default() })
 }
 
 pub fn save(data_dir: &Path, settings: &Settings) -> Result<(), String> {
@@ -54,6 +71,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_a_new_player_gets_the_first_run_setup() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!load(dir.path()).setup_done, "no settings file: a new player");
+        fs::write(file(dir.path()), r#"{"rom_dirs": ["D:/ROMS"]}"#).unwrap();
+        assert!(load(dir.path()).setup_done, "a file from before the setup existed");
+        let mut s = load(dir.path());
+        s.setup_done = false;
+        save(dir.path(), &s).unwrap();
+        assert!(!load(dir.path()).setup_done);
+    }
+
+    #[test]
     fn saved_settings_come_back() {
         let dir = std::env::temp_dir().join(format!("cerberus-settings-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -62,6 +91,7 @@ mod tests {
             rom_dirs: vec![PathBuf::from(r"E:\ROMs")],
             cloud_dir: None,
             sources: vec!["https://example.com/games.json".into()],
+            ..Settings::default()
         };
         save(&dir, &chosen).unwrap();
         assert_eq!(load(&dir).recomps_dir, chosen.recomps_dir);

@@ -5,6 +5,10 @@ mod bigpicture;
 mod discover;
 mod format;
 mod game;
+mod customize;
+mod adopt;
+mod first_run;
+mod game_settings;
 mod home;
 mod icons;
 mod library_page;
@@ -17,7 +21,7 @@ mod versions;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use cerberus_shared::{Game, InstallStep, RecompEntry};
+use cerberus_shared::{Game, InstallStep, NextStep, RecompEntry};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -74,6 +78,10 @@ pub struct Library {
     history: RwSignal<Vec<Route>>,
     editing: RwSignal<Option<Game>>,
     toasts: RwSignal<Vec<Toast>>,
+    /// The "Trazer seus recomps" window is open.
+    adopting: RwSignal<bool>,
+    /// The game whose art is being customized.
+    customizing: RwSignal<Option<Game>>,
 }
 
 impl Library {
@@ -132,17 +140,45 @@ impl Library {
     }
 }
 
+/// The main button's label and icon: the step the backend says comes next.
 fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
-    if game.setup_pending {
-        ("Abrir instalador", icons::Icon::External)
-    } else {
-        ("Jogar", icons::Icon::Play)
+    match &game.next_step {
+        NextStep::Play => ("Jogar", icons::Icon::Play),
+        NextStep::RunInstaller => ("Abrir instalador", icons::Icon::External),
+        NextStep::ChooseCopy { found: Some(_) } => ("Usar minha cópia", icons::Icon::Check),
+        NextStep::ChooseCopy { found: None } => ("Escolher cópia do jogo", icons::Icon::Folder),
+        NextStep::Locate { .. } => ("Localizar programa", icons::Icon::Search),
     }
 }
 
+/// The main button everywhere: takes the next step, and plays once nothing is left.
 pub fn play_game(library: Library, game: Game) {
     spawn_local(async move {
-        library.report(api::play(&game).await);
+        let ready = match &game.next_step {
+            NextStep::Play | NextStep::RunInstaller => Some(game),
+            NextStep::ChooseCopy { found } => {
+                let set = library.report(api::set_game_copy(&game.id, found.is_some(), false).await).flatten();
+                library.games.refetch();
+                library.recomps.refetch();
+                if set.is_some() {
+                    library.toast(format!("Cópia de {} configurada.", game.name));
+                }
+                // Plays right away; Play itself refuses if anything is still missing.
+                set
+            }
+            NextStep::Locate { reason } => {
+                library.toast(reason.clone());
+                let found = library.report(api::locate_game(&game.id).await).flatten();
+                library.games.refetch();
+                if let Some(found) = &found {
+                    library.toast(format!("{} está pronto para jogar.", found.name));
+                }
+                None
+            }
+        };
+        if let Some(game) = ready {
+            library.report(api::play(&game).await);
+        }
     });
 }
 
@@ -157,6 +193,8 @@ fn App() -> impl IntoView {
         history: RwSignal::new(Vec::new()),
         editing: RwSignal::new(None),
         toasts: RwSignal::new(Vec::new()),
+        adopting: RwSignal::new(false),
+        customizing: RwSignal::new(None),
     };
     provide_context(library);
     provide_context(library_page::LibraryView::default());
@@ -185,6 +223,22 @@ fn App() -> impl IntoView {
         library.games.refetch();
     });
     api::on_toast(move |text| library.toast(text));
+
+    // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
+    let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
+    let first_run_open = RwSignal::new(false);
+    spawn_local(async move {
+        let Ok(settings) = api::get_settings().await else { return };
+        if !settings.setup_done {
+            first_run_open.set(true);
+            first_run.set(Some(settings));
+        } else if settings.start_in_tv {
+            library.go(Route::BigPicture);
+        }
+    });
+    let setup = move || {
+        first_run.get().filter(|_| first_run_open.get()).map(|settings| view! { <first_run::FirstRun settings open=first_run_open /> })
+    };
     // An installer finished but its game wasn't found: ask where it went.
     let locating: RwSignal<Option<String>> = RwSignal::new(None);
     api::on_needs_location(move |id| locating.set(Some(id)));
@@ -247,6 +301,9 @@ fn App() -> impl IntoView {
             </div>
         </div>
         {big_picture}
+        {setup}
+        <Show when=move || library.adopting.get()><adopt::AdoptDialog /></Show>
+        {move || library.customizing.get().map(|game| view! { <customize::CustomizeDialog game /> })}
         <shell::Toasts />
         {editor}
         {locate}

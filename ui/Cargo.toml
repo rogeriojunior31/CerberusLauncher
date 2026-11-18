@@ -12,5 +12,5 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Gamepad", "GamepadButton", "Navigator", "Window", "KeyboardEvent", "MediaQueryList"] }
+web-sys = { version = "0.3", features = ["Gamepad", "GamepadButton", "Navigator", "Window", "KeyboardEvent", "MediaQueryList", "Document", "Element", "DomRect", "HtmlCanvasElement", "HtmlImageElement", "CanvasRenderingContext2d", "PointerEvent", "WheelEvent"] }
 console_error_panic_hook = "0.1"

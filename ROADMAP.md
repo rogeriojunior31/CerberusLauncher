@@ -85,6 +85,33 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       última falha com a causa e a lista completa. Testes cobrem reabertura, linha danificada,
       limite de tamanho, destino sem escrita e uma sessão cuja gravação de tempo falha. Conferido
       no app com um backup manual real do ReStreet.
+- [x] Decidir no backend o próximo passo de cada jogo (`NextStep`): jogar, abrir o instalador,
+      escolher a cópia do jogo (com um clique quando as pastas de ROMs já têm) ou localizar o
+      programa que sumiu. Início, Biblioteca, Tela Grande e a página do jogo mostram o mesmo botão,
+      e Jogar recusa o que o botão não ofereceria. Testes cobrem cópia por argumento, por pasta,
+      arquivo que sumiu, instalador pendente e programa ausente.
+- [x] Aba **Ajustes** na página do jogo: as opções do próprio jogo (tela cheia, resolução,
+      FPS...) descritas no catálogo, gravadas direto no `.ini`, `.toml` ou `.json` dele mexendo só
+      na linha da opção. 261 jogos do catálogo têm ajustes. Conferido no SpaghettiKart: 60 fps
+      gravado sem mudar nenhuma das outras 189 chaves, e mantido pelo jogo depois de abrir e fechar.
+- [x] Configuração guiada na primeira abertura: como joga (mesa ou TV), pastas de ROMs com os
+      jogos que já têm recomp, pasta de instalação com espaço livre e saves na nuvem. Quem escolhe
+      TV abre direto na Tela grande (também em Configurações). Instalações existentes não veem a tela.
+- [x] Trazer recomps instalados sem o Cerberus: "Trazer seus recomps" no Descobrir procura numa
+      pasta pelo nome do programa que o catálogo dá (607 recomps o informam) e "Já tenho instalado"
+      na página de cada recomp. O jogo fica marcado como externo: o Cerberus abre, conta tempo e faz
+      backup, mas nunca atualiza nem apaga a pasta. Trazer duas vezes mantém um registro, e um jogo
+      adicionado à mão vira o recomp mantendo o tempo de jogo. Conferido no app com o Zelda 64.
+- [x] Busca do Descobrir procura em todas as versões de um jogo ("Zelda 64" acha o Zelda 64: Recompiled).
+- [x] Personalizar arte de qualquer jogo (inclusive Steam e Epic): capa, fundo e logo do SteamGridDB,
+      com a chave gratuita do próprio jogador, ou de um arquivo, enquadrados com arrastar e zoom numa
+      moldura do formato certo. O logo aparece no lugar do nome na página do jogo. "Restaurar original"
+      apaga só as imagens feitas pelo Cerberus. Conferido no app com o Alan Wake (Steam); a busca no
+      SteamGridDB ainda precisa de uma chave real para ser vista funcionando.
+- [ ] Vários discos, DLC e arquivos opcionais por jogo (item 4 da tabela): adiado. Em 18/11/2026
+      nenhum dos 1899 jogos do catálogo usa mais de uma entrada (`boot.inputs`); retomar quando algum usar.
+- [x] Aviso do catálogo para o jogador ("Como começar", 455 jogos) e selo de multijogador
+      (local, online ou os dois, 156 jogos) na página do jogo.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

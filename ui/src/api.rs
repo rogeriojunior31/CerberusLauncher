@@ -153,6 +153,124 @@ pub async fn list_backups(id: &str) -> Result<Vec<Backup>, String> {
 }
 
 /// `None` when there was nothing new to copy.
+/// Looks through a folder the player picks for recomps installed without Cerberus.
+/// `None` when the picker is cancelled.
+pub async fn scan_for_recomps() -> Result<Option<cerberus_shared::AdoptScan>, String> {
+    call("scan_for_recomps", &()).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdoptArgs<'a> {
+    recomp_id: &'a str,
+    program: Option<String>,
+}
+
+/// Brings a recomp installed without Cerberus into the library; with no
+/// `program`, the player picks it. `None` when cancelled.
+pub async fn adopt_recomp(recomp_id: &str, program: Option<String>) -> Result<Option<Game>, String> {
+    call("adopt_recomp", &AdoptArgs { recomp_id, program }).await
+}
+
+/// The catalog recomps a game added by hand could be.
+pub async fn recomp_suggestions(id: &str) -> Result<Vec<cerberus_shared::AdoptFound>, String> {
+    call("recomp_suggestions", &Id { id }).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkArgs<'a> {
+    id: &'a str,
+    recomp_id: &'a str,
+}
+
+/// Turns a game added by hand into the catalog recomp it is.
+pub async fn link_to_recomp(id: &str, recomp_id: &str) -> Result<Game, String> {
+    call("link_to_recomp", &LinkArgs { id, recomp_id }).await
+}
+
+#[derive(Serialize)]
+struct KeyArg {
+    key: String,
+}
+
+/// Keeps the player's SteamGridDB key once SteamGridDB takes it; empty forgets it.
+pub async fn set_steamgriddb_key(key: String) -> Result<SettingsView, String> {
+    call("set_steamgriddb_key", &KeyArg { key }).await
+}
+
+pub async fn open_steamgriddb_keys() -> Result<(), String> {
+    call("open_steamgriddb_keys", &()).await
+}
+
+#[derive(Serialize)]
+struct TermArg<'a> {
+    term: &'a str,
+}
+
+pub async fn art_search(term: &str) -> Result<Vec<cerberus_shared::ArtGame>, String> {
+    call("art_search", &TermArg { term }).await
+}
+
+#[derive(Serialize)]
+struct GameArg {
+    game: u64,
+}
+
+pub async fn art_options(game: u64) -> Result<cerberus_shared::ArtOptions, String> {
+    call("art_options", &GameArg { game }).await
+}
+
+#[derive(Serialize)]
+struct UrlRef<'a> {
+    url: &'a str,
+}
+
+/// A SteamGridDB picture as a `data:` address, fetched by the backend.
+pub async fn art_fetch(url: &str) -> Result<String, String> {
+    call("art_fetch", &UrlRef { url }).await
+}
+
+/// A picture file the player picks, as a `data:` address; `None` when cancelled.
+pub async fn art_pick_file() -> Result<Option<String>, String> {
+    call("art_pick_file", &()).await
+}
+
+#[derive(Serialize)]
+struct ArtSaveArgs<'a> {
+    id: &'a str,
+    kind: &'a str,
+    data: Option<String>,
+}
+
+/// Keeps the framed picture for one kind of art; `None` puts the original back.
+pub async fn art_save(id: &str, kind: &str, data: Option<String>) -> Result<(), String> {
+    call("art_save", &ArtSaveArgs { id, kind, data }).await
+}
+
+/// The game's own settings; `None` when the catalog offers none.
+pub async fn game_settings(id: &str) -> Result<Option<cerberus_shared::GameSettings>, String> {
+    call("game_settings", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct SettingArgs<'a> {
+    id: &'a str,
+    setting: Option<String>,
+    choice: Option<usize>,
+    value: Option<f64>,
+}
+
+/// One setting on a choice, or (both `None`) every setting back on the game's defaults.
+pub async fn set_game_setting(id: &str, setting: Option<String>, choice: Option<usize>) -> Result<cerberus_shared::GameSettings, String> {
+    call("set_game_setting", &SettingArgs { id, setting, choice, value: None }).await
+}
+
+/// Moves a slider setting to a number.
+pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result<cerberus_shared::GameSettings, String> {
+    call("set_game_setting", &SettingArgs { id, setting: Some(setting), choice: None, value: Some(value) }).await
+}
+
 /// What the launcher did for a game lately, newest first.
 pub async fn game_trail(id: &str) -> Result<Vec<cerberus_shared::TrailEntry>, String> {
     call("game_trail", &Id { id }).await
@@ -184,6 +302,27 @@ pub async fn open_backups(id: &str) -> Result<(), String> {
 
 pub async fn get_settings() -> Result<SettingsView, String> {
     call("get_settings", &()).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupArgs {
+    start_in_tv: bool,
+}
+
+/// Ends the first-run setup with how the player plays.
+pub async fn finish_setup(start_in_tv: bool) -> Result<SettingsView, String> {
+    call("finish_setup", &SetupArgs { start_in_tv }).await
+}
+
+#[derive(Serialize)]
+struct OnArg {
+    on: bool,
+}
+
+/// Whether Cerberus opens in the TV screen.
+pub async fn set_start_in_tv(on: bool) -> Result<SettingsView, String> {
+    call("set_start_in_tv", &OnArg { on }).await
 }
 
 pub async fn retry_save_uploads() -> Result<SettingsView, String> {

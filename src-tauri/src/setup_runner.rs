@@ -83,7 +83,7 @@ pub fn use_program(app: &AppHandle, game_id: &str, program: &Path) -> Result<Gam
     let exe = program.to_string_lossy().into_owned();
     let library = app.state::<LocalLibrary>();
     let game = library.update(game_id, |game| {
-        if let Source::Recomp { exe: current, .. } = &mut game.source {
+        if let Source::Recomp { exe: current, .. } | Source::Local { exe: current } = &mut game.source {
             *current = exe;
         }
         game.setup_pending = false;

@@ -134,11 +134,20 @@ pub fn DiscoverPage() -> impl IntoView {
     let filtered = move || {
         let needle = search.get().to_lowercase();
         let wanted_console = console.get();
-        let mut games: Vec<(RecompEntry, usize)> = one_each(&entries())
+        let all = entries();
+        // A game shows when any of its versions matches the search; the tile
+        // then shows that version ("Zelda 64: Recompiled" under its game).
+        let mut games: Vec<(RecompEntry, usize)> = one_each(&all)
             .into_iter()
             .filter(|(e, _)| wanted_console.is_empty() || e.origin == wanted_console)
             .filter(|(e, _)| !only_owned.get() || e.owned_copy.is_some())
-            .filter(|(e, _)| matches_search(e, &needle))
+            .filter_map(|(lead, n)| {
+                if matches_search(&lead, &needle) {
+                    return Some((lead, n));
+                }
+                let hit = all.iter().find(|e| e.title == lead.title && matches_search(e, &needle))?;
+                Some((hit.clone(), n))
+            })
             .collect();
         sort_games(&mut games, sort.get());
         games
@@ -214,10 +223,16 @@ pub fn DiscoverPage() -> impl IntoView {
                         "Jogue no PC com sua cópia original. Catálogo de recomplauncher.com."
                     </p>
                 </div>
+                <div class="row">
+                <button type="button" class="btn" title="Recomps que você instalou sem o Cerberus"
+                    on:click=move |_| crate::adopt::start(library)>
+                    <Svg icon=Icon::Folder size=18 />"Trazer seus recomps"
+                </button>
                 <button type="button" class="btn" title="Sugerir um projeto para o catálogo"
                     on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })>
                     <Svg icon=Icon::Plus size=18 />"Pedir um recomp"
                 </button>
+                </div>
             </header>
             <section class="catalog-filters" aria-label="Filtros do catálogo">
                 <div class="toolbar">

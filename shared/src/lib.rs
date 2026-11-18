@@ -42,6 +42,20 @@ pub struct Game {
     /// and `exe` points at the installer until then.
     #[serde(default)]
     pub setup_pending: bool,
+    /// What the main button does now. Worked out by the backend each time the
+    /// library is listed, so every screen offers the same action.
+    #[serde(default)]
+    pub next_step: NextStep,
+    /// The game's command-line settings the player picked: setting id -> choice.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub setting_picks: std::collections::BTreeMap<String, usize>,
+    /// A recomp installed outside Cerberus and linked to the catalog: its files
+    /// are the player's, so Cerberus never updates or deletes them.
+    #[serde(default)]
+    pub external: bool,
+    /// The game's logo, when the player picked one; shown in place of its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_path: Option<String>,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -62,6 +76,99 @@ pub enum CopyHandoff {
         #[serde(default)]
         extract: bool,
     },
+}
+
+/// A game's own settings, as its Ajustes tab shows them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GameSettings {
+    pub settings: Vec<GameSetting>,
+    /// The settings files they are written to.
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GameSetting {
+    pub id: String,
+    pub label: String,
+    pub help: String,
+    /// The heading it goes under; empty for none.
+    pub group: String,
+    pub advanced: bool,
+    pub choices: Vec<String>,
+    pub current: usize,
+    /// False while another setting makes this one irrelevant (shown greyed out).
+    pub applies: bool,
+    /// A number on a slider instead of choices.
+    #[serde(default)]
+    pub slider: Option<SettingSlider>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SettingSlider {
+    pub min: f64,
+    pub max: f64,
+    pub step: f64,
+    pub value: f64,
+    /// The value as the game writes it ("0.50", "80").
+    pub text: String,
+}
+
+/// A game on SteamGridDB.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtGame {
+    pub id: u64,
+    pub name: String,
+    pub year: Option<u32>,
+}
+
+/// A picture on SteamGridDB: a small one to choose from, the full one to keep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtPic {
+    pub url: String,
+    pub thumb: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArtOptions {
+    pub covers: Vec<ArtPic>,
+    pub heroes: Vec<ArtPic>,
+    pub logos: Vec<ArtPic>,
+}
+
+/// What a look through one of the player's folders found.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AdoptScan {
+    pub folder: String,
+    pub found: Vec<AdoptFound>,
+}
+
+/// A recomp found among the player's own programs, to bring into the library.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AdoptFound {
+    pub recomp_id: String,
+    pub name: String,
+    pub game: String,
+    pub console: String,
+    pub cover: Option<String>,
+    pub program: String,
+    /// The program has the exact name the catalog gives; otherwise it only looks alike.
+    pub sure: bool,
+}
+
+/// The one thing that stands between the player and the game, if anything.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NextStep {
+    #[default]
+    Play,
+    /// A release that ships an installer: it runs on the first Play.
+    RunInstaller,
+    /// The recomp needs the player's copy of the game. `found` is one the ROM
+    /// folders have, used with one click; otherwise the player picks a file.
+    ChooseCopy { found: Option<String> },
+    /// The program to open is gone (moved, deleted, or an installer put it
+    /// somewhere unknown); the player points at it.
+    Locate { reason: String },
 }
 
 impl Game {
@@ -148,6 +255,14 @@ pub struct SettingsView {
     #[serde(default)]
     pub pending_uploads: usize,
     pub sources: Vec<SourceView>,
+    /// False until the first-run setup is finished.
+    #[serde(default)]
+    pub setup_done: bool,
+    #[serde(default)]
+    pub start_in_tv: bool,
+    /// The player's own SteamGridDB key, for picking art.
+    #[serde(default)]
+    pub steamgriddb_key: Option<String>,
 }
 
 /// A catalog source the player added.
@@ -244,6 +359,15 @@ pub struct RecompEntry {
     pub handoff: Option<CopyHandoff>,
     /// The copy can be a folder of extracted files, not just a file.
     pub accepts_folder: bool,
+    /// How many of the game's own settings the launcher can change.
+    #[serde(default)]
+    pub settings_count: usize,
+    /// What the player should know before the first start, from the catalog (in English).
+    #[serde(default)]
+    pub player_note: String,
+    /// "local", "online" or "both"; empty for single player.
+    #[serde(default)]
+    pub multiplayer: String,
     /// The newest full release for this PC; `None` when unknown (offline, no build for this system).
     pub latest: Option<Release>,
     /// The version installed, if any.

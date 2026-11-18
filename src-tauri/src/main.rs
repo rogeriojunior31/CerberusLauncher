@@ -15,6 +15,8 @@ mod setup_runner;
 mod steam;
 mod steam_store;
 mod trail;
+mod game_settings;
+mod art_custom;
 mod xdvdfs;
 
 use std::fs;
@@ -88,6 +90,9 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         catalog_source: recomp::catalog::SOURCE_NAME.to_string(),
         pending_uploads: recomp::cloud::pending_count(&folders),
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
+        setup_done: chosen.setup_done,
+        start_in_tv: chosen.start_in_tv,
+        steamgriddb_key: chosen.steamgriddb_key.clone(),
         sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
@@ -280,6 +285,85 @@ async fn refresh_catalog(app: AppHandle, http: State<'_, reqwest::Client>) -> Re
     Ok(settings_view(&app))
 }
 
+fn steamgriddb_key(app: &AppHandle) -> Result<String, String> {
+    settings::load(&app.state::<DataDir>().0)
+        .steamgriddb_key
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| "Coloque sua chave do SteamGridDB primeiro (é gratuita).".to_string())
+}
+
+/// Keeps the player's SteamGridDB key after checking SteamGridDB takes it;
+/// an empty key forgets it.
+#[tauri::command]
+async fn set_steamgriddb_key(app: AppHandle, http: State<'_, reqwest::Client>, key: String) -> Result<SettingsView, String> {
+    let key = key.trim().to_string();
+    if !key.is_empty() {
+        art_custom::search(&http, &key, "Mario").await?;
+    }
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.steamgriddb_key = (!key.is_empty()).then_some(key);
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+async fn art_search(app: AppHandle, http: State<'_, reqwest::Client>, term: String) -> Result<Vec<cerberus_shared::ArtGame>, String> {
+    let key = steamgriddb_key(&app)?;
+    art_custom::search(&http, &key, &term).await
+}
+
+#[tauri::command]
+async fn art_options(app: AppHandle, http: State<'_, reqwest::Client>, game: u64) -> Result<cerberus_shared::ArtOptions, String> {
+    let key = steamgriddb_key(&app)?;
+    art_custom::options(&http, &key, game).await
+}
+
+/// A SteamGridDB picture as a `data:` address the window can frame.
+#[tauri::command]
+async fn art_fetch(http: State<'_, reqwest::Client>, url: String) -> Result<String, String> {
+    art_custom::fetch(&http, &url).await
+}
+
+/// A picture file the player picks, as a `data:` address. `None` when cancelled.
+#[tauri::command]
+async fn art_pick_file(app: AppHandle) -> Result<Option<String>, String> {
+    let dialog = app.dialog().file().set_title("Escolha uma imagem").add_filter("Imagens", &["png", "jpg", "jpeg", "webp"]);
+    let Some(path) = pick_one(dialog).await? else {
+        return Ok(None);
+    };
+    let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    art_custom::data_url(&bytes).map(Some)
+}
+
+/// Keeps the framed picture for one kind of a game's art (`data: None` puts the
+/// game's own art back). The window reloads the library to show it.
+#[tauri::command]
+fn art_save(art: State<'_, art_custom::CustomArt>, id: String, kind: String, data: Option<String>) -> Result<(), String> {
+    art.set(&id, &kind, data.as_deref())
+}
+
+/// Ends the first-run setup with how the player plays (desk or TV).
+#[tauri::command]
+fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.setup_done = true;
+    chosen.start_in_tv = start_in_tv;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Whether the app opens in the TV screen; changed in Configurações.
+#[tauri::command]
+fn set_start_in_tv(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.start_in_tv = on;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
 #[tauri::command]
 fn get_settings(app: AppHandle) -> SettingsView {
     settings_view(&app)
@@ -333,12 +417,21 @@ fn library_recovery_notice(library: State<'_, LocalLibrary>) -> Option<String> {
 
 #[tauri::command]
 async fn list_games(
+    app: AppHandle,
     library: State<'_, LocalLibrary>,
     art: State<'_, Arc<ArtCache>>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Vec<Game>, String> {
     let mut games = library.games()?;
     games.iter_mut().for_each(recomp::apply_art);
+    let owned = owned_games(&app);
+    for game in &mut games {
+        let found = match &game.source {
+            Source::Recomp { recomp_id, .. } => owned.get(recomp_id),
+            _ => None,
+        };
+        game.next_step = recomp::next_step(game, found);
+    }
     // Scanning library folders touches the disk; keep it off the async runtime.
     let scan = tauri::async_runtime::spawn_blocking(|| {
         let mut found = steam::installed_games();
@@ -349,6 +442,9 @@ async fn list_games(
     games.sort_by_key(|game| game.name.to_lowercase());
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
+    // The player's own pictures win over every other art.
+    let custom = app.state::<art_custom::CustomArt>();
+    games.iter_mut().for_each(|game| custom.apply(game));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
 }
@@ -454,7 +550,10 @@ fn remove_game(
                 return Err("Feche o jogo antes de removê-lo.".into());
             }
             recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
-            recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            // A folder the player installed on their own stays theirs: only the link goes.
+            if !game.external {
+                recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            }
             library.remove(&id)
         })?;
     } else {
@@ -651,12 +750,15 @@ async fn remove_mod(app: AppHandle, id: String, full_name: String) -> Result<(),
 /// After an installer ran and the game wasn't found: the player points at its program.
 #[tauri::command]
 async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
-    let dialog = app.dialog().file().set_title("Onde o instalador colocou o jogo? Escolha o programa do jogo");
+    let dialog = app.dialog().file().set_title("Onde está o jogo? Escolha o programa dele");
     let dialog = if cfg!(windows) { dialog.add_filter("Programa", &["exe"]) } else { dialog };
     let Some(program) = pick_one(dialog).await? else {
         return Ok(None);
     };
-    setup_runner::use_program(&app, &id, &program).map(Some)
+    let result = setup_runner::use_program(&app, &id, &program);
+    let outcome = result.as_ref().map(|_| program.display().to_string()).map_err(Clone::clone);
+    trail::note(&app, &id, "Localizar programa", &outcome);
+    result.map(Some)
 }
 
 #[tauri::command]
@@ -695,6 +797,12 @@ fn open_recomp_request(app: AppHandle) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Opens SteamGridDB's page where players make their free API key.
+#[tauri::command]
+fn open_steamgriddb_keys(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url("https://www.steamgriddb.com/profile/preferences/api", None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Opens a catalog recomp's project page; only catalog repos, never an arbitrary link.
 #[tauri::command]
 fn open_project(app: AppHandle, id: String) -> Result<(), String> {
@@ -712,12 +820,14 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         Source::Local { .. } => {
             let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+            ready_to_play(&current)?;
             let Source::Local { exe } = &current.source else { return Err("Registro do jogo inválido.".into()) };
             return sessions::start(&app, &current, Path::new(exe));
         }
         Source::Recomp { recomp_id, .. } => {
             return app.state::<recomp::Installing>().while_idle(recomp_id, || {
                 let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+                ready_to_play(&current)?;
                 let Source::Recomp { exe, .. } = &current.source else { return Err("Registro do recomp inválido.".into()) };
                 sessions::start(&app, &current, Path::new(exe))
             });
@@ -726,6 +836,16 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| format!("Não foi possível abrir o launcher da loja: {e}"))
+}
+
+/// Play refuses what the button wouldn't offer: a recomp without its game copy
+/// would open to an error, a missing program can't open at all.
+fn ready_to_play(game: &Game) -> Result<(), String> {
+    match recomp::next_step(game, None) {
+        cerberus_shared::NextStep::ChooseCopy { .. } => Err(format!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
+        cerberus_shared::NextStep::Locate { reason } => Err(format!("{reason} Use \"Localizar programa\" na página do jogo.")),
+        _ => Ok(()),
+    }
 }
 
 #[tauri::command]
@@ -782,6 +902,135 @@ async fn restore_backup(
     result
 }
 
+fn found_view(found: recomp::adopt::Found) -> Option<cerberus_shared::AdoptFound> {
+    let entry = recomp::find(&found.recomp_id)?;
+    Some(cerberus_shared::AdoptFound {
+        recomp_id: entry.id,
+        name: entry.name,
+        game: entry.game,
+        console: entry.console,
+        cover: entry.cover,
+        program: found.program.to_string_lossy().into_owned(),
+        sure: found.sure,
+    })
+}
+
+/// Looks through a folder the player picks for recomps installed without
+/// Cerberus. `None` when the picker is cancelled.
+#[tauri::command]
+async fn scan_for_recomps(app: AppHandle) -> Result<Option<cerberus_shared::AdoptScan>, String> {
+    let dialog = app.dialog().file().set_title("Em que pasta estão os recomps que você já instalou?");
+    let Some(folder) = pick_folder(dialog).await? else {
+        return Ok(None);
+    };
+    let shown = folder.display().to_string();
+    let found = tauri::async_runtime::spawn_blocking(move || recomp::adopt::scan(&folder, &recomp::catalog::all()))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Some(cerberus_shared::AdoptScan { folder: shown, found: found.into_iter().filter_map(found_view).collect() }))
+}
+
+/// Brings one recomp in, from its program: one found by the scan, or (with no
+/// `program`) one the player picks.
+#[tauri::command]
+async fn adopt_recomp(app: AppHandle, recomp_id: String, program: Option<String>) -> Result<Option<Game>, String> {
+    let entry = recomp::find(&recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let program = match program {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let title = format!("Onde está o {}? Escolha o programa dele", entry.name);
+            let dialog = app.dialog().file().set_title(&title);
+            let dialog = if cfg!(windows) { dialog.add_filter("Programa", &["exe"]) } else { dialog };
+            let Some(program) = pick_one(dialog).await? else {
+                return Ok(None);
+            };
+            program
+        }
+    };
+    let library = app.state::<LocalLibrary>();
+    let result = recomp::adopt::adopt(&library, &entry, &program);
+    let outcome = result.as_ref().map(|_| format!("Trazido de {}", program.display())).map_err(Clone::clone);
+    trail::note(&app, &recomp::library_id(&entry.id), "Trazer recomp", &outcome);
+    let _ = app.emit("catalog-changed", ());
+    result.map(Some)
+}
+
+/// The catalog recomps a game added by hand could be, the surest first.
+#[tauri::command]
+fn recomp_suggestions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::AdoptFound>, String> {
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Local { exe } = &game.source else { return Ok(Vec::new()) };
+    let found = recomp::adopt::candidates(Path::new(exe), &recomp::catalog::all());
+    Ok(found.into_iter().filter_map(found_view).collect())
+}
+
+/// Turns a game added by hand into the catalog recomp it is, keeping its play time.
+#[tauri::command]
+fn link_to_recomp(app: AppHandle, library: State<'_, LocalLibrary>, id: String, recomp_id: String) -> Result<Game, String> {
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Local { exe } = &game.source else { return Err("Só jogos adicionados à mão podem ser vinculados.".into()) };
+    let entry = recomp::find(&recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let linked = recomp::adopt::adopt(&library, &entry, Path::new(exe))?;
+    trail::note(&app, &linked.id, "Vincular ao catálogo", &Ok(entry.name.clone()));
+    let _ = app.emit("catalog-changed", ());
+    Ok(linked)
+}
+
+/// A recomp's catalog settings offer and where it is installed.
+fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings::Offer), String> {
+    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Recomp { recomp_id, .. } = &game.source else {
+        return Err("Só recomps têm ajustes do catálogo.".into());
+    };
+    let offer = recomp::find(recomp_id).map(|e| e.settings).unwrap_or_default();
+    Ok((game, offer))
+}
+
+/// The game's own settings and the choice each is on. `None` when the catalog offers none.
+#[tauri::command]
+fn game_settings(library: State<'_, LocalLibrary>, id: String) -> Result<Option<cerberus_shared::GameSettings>, String> {
+    let (game, offer) = settings_of(&library, &id)?;
+    if offer.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(offer.view(Path::new(&game.install_dir), &game.setting_picks)))
+}
+
+/// Puts one setting on a choice (`choice: None` puts every setting back on the
+/// game's defaults), and returns the settings as they are now.
+#[tauri::command]
+fn set_game_setting(
+    app: AppHandle,
+    library: State<'_, LocalLibrary>,
+    sessions: State<'_, sessions::Sessions>,
+    id: String,
+    setting: Option<String>,
+    choice: Option<usize>,
+    value: Option<f64>,
+) -> Result<cerberus_shared::GameSettings, String> {
+    // The game writes its settings when it closes, over whatever was changed meanwhile.
+    if sessions.is_running(&id) {
+        return Err("Feche o jogo antes de mudar os ajustes.".into());
+    }
+    let (game, offer) = settings_of(&library, &id)?;
+    let install = Path::new(&game.install_dir);
+    let mut picks = game.setting_picks.clone();
+    let result = match (&setting, choice, value) {
+        (Some(setting), _, Some(value)) => offer.set_number(install, setting, value),
+        (Some(setting), Some(choice), None) => offer.choose(install, &mut picks, setting, choice),
+        _ => offer.reset(install, &mut picks),
+    };
+    if let Err(error) = &result {
+        trail::note(&app, &id, "Ajustes", &Err(error.clone()));
+    }
+    result?;
+    if picks != game.setting_picks {
+        library.update(&id, |g| g.setting_picks = picks.clone())?;
+    }
+    let updated = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    Ok(offer.view(install, &updated.setting_picks))
+}
+
 /// What the launcher did for a game lately, newest first.
 #[tauri::command]
 fn game_trail(trail: State<'_, trail::Trail>, id: String) -> Vec<cerberus_shared::TrailEntry> {
@@ -809,6 +1058,14 @@ fn open_backups(app: AppHandle, library: State<'_, LocalLibrary>, folders: State
 /// The native file dialog blocks until closed, so it must not run on an async worker.
 async fn pick_one(dialog: FileDialogBuilder<tauri::Wry>) -> Result<Option<PathBuf>, String> {
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file());
+    let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    picked.into_path().map(Some).map_err(|e| e.to_string())
+}
+
+async fn pick_folder(dialog: FileDialogBuilder<tauri::Wry>) -> Result<Option<PathBuf>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
     let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
         return Ok(None);
     };
@@ -897,6 +1154,7 @@ fn main() {
             let covers = data_dir.join("covers");
             fs::create_dir_all(&covers)?;
             app.asset_protocol_scope().allow_directory(&covers, true)?;
+            app.manage(art_custom::CustomArt::new(&data_dir, &covers));
             app.manage(CoverFolder(covers));
 
             let art = data_dir.join("cache").join("art");
@@ -928,9 +1186,24 @@ fn main() {
             backup_now,
             restore_backup,
             game_trail,
+            game_settings,
+            set_steamgriddb_key,
+            art_search,
+            art_options,
+            art_fetch,
+            art_pick_file,
+            art_save,
+            open_steamgriddb_keys,
+            scan_for_recomps,
+            adopt_recomp,
+            recomp_suggestions,
+            link_to_recomp,
+            set_game_setting,
             open_folder,
             open_backups,
             get_settings,
+            finish_setup,
+            set_start_in_tv,
             pick_recomps_dir,
             reset_recomps_dir,
             open_data_dir,
