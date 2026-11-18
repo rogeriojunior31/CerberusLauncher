@@ -4,6 +4,7 @@
 
 mod assets;
 pub mod catalog;
+pub(crate) mod cloud;
 mod github;
 mod install;
 mod saves;
@@ -135,19 +136,18 @@ pub fn backup_saves(folders: &Folders, recomp_id: &str, install_dir: &Path, reas
 fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str, to_cloud: bool) -> Result<Option<Backup>, String> {
     let entry = find(recomp_id).ok_or("Esse recomp não está no catálogo.")?;
     let places = saves::places(&entry.saves);
-    let made = saves::backup(&folders.backups_dir(recomp_id), &places, install_dir, reason)?;
+    let backups = folders.backups_dir(recomp_id);
     let cloud = folders.cloud_dir(recomp_id).filter(|_| to_cloud);
-    if let (Some(backup), Some(cloud)) = (&made, cloud) {
-        // A cloud folder that can't be written now (offline drive) mustn't stop the local copy.
-        let _ = fs::create_dir_all(&cloud);
-        let _ = fs::copy(folders.backups_dir(recomp_id).join(&backup.name), cloud.join(&backup.name));
+    let made = saves::backup(&backups, &places, install_dir, reason, cloud.as_deref())?;
+    if cloud.is_some() {
+        // Playing and local backups remain available while the sync folder is offline.
+        let _ = cloud::retry_game(folders, recomp_id);
     }
     Ok(made)
 }
 
 /// Before playing: when another PC left newer saves in the cloud folder, they
-/// are put in place. The saves here are backed up first (and that copy goes to
-/// the cloud too), so whichever was right is never lost.
+/// are put in place. The safety copy of the current saves stays on this PC.
 /// Returns what happened, for a message, or `None` when nothing changed.
 pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -> Result<Option<String>, String> {
     let Some(cloud) = folders.cloud_dir(recomp_id) else {
@@ -165,14 +165,18 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let local_newest = saves::newest_with_fingerprint(&local_dir);
     // This PC played after the cloud copy was made: its saves are the newer ones.
     // A local copy of that very cloud backup counts as "already here".
-    let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| b.created > cloud_newest.created || b.name == cloud_newest.name);
+    let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| (b.created, &b.name) >= (cloud_newest.created, &cloud_newest.name));
     if local_is_newer {
         return Ok(None);
     }
-    backup_saves_to(folders, recomp_id, install_dir, "Antes de trazer da nuvem", false)?;
-    fs::create_dir_all(&local_dir).map_err(|e| e.to_string())?;
-    fs::copy(cloud.join(&cloud_newest.name), local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
-    saves::restore(&local_dir, &cloud_newest.name, install_dir)?;
+    let source = fs::File::open(cloud.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+    let temp = cloud::stage(source, &local_dir).map_err(|e| e.to_string())?;
+    let zip = zip::ZipArchive::new(temp.reopen().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    backup_saves_to(folders, recomp_id, install_dir, saves::BEFORE_CLOUD, false)?;
+    if saves::restore_open(zip, install_dir, Some(&places))? == 0 {
+        return Err("O backup na nuvem não contém saves que este PC possa restaurar.".into());
+    }
+    cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
     Ok(Some("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.".into()))
 }
 
@@ -186,7 +190,7 @@ pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, na
     // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
     let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
     backup_saves(folders, recomp_id, install_dir, "Antes de restaurar")?;
-    saves::restore_open(selected, install_dir)
+    saves::restore_open(selected, install_dir, None)
 }
 
 pub fn library_id(recomp_id: &str) -> String {
@@ -731,6 +735,7 @@ mod tests {
 
     /// A PC's view of one recomp: its install folder with a save, and its data folder.
     fn pc(root: &Path, cloud: &Path, save: &str) -> (Folders, PathBuf) {
+        fs::create_dir_all(cloud).unwrap();
         let folders = Folders::new(&root.join("data"), None);
         folders.set_cloud(Some(cloud.to_path_buf()));
         let install = root.join("game");
@@ -761,6 +766,101 @@ mod tests {
         let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
         saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");
+    }
+
+    #[test]
+    fn offline_uploads_survive_restart_and_stay_with_the_chosen_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let desktop_dir = root.path().join("desktop");
+        let (desktop, game) = pc(&desktop_dir, &sync, "desktop progress");
+        fs::remove_dir(&sync).unwrap();
+        let made = backup_saves(&desktop, "shipwright", &game, "Depois de jogar").unwrap().unwrap();
+        assert_eq!(cloud::pending_count(&desktop), 1);
+        assert!(!sync.exists());
+        drop(desktop);
+
+        let reopened = Folders::new(&desktop_dir.join("data"), None);
+        cloud::retry(&reopened).unwrap();
+        let other = root.path().join("other");
+        fs::create_dir(&other).unwrap();
+        reopened.set_cloud(Some(other.clone()));
+        cloud::retry(&reopened).unwrap();
+        assert_eq!(fs::read_dir(other).unwrap().count(), 0);
+
+        reopened.set_cloud(Some(sync.clone()));
+        assert!(cloud::retry(&reopened).is_err());
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let (laptop, laptop_game) = pc(&root.path().join("laptop"), &sync, "newer on laptop");
+        let newer = backup_saves(&laptop, "shipwright", &laptop_game, "Depois de jogar").unwrap().unwrap();
+        cloud::retry(&reopened).unwrap();
+        assert_eq!(cloud::pending_count(&reopened), 0);
+        let destination = reopened.cloud_dir("shipwright").unwrap();
+        assert_eq!(fs::read(destination.join(&made.name)).unwrap(),
+            fs::read(reopened.backups_dir("shipwright").join(&made.name)).unwrap());
+        assert_eq!(saves::newest_with_fingerprint(&destination).unwrap().0.name, newer.name);
+        // Rechecking with identical saves must not publish a duplicate.
+        assert!(backup_saves(&reopened, "shipwright", &game, "Manual").unwrap().is_none());
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 2);
+        pull_from_cloud(&reopened, "shipwright", &game).unwrap().unwrap();
+        assert_eq!(fs::read_to_string(game.join("Save/file1.sav")).unwrap(), "newer on laptop");
+    }
+
+    #[test]
+    fn remote_backup_with_another_save_layout_preserves_local_progress() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("cloud");
+        let (pc, install) = pc(&root.path().join("pc"), &sync, "current slot");
+        let old = root.path().join("old-version");
+        fs::create_dir_all(old.join("EarlierSlots")).unwrap();
+        fs::write(old.join("EarlierSlots/slot.sav"), "legacy slot").unwrap();
+        let cloud = pc.cloud_dir("shipwright").unwrap();
+        saves::backup(&cloud, &["{install}/EarlierSlots".to_string()], &old, "Manual", None).unwrap().unwrap();
+        assert!(pull_from_cloud(&pc, "shipwright", &install).is_err());
+        assert_eq!(fs::read_to_string(install.join("Save/file1.sav")).unwrap(), "current slot");
+        assert!(!install.join("EarlierSlots").exists());
+    }
+
+    #[test]
+    fn manual_backup_can_send_an_existing_local_copy() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("cloud");
+        let (desktop, game) = pc(&root.path().join("desktop"), &sync, "existing save");
+        desktop.set_cloud(None);
+        let made = backup_saves(&desktop, "shipwright", &game, "Manual").unwrap().unwrap();
+        desktop.set_cloud(Some(sync));
+        assert!(backup_saves(&desktop, "shipwright", &game, "Manual").unwrap().is_none());
+        assert!(desktop.cloud_dir("shipwright").unwrap().join(made.name).is_file());
+        assert_eq!(list_backups(&desktop, "shipwright").len(), 1);
+    }
+
+    #[test]
+    fn interrupted_cloud_restore_can_retry_after_the_archive_is_repaired() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let (desktop, game) = pc(&root.path().join("desktop"), &sync, "remote progress");
+        let (laptop, local_game) = pc(&root.path().join("laptop"), &sync, "local progress");
+        let made = backup_saves(&desktop, "shipwright", &game, "Manual").unwrap().unwrap();
+        let remote = desktop.cloud_dir("shipwright").unwrap().join(&made.name);
+        let good = fs::read(&remote).unwrap();
+        let offset = {
+            let mut zip = zip::ZipArchive::new(fs::File::open(&remote).unwrap()).unwrap();
+            zip.by_index(0).unwrap().data_start() as usize
+        };
+        let mut damaged = good.clone();
+        damaged[offset] ^= 0xff;
+        fs::write(&remote, damaged).unwrap();
+
+        assert!(pull_from_cloud(&laptop, "shipwright", &local_game).is_err());
+        assert!(!laptop.backups_dir("shipwright").join(&made.name).exists());
+        assert_eq!(fs::read_to_string(local_game.join("Save/file1.sav")).unwrap(), "local progress");
+        fs::write(&remote, good).unwrap();
+        assert!(pull_from_cloud(&laptop, "shipwright", &local_game).unwrap().is_some());
+        assert_eq!(fs::read_to_string(local_game.join("Save/file1.sav")).unwrap(), "remote progress");
+        assert_eq!(cloud::pending_count(&laptop), 0);
+        // Closing unchanged after a pull must not republish the remote save as newer.
+        assert!(backup_saves(&laptop, "shipwright", &local_game, "Depois de jogar").unwrap().is_none());
+        assert_eq!(fs::read_dir(desktop.cloud_dir("shipwright").unwrap()).unwrap().count(), 1);
     }
 
     #[test]

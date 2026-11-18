@@ -83,8 +83,10 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
-- [ ] Repetir o envio do backup local quando a pasta sincronizada voltar a ficar disponível,
-      inclusive quando o jogador ainda não alterou o save. Validar a interrupção da cópia entre as duas pastas.
+- [x] Repetir o envio dos backups locais pendentes ao abrir o Cerberus e a cada minuto.
+      Testes com duas instalações e uma pasta compartilhada cobrem reinício, troca de destino,
+      interrupção da cópia, ZIP danificado e retomada com progresso mais novo no outro PC.
+      Configurações mostra quantos envios estavam pendentes na última verificação.
 
 ## Feito
 

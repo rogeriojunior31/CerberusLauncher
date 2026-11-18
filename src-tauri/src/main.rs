@@ -85,6 +85,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         roms_matched: owned_games(app).len(),
         catalog_count: recomp::catalog::all().len(),
         catalog_source: recomp::catalog::SOURCE_NAME.to_string(),
+        pending_uploads: recomp::cloud::pending_count(&folders),
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
         sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
@@ -209,6 +210,14 @@ async fn set_cloud_dir(app: AppHandle, clear: bool) -> Result<SettingsView, Stri
     chosen.cloud_dir = dir.clone();
     settings::save(&data_dir, &chosen)?;
     app.state::<recomp::Folders>().set_cloud(dir);
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+async fn retry_save_uploads(app: AppHandle) -> Result<SettingsView, String> {
+    let worker = app.clone();
+    tauri::async_runtime::spawn_blocking(move || recomp::cloud::retry(&worker.state::<recomp::Folders>()))
+        .await.map_err(|e| e.to_string())??;
     Ok(settings_view(&app))
 }
 
@@ -834,6 +843,12 @@ fn main() {
                 sessions::checkpoint(&handle);
             });
 
+            let cloud = app.handle().clone();
+            std::thread::spawn(move || loop {
+                let _ = recomp::cloud::retry(&cloud.state::<recomp::Folders>());
+                std::thread::sleep(Duration::from_secs(60));
+            });
+
             // The catalog and the last ROM scan from disk, so the window has them at once.
             let data = DataDir(data_dir.clone());
             recomp::catalog::load_copy(&data.cache());
@@ -908,6 +923,7 @@ fn main() {
             pick_tracking_exe,
             locate_game,
             set_cloud_dir,
+            retry_save_uploads,
             add_source,
             refresh_source,
             source_listings,

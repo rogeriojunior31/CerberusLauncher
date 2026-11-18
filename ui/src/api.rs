@@ -180,6 +180,10 @@ pub async fn get_settings() -> Result<SettingsView, String> {
     call("get_settings", &()).await
 }
 
+pub async fn retry_save_uploads() -> Result<SettingsView, String> {
+    call("retry_save_uploads", &()).await
+}
+
 /// Opens a folder picker; the settings as they are afterwards.
 pub async fn pick_recomps_dir() -> Result<SettingsView, String> {
     call("pick_recomps_dir", &()).await

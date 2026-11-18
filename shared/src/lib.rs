@@ -132,6 +132,8 @@ pub struct SettingsView {
     pub catalog_source: String,
     /// The synced folder save backups are copied to, if set.
     pub cloud_dir: Option<String>,
+    #[serde(default)]
+    pub pending_uploads: usize,
     pub sources: Vec<SourceView>,
 }
 

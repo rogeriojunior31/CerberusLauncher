@@ -18,6 +18,11 @@ O Cerberus grava o tempo observado a cada 15 segundos, ao fechar a partida e ao 
 Em **Configurações**, confira o espaço livre da pasta de downloads e da pasta de instalação.
 Os dois valores podem ser diferentes quando você instala jogos em outra unidade.
 
+Em **Configurações → Saves na nuvem**, escolha a pasta que seu serviço sincroniza. Se ela ficar
+indisponível, o Cerberus tenta enviar os backups pendentes quando abre e a cada minuto.
+**Verificar envios** repete a tentativa na hora. Cada jogo guarda os dez backups locais mais recentes.
+Um backup cuja pasta de destino mudou aguarda até que você selecione a pasta original novamente.
+
 O catálogo de recomps fica em `src-tauri/catalog/recomps.json`.
 
 ## Estrutura

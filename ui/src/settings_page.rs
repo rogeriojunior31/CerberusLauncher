@@ -97,10 +97,15 @@ pub fn SettingsPage() -> impl IntoView {
                     <div>
                         <b>{if s.cloud_dir.is_some() { "Ligado" } else { "Desligado" }}</b>
                         {s.cloud_dir.clone().map(|d| view! { <small class="path">{d}</small> })}
-                        <small>"Escolha uma pasta do OneDrive, Google Drive ou Dropbox. Cada backup de save vai pra lá, e ao abrir um jogo o Cerberus traz os saves mais novos de outro PC (os deste viram um backup antes)."</small>
+                        <small>"Escolha uma pasta sincronizada. Ao abrir um jogo, o Cerberus guarda o progresso local antes de trazer saves mais novos de outro PC."</small>
+                        {(s.pending_uploads > 0).then(|| view! {
+                            <small role="status">{format!("Envios pendentes na última verificação: {}. O Cerberus tenta de novo a cada minuto.", s.pending_uploads)}</small>
+                        })}
                     </div>
                     <div class="row">
                         {s.cloud_dir.is_some().then(|| view! {
+                            <button type="button" class="btn sm" disabled=move || busy.get()
+                                on:click=move |_| apply(Box::pin(api::retry_save_uploads()), "Envios verificados.")>"Verificar envios"</button>
                             <button type="button" class="btn sm" disabled=move || busy.get()
                                 on:click=move |_| apply(Box::pin(api::set_cloud_dir(true)), "Saves na nuvem desligados.")>"Desligar"</button>
                         })}
