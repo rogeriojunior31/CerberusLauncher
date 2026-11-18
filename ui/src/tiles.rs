@@ -53,6 +53,8 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     };
     let badge = if running {
         Some("Jogando".to_string())
+    } else if game.setup_pending {
+        Some("Instalação pendente".to_string())
     } else if has_update(game, library) {
         Some("Atualização".to_string())
     } else {
@@ -73,7 +75,11 @@ pub fn recomp_tile(entry: &RecompEntry, step: Option<&InstallStep>) -> TileInfo 
         (Some(have), Some(newest)) => *have != newest.version,
         _ => false,
     };
-    let badge = if update {
+    let badge = if matches!(step, Some(InstallStep::Downloading { .. })) {
+        Some("Baixando".to_string())
+    } else if matches!(step, Some(InstallStep::Unpacking)) {
+        Some("Preparando".to_string())
+    } else if update {
         Some("Atualização".to_string())
     } else if entry.installed.is_some() {
         Some("Instalado".to_string())
@@ -81,9 +87,8 @@ pub fn recomp_tile(entry: &RecompEntry, step: Option<&InstallStep>) -> TileInfo 
         None
     };
     let progress = match step {
-        Some(InstallStep::Downloading { done, total }) if *total > 0 => Some(done * 100 / total),
-        Some(_) => Some(100),
-        None => None,
+        Some(InstallStep::Downloading { done, total }) if *total > 0 => Some((u128::from(*done.min(total)) * 100 / u128::from(*total)) as u64),
+        _ => None,
     };
     TileInfo {
         title: entry.name.clone(),

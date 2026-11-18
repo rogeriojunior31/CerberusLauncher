@@ -132,6 +132,14 @@ impl Library {
     }
 }
 
+fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
+    if game.setup_pending {
+        ("Abrir instalador", icons::Icon::External)
+    } else {
+        ("Jogar", icons::Icon::Play)
+    }
+}
+
 pub fn play_game(library: Library, game: Game) {
     spawn_local(async move {
         library.report(api::play(&game).await);
@@ -174,7 +182,10 @@ fn App() -> impl IntoView {
     // Steps arrive while `install_recomp` is still running; its own result reports
     // failures, so the events only move the progress bar.
     // A newer catalog arrived, or the ROM folders were looked through again.
-    api::on_catalog_changed(move || library.recomps.refetch());
+    api::on_catalog_changed(move || {
+        library.recomps.refetch();
+        library.games.refetch();
+    });
     api::on_toast(move |text| library.toast(text));
     // An installer finished but its game wasn't found: ask where it went.
     let locating: RwSignal<Option<String>> = RwSignal::new(None);

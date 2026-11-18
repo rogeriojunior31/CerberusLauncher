@@ -158,10 +158,11 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
             let game = feature.game.clone();
             let primary = match game {
                 Some(game) => {
+                    let (label, icon) = crate::launch_action(&game);
                     let on_play = move |_| play_game(library, game.clone());
                     view! {
                         <button type="button" class="btn main big" on:click=on_play>
-                            <Svg icon=Icon::Play size=18 />"Jogar"
+                            <Svg icon size=18 />{label}
                         </button>
                     }
                     .into_any()

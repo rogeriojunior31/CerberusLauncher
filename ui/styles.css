@@ -372,6 +372,22 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
   font-weight: 600;
 }
 
+.catalog-filters {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  background: linear-gradient(115deg, var(--card2), var(--card) 70%);
+}
+.catalog-filters .search { max-width: none; background: var(--bg); }
+.catalog-platform { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.catalog-platform label { color: var(--muted); font-size: 14px; }
+.catalog-platform .select { margin: 0; }
+.catalog-platform .link { margin-left: auto; }
+.catalog-results { display: grid; gap: 18px; }
+.catalog-results h2 { font-size: 20px; }
+
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 70px 20px; color: var(--dim); }
 .empty h2, .empty h3 { color: var(--ink); }
 .empty p { margin: 0; max-width: 480px; }
@@ -567,10 +583,9 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
 
 /* ---------- progress, downloads, saves ---------- */
 
-.progress-row { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 260px; }
-.progress { position: relative; flex: 1; height: 46px; border-radius: 14px; overflow: hidden; background: var(--fill2); border: 1px solid var(--line2); }
-.progress .bar { position: absolute; inset: 0 auto 0 0; background: var(--grad); opacity: 0.85; transition: width 0.25s linear; }
-.progress span { position: relative; display: block; line-height: 44px; padding: 0 16px; font-weight: 700; font-size: 13.5px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5); }
+.progress-row { display: flex; align-items: center; gap: 14px; flex: 1; min-width: min(260px, 100%); }
+.install-progress { display: grid; gap: 8px; flex: 1; min-width: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.install-progress progress { width: 100%; height: 8px; accent-color: var(--accent); }
 
 .dl-list { display: flex; flex-direction: column; gap: 12px; max-width: 980px; }
 .dl-row { display: flex; align-items: center; gap: 18px; text-align: left; width: 100%; }
