@@ -65,8 +65,8 @@ fn features(games: &[Game], recomps: &[RecompEntry]) -> Vec<Feature> {
     let mut games_once: Vec<RecompEntry> = one_each(recomps).into_iter().map(|(r, _)| r).collect();
     games_once.retain(|r| r.installed.is_none() && r.hero.is_some() && r.problem.is_none());
     games_once.sort_by_key(|r| (r.owned_copy.is_none(), std::cmp::Reverse(r.downloads)));
-    list.extend(games_once.iter().map(recomp_feature));
-    list.truncate(5);
+    let remaining = 5 - list.len();
+    list.extend(games_once.iter().take(remaining).map(recomp_feature));
     list
 }
 
@@ -84,7 +84,6 @@ pub fn Home() -> impl IntoView {
     move || {
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
-        let progress = library.progress.get();
         let features = features(&games, &recomps);
 
         let mut recent: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some() || g.is_tracked()).collect();
@@ -92,12 +91,11 @@ pub fn Home() -> impl IntoView {
         let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|g| game_tile(g, library)).collect();
 
         let candidates = not_installed(&recomps);
-        let tile = |r: &RecompEntry| recomp_tile(r, progress.get(&r.id));
-        let found: Vec<TileInfo> = candidates.iter().filter(|r| r.owned_copy.is_some()).map(tile).collect();
-        let popular: Vec<TileInfo> = candidates.iter().take(20).map(tile).collect();
+        let found: Vec<TileInfo> = candidates.iter().filter(|r| r.owned_copy.is_some()).map(recomp_tile).collect();
+        let popular: Vec<TileInfo> = candidates.iter().take(20).map(recomp_tile).collect();
         let mut newest = candidates.clone();
         newest.sort_by(|a, b| b.added.cmp(&a.added));
-        let newest: Vec<TileInfo> = newest.iter().take(20).map(tile).collect();
+        let newest: Vec<TileInfo> = newest.iter().take(20).map(recomp_tile).collect();
         let everything: Vec<TileInfo> = games.iter().take(24).map(|g| game_tile(g, library)).collect();
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
@@ -140,14 +138,28 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
     let current = RwSignal::new(0usize);
     let step = move |by: isize| current.update(|i| *i = (*i as isize + by).rem_euclid(count as isize) as usize);
 
-    // Turns on its own every eight seconds, like a shop window.
+    let reduced_motion = window().match_media("(prefers-reduced-motion: reduce)").ok().flatten();
+    let rotating = RwSignal::new(!reduced_motion.as_ref().is_some_and(|media| media.matches()));
+    let slider = NodeRef::<leptos::html::Section>::new();
     if count > 1 {
-        let handle = set_interval_with_handle(move || step(1), Duration::from_secs(8));
-        if let Ok(handle) = handle {
-            on_cleanup(move || handle.clear());
+        let tick = move || {
+            let hovering = slider.get_untracked().is_some_and(|el| el.matches(":hover").unwrap_or(false));
+            if rotating.get_untracked() && !hovering {
+                step(1);
+            }
+        };
+        if let Ok(timer) = set_interval_with_handle(tick, Duration::from_secs(8)) {
+            on_cleanup(move || timer.clear());
         }
     }
 
+    let dots = features.iter().enumerate().map(|(index, feature)| {
+        let name = format!("Destaque {} de {count} · {}", index + 1, feature.title);
+        view! {
+            <input type="radio" name="home-highlight" class="dot" aria-label=name.clone() title=name
+                prop:checked=move || current.get() == index on:focus=move |_| rotating.set(false) on:change=move |_| current.set(index) />
+        }
+    }).collect_view();
     let slides = features
         .into_iter()
         .enumerate()
@@ -156,6 +168,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
             let open = feature.open.clone();
             let open_cover = feature.open.clone();
             let game = feature.game.clone();
+            let installed = game.is_some();
             let primary = match game {
                 Some(game) => {
                     let (label, icon) = crate::launch_action(&game);
@@ -179,7 +192,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
             };
             let about = (!feature.about.is_empty()).then(|| view! { <p>{feature.about.clone()}</p> });
             view! {
-                <div class="slide" class:on=on aria-hidden=move || (!on()).to_string()>
+                <div class="slide" class:on=on inert=move || !on() aria-hidden=move || (!on()).to_string()>
                     <Backdrop sources=feature.heroes.clone() soft=feature.soft />
                     <div class="sl-in">
                         <span class="kick">{feature.kicker.clone()}</span>
@@ -188,9 +201,9 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                         {about}
                         <div class="acts">
                             {primary}
-                            <button type="button" class="btn big glass" on:click=move |_| library.go(open.clone())>
-                                "Detalhes"
-                            </button>
+                            {installed.then(|| view! {
+                                <button type="button" class="btn big glass" on:click=move |_| library.go(open.clone())>"Detalhes"</button>
+                            })}
                         </div>
                     </div>
                     <button type="button" class="sl-cover" tabindex="-1" aria-hidden="true" on:click=move |_| library.go(open_cover.clone())>
@@ -201,32 +214,29 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
         })
         .collect_view();
 
-    let dots = (0..count)
-        .map(|index| {
-            view! {
-                <button
-                    type="button"
-                    class="dot"
-                    class:on=move || current.get() == index
-                    aria-label=format!("Destaque {}", index + 1)
-                    on:click=move |_| current.set(index)
-                ></button>
-            }
-        })
-        .collect_view();
-    let controls = (count > 1).then(|| {
-        view! {
-            <div class="sl-ui">{dots}</div>
+    let rotation_label = move || if rotating.get() { "Pausar rotação" } else { "Retomar rotação" };
+    let controls = (count > 1).then(|| view! {
+        <div class="sl-controls">
+            <div class="sl-dots" role="radiogroup" aria-label="Escolher destaque">{dots}</div>
             <div class="sl-arrows">
-                <button type="button" class="round glass" aria-label="Anterior" on:click=move |_| step(-1)>
+                <button type="button" class="round glass" aria-label=rotation_label title=rotation_label
+                    on:click=move |_| rotating.update(|value| *value = !*value)>
+                    {move || view! { <Svg icon=if rotating.get() { Icon::Pause } else { Icon::Play } size=16 /> }}
+                </button>
+                <button type="button" class="round glass" aria-label="Destaque anterior" on:focus=move |_| rotating.set(false) on:click=move |_| step(-1)>
                     <Svg icon=Icon::Left size=18 />
                 </button>
-                <button type="button" class="round glass" aria-label="Próximo" on:click=move |_| step(1)>
+                <button type="button" class="round glass" aria-label="Próximo destaque" on:focus=move |_| rotating.set(false) on:click=move |_| step(1)>
                     <Svg icon=Icon::Right size=18 />
                 </button>
             </div>
-        }
+        </div>
     });
 
-    view! { <section class="slider" aria-roledescription="carrossel">{slides}{controls}</section> }
+    view! {
+        <section node_ref=slider class="slider" class:multiple=(count > 1) aria-label="Destaques" aria-roledescription="carrossel">
+            <div on:focusin=move |_| rotating.set(false)>{slides}</div>
+            {controls}
+        </section>
+    }
 }

@@ -170,12 +170,11 @@ pub fn DiscoverPage() -> impl IntoView {
             }
             .into_any();
         }
-        let progress = library.progress.get();
         let tiles = games
             .into_iter()
             .take(shown.get())
             .map(|(entry, versions)| {
-                let mut info = recomp_tile(&entry, progress.get(&entry.id));
+                let mut info = recomp_tile(&entry);
                 info.sub = match (&entry.latest, &entry.problem) {
                     _ if versions > 1 => format!("{} · {versions} versões", entry.console),
                     (Some(release), _) if release.size > 0 => format!("{} · {}", entry.console, megabytes(release.size)),

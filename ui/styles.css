@@ -322,10 +322,37 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
 }
 .sl-cover:hover { transform: rotate(0) translateY(-4px); }
 .sl-cover .poster { box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.sl-ui { position: absolute; left: 48px; top: 30px; display: flex; gap: 6px; z-index: 3; }
-.dot { width: 22px; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.28); transition: width 0.3s var(--ease), background 0.3s; }
-.dot.on { width: 44px; background: #fff; }
-.sl-arrows { position: absolute; right: 30px; top: 26px; display: flex; gap: 8px; z-index: 3; }
+.slider.multiple .sl-in { bottom: 84px; }
+.slider.multiple .sl-cover { bottom: 84px; }
+.sl-in h2, .sl-in p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.sl-controls {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px clamp(24px, 3vw, 48px);
+  background: linear-gradient(transparent, rgba(8, 9, 14, 0.65));
+}
+.sl-dots, .sl-arrows { display: flex; align-items: center; gap: 6px; }
+.dot {
+  appearance: none;
+  display: grid;
+  align-items: center;
+  width: 30px;
+  height: 32px;
+  padding: 0 2px;
+  margin: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.dot::before { content: ""; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.45); }
+.dot:checked::before { height: 5px; background: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .slide, .slide.on, .sl-cover { transition: none; }
+  .sl-cover:hover { transform: rotate(2deg); }
+}
 
 /* ---------- library ---------- */
 
