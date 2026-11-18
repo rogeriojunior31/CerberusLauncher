@@ -109,10 +109,7 @@ impl GameProcess {
 fn record(app: &AppHandle, game: &Game, seconds: u64) {
     let closed_at = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
     let library = app.state::<LocalLibrary>();
-    if let Err(e) = library.update(&game.id, |g| {
-        g.playtime_secs = g.playtime_secs.saturating_add(seconds);
-        g.last_played = Some(closed_at);
-    }) {
+    if let Err(e) = library.record_session(&game.id, seconds, closed_at) {
         let _ = app.emit("toast", format!("Não foi possível gravar o tempo de {}: {e}", game.name));
     }
     if let Source::Recomp { recomp_id, .. } = &game.source {

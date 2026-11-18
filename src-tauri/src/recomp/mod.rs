@@ -616,6 +616,7 @@ fn register(
         hero_url: None,
         playtime_secs: 0,
         last_played: None,
+        last_session_secs: None,
         launch_args: String::new(),
         game_copy: None,
         setup_pending,

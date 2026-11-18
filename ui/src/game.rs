@@ -184,6 +184,9 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         if g.is_tracked() {
             let played = if g.last_played.is_none() && g.playtime_secs == 0 { "Nunca jogado".to_string() } else { format::playtime(g.playtime_secs) };
             stats.push(("Tempo de jogo", played));
+            if let Some(seconds) = g.last_session_secs {
+                stats.push(("Última sessão", format::session_duration(seconds)));
+            }
             stats.push(("Última vez", g.last_played.map(format::ago).unwrap_or_else(|| "—".to_string())));
         }
         if let Source::Recomp { version, .. } = &g.source {
@@ -540,7 +543,16 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
 
     let options = game.clone().filter(|g| g.is_tracked()).map(|g| view! { <LaunchOptions game=g /> });
 
-    view! { <div class="manage">{options}{folder}{edit}{project}{remove}</div> }
+    let program = game.as_ref().and_then(|g| match &g.source {
+        Source::Recomp { exe, .. } | Source::Local { exe } => Some(view! {
+            <div class="card launch">
+                <h3>{if g.setup_pending { "Instalador de primeira execução" } else { "Programa de abertura" }}</h3>
+                <p class="path">{exe.clone()}</p>
+            </div>
+        }),
+        _ => None,
+    });
+    view! { <div class="manage">{program}{options}{folder}{edit}{project}{remove}</div> }
 }
 
 /// Extra command-line options for a game the launcher starts itself.

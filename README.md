@@ -94,6 +94,12 @@ Só `id`, `name` e `repo` são obrigatórios. Cada jogo é instalado da release 
 conferida pelo checksum do GitHub. Entradas com links próprios de download (`uris`, `magnet`,
 `url`, `download`) são ignoradas: o Cerberus não distribui cópias de jogos de terceiros.
 
+Listas Hydra com a chave `downloads` também podem ser adicionadas por URL HTTPS. Em
+**Configurações → Fontes de catálogo → Consultar**, procure uma publicação por título e veja
+o tamanho e a data declarados pela fonte. A consulta funciona com a última cópia local.
+O botão **Atualizar** sincroniza aquela fonte. A instalação em **Descobrir** usa o catálogo
+de projetos com releases oficiais.
+
 ## Créditos
 
 Ideias de comportamento vêm de dois projetos de referência, reimplementadas aqui do zero:

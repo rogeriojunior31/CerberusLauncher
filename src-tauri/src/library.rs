@@ -72,6 +72,14 @@ impl LocalLibrary {
         })
     }
 
+    pub fn record_session(&self, id: &str, seconds: u64, closed_at: u64) -> Result<Game, String> {
+        self.update(id, |game| {
+            game.playtime_secs = game.playtime_secs.saturating_add(seconds);
+            game.last_played = Some(closed_at);
+            game.last_session_secs = Some(seconds);
+        })
+    }
+
     pub fn remove(&self, id: &str) -> Result<Option<Game>, String> {
         self.access(|games| {
             let Some(index) = games.iter().position(|game| game.id == id) else { return Ok(None) };
@@ -103,6 +111,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         hero_url: None,
         playtime_secs: 0,
         last_played: None,
+        last_session_secs: None,
         launch_args: String::new(),
         game_copy: None,
         setup_pending: false,
@@ -201,6 +210,24 @@ mod tests {
 
     fn celeste() -> Game {
         game_from_exe(Path::new(r"C:\Games\Celeste\Celeste.exe"))
+    }
+
+    #[test]
+    fn latest_session_and_total_survive_reopening_an_older_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut old = celeste();
+        old.playtime_secs = 1336;
+        let json = serde_json::to_string(&[&old]).unwrap();
+        assert!(!json.contains("last_session_secs"));
+        fs::write(dir.path().join("library.json"), json).unwrap();
+        let library = LocalLibrary::load(dir.path());
+        assert_eq!(library.get(&old.id).unwrap().unwrap().last_session_secs, None);
+        library.record_session(&old.id, 62, 100).unwrap();
+        library.record_session(&old.id, 17, 200).unwrap();
+        let game = LocalLibrary::load(dir.path()).get(&old.id).unwrap().unwrap();
+        assert_eq!(game.playtime_secs, 1415);
+        assert_eq!(game.last_session_secs, Some(17));
+        assert_eq!(game.last_played, Some(200));
     }
 
     #[test]

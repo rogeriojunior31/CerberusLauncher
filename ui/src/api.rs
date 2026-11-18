@@ -298,6 +298,16 @@ pub async fn add_source(url: String) -> Result<SettingsView, String> {
     call("add_source", &UrlArg { url }).await
 }
 
+pub async fn refresh_source(url: String) -> Result<SettingsView, String> {
+    call("refresh_source", &UrlArg { url }).await
+}
+
+pub async fn source_listings(url: &str, query: &str, offset: usize) -> Result<cerberus_shared::SourcePage, String> {
+    #[derive(Serialize)]
+    struct Search<'a> { url: &'a str, query: &'a str, offset: usize }
+    call("source_listings", &Search { url, query, offset }).await
+}
+
 pub async fn remove_source(url: String) -> Result<SettingsView, String> {
     call("remove_source", &UrlArg { url }).await
 }

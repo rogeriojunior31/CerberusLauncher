@@ -3,6 +3,17 @@
 Comparado ao RecompLauncher (referência de comportamento) e ao Hydra. Cada onda só fecha com teste
 real, não só compilação.
 
+## Referência Hydra e próximas entregas
+
+Comparação com o checkout local do Hydra em `6b7ad7bf2`.
+
+| Área | Comportamento observado no Hydra | Entrega no Cerberus |
+| --- | --- | --- |
+| Fontes | O cliente cadastra a URL via HydraApi e persiste a fonte. As publicações têm título, tamanho e data. [Cadastro](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/events/download-sources/add-download-source.ts) e [tipos](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/types/index.ts) | Implementado. Configurações importa os metadados por HTTPS, guarda a última cópia válida e permite pesquisar por fonte. Cada fonte mostra a última sincronização e eventuais erros. |
+| Sessões | O observador compara caminhos de executáveis e grava incrementos de tempo durante a execução. [Observador](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/process-watcher.ts) | Implementado nesta rodada o registro da duração da última partida concluída. Próximo passo: permitir selecionar o executável acompanhado e recuperar o tempo já observado se o Cerberus fechar no meio da partida. Validar com launcher e jogo em pastas diferentes. |
+| Disco e downloads | O Hydra compara os bytes restantes com o espaço disponível no volume de destino e considera dados reaproveitáveis. [Verificação de espaço](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download/disk-space.ts) | Pendente. Exibir espaço disponível para download e instalação e testar retomada com o arquivo parcial em um volume e a instalação em outro. |
+| Novidades por jogo | O Hydra cruza a identidade do jogo com mudanças das fontes e mantém a referência anterior se uma consulta falhar. [Verificador de fontes](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download-sources-checker.ts) | Pendente. Vincular publicação e jogo com confirmação quando o título for ambíguo. Só então mostrar novidades na página do jogo. |
+
 ## Prioridade atual — confiabilidade dos recomps
 
 A próxima entrega é conseguir atualizar um recomp, interromper o processo e voltar a jogar
@@ -106,7 +117,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Descobrir com busca, filtro por console, "Tenho o jogo", ordenação e paginação.
 - [x] Pastas de ROMs: acha os jogos (N64 pelo cabeçalho, o resto pelo nome) e mostra quais têm recomp.
 - [x] Fontes de catálogo em JSON (como o Hydra), só com jogos de repositórios no GitHub,
-      baixados das releases oficiais. Listas de repacks (magnet, torrent, sites de arquivos) são recusadas.
+      baixados das releases oficiais. Listas Hydra podem ser consultadas em Configurações por título, tamanho e data.
 - [x] Recomps com instalador próprio: `single-exe` instala direto; `installer` roda no primeiro
       "Jogar" e depois o Cerberus acha o jogo (pasta própria, depois "Aplicativos" do Windows),
       ou pergunta onde ficou.

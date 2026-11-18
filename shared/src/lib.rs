@@ -26,6 +26,9 @@ pub struct Game {
     /// Unix seconds when the game last closed.
     #[serde(default)]
     pub last_played: Option<u64>,
+    /// Duration of the last observed session. Older libraries only have the total.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_session_secs: Option<u64>,
     /// Extra command-line options the player added, passed after the launcher's own.
     #[serde(default)]
     pub launch_args: String,
@@ -133,6 +136,23 @@ pub struct SourceView {
     pub url: String,
     pub name: String,
     pub games: usize,
+    pub hydra: bool,
+    pub synced_at: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceListing {
+    pub title: String,
+    pub file_size: Option<String>,
+    pub upload_date: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourcePage {
+    pub items: Vec<SourceListing>,
+    pub total: usize,
 }
 
 /// Sent when a game the launcher started opens or closes.

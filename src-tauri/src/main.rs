@@ -23,6 +23,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use art_cache::ArtCache;
 use cerberus_shared::{Backup, Game, InstallProgress, RecompEntry, SettingsView, Source};
 use library::LocalLibrary;
+use recomp::sources::{CatalogSource, Entries};
+use cerberus_shared::{SourcePage, SourceView};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use tauri_plugin_opener::OpenerExt;
@@ -81,52 +83,106 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         catalog_count: recomp::catalog::all().len(),
         catalog_source: recomp::catalog::SOURCE_NAME.to_string(),
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
-        sources: app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
+        sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
 
 /// The player's catalog sources, with their games, as last read.
 #[derive(Default)]
-struct Sources(std::sync::Mutex<Vec<(cerberus_shared::SourceView, Vec<recomp::CatalogEntry>)>>);
+struct Sources {
+    list: std::sync::Mutex<Vec<(SourceView, Option<CatalogSource>)>>,
+    // Serialize fetch, publication and removal to keep an older response from replacing a newer one.
+    sync: tokio::sync::Mutex<()>,
+}
 
-/// Hands the sources' games to the catalog and tells the window.
 fn publish_sources(app: &AppHandle) {
-    let lists = app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(_, games)| games.clone()).collect();
-    recomp::catalog::set_extras(lists);
+    let state = app.state::<Sources>();
+    let list = state.list.lock().unwrap_or_else(|p| p.into_inner());
+    let projects = list.iter().filter_map(|(_, source)| match &source.as_ref()?.entries {
+        Entries::Projects(games) => Some(games.clone()),
+        Entries::Hydra(_) => None,
+    }).collect();
+    recomp::catalog::set_extras(projects);
+    drop(list);
     let _ = app.emit("catalog-changed", ());
 }
 
-fn remember_source(app: &AppHandle, url: &str, name: String, games: Vec<recomp::CatalogEntry>) {
-    let view = cerberus_shared::SourceView { url: url.to_string(), name, games: games.len() };
-    let sources = app.state::<Sources>();
-    let mut list = sources.0.lock().unwrap_or_else(|p| p.into_inner());
-    list.retain(|(v, _)| v.url != url);
-    list.push((view, games));
+fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
+    let (hydra, games) = match source.as_ref().map(|s| &s.entries) {
+        Some(Entries::Projects(items)) => (false, items.len()),
+        Some(Entries::Hydra(items)) => (true, items.len()),
+        None => (false, 0),
+    };
+    let view = SourceView {
+        url: url.to_owned(),
+        name: source.as_ref().map(|s| s.name.as_str()).filter(|s| !s.trim().is_empty()).unwrap_or(url).to_owned(),
+        hydra, games, synced_at: source.as_ref().and_then(|s| s.synced_at),
+        error: source.is_none().then(|| "Sem cópia local. Atualize a fonte para consultá-la.".to_owned()),
+    };
+    let state = app.state::<Sources>();
+    let mut list = state.list.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(row) = list.iter_mut().find(|(v, _)| v.url == url) {
+        *row = (view, source);
+    } else {
+        list.push((view, source));
+    }
+}
+
+#[tauri::command]
+fn source_listings(sources: State<'_, Sources>, url: String, query: String, offset: usize) -> Result<SourcePage, String> {
+    let list = sources.list.lock().unwrap_or_else(|p| p.into_inner());
+    let source = list.iter().find(|(v, _)| v.url == url).and_then(|(_, s)| s.as_ref())
+        .ok_or("Fonte indisponível.")?;
+    source.listings(&query, offset)
 }
 
 #[tauri::command]
 async fn add_source(app: AppHandle, http: State<'_, reqwest::Client>, url: String) -> Result<SettingsView, String> {
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
     let url = url.trim().to_string();
-    let cache = app.state::<DataDir>().cache();
-    let (name, games) = recomp::sources::fetch(&http, &cache, &url).await?;
-    remember_source(&app, &url, name, games);
-    let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
+    let data = app.state::<DataDir>();
+    let source = recomp::sources::fetch(&http, &data.cache(), &url).await?;
+    let mut chosen = settings::load(&data.0);
     if !chosen.sources.contains(&url) {
-        chosen.sources.push(url);
-        settings::save(&data_dir, &chosen)?;
+        chosen.sources.push(url.clone());
+        settings::save(&data.0, &chosen)?;
     }
+    remember_source(&app, &url, Some(source));
+    publish_sources(&app);
+    Ok(settings_view(&app))
+}
+
+async fn sync_source(app: &AppHandle, http: &reqwest::Client, url: &str) {
+    match recomp::sources::fetch(http, &app.state::<DataDir>().cache(), url).await {
+        Ok(source) => remember_source(app, url, Some(source)),
+        Err(e) => {
+            let state = app.state::<Sources>();
+            let mut list = state.list.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some((view, _)) = list.iter_mut().find(|(v, _)| v.url == url) { view.error = Some(e); }
+        }
+    }
+}
+
+#[tauri::command]
+async fn refresh_source(app: AppHandle, http: State<'_, reqwest::Client>, url: String) -> Result<SettingsView, String> {
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
+    if !settings::load(&app.state::<DataDir>().0).sources.contains(&url) { return Err("Fonte removida.".into()); }
+    sync_source(&app, &http, &url).await;
     publish_sources(&app);
     Ok(settings_view(&app))
 }
 
 #[tauri::command]
-fn remove_source(app: AppHandle, url: String) -> Result<SettingsView, String> {
-    let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
+async fn remove_source(app: AppHandle, url: String) -> Result<SettingsView, String> {
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
     chosen.sources.retain(|u| *u != url);
-    settings::save(&data_dir, &chosen)?;
-    app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).retain(|(v, _)| v.url != url);
+    settings::save(&data.0, &chosen)?;
+    state.list.lock().unwrap_or_else(|p| p.into_inner()).retain(|(v, _)| v.url != url);
     publish_sources(&app);
     Ok(settings_view(&app))
 }
@@ -202,11 +258,10 @@ async fn scan_roms(app: AppHandle) -> Result<SettingsView, String> {
 async fn refresh_catalog(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<SettingsView, String> {
     let cache = app.state::<DataDir>().cache();
     recomp::catalog::refresh(&http, &cache, true).await?;
-    // The player's sources too; one that fails keeps its last copy.
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
     for url in settings::load(&app.state::<DataDir>().0).sources {
-        if let Ok((name, games)) = recomp::sources::fetch(&http, &cache, &url).await {
-            remember_source(&app, &url, name, games);
-        }
+        sync_source(&app, &http, &url).await;
     }
     publish_sources(&app);
     Ok(settings_view(&app))
@@ -751,12 +806,9 @@ fn main() {
             app.manage(RomIndex(std::sync::Mutex::new(roms::load_index(&data.rom_index()))));
             app.manage(Sources::default());
             for url in &chosen.sources {
-                if let Some((name, games)) = recomp::sources::load_copy(&data.cache(), url) {
-                    remember_source(app.handle(), url, name, games);
-                }
+                remember_source(app.handle(), url, recomp::sources::load_copy(&data.cache(), url));
             }
-            let lists = app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(_, g)| g.clone()).collect();
-            recomp::catalog::set_extras(lists);
+            publish_sources(app.handle());
             app.manage(data);
             if !chosen.rom_dirs.is_empty() {
                 // Games added to the folders since last time show up once this finishes.
@@ -821,6 +873,8 @@ fn main() {
             locate_game,
             set_cloud_dir,
             add_source,
+            refresh_source,
+            source_listings,
             remove_source,
             list_mods,
             install_mod,
