@@ -75,6 +75,20 @@ pub fn SettingsPage() -> impl IntoView {
         });
         view! {
             <section class="card set">
+                <h3>"Como você joga"</h3>
+                <div class="set-row">
+                    <div>
+                        <b>"Abrir na Tela grande"</b>
+                        <small>"Tela cheia e feita para controle, toda vez que o Cerberus abrir."</small>
+                    </div>
+                    <button type="button" class="chip-btn" class:on=s.start_in_tv aria-pressed=s.start_in_tv.to_string()
+                        disabled=move || busy.get()
+                        on:click=move |_| apply(Box::pin(api::set_start_in_tv(!s.start_in_tv)), "")>
+                        {if s.start_in_tv { "Ligado" } else { "Desligado" }}
+                    </button>
+                </div>
+            </section>
+            <section class="card set">
                 <h3>"Suas ROMs"</h3>
                 <div class="set-row">
                     <div>

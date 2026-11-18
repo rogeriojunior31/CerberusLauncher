@@ -5,6 +5,7 @@ mod bigpicture;
 mod discover;
 mod format;
 mod game;
+mod first_run;
 mod game_settings;
 mod home;
 mod icons;
@@ -214,6 +215,22 @@ fn App() -> impl IntoView {
         library.games.refetch();
     });
     api::on_toast(move |text| library.toast(text));
+
+    // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
+    let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
+    let first_run_open = RwSignal::new(false);
+    spawn_local(async move {
+        let Ok(settings) = api::get_settings().await else { return };
+        if !settings.setup_done {
+            first_run_open.set(true);
+            first_run.set(Some(settings));
+        } else if settings.start_in_tv {
+            library.go(Route::BigPicture);
+        }
+    });
+    let setup = move || {
+        first_run.get().filter(|_| first_run_open.get()).map(|settings| view! { <first_run::FirstRun settings open=first_run_open /> })
+    };
     // An installer finished but its game wasn't found: ask where it went.
     let locating: RwSignal<Option<String>> = RwSignal::new(None);
     api::on_needs_location(move |id| locating.set(Some(id)));
@@ -276,6 +293,7 @@ fn App() -> impl IntoView {
             </div>
         </div>
         {big_picture}
+        {setup}
         <shell::Toasts />
         {editor}
         {locate}

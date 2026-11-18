@@ -89,6 +89,8 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         catalog_source: recomp::catalog::SOURCE_NAME.to_string(),
         pending_uploads: recomp::cloud::pending_count(&folders),
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
+        setup_done: chosen.setup_done,
+        start_in_tv: chosen.start_in_tv,
         sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
@@ -278,6 +280,27 @@ async fn refresh_catalog(app: AppHandle, http: State<'_, reqwest::Client>) -> Re
         sync_source(&app, &http, &url).await;
     }
     publish_sources(&app);
+    Ok(settings_view(&app))
+}
+
+/// Ends the first-run setup with how the player plays (desk or TV).
+#[tauri::command]
+fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.setup_done = true;
+    chosen.start_in_tv = start_in_tv;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Whether the app opens in the TV screen; changed in Configurações.
+#[tauri::command]
+fn set_start_in_tv(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.start_in_tv = on;
+    settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
 }
 
@@ -1011,6 +1034,8 @@ fn main() {
             open_folder,
             open_backups,
             get_settings,
+            finish_setup,
+            set_start_in_tv,
             pick_recomps_dir,
             reset_recomps_dir,
             open_data_dir,

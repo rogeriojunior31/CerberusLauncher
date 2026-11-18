@@ -65,7 +65,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
             let rows = shown
                 .into_iter()
                 .map(|s| {
-                    let heading = (s.group != last_group && !s.group.is_empty()).then(|| view! { <h4 class="set-group">{s.group.clone()}</h4> });
+                    let heading = (s.group != last_group && !s.group.is_empty()).then(|| view! { <h4 class="gs-group">{s.group.clone()}</h4> });
                     last_group = s.group.clone();
                     view! { {heading} <SettingRow setting=s busy apply=apply /> }
                 })
@@ -78,7 +78,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
                 }
             });
             view! {
-                <section class="card settings">
+                <section class="card gs">
                     <div class="card-h">
                         <div>
                             <h3>"Ajustes do jogo"</h3>
@@ -95,7 +95,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
                     <Show when=running>
                         <p class="problem small">"Feche o jogo para mudar os ajustes: ele grava os próprios ajustes ao fechar."</p>
                     </Show>
-                    <div class="set-list" class:locked=running>{rows}</div>
+                    <div class="gs-list" class:locked=running>{rows}</div>
                     <p class="muted small path">{files}</p>
                 </section>
             }
@@ -150,8 +150,8 @@ where
     let help = (!setting.help.is_empty()).then(|| view! { <small>{setting.help.clone()}</small> });
     let off = (!applies).then(|| view! { <small class="dim">"Não se aplica com os ajustes atuais."</small> });
     view! {
-        <div class="set-row" class:off=!applies>
-            <div class="set-text"><b>{setting.label}</b>{help}{off}</div>
+        <div class="gs-row" class:off=!applies>
+            <div class="gs-text"><b>{setting.label}</b>{help}{off}</div>
             {control}
         </div>
     }

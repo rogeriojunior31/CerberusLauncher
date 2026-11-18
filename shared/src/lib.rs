@@ -193,6 +193,11 @@ pub struct SettingsView {
     #[serde(default)]
     pub pending_uploads: usize,
     pub sources: Vec<SourceView>,
+    /// False until the first-run setup is finished.
+    #[serde(default)]
+    pub setup_done: bool,
+    #[serde(default)]
+    pub start_in_tv: bool,
 }
 
 /// A catalog source the player added.

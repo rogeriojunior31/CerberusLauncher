@@ -94,6 +94,9 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       FPS...) descritas no catálogo, gravadas direto no `.ini`, `.toml` ou `.json` dele mexendo só
       na linha da opção. 261 jogos do catálogo têm ajustes. Conferido no SpaghettiKart: 60 fps
       gravado sem mudar nenhuma das outras 189 chaves, e mantido pelo jogo depois de abrir e fechar.
+- [x] Configuração guiada na primeira abertura: como joga (mesa ou TV), pastas de ROMs com os
+      jogos que já têm recomp, pasta de instalação com espaço livre e saves na nuvem. Quem escolhe
+      TV abre direto na Tela grande (também em Configurações). Instalações existentes não veem a tela.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

@@ -203,6 +203,27 @@ pub async fn get_settings() -> Result<SettingsView, String> {
     call("get_settings", &()).await
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupArgs {
+    start_in_tv: bool,
+}
+
+/// Ends the first-run setup with how the player plays.
+pub async fn finish_setup(start_in_tv: bool) -> Result<SettingsView, String> {
+    call("finish_setup", &SetupArgs { start_in_tv }).await
+}
+
+#[derive(Serialize)]
+struct OnArg {
+    on: bool,
+}
+
+/// Whether Cerberus opens in the TV screen.
+pub async fn set_start_in_tv(on: bool) -> Result<SettingsView, String> {
+    call("set_start_in_tv", &OnArg { on }).await
+}
+
 pub async fn retry_save_uploads() -> Result<SettingsView, String> {
     call("retry_save_uploads", &()).await
 }

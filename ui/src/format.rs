@@ -10,6 +10,15 @@ pub fn megabytes(bytes: u64) -> String {
     format!("{mb:.0} MB")
 }
 
+/// Disk space: "629,4 GB", or MB below a gigabyte.
+pub fn disk_size(bytes: u64) -> String {
+    let gb = bytes as f64 / 1_073_741_824.0;
+    if gb < 1.0 {
+        return megabytes(bytes);
+    }
+    format!("{gb:.1} GB").replace('.', ",")
+}
+
 /// 401060 -> "401 mil", 7730 -> "7,7 mil", 527 -> "527".
 pub fn count(n: u64) -> String {
     match n {
