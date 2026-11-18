@@ -46,9 +46,13 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       ilegível ou sem jogos recuperáveis permanece intacto e a leitura pode ser repetida. Testes
       cobrem primeira execução, bloqueio de leitura no Windows, registros incompatíveis, truncamento,
       falha ao criar a cópia, falha ao gravar a recuperação e reabertura.
-- [ ] Levar as etapas de atualização de `recomp/mod.rs` para um módulo que responda pela
-      preparação, validação e confirmação. Exercitá-lo com duas releases locais e falhas antes e
-      depois da troca. Manter os comandos Tauri como pontos de entrada usados pela UI.
+- [x] Localizar o executável ou instalador entre os arquivos da nova release em staging e só
+      então sobrepor a instalação. Testes com dois pacotes locais confirmam que uma release sem
+      programa preserva o executável anterior, os dados e os saves. O teste de instalador confirma que o
+      caminho registrado aponta para o programa do novo pacote.
+- [ ] Tornar recuperável a confirmação da atualização. Hoje a sobreposição de arquivos, a gravação
+      do marcador e o registro na biblioteca ainda são etapas separadas. Testar interrupção durante
+      a cópia e falha ao registrar a versão, reabrir o launcher e conferir versão, arquivos e saves.
 - [ ] Fechar o ciclo com um instalador real e uma imagem própria. O teste do ReStreet chegou
       ao checksum e ao registro do instalador pendente. Ainda faltam preparar a ISO de FIFA Street,
       iniciar o jogo, fechar, reabrir o launcher e conferir executável e histórico da sessão.

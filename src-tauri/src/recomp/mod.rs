@@ -468,26 +468,18 @@ async fn install_now(
     report(InstallStep::Unpacking);
     let staging = staging_for(&target, &entry.id);
     let unpack_target = target.clone();
+    let release = entry.clone();
     let unpack = tauri::async_runtime::spawn_blocking(move || {
-        let result = install::unpack_over(&file, &staging, &unpack_target);
+        let result = install::unpack_over(&file, &staging, &unpack_target, &release);
         // The archive is not needed once its files are in place.
         let _ = fs::remove_file(&file);
         result
     });
-    unpack.await.map_err(|e| e.to_string())??;
+    let program = unpack.await.map_err(|e| e.to_string())??;
     fs::write(target.join(MARKER), entry.id.as_bytes()).map_err(|e| e.to_string())?;
 
     // An installer runs on the first Play; until then, it's what Play starts.
     let is_installer = entry.kind == "installer";
-    let program = if is_installer {
-        installer_in(&target).ok_or("O instalador baixado não foi encontrado na pasta.")?
-    } else {
-        // The catalog names the program when it knows it; otherwise it's found by its name.
-        let named = entry.start.as_ref().map(|start| target.join(start)).filter(|p| p.is_file());
-        named
-            .or_else(|| install::find_program(&target, &[&entry.name, &entry.repo]))
-            .ok_or("O recomp foi baixado, mas não achei o programa do jogo dentro dele.")?
-    };
     let game = register(library, entry, installed.as_ref(), &version, &program, &target, is_installer)?;
     report(InstallStep::Finished);
     Ok(game)
@@ -496,14 +488,6 @@ async fn install_now(
 /// The game's program inside `dir`, picked by its name like after an install.
 pub fn find_game_program(dir: &Path, hints: &[&str]) -> Option<PathBuf> {
     install::find_program(dir, hints)
-}
-
-/// The installer a release brought: the program at the top of its folder.
-fn installer_in(dir: &Path) -> Option<PathBuf> {
-    let entries = fs::read_dir(dir).ok()?;
-    let mut programs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_file() && assets::is_program(&p.to_string_lossy())).collect();
-    programs.sort();
-    programs.into_iter().next()
 }
 
 /// The file to download, and its version. When the catalog has the exact file

@@ -11,6 +11,7 @@ use reqwest::{Client, StatusCode, header};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
+use super::CatalogEntry;
 use super::assets::{Asset, Kind, kind, words};
 
 pub const CANCELLED: &str = "Instalação cancelada.";
@@ -167,9 +168,19 @@ async fn fetch_into(
 
 /// Unpacks into `staging`, then moves the files over `target`. Files already in
 /// `target` that the new release doesn't have (saves, settings) are kept.
-pub fn unpack_over(archive: &Path, staging: &Path, target: &Path) -> Result<(), String> {
-    let _ = fs::remove_dir_all(staging);
+pub fn unpack_over(archive: &Path, staging: &Path, target: &Path, entry: &CatalogEntry) -> Result<PathBuf, String> {
+    if let Err(e) = fs::remove_dir_all(staging) {
+        if e.kind() != io::ErrorKind::NotFound {
+            return Err(format!("Não foi possível limpar a pasta temporária: {e}"));
+        }
+    }
     fs::create_dir_all(staging).map_err(|e| e.to_string())?;
+    let result = install_staged(archive, staging, target, entry);
+    let _ = fs::remove_dir_all(staging);
+    result
+}
+
+fn install_staged(archive: &Path, staging: &Path, target: &Path, entry: &CatalogEntry) -> Result<PathBuf, String> {
     let name = archive.file_name().unwrap_or_default().to_string_lossy();
     match kind(&name) {
         Some(Kind::Zip) => unzip(archive, staging)?,
@@ -182,9 +193,30 @@ pub fn unpack_over(archive: &Path, staging: &Path, target: &Path) -> Result<(), 
         None => return Err(format!("{name} não é um formato que o Cerberus saiba instalar.")),
     }
     let root = single_top_folder(staging);
+    let program = if entry.kind == "installer" {
+        installer_in(&root).ok_or("O instalador não foi encontrado na release.")?
+    } else {
+        let named = entry.start.as_deref().map(Path::new)
+            .filter(|path| path.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)))
+            .map(|path| root.join(path)).filter(|path| path.is_file());
+        named.or_else(|| find_program(&root, &[&entry.name, &entry.repo]))
+            .ok_or("A release não contém o programa do jogo.")?
+    };
+    let resolved = program.canonicalize().map_err(|e| e.to_string())?;
+    if !resolved.starts_with(staging.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("O programa escolhido está fora da release.".into());
+    }
+    let relative = program.strip_prefix(&root).map_err(|e| e.to_string())?;
     overlay(&root, target).map_err(|e| format!("Não foi possível instalar os arquivos: {e}"))?;
-    let _ = fs::remove_dir_all(staging);
-    Ok(())
+    Ok(target.join(relative))
+}
+
+/// The installer a release brought: the program at the top of its folder.
+fn installer_in(dir: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
+    let mut programs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_file() && super::assets::is_program(&p.to_string_lossy())).collect();
+    programs.sort();
+    programs.into_iter().next()
 }
 
 fn unzip(file: &Path, to: &Path) -> Result<(), String> {
@@ -368,13 +400,51 @@ mod tests {
         zip.finish().unwrap();
     }
 
+    fn portable(start: &str) -> CatalogEntry {
+        CatalogEntry { start: Some(start.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn missing_program_in_update_leaves_the_installed_release_untouched() {
+        let dir = empty_dir("preflight-update");
+        let staging = dir.join("staging");
+        let target = dir.join("installed");
+        let zip = dir.join("game.zip");
+        let entry = portable("Game.exe");
+        make_zip(&zip, &[("Game.exe", "v1"), ("data.bin", "old")]);
+        assert_eq!(unpack_over(&zip, &staging, &target, &entry).unwrap(), target.join("Game.exe"));
+        touch(&target.join("slot.sav"));
+        make_zip(&zip, &[("data.bin", "different"), ("new.txt", "extra")]);
+        assert!(unpack_over(&zip, &staging, &target, &entry).is_err());
+        assert_eq!(fs::read(target.join("Game.exe")).unwrap(), b"v1");
+        assert_eq!(fs::read(target.join("data.bin")).unwrap(), b"old");
+        assert_eq!(fs::read(target.join("slot.sav")).unwrap(), b"x");
+        assert!(!target.join("new.txt").exists());
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn installer_is_selected_from_the_new_release() {
+        let dir = empty_dir("preflight-installer");
+        let staging = dir.join("staging");
+        let target = dir.join("installed");
+        let zip = dir.join("game.zip");
+        touch(&target.join("A-old-setup.exe"));
+        let entry = CatalogEntry { kind: "installer".into(), ..Default::default() };
+        make_zip(&zip, &[("v2/NewSetup.msi", "installer")]);
+        assert_eq!(unpack_over(&zip, &staging, &target, &entry).unwrap(), target.join("NewSetup.msi"));
+        make_zip(&zip, &[("readme.txt", "missing setup")]);
+        assert!(unpack_over(&zip, &staging, &target, &entry).is_err());
+        assert!(!target.join("readme.txt").exists());
+    }
+
     #[test]
     fn unwraps_a_single_top_folder() {
         let dir = empty_dir("unwrap");
         let zip = dir.join("game.zip");
         make_zip(&zip, &[("Game-v1/Game.exe", "new"), ("Game-v1/data/a.bin", "a")]);
         let target = dir.join("installed");
-        unpack_over(&zip, &dir.join("staging"), &target).unwrap();
+        unpack_over(&zip, &dir.join("staging"), &target, &portable("Game.exe")).unwrap();
         assert!(target.join("Game.exe").is_file());
         assert!(target.join("data/a.bin").is_file());
     }
@@ -386,7 +456,7 @@ mod tests {
         touch(&target.join("saves/slot1.sav"));
         let zip = dir.join("game.zip");
         make_zip(&zip, &[("Game.exe", "v2")]);
-        unpack_over(&zip, &dir.join("staging"), &target).unwrap();
+        unpack_over(&zip, &dir.join("staging"), &target, &portable("Game.exe")).unwrap();
         assert!(target.join("saves/slot1.sav").is_file());
         assert_eq!(fs::read_to_string(target.join("Game.exe")).unwrap(), "v2");
     }
@@ -400,7 +470,7 @@ mod tests {
         let archive = dir.join("Game-v1-Windows.7z");
         sevenz_rust2::compress_to_path(dir.join("source"), &archive).unwrap();
         let target = dir.join("installed");
-        unpack_over(&archive, &dir.join("staging"), &target).unwrap();
+        unpack_over(&archive, &dir.join("staging"), &target, &portable("Game.exe")).unwrap();
         assert!(target.join("Game.exe").is_file());
         assert!(target.join("data/a.bin").is_file());
     }
@@ -424,7 +494,7 @@ mod tests {
         let archive = dir.join("Game-v1-Linux-X64.tar.gz");
         make_tar_gz(&archive, &[("Game-v1/Game", "elf"), ("Game-v1/data/a.bin", "a")]);
         let target = dir.join("installed");
-        unpack_over(&archive, &dir.join("staging"), &target).unwrap();
+        unpack_over(&archive, &dir.join("staging"), &target, &portable("Game")).unwrap();
         assert!(target.join("Game").is_file());
         assert!(target.join("data/a.bin").is_file());
     }
@@ -442,7 +512,7 @@ mod tests {
         header.set_cksum();
         tar.append(&header, &b"x"[..]).unwrap();
         tar.into_inner().unwrap().finish().unwrap();
-        let _ = unpack_over(&archive, &dir.join("staging"), &dir.join("installed"));
+        let _ = unpack_over(&archive, &dir.join("staging"), &dir.join("installed"), &portable("Game.exe"));
         assert!(!dir.join("escape.txt").exists());
     }
 
@@ -451,7 +521,7 @@ mod tests {
         let dir = empty_dir("escape");
         let zip = dir.join("evil.zip");
         make_zip(&zip, &[("../../evil.exe", "x")]);
-        assert!(unpack_over(&zip, &dir.join("staging"), &dir.join("installed")).is_err());
+        assert!(unpack_over(&zip, &dir.join("staging"), &dir.join("installed"), &portable("Game.exe")).is_err());
     }
 
     #[cfg(windows)]
