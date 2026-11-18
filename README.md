@@ -38,6 +38,37 @@ cargo tauri build   # instalador de release
 cargo test -p cerberus-launcher
 ```
 
+## Mantendo o catálogo
+
+O catálogo próprio é `src-tauri/catalog/recomps.json`. O app busca esse arquivo deste repositório a
+cada 6 horas, então o que entra na `main` chega a todos sem nova versão do launcher.
+
+Quem mantém o arquivo é o `catalog-builder` (pasta `tools/`), junto com uma pessoa revisando:
+
+```sh
+GITHUB_TOKEN=... cargo run -p catalog-builder -- update     # atualiza o que vem do GitHub
+GITHUB_TOKEN=... cargo run -p catalog-builder -- discover   # procura projetos novos
+```
+
+- `update` só mexe no que vem do GitHub: versão, arquivo de cada sistema com SHA-256, padrão do nome,
+  tamanho, estrelas e sistemas. O que foi escrito à mão nunca é alterado.
+- `discover` grava `src-tauri/catalog/candidates.json` e não coloca nada no catálogo sozinho.
+- A Action `Catálogo` roda os dois todo dia às 9h de Brasília (ou à mão, em Actions) e abre um Pull Request.
+
+**Para aceitar um candidato**, copie a entrada de `candidates.json` para `recomps.json` e complete:
+
+| Campo | O que pôr |
+|---|---|
+| `name`, `game`, `console`, `origin` | Nome do recomp, jogo original, console por extenso e o código curto (`n64`, `x360`...) |
+| `title` | O mesmo para versões do mesmo jogo (ex.: `majoras-mask`), para aparecerem juntas |
+| `needs` | O que o jogador precisa ter: "Sua cópia de ..." |
+| `about`, `adds` | Uma frase sobre o projeto e o que esta versão traz |
+| `cover`, `hero`, `icon` | Imagens (capa 2:3, fundo largo, ícone); links diretos e públicos |
+| `saves` | Onde ele salva, como `{local}/Nome/saves` ou `{install}/Save`; confira no código do projeto |
+
+Ferramentas, bibliotecas e projetos sem jogo jogável ficam de fora. Pedidos chegam pelo botão
+"Pedir um recomp" do app, que abre o formulário de issue deste repositório.
+
 ## Fontes de catálogo
 
 Em Configurações → Fontes de catálogo dá para adicionar uma lista JSON de jogos publicados no

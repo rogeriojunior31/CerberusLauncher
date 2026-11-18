@@ -214,6 +214,10 @@ pub fn DiscoverPage() -> impl IntoView {
                         "Jogue no PC com sua cópia original. Catálogo de recomplauncher.com."
                     </p>
                 </div>
+                <button type="button" class="btn" title="Sugerir um projeto para o catálogo"
+                    on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })>
+                    <Svg icon=Icon::Plus size=18 />"Pedir um recomp"
+                </button>
             </header>
             <section class="catalog-filters" aria-label="Filtros do catálogo">
                 <div class="toolbar">

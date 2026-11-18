@@ -1,0 +1,29 @@
+name: Pedir um recomp
+description: Sugira um recomp, decomp ou port nativo para o catálogo do Cerberus.
+title: "Pedir recomp: "
+labels: ["catálogo"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        O Cerberus só lista projetos publicados pelos próprios desenvolvedores no GitHub, com releases para baixar. Ele nunca distribui arquivos de jogo: o jogador usa a própria cópia.
+  - type: input
+    id: repo
+    attributes:
+      label: Projeto no GitHub
+      description: O endereço do repositório (dono/projeto).
+      placeholder: https://github.com/dono/projeto
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Jogo original e console
+      placeholder: "The Legend of Zelda: Majora's Mask (Nintendo 64)"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Algo que ajude a configurar
+      description: Qual versão da ROM ou do disco ele pede, onde ficam os saves, passos à mão... Tudo opcional.

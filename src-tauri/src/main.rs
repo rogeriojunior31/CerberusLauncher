@@ -576,6 +576,14 @@ fn set_launch_args(library: State<'_, LocalLibrary>, id: String, args: String) -
     library.update(&id, |game| game.launch_args = args)
 }
 
+/// Opens the "Pedir um recomp" form in Cerberus's repository: how players
+/// suggest projects for the catalog, with no server of our own.
+#[tauri::command]
+fn open_recomp_request(app: AppHandle) -> Result<(), String> {
+    let url = "https://github.com/rogeriojunior31/CerberusLauncher/issues/new?template=pedir-recomp.yml";
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Opens a catalog recomp's project page; only catalog repos, never an arbitrary link.
 #[tauri::command]
 fn open_project(app: AppHandle, id: String) -> Result<(), String> {
@@ -769,6 +777,7 @@ fn main() {
             list_recomps,
             install_recomp,
             open_project,
+            open_recomp_request,
             cancel_install,
             running_games,
             list_backups,
