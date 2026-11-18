@@ -175,11 +175,8 @@ fn App() -> impl IntoView {
                 all.remove(&event.game_id);
             }
         });
-        // Closing updates the playtime and makes a save backup.
-        if !event.running {
-            library.games.refetch();
-        }
     });
+    api::on_playtime_updated(move || library.games.refetch());
     // Steps arrive while `install_recomp` is still running; its own result reports
     // failures, so the events only move the progress bar.
     // A newer catalog arrived, or the ROM folders were looked through again.

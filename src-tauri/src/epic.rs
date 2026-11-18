@@ -96,7 +96,9 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         hero_url: entry.and_then(CatalogItem::wide_art),
         playtime_secs: 0,
         last_played: None,
+        last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending: false,
     }

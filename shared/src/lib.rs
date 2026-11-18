@@ -26,9 +26,15 @@ pub struct Game {
     /// Unix seconds when the game last closed.
     #[serde(default)]
     pub last_played: Option<u64>,
+    /// Duration of the last observed session. Older libraries only have the total.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_session_secs: Option<u64>,
     /// Extra command-line options the player added, passed after the launcher's own.
     #[serde(default)]
     pub launch_args: String,
+    /// Optional Windows child executable used as the session clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking_exe: Option<String>,
     /// The player's copy of the original game (ROM or disc image) a recomp is set up with.
     #[serde(default)]
     pub game_copy: Option<String>,
@@ -106,6 +112,8 @@ pub struct ModList {
 pub struct SettingsView {
     /// Where new recomps are installed.
     pub recomps_dir: String,
+    pub install_free_bytes: Option<u64>,
+    pub download_free_bytes: Option<u64>,
     /// Whether that is the default folder.
     pub recomps_dir_is_default: bool,
     /// The app's own data folder (library, saves backups, caches).
@@ -124,6 +132,8 @@ pub struct SettingsView {
     pub catalog_source: String,
     /// The synced folder save backups are copied to, if set.
     pub cloud_dir: Option<String>,
+    #[serde(default)]
+    pub pending_uploads: usize,
     pub sources: Vec<SourceView>,
 }
 
@@ -133,6 +143,23 @@ pub struct SourceView {
     pub url: String,
     pub name: String,
     pub games: usize,
+    pub hydra: bool,
+    pub synced_at: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceListing {
+    pub title: String,
+    pub file_size: Option<String>,
+    pub upload_date: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourcePage {
+    pub items: Vec<SourceListing>,
+    pub total: usize,
 }
 
 /// Sent when a game the launcher started opens or closes.
@@ -150,7 +177,14 @@ pub enum Source {
     /// Any executable the user added by hand.
     Local { exe: String },
     /// A recomp installed from its developer's GitHub releases.
-    Recomp { recomp_id: String, version: String, exe: String },
+    Recomp {
+        recomp_id: String,
+        version: String,
+        exe: String,
+        /// Identifies the last committed file replacement, including a reinstall of the same version.
+        #[serde(default)]
+        generation: u64,
+    },
 }
 
 /// One recomp in Discover: what the catalog says about it, plus what we know right now.

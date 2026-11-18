@@ -103,7 +103,9 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         hero_url: Some(hero_url),
         playtime_secs: 0,
         last_played: None,
+        last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending: false,
     })

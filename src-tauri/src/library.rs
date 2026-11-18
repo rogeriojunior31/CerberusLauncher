@@ -1,67 +1,101 @@
 //! Games the user added by hand, saved as JSON in the app's data folder.
 
+mod recovery;
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, OnceLock};
 
 use cerberus_shared::{Game, Source};
 
 pub struct LocalLibrary {
     file: PathBuf,
-    games: Mutex<Vec<Game>>,
+    games: Mutex<Option<Vec<Game>>>,
+    recovery_notice: OnceLock<String>,
 }
 
 impl LocalLibrary {
     pub fn load(dir: &Path) -> Self {
-        let file = dir.join("library.json");
-        // A missing or unreadable file means an empty library; never block startup on it.
-        let text = fs::read_to_string(&file).unwrap_or_default();
-        let games = serde_json::from_str(&text).unwrap_or_default();
-        Self { file, games: Mutex::new(games) }
+        Self { file: dir.join("library.json"), games: Mutex::new(None), recovery_notice: OnceLock::new() }
     }
 
-    pub fn games(&self) -> Vec<Game> {
-        self.lock().clone()
+    // A failed read stays retryable. Every operation loads a valid starting point before it can write.
+    fn access<T>(&self, action: impl FnOnce(&mut Vec<Game>) -> Result<T, String>) -> Result<T, String> {
+        let mut cache = self.games.lock().unwrap_or_else(|p| p.into_inner());
+        let games = match &mut *cache {
+            Some(games) => games,
+            None => {
+                let (games, notice) = recovery::read(&self.file)?;
+                if let Some(text) = notice {
+                    let _ = self.recovery_notice.set(text);
+                }
+                for game in &games {
+                    crate::recomp::update::recover(game)?;
+                }
+                cache.insert(games)
+            }
+        };
+        action(games)
     }
 
-    pub fn get(&self, id: &str) -> Option<Game> {
-        self.lock().iter().find(|game| game.id == id).cloned()
+    pub fn recovery_notice(&self) -> Option<String> {
+        self.recovery_notice.get().cloned()
+    }
+
+    pub fn games(&self) -> Result<Vec<Game>, String> {
+        self.access(|games| Ok(games.clone()))
+    }
+
+    pub fn get(&self, id: &str) -> Result<Option<Game>, String> {
+        self.access(|games| Ok(games.iter().find(|game| game.id == id).cloned()))
     }
 
     pub fn add(&self, game: Game) -> Result<(), String> {
-        let mut games = self.lock();
-        if games.iter().any(|known| known.id == game.id) {
-            return Ok(());
-        }
-        games.push(game);
-        save(&self.file, &games)
+        self.access(|games| {
+            if games.iter().any(|known| known.id == game.id) {
+                return Ok(());
+            }
+            let mut next = games.clone();
+            next.push(game);
+            self.commit(games, next)
+        })
     }
 
-    /// Applies `change` to one game, saves, and returns the game as it is now.
     pub fn update(&self, id: &str, change: impl FnOnce(&mut Game)) -> Result<Game, String> {
-        let mut games = self.lock();
-        let Some(game) = games.iter_mut().find(|game| game.id == id) else {
-            return Err("Esse jogo não está mais na biblioteca.".into());
-        };
-        change(game);
-        let updated = game.clone();
-        save(&self.file, &games)?;
-        Ok(updated)
+        self.access(|games| {
+            let mut next = games.clone();
+            let game = next.iter_mut().find(|game| game.id == id).ok_or("Esse jogo não está mais na biblioteca.")?;
+            change(game);
+            let updated = game.clone();
+            self.commit(games, next)?;
+            Ok(updated)
+        })
+    }
+
+    pub fn record_session(&self, id: &str, credited: u64, elapsed: u64, closed_at: Option<u64>) -> Result<Game, String> {
+        self.update(id, |game| {
+            game.playtime_secs = game.playtime_secs.saturating_sub(credited).saturating_add(elapsed);
+            if let Some(end) = closed_at {
+                game.last_played = Some(end);
+                game.last_session_secs = Some(elapsed);
+            }
+        })
     }
 
     pub fn remove(&self, id: &str) -> Result<Option<Game>, String> {
-        let mut games = self.lock();
-        let Some(index) = games.iter().position(|game| game.id == id) else {
-            return Ok(None);
-        };
-        let removed = games.remove(index);
-        save(&self.file, &games)?;
-        Ok(Some(removed))
+        self.access(|games| {
+            let Some(index) = games.iter().position(|game| game.id == id) else { return Ok(None) };
+            let mut next = games.clone();
+            let removed = next.remove(index);
+            self.commit(games, next)?;
+            Ok(Some(removed))
+        })
     }
 
-    fn lock(&self) -> MutexGuard<'_, Vec<Game>> {
-        // A panic while holding the lock leaves the list itself intact, so keep using it.
-        self.games.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    fn commit(&self, current: &mut Vec<Game>, next: Vec<Game>) -> Result<(), String> {
+        save(&self.file, &next)?;
+        *current = next;
+        Ok(())
     }
 }
 
@@ -79,7 +113,9 @@ pub fn game_from_exe(exe: &Path) -> Game {
         hero_url: None,
         playtime_secs: 0,
         last_played: None,
+        last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending: false,
     }
@@ -180,10 +216,31 @@ mod tests {
     }
 
     #[test]
+    fn latest_session_and_total_survive_reopening_an_older_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut old = celeste();
+        old.playtime_secs = 1336;
+        let json = serde_json::to_string(&[&old]).unwrap();
+        assert!(!json.contains("last_session_secs"));
+        fs::write(dir.path().join("library.json"), json).unwrap();
+        let library = LocalLibrary::load(dir.path());
+        assert_eq!(library.get(&old.id).unwrap().unwrap().last_session_secs, None);
+        library.record_session(&old.id, 0, 40, None).unwrap();
+        let reopened = LocalLibrary::load(dir.path()).get(&old.id).unwrap().unwrap();
+        assert_eq!((reopened.playtime_secs, reopened.last_session_secs), (1376, None));
+        library.record_session(&old.id, 40, 62, Some(100)).unwrap();
+        library.record_session(&old.id, 0, 17, Some(200)).unwrap();
+        let game = LocalLibrary::load(dir.path()).get(&old.id).unwrap().unwrap();
+        assert_eq!(game.playtime_secs, 1415);
+        assert_eq!(game.last_session_secs, Some(17));
+        assert_eq!(game.last_played, Some(200));
+    }
+
+    #[test]
     fn added_games_survive_a_reload() {
         let dir = empty_dir("reload");
         LocalLibrary::load(&dir).add(celeste()).unwrap();
-        assert_eq!(LocalLibrary::load(&dir).games(), vec![celeste()]);
+        assert_eq!(LocalLibrary::load(&dir).games().unwrap(), vec![celeste()]);
     }
 
     #[test]
@@ -192,7 +249,7 @@ mod tests {
         let library = LocalLibrary::load(&dir);
         library.add(celeste()).unwrap();
         library.remove(&celeste().id).unwrap();
-        assert!(LocalLibrary::load(&dir).games().is_empty());
+        assert!(LocalLibrary::load(&dir).games().unwrap().is_empty());
     }
 
     #[test]
@@ -201,7 +258,133 @@ mod tests {
         let library = LocalLibrary::load(&dir);
         library.add(celeste()).unwrap();
         library.update(&celeste().id, |game| game.name = "Celeste 64".into()).unwrap();
-        assert_eq!(LocalLibrary::load(&dir).games()[0].name, "Celeste 64");
+        assert_eq!(LocalLibrary::load(&dir).games().unwrap()[0].name, "Celeste 64");
+    }
+
+    #[test]
+    fn failed_writes_keep_the_last_committed_library_and_can_be_retried() {
+        let dir = empty_dir("write-failure");
+        let library = LocalLibrary::load(&dir);
+        let original = celeste();
+        let other = game_from_exe(Path::new("OtherGame.exe"));
+        library.add(original.clone()).unwrap();
+
+        // A directory where save needs to create its temporary file fails on every OS.
+        let blocker = dir.join("library.json.tmp");
+        fs::create_dir(&blocker).unwrap();
+        assert!(library.add(other.clone()).is_err());
+        assert!(library.get(&other.id).unwrap().is_none());
+        assert!(library.update(&original.id, |game| game.name = "Renamed".into()).is_err());
+        assert_eq!(library.get(&original.id).unwrap(), Some(original.clone()));
+        assert!(library.remove(&original.id).is_err());
+        assert_eq!(library.games().unwrap(), vec![original.clone()]);
+        assert_eq!(LocalLibrary::load(&dir).games().unwrap(), library.games().unwrap());
+
+        fs::remove_dir(blocker).unwrap();
+        library.add(other.clone()).unwrap();
+        library.update(&other.id, |game| game.name = "Renamed".into()).unwrap();
+        assert_eq!(library.remove(&original.id).unwrap(), Some(original));
+        let reloaded = LocalLibrary::load(&dir);
+        assert_eq!(reloaded.games().unwrap(), library.games().unwrap());
+        assert_eq!(reloaded.get(&other.id).unwrap().unwrap().name, "Renamed");
+    }
+
+    #[test]
+    fn recovery_keeps_valid_neighbors_and_preserves_the_original_bytes() {
+        let dir = empty_dir("recover-neighbors");
+        fs::create_dir_all(&dir).unwrap();
+        let first = celeste();
+        let second = game_from_exe(Path::new("Other.exe"));
+        let mut legacy = serde_json::to_value(&first).unwrap();
+        legacy.as_object_mut().unwrap().remove("setup_pending");
+        let bytes = serde_json::to_vec_pretty(&serde_json::json!([legacy, {"id": 99}, second])).unwrap();
+        fs::write(dir.join("library.json"), &bytes).unwrap();
+        fs::write(dir.join("library.original-1.json"), b"older backup").unwrap();
+        let library = LocalLibrary::load(&dir);
+        assert_eq!(library.games().unwrap(), [first, second]);
+        let backup = dir.join("library.original-2.json");
+        assert_eq!(fs::read(&backup).unwrap(), bytes);
+        assert!(library.recovery_notice().unwrap().contains(backup.to_str().unwrap()));
+        assert_eq!(fs::read(dir.join("library.original-1.json")).unwrap(), b"older backup");
+        let reopened = LocalLibrary::load(&dir);
+        assert_eq!(reopened.games().unwrap(), library.games().unwrap());
+        assert!(reopened.recovery_notice().is_none());
+    }
+
+    #[test]
+    fn truncated_last_record_recovers_only_complete_games() {
+        let dir = empty_dir("recover-truncated");
+        fs::create_dir_all(&dir).unwrap();
+        let bytes = format!(r#"[{},{{"id":"unfinished"#, serde_json::to_string(&celeste()).unwrap());
+        fs::write(dir.join("library.json"), &bytes).unwrap();
+        let library = LocalLibrary::load(&dir);
+        assert_eq!(library.games().unwrap(), [celeste()]);
+        assert_eq!(fs::read_to_string(dir.join("library.original-1.json")).unwrap(), bytes);
+    }
+
+    #[test]
+    fn unrepairable_input_blocks_writes_and_can_be_replaced_then_retried() {
+        let dir = empty_dir("recover-unsupported");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("library.json");
+        let library = LocalLibrary::load(&dir);
+        let syntax_error = format!("[{}, garbage]", serde_json::to_string(&celeste()).unwrap());
+        for text in ["", "{", r#"[{"future":5}]"#, &syntax_error] {
+            fs::write(&file, text).unwrap();
+            assert!(library.add(celeste()).is_err());
+            assert!(library.remove(&celeste().id).is_err());
+            assert!(library.games().is_err());
+            assert_eq!(fs::read_to_string(&file).unwrap(), text);
+        }
+        fs::write(&file, "[]").unwrap();
+        library.add(celeste()).unwrap();
+        assert_eq!(LocalLibrary::load(&dir).games().unwrap(), [celeste()]);
+    }
+
+    #[test]
+    fn failed_recovery_is_retryable_without_overwriting_or_duplicating_backups() {
+        let dir = empty_dir("recover-retry");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("library.json");
+        let original = serde_json::to_vec(&serde_json::json!([celeste(), null])).unwrap();
+        fs::write(&file, &original).unwrap();
+        let library = LocalLibrary::load(&dir);
+        let backup = dir.join("library.original-1.json");
+        fs::create_dir(&backup).unwrap();
+        assert!(library.games().is_err());
+        assert_eq!(fs::read(&file).unwrap(), original);
+        fs::remove_dir(&backup).unwrap();
+        let blocker = dir.join("library.json.tmp");
+        fs::create_dir(&blocker).unwrap();
+        assert!(library.add(celeste()).is_err());
+        assert_eq!(fs::read(&file).unwrap(), original);
+        assert_eq!(fs::read(&backup).unwrap(), original);
+        fs::remove_dir(blocker).unwrap();
+        assert_eq!(library.games().unwrap(), [celeste()]);
+        assert!(!dir.join("library.original-2.json").exists());
+    }
+
+    #[test]
+    fn missing_library_stays_empty_until_first_write() {
+        let dir = empty_dir("missing-library");
+        let library = LocalLibrary::load(&dir);
+        assert!(library.games().unwrap().is_empty());
+        assert!(!dir.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_library_is_never_treated_as_empty() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = empty_dir("locked-library");
+        LocalLibrary::load(&dir).add(celeste()).unwrap();
+        let file = dir.join("library.json");
+        let locked = fs::OpenOptions::new().read(true).share_mode(0).open(&file).unwrap();
+        let library = LocalLibrary::load(&dir);
+        assert!(library.games().is_err());
+        assert!(library.add(game_from_exe(Path::new("Other.exe"))).is_err());
+        drop(locked);
+        assert_eq!(library.games().unwrap(), [celeste()]);
     }
 
     #[test]

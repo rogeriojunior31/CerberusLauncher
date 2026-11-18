@@ -57,6 +57,10 @@ pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
 }
 
+pub fn on_playtime_updated(mut handler: impl FnMut() + 'static) {
+    on_event("playtime-updated", move |_: String| handler());
+}
+
 /// The catalog or the ROM folders' matches changed; the recomp list should be read again.
 pub fn on_catalog_changed(mut handler: impl FnMut() + 'static) {
     on_event("catalog-changed", move |_: serde::de::IgnoredAny| handler());
@@ -71,6 +75,10 @@ async fn call<A: Serialize, R: DeserializeOwned>(cmd: &str, args: &A) -> Result<
 #[derive(Serialize)]
 struct Id<'a> {
     id: &'a str,
+}
+
+pub async fn library_recovery_notice() -> Result<Option<String>, String> {
+    call("library_recovery_notice", &()).await
 }
 
 pub async fn list_games() -> Result<Vec<Game>, String> {
@@ -172,6 +180,10 @@ pub async fn get_settings() -> Result<SettingsView, String> {
     call("get_settings", &()).await
 }
 
+pub async fn retry_save_uploads() -> Result<SettingsView, String> {
+    call("retry_save_uploads", &()).await
+}
+
 /// Opens a folder picker; the settings as they are afterwards.
 pub async fn pick_recomps_dir() -> Result<SettingsView, String> {
     call("pick_recomps_dir", &()).await
@@ -247,6 +259,16 @@ struct LaunchArgs<'a> {
     args: &'a str,
 }
 
+pub async fn tracking_mode(id: &str) -> Result<Option<String>, String> {
+    call("tracking_mode", &Id { id }).await
+}
+
+pub async fn pick_tracking_exe(id: &str, automatic: bool) -> Result<Option<Game>, String> {
+    #[derive(Serialize)]
+    struct Pick<'a> { id: &'a str, automatic: bool }
+    call("pick_tracking_exe", &Pick { id, automatic }).await
+}
+
 pub async fn set_launch_args(id: &str, args: &str) -> Result<Game, String> {
     call("set_launch_args", &LaunchArgs { id, args }).await
 }
@@ -288,6 +310,16 @@ struct UrlArg {
 
 pub async fn add_source(url: String) -> Result<SettingsView, String> {
     call("add_source", &UrlArg { url }).await
+}
+
+pub async fn refresh_source(url: String) -> Result<SettingsView, String> {
+    call("refresh_source", &UrlArg { url }).await
+}
+
+pub async fn source_listings(url: &str, query: &str, offset: usize) -> Result<cerberus_shared::SourcePage, String> {
+    #[derive(Serialize)]
+    struct Search<'a> { url: &'a str, query: &'a str, offset: usize }
+    call("source_listings", &Search { url, query, offset }).await
 }
 
 pub async fn remove_source(url: String) -> Result<SettingsView, String> {

@@ -26,8 +26,8 @@ pub fn Sidebar() -> impl IntoView {
     view! {
         <aside class="side">
             <div class="brand" data-tauri-drag-region>
-                <span class="mark" aria-hidden="true">"C"</span>
-                <span class="word" data-tauri-drag-region>"Cerberus"</span>
+                <img class="mark" src="brand/cerberus-pixel-icone.svg" alt="Cerberus Launcher" draggable="false" />
+                <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt="" draggable="false" />
             </div>
             <nav class="navs" aria-label="Seções">
                 {item(Route::Home, Icon::Home, "Início")}

@@ -11,6 +11,18 @@ Launcher de jogos para PC, 100% Rust: backend em [Tauri 2](https://tauri.app) e 
   das releases no GitHub de cada desenvolvedor, conferindo o SHA-256 que o GitHub guarda de cada
   arquivo. O Cerberus nunca baixa arquivos de jogo: cada recomp pede a sua cópia quando abre.
 
+Para jogos locais e recomps no Windows, abra **Gerenciar → Processo acompanhado** se quiser escolher
+qual executável marca a duração da partida. Isso serve para jogos que abrem um menu antes de iniciar.
+O Cerberus grava o tempo observado a cada 15 segundos, ao fechar a partida e ao sair normalmente.
+
+Em **Configurações**, confira o espaço livre da pasta de downloads e da pasta de instalação.
+Os dois valores podem ser diferentes quando você instala jogos em outra unidade.
+
+Em **Configurações → Saves na nuvem**, escolha a pasta que seu serviço sincroniza. Se ela ficar
+indisponível, o Cerberus tenta enviar os backups pendentes quando abre e a cada minuto.
+**Verificar envios** repete a tentativa na hora. Cada jogo guarda os dez backups locais mais recentes.
+Um backup cuja pasta de destino mudou aguarda até que você selecione a pasta original novamente.
+
 O catálogo de recomps fica em `src-tauri/catalog/recomps.json`.
 
 ## Estrutura
@@ -22,7 +34,7 @@ O catálogo de recomps fica em `src-tauri/catalog/recomps.json`.
 
 ## Rodando
 
-Precisa de Rust, do target WASM, do Trunk e do Tauri CLI:
+Precisa de Rust (1.100 ou superior no Windows), do target WASM, do Trunk e do Tauri CLI:
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -93,6 +105,12 @@ GitHub pelos próprios desenvolvedores (jogos livres, homebrew, ports). Formato:
 Só `id`, `name` e `repo` são obrigatórios. Cada jogo é instalado da release oficial do repositório,
 conferida pelo checksum do GitHub. Entradas com links próprios de download (`uris`, `magnet`,
 `url`, `download`) são ignoradas: o Cerberus não distribui cópias de jogos de terceiros.
+
+Listas Hydra com a chave `downloads` também podem ser adicionadas por URL HTTPS. Em
+**Configurações → Fontes de catálogo → Consultar**, procure uma publicação por título e veja
+o tamanho e a data declarados pela fonte. A consulta funciona com a última cópia local.
+O botão **Atualizar** sincroniza aquela fonte. A instalação em **Descobrir** usa o catálogo
+de projetos com releases oficiais.
 
 ## Créditos
 

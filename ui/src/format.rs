@@ -20,6 +20,14 @@ pub fn count(n: u64) -> String {
     }
 }
 
+pub fn session_duration(seconds: u64) -> String {
+    match (seconds / 3600, seconds / 60 % 60, seconds % 60) {
+        (0, 0, s) => format!("{s} s"),
+        (0, m, s) => format!("{m} min {s} s"),
+        (h, m, s) => format!("{h} h {m} min {s} s"),
+    }
+}
+
 pub fn playtime(seconds: u64) -> String {
     let minutes = seconds / 60;
     match (minutes / 60, minutes % 60) {

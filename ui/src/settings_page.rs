@@ -97,10 +97,15 @@ pub fn SettingsPage() -> impl IntoView {
                     <div>
                         <b>{if s.cloud_dir.is_some() { "Ligado" } else { "Desligado" }}</b>
                         {s.cloud_dir.clone().map(|d| view! { <small class="path">{d}</small> })}
-                        <small>"Escolha uma pasta do OneDrive, Google Drive ou Dropbox. Cada backup de save vai pra lá, e ao abrir um jogo o Cerberus traz os saves mais novos de outro PC (os deste viram um backup antes)."</small>
+                        <small>"Escolha uma pasta sincronizada. Ao abrir um jogo, o Cerberus guarda o progresso local antes de trazer saves mais novos de outro PC."</small>
+                        {(s.pending_uploads > 0).then(|| view! {
+                            <small role="status">{format!("Envios pendentes na última verificação: {}. O Cerberus tenta de novo a cada minuto.", s.pending_uploads)}</small>
+                        })}
                     </div>
                     <div class="row">
                         {s.cloud_dir.is_some().then(|| view! {
+                            <button type="button" class="btn sm" disabled=move || busy.get()
+                                on:click=move |_| apply(Box::pin(api::retry_save_uploads()), "Envios verificados.")>"Verificar envios"</button>
                             <button type="button" class="btn sm" disabled=move || busy.get()
                                 on:click=move |_| apply(Box::pin(api::set_cloud_dir(true)), "Saves na nuvem desligados.")>"Desligar"</button>
                         })}
@@ -111,8 +116,9 @@ pub fn SettingsPage() -> impl IntoView {
                     </div>
                 </div>
             </section>
-            <Sources sources=s.sources.clone() busy apply_source=move |url: String, add: bool| {
-                if add { apply(Box::pin(api::add_source(url)), "Fonte adicionada; os jogos dela já estão em Descobrir.") }
+            <Sources sources=s.sources.clone() busy refresh=move |url| apply(Box::pin(api::refresh_source(url)), "")
+                apply_source=move |url: String, add: bool| {
+                if add { apply(Box::pin(api::add_source(url)), "Fonte adicionada.") }
                 else { apply(Box::pin(api::remove_source(url)), "Fonte removida.") }
             } />
             <section class="card set">
@@ -134,6 +140,7 @@ pub fn SettingsPage() -> impl IntoView {
                     <div>
                         <b>"Pasta dos recomps"</b>
                         <small class="path">{s.recomps_dir.clone()}</small>
+                        {s.install_free_bytes.map(|free| view! { <small>{format!("Espaço livre para instalar: {:.1} GiB", free as f64 / 1073741824.0)}</small> })}
                         <small>"Jogos já instalados continuam onde estão; só as próximas instalações vão para a nova pasta."</small>
                     </div>
                     <div class="row">
@@ -152,6 +159,7 @@ pub fn SettingsPage() -> impl IntoView {
                         <b>"Dados do Cerberus"</b>
                         <small class="path">{s.data_dir.clone()}</small>
                         <small>"Biblioteca, backups de saves e caches."</small>
+                        {s.download_free_bytes.map(|free| view! { <small>{format!("Espaço livre para downloads: {:.1} GiB", free as f64 / 1073741824.0)}</small> })}
                     </div>
                     <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_data_dir().await); })>
                         "Abrir pasta"
@@ -173,8 +181,9 @@ pub fn SettingsPage() -> impl IntoView {
                 <div class="set-row">
                     <div>
                         <b>{format!("Cerberus Launcher {}", s.version)}</b>
-                        <small>"Código aberto, licença MIT. Os recomps vêm do GitHub de cada desenvolvedor; o Cerberus nunca baixa arquivos de jogo."</small>
+                        <small>"Código aberto, licença MIT. Os recomps vêm das releases dos desenvolvedores."</small>
                     </div>
+                    <img class="about-logo" src="brand/cerberus-launcher-pixel.svg" alt="Logo do Cerberus Launcher" />
                 </div>
             </section>
         }
@@ -189,30 +198,50 @@ pub fn SettingsPage() -> impl IntoView {
     }
 }
 
-/// Catalog sources added by URL. Their games come from each developer's GitHub
-/// releases, like the recomps; lists of downloads hosted elsewhere aren't taken.
 #[component]
-fn Sources(sources: Vec<SourceView>, busy: RwSignal<bool>, apply_source: impl Fn(String, bool) + Copy + Send + Sync + 'static) -> impl IntoView {
+fn Sources(
+    sources: Vec<SourceView>, busy: RwSignal<bool>,
+    apply_source: impl Fn(String, bool) + Copy + Send + Sync + 'static,
+    refresh: impl Fn(String) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
     let url = RwSignal::new(String::new());
     let on_add = move |event: leptos::ev::SubmitEvent| {
         event.prevent_default();
         let value = url.get_untracked();
-        if !value.trim().is_empty() {
-            apply_source(value, true);
-            url.set(String::new());
-        }
+        if !busy.get_untracked() && !value.trim().is_empty() { apply_source(value, true); }
     };
     let rows = sources
         .into_iter()
         .map(|source| {
-            let target = source.url.clone();
+            let target = StoredValue::new(source.url.clone());
+            let opened = RwSignal::new(false);
+            let count = if source.hydra { format!("Hydra · {} publicações", source.games) }
+                else if source.synced_at.is_some() { format!("{} projetos em Descobrir", source.games) }
+                else { String::new() };
             view! {
-                <div class="set-row sub">
-                    <div>
-                        <b>{source.name.clone()}</b>
-                        <small class="path">{format!("{} · {} jogos", source.url, source.games)}</small>
+                <div>
+                    <div class="set-row sub">
+                        <div>
+                            <b>{source.name}</b>
+                            <small class="path">{source.url}</small>
+                            <small>{count}</small>
+                            {source.synced_at.map(|t| view! { <small>{format!("Última sincronização em {}", format::date_time(t))}</small> })}
+                            {source.error.map(|e| view! { <small role="status">{e}</small> })}
+                        </div>
+                        <div class="row">
+                            {source.hydra.then(|| view! {
+                                <button type="button" class="btn sm" aria-expanded=move || opened.get().to_string()
+                                    on:click=move |_| opened.update(|v| *v = !*v)>
+                                    {move || if opened.get() { "Fechar lista" } else { "Consultar" }}
+                                </button>
+                            })}
+                            <button type="button" class="btn sm" disabled=move || busy.get()
+                                on:click=move |_| refresh(target.get_value())>"Atualizar"</button>
+                            <button type="button" class="btn sm" disabled=move || busy.get()
+                                on:click=move |_| apply_source(target.get_value(), false)>"Remover"</button>
+                        </div>
                     </div>
-                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply_source(target.clone(), false)>"Remover"</button>
+                    {move || opened.get().then(|| view! { <HydraListings url=target.get_value() /> })}
                 </div>
             }
         })
@@ -223,14 +252,56 @@ fn Sources(sources: Vec<SourceView>, busy: RwSignal<bool>, apply_source: impl Fn
             <form class="set-row" on:submit=on_add>
                 <div>
                     <b>"Adicionar por URL"</b>
-                    <small>"Um JSON com jogos publicados no GitHub pelos próprios desenvolvedores (jogos livres, homebrew, ports). Cada jogo é baixado da release oficial e conferido pelo checksum. Listas de downloads de terceiros (magnet, torrent, sites de arquivos) não são aceitas."</small>
+                    <small>"Consulte títulos, tamanhos e datas de listas Hydra aqui. Fontes de projetos para instalar aparecem em Descobrir."</small>
                 </div>
                 <div class="row">
-                    <input class="input" type="url" placeholder="https://.../jogos.json" prop:value=move || url.get() on:input=move |e| url.set(event_target_value(&e)) />
+                    <input class="input" type="url" required aria-label="URL da fonte" placeholder="https://.../jogos.json" prop:value=move || url.get() on:input=move |e| url.set(event_target_value(&e)) />
                     <button type="submit" class="btn sm main" disabled=move || busy.get()>"Adicionar"</button>
                 </div>
             </form>
             {rows}
         </section>
+    }
+}
+
+#[component]
+fn HydraListings(url: String) -> impl IntoView {
+    let url = StoredValue::new(url);
+    let query = RwSignal::new(String::new());
+    let offset = RwSignal::new(0usize);
+    let page = LocalResource::new(move || {
+        let (url, q, start) = (url.get_value(), query.get(), offset.get());
+        async move { api::source_listings(&url, &q, start).await }
+    });
+    let results = move || {
+        let Some(result) = page.get() else { return view! { <p>"Carregando lista…"</p> }.into_any(); };
+        let page = match result {
+            Ok(p) => p,
+            Err(e) => return view! { <p role="status">{e}</p> }.into_any(),
+        };
+        if page.items.is_empty() { return view! { <p>"Nenhuma publicação encontrada."</p> }.into_any(); }
+        let start = offset.get_untracked();
+        let end = start + page.items.len();
+        let first_page = start == 0;
+        let last_page = end >= page.total;
+        let rows = page.items.into_iter().map(|item| view! {
+            <tr><th scope="row">{item.title}</th><td>{item.file_size.unwrap_or_else(|| "—".into())}</td>
+                <td>{item.upload_date.unwrap_or_else(|| "—".into())}</td></tr>
+        }).collect_view();
+        view! {
+            <table><thead><tr><th>"Título"</th><th>"Tamanho"</th><th>"Data publicada pela fonte"</th></tr></thead><tbody>{rows}</tbody></table>
+            <div class="row">
+                <small>{format!("{}–{} de {}", start + 1, end, page.total)}</small>
+                <button class="btn sm" disabled=first_page on:click=move |_| offset.set(start.saturating_sub(25))>"Anterior"</button>
+                <button class="btn sm" disabled=last_page on:click=move |_| offset.set(end)>"Próxima"</button>
+            </div>
+        }.into_any()
+    };
+    view! {
+        <div class="source-listings">
+            <input class="input" type="search" aria-label="Buscar título na fonte" placeholder="Buscar título nesta fonte"
+                on:input=move |e| { offset.set(0); query.set(event_target_value(&e)); } />
+            {results}
+        </div>
     }
 }

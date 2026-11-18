@@ -62,17 +62,21 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
 
 .brand { height: 72px; display: flex; align-items: center; gap: 11px; padding: 0 22px; flex: none; }
 .mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: var(--grad);
-  color: var(--accent-ink);
-  font: 800 expanded 17px Archivo, sans-serif;
-  box-shadow: 0 8px 22px -8px rgba(255, 90, 60, 0.7);
+  width: 46px;
+  height: 46px;
+  pointer-events: none;
 }
-.word { font: 700 semi-expanded 17px Archivo, sans-serif; letter-spacing: 0.01em; }
+.source-listings { padding: 12px 16px; display: grid; gap: 12px; }
+.source-listings table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.source-listings th, .source-listings td { padding: 8px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.source-listings tbody th { font-weight: 500; }
+.source-listings .row { justify-content: flex-end; }
+.about-logo {
+  width: 120px;
+  height: 120px;
+  flex: none;
+}
+.word { width: 116px; height: 26px; pointer-events: none; }
 
 .navs { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; flex: 1; }
 
@@ -134,9 +138,9 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
 .win button:hover { background: var(--fill2); color: var(--ink); }
 .win button.close:hover { background: #e81123; color: #fff; }
 
-.main { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scroll-behavior: smooth; }
-.main::-webkit-scrollbar { width: 10px; }
-.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10px; border: 3px solid var(--bg); }
+main.main { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scroll-behavior: smooth; }
+main.main::-webkit-scrollbar { width: 10px; }
+main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10px; border: 3px solid var(--bg); }
 
 .page { width: 100%; max-width: 1880px; margin: 0 auto; padding: 52px 40px 90px; display: flex; flex-direction: column; gap: 30px; }
 

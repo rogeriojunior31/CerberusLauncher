@@ -93,6 +93,10 @@ fn navigate_rows(event: web_sys::KeyboardEvent) {
 pub fn LibraryPage() -> impl IntoView {
     let library = expect_context::<Library>();
     let LibraryView { search, filter, sort, compact } = expect_context();
+    let recovery = LocalResource::new(move || {
+        library.games.track();
+        crate::api::library_recovery_notice()
+    });
     let input = NodeRef::<leptos::html::Input>::new();
     let clear = move |_| {
         search.set(String::new());
@@ -116,7 +120,10 @@ pub fn LibraryPage() -> impl IntoView {
                 <div class="empty">
                     <h2>"Não foi possível carregar a biblioteca"</h2>
                     <p class="problem" role="alert">{error}</p>
-                    <button type="button" class="btn" on:click=move |_| library.games.refetch()>"Tentar novamente"</button>
+                    <button type="button" class="btn" on:click=move |_| {
+                        library.games.refetch();
+                        library.recomps.refetch();
+                    }>"Tentar novamente"</button>
                 </div>
             }.into_any(),
             Some(Ok(games)) => games,
@@ -199,6 +206,9 @@ pub fn LibraryPage() -> impl IntoView {
                     <Svg icon=Icon::Plus size=18 />"Adicionar jogo"
                 </button>
             </header>
+            {move || recovery.get().and_then(Result::ok).flatten().map(|text| view! {
+                <p class="card" role="status" style="overflow-wrap: anywhere">{text}</p>
+            })}
             <section class="catalog-filters" aria-label="Filtros da biblioteca">
                 <div class="toolbar">
                     <label class="search">

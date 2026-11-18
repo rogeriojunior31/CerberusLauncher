@@ -3,6 +3,7 @@
 
 mod art_cache;
 mod epic;
+mod disk;
 mod iso9660;
 mod library;
 mod mods;
@@ -23,6 +24,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use art_cache::ArtCache;
 use cerberus_shared::{Backup, Game, InstallProgress, RecompEntry, SettingsView, Source};
 use library::LocalLibrary;
+use recomp::sources::{CatalogSource, Entries};
+use cerberus_shared::{SourcePage, SourceView};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use tauri_plugin_opener::OpenerExt;
@@ -70,6 +73,8 @@ fn settings_view(app: &AppHandle) -> SettingsView {
     let data = app.state::<DataDir>();
     let chosen = settings::load(&data.0);
     SettingsView {
+        install_free_bytes: disk::available(&installs),
+        download_free_bytes: disk::available(&data.0.join("downloads")),
         recomps_dir_is_default: installs == folders.default_installs,
         recomps_dir: installs.to_string_lossy().into_owned(),
         data_dir: data.0.to_string_lossy().into_owned(),
@@ -80,53 +85,108 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         roms_matched: owned_games(app).len(),
         catalog_count: recomp::catalog::all().len(),
         catalog_source: recomp::catalog::SOURCE_NAME.to_string(),
+        pending_uploads: recomp::cloud::pending_count(&folders),
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
-        sources: app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
+        sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
 
 /// The player's catalog sources, with their games, as last read.
 #[derive(Default)]
-struct Sources(std::sync::Mutex<Vec<(cerberus_shared::SourceView, Vec<recomp::CatalogEntry>)>>);
+struct Sources {
+    list: std::sync::Mutex<Vec<(SourceView, Option<CatalogSource>)>>,
+    // Serialize fetch, publication and removal to keep an older response from replacing a newer one.
+    sync: tokio::sync::Mutex<()>,
+}
 
-/// Hands the sources' games to the catalog and tells the window.
 fn publish_sources(app: &AppHandle) {
-    let lists = app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(_, games)| games.clone()).collect();
-    recomp::catalog::set_extras(lists);
+    let state = app.state::<Sources>();
+    let list = state.list.lock().unwrap_or_else(|p| p.into_inner());
+    let projects = list.iter().filter_map(|(_, source)| match &source.as_ref()?.entries {
+        Entries::Projects(games) => Some(games.clone()),
+        Entries::Hydra(_) => None,
+    }).collect();
+    recomp::catalog::set_extras(projects);
+    drop(list);
     let _ = app.emit("catalog-changed", ());
 }
 
-fn remember_source(app: &AppHandle, url: &str, name: String, games: Vec<recomp::CatalogEntry>) {
-    let view = cerberus_shared::SourceView { url: url.to_string(), name, games: games.len() };
-    let sources = app.state::<Sources>();
-    let mut list = sources.0.lock().unwrap_or_else(|p| p.into_inner());
-    list.retain(|(v, _)| v.url != url);
-    list.push((view, games));
+fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
+    let (hydra, games) = match source.as_ref().map(|s| &s.entries) {
+        Some(Entries::Projects(items)) => (false, items.len()),
+        Some(Entries::Hydra(items)) => (true, items.len()),
+        None => (false, 0),
+    };
+    let view = SourceView {
+        url: url.to_owned(),
+        name: source.as_ref().map(|s| s.name.as_str()).filter(|s| !s.trim().is_empty()).unwrap_or(url).to_owned(),
+        hydra, games, synced_at: source.as_ref().and_then(|s| s.synced_at),
+        error: source.is_none().then(|| "Sem cópia local. Atualize a fonte para consultá-la.".to_owned()),
+    };
+    let state = app.state::<Sources>();
+    let mut list = state.list.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(row) = list.iter_mut().find(|(v, _)| v.url == url) {
+        *row = (view, source);
+    } else {
+        list.push((view, source));
+    }
+}
+
+#[tauri::command]
+fn source_listings(sources: State<'_, Sources>, url: String, query: String, offset: usize) -> Result<SourcePage, String> {
+    let list = sources.list.lock().unwrap_or_else(|p| p.into_inner());
+    let source = list.iter().find(|(v, _)| v.url == url).and_then(|(_, s)| s.as_ref())
+        .ok_or("Fonte indisponível.")?;
+    source.listings(&query, offset)
 }
 
 #[tauri::command]
 async fn add_source(app: AppHandle, http: State<'_, reqwest::Client>, url: String) -> Result<SettingsView, String> {
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
     let url = url.trim().to_string();
-    let cache = app.state::<DataDir>().cache();
-    let (name, games) = recomp::sources::fetch(&http, &cache, &url).await?;
-    remember_source(&app, &url, name, games);
-    let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
+    let data = app.state::<DataDir>();
+    let source = recomp::sources::fetch(&http, &data.cache(), &url).await?;
+    let mut chosen = settings::load(&data.0);
     if !chosen.sources.contains(&url) {
-        chosen.sources.push(url);
-        settings::save(&data_dir, &chosen)?;
+        chosen.sources.push(url.clone());
+        settings::save(&data.0, &chosen)?;
     }
+    remember_source(&app, &url, Some(source));
+    publish_sources(&app);
+    Ok(settings_view(&app))
+}
+
+async fn sync_source(app: &AppHandle, http: &reqwest::Client, url: &str) {
+    match recomp::sources::fetch(http, &app.state::<DataDir>().cache(), url).await {
+        Ok(source) => remember_source(app, url, Some(source)),
+        Err(e) => {
+            let state = app.state::<Sources>();
+            let mut list = state.list.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some((view, _)) = list.iter_mut().find(|(v, _)| v.url == url) { view.error = Some(e); }
+        }
+    }
+}
+
+#[tauri::command]
+async fn refresh_source(app: AppHandle, http: State<'_, reqwest::Client>, url: String) -> Result<SettingsView, String> {
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
+    if !settings::load(&app.state::<DataDir>().0).sources.contains(&url) { return Err("Fonte removida.".into()); }
+    sync_source(&app, &http, &url).await;
     publish_sources(&app);
     Ok(settings_view(&app))
 }
 
 #[tauri::command]
-fn remove_source(app: AppHandle, url: String) -> Result<SettingsView, String> {
-    let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
+async fn remove_source(app: AppHandle, url: String) -> Result<SettingsView, String> {
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
     chosen.sources.retain(|u| *u != url);
-    settings::save(&data_dir, &chosen)?;
-    app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).retain(|(v, _)| v.url != url);
+    settings::save(&data.0, &chosen)?;
+    state.list.lock().unwrap_or_else(|p| p.into_inner()).retain(|(v, _)| v.url != url);
     publish_sources(&app);
     Ok(settings_view(&app))
 }
@@ -150,6 +210,14 @@ async fn set_cloud_dir(app: AppHandle, clear: bool) -> Result<SettingsView, Stri
     chosen.cloud_dir = dir.clone();
     settings::save(&data_dir, &chosen)?;
     app.state::<recomp::Folders>().set_cloud(dir);
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+async fn retry_save_uploads(app: AppHandle) -> Result<SettingsView, String> {
+    let worker = app.clone();
+    tauri::async_runtime::spawn_blocking(move || recomp::cloud::retry(&worker.state::<recomp::Folders>()))
+        .await.map_err(|e| e.to_string())??;
     Ok(settings_view(&app))
 }
 
@@ -202,11 +270,10 @@ async fn scan_roms(app: AppHandle) -> Result<SettingsView, String> {
 async fn refresh_catalog(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<SettingsView, String> {
     let cache = app.state::<DataDir>().cache();
     recomp::catalog::refresh(&http, &cache, true).await?;
-    // The player's sources too; one that fails keeps its last copy.
+    let state = app.state::<Sources>();
+    let _guard = state.sync.lock().await;
     for url in settings::load(&app.state::<DataDir>().0).sources {
-        if let Ok((name, games)) = recomp::sources::fetch(&http, &cache, &url).await {
-            remember_source(&app, &url, name, games);
-        }
+        sync_source(&app, &http, &url).await;
     }
     publish_sources(&app);
     Ok(settings_view(&app))
@@ -259,12 +326,17 @@ fn clear_art_cache(app: AppHandle) -> Result<SettingsView, String> {
 }
 
 #[tauri::command]
+fn library_recovery_notice(library: State<'_, LocalLibrary>) -> Option<String> {
+    library.recovery_notice()
+}
+
+#[tauri::command]
 async fn list_games(
     library: State<'_, LocalLibrary>,
     art: State<'_, Arc<ArtCache>>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Vec<Game>, String> {
-    let mut games = library.games();
+    let mut games = library.games()?;
     games.iter_mut().for_each(recomp::apply_art);
     // Scanning library folders touches the disk; keep it off the async runtime.
     let scan = tauri::async_runtime::spawn_blocking(|| {
@@ -321,7 +393,7 @@ async fn find_cover(
     folder: State<'_, CoverFolder>,
     id: String,
 ) -> Result<Game, String> {
-    let game = library.get(&id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let art = steam_store::art_for_name(&http, &game.name).await?;
     let Some(art) = art.filter(|art| art.cover.is_some()) else {
         return Err(format!("Nenhuma capa encontrada na Steam para \"{}\".", game.name));
@@ -364,9 +436,10 @@ fn remove_game(
     folder: State<'_, CoverFolder>,
     recomps: State<'_, recomp::Folders>,
     sessions: State<'_, sessions::Sessions>,
+    installing: State<'_, recomp::Installing>,
     id: String,
 ) -> Result<(), String> {
-    let Some(game) = library.get(&id) else {
+    let Some(game) = library.get(&id)? else {
         return Ok(());
     };
     if sessions.is_running(&id) {
@@ -375,10 +448,17 @@ fn remove_game(
     // Files first: if they can't go, the game stays listed. Saves are copied
     // before anything is deleted, and the copies outlive the uninstall.
     if let Source::Recomp { recomp_id, .. } = &game.source {
-        recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
-        recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+        installing.while_idle(recomp_id, || {
+            if sessions.is_running(&id) {
+                return Err("Feche o jogo antes de removê-lo.".into());
+            }
+            recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
+            recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            library.remove(&id)
+        })?;
+    } else {
+        library.remove(&id)?;
     }
-    library.remove(&id)?;
     forget_cover(&folder.0, game.cover_path);
     Ok(())
 }
@@ -408,7 +488,7 @@ async fn list_recomps(
             }
         });
     }
-    let mut entries = recomp::entries(&library, &owned_games(&app));
+    let mut entries = recomp::entries(&library, &owned_games(&app))?;
     // Copies already on disk are used, but 1900 recomps' art is not fetched
     // ahead: the window loads what it shows, and games in the library keep theirs.
     let mut not_fetched = Vec::new();
@@ -430,7 +510,8 @@ async fn install_recomp(
         let progress = InstallProgress { recomp_id: id.clone(), step };
         let _ = app.emit("recomp-progress", progress);
     };
-    let result = recomp::install(&http, &folders, &library, &installing, &id, &report).await;
+    let sessions = app.state::<sessions::Sessions>();
+    let result = recomp::install(&http, &folders, &library, &installing, &sessions, &id, &report).await;
     let game = match result {
         Ok(game) => game,
         Err(message) => {
@@ -454,7 +535,7 @@ async fn install_recomp(
 /// when `folder`).
 #[tauri::command]
 async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: String, use_found: bool, folder: bool) -> Result<Option<Game>, String> {
-    let game = library.get(&id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err("Só recomps usam uma cópia do jogo.".into());
     };
@@ -486,7 +567,7 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
 /// The mod source and mods folder of an installed recomp; `None` when it has no mods.
 async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(mods::ModSource, PathBuf, PathBuf)>, String> {
     let library = app.state::<LocalLibrary>();
-    let game = library.get(id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, exe, .. } = &game.source else {
         return Ok(None);
     };
@@ -571,6 +652,28 @@ async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String>
 }
 
 #[tauri::command]
+fn tracking_mode(library: State<'_, LocalLibrary>, id: String) -> Result<Option<String>, String> {
+    Ok(library.get(&id)?.as_ref().and_then(sessions::tracking_mode))
+}
+
+#[tauri::command]
+async fn pick_tracking_exe(app: AppHandle, id: String, automatic: bool) -> Result<Option<Game>, String> {
+    let library = app.state::<LocalLibrary>();
+    let game = library.get(&id)?.ok_or("Jogo removido da biblioteca.")?;
+    if sessions::tracking_mode(&game).is_none() { return Err("A seleção de processo está indisponível para este jogo.".into()); }
+    let selected = if automatic { None } else {
+        let dialog = app.dialog().file().set_title("Escolha o executável que roda durante a partida").add_filter("Programa", &["exe"]);
+        let Some(path) = pick_one(dialog).await? else { return Ok(None) };
+        let path = dunce::canonicalize(path).map_err(|e| e.to_string())?;
+        if !path.is_file() || !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
+            return Err("Escolha o arquivo .exe do jogo.".into());
+        }
+        Some(path.to_string_lossy().into_owned())
+    };
+    library.update(&id, |g| g.tracking_exe = selected).map(Some)
+}
+
+#[tauri::command]
 fn set_launch_args(library: State<'_, LocalLibrary>, id: String, args: String) -> Result<Game, String> {
     let args = args.trim().to_string();
     library.update(&id, |game| game.launch_args = args)
@@ -599,7 +702,18 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
     let url = match &game.source {
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
-        Source::Local { exe } | Source::Recomp { exe, .. } => return sessions::start(&app, &game, Path::new(exe)),
+        Source::Local { .. } => {
+            let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+            let Source::Local { exe } = &current.source else { return Err("Registro do jogo inválido.".into()) };
+            return sessions::start(&app, &current, Path::new(exe));
+        }
+        Source::Recomp { recomp_id, .. } => {
+            return app.state::<recomp::Installing>().while_idle(recomp_id, || {
+                let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+                let Source::Recomp { exe, .. } = &current.source else { return Err("Registro do recomp inválido.".into()) };
+                sessions::start(&app, &current, Path::new(exe))
+            });
+        }
     };
     app.opener()
         .open_url(url, None::<&str>)
@@ -618,7 +732,7 @@ fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
 
 /// The recomp behind a library entry, and where it is installed.
 fn recomp_of(library: &LocalLibrary, id: &str) -> Result<(String, PathBuf), String> {
-    let game = library.get(id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, .. } = game.source else {
         return Err("Só os recomps têm backup de saves.".into());
     };
@@ -656,7 +770,7 @@ async fn restore_backup(
 
 #[tauri::command]
 fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<(), String> {
-    let game = library.get(&id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     app.opener()
         .open_path(game.install_dir, None::<&str>)
         .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
@@ -723,6 +837,17 @@ fn main() {
             app.manage(folders);
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(15));
+                sessions::checkpoint(&handle);
+            });
+
+            let cloud = app.handle().clone();
+            std::thread::spawn(move || loop {
+                let _ = recomp::cloud::retry(&cloud.state::<recomp::Folders>());
+                std::thread::sleep(Duration::from_secs(60));
+            });
 
             // The catalog and the last ROM scan from disk, so the window has them at once.
             let data = DataDir(data_dir.clone());
@@ -730,12 +855,9 @@ fn main() {
             app.manage(RomIndex(std::sync::Mutex::new(roms::load_index(&data.rom_index()))));
             app.manage(Sources::default());
             for url in &chosen.sources {
-                if let Some((name, games)) = recomp::sources::load_copy(&data.cache(), url) {
-                    remember_source(app.handle(), url, name, games);
-                }
+                remember_source(app.handle(), url, recomp::sources::load_copy(&data.cache(), url));
             }
-            let lists = app.state::<Sources>().0.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(_, g)| g.clone()).collect();
-            recomp::catalog::set_extras(lists);
+            publish_sources(app.handle());
             app.manage(data);
             if !chosen.rom_dirs.is_empty() {
                 // Games added to the folders since last time show up once this finishes.
@@ -769,6 +891,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             list_games,
+            library_recovery_notice,
             add_local_game,
             rename_game,
             find_cover,
@@ -796,15 +919,23 @@ fn main() {
             refresh_catalog,
             set_game_copy,
             set_launch_args,
+            tracking_mode,
+            pick_tracking_exe,
             locate_game,
             set_cloud_dir,
+            retry_save_uploads,
             add_source,
+            refresh_source,
+            source_listings,
             remove_source,
             list_mods,
             install_mod,
             remove_mod,
             play
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to start Cerberus Launcher");
+        .build(tauri::generate_context!())
+        .expect("failed to start Cerberus Launcher")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) { sessions::checkpoint(app); }
+        });
 }

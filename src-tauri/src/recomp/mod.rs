@@ -4,11 +4,13 @@
 
 mod assets;
 pub mod catalog;
+pub(crate) mod cloud;
 mod github;
 mod install;
 mod saves;
 pub mod sources;
 mod translate;
+pub(crate) mod update;
 
 use std::collections::HashMap;
 use std::fs;
@@ -105,9 +107,19 @@ fn staging_for(target: &Path, id: &str) -> PathBuf {
 pub struct Installing(Mutex<HashMap<String, Arc<AtomicBool>>>);
 
 impl Installing {
+    pub fn while_idle<T>(&self, id: &str, action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if busy.contains_key(&key) {
+            return Err("Aguarde a atualização do jogo terminar.".into());
+        }
+        action()
+    }
+
     pub fn cancel(&self, id: &str) {
         let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(flag) = busy.get(id) {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        if let Some(flag) = busy.get(&key) {
             flag.store(true, Ordering::Relaxed);
         }
     }
@@ -124,19 +136,18 @@ pub fn backup_saves(folders: &Folders, recomp_id: &str, install_dir: &Path, reas
 fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str, to_cloud: bool) -> Result<Option<Backup>, String> {
     let entry = find(recomp_id).ok_or("Esse recomp não está no catálogo.")?;
     let places = saves::places(&entry.saves);
-    let made = saves::backup(&folders.backups_dir(recomp_id), &places, install_dir, reason)?;
+    let backups = folders.backups_dir(recomp_id);
     let cloud = folders.cloud_dir(recomp_id).filter(|_| to_cloud);
-    if let (Some(backup), Some(cloud)) = (&made, cloud) {
-        // A cloud folder that can't be written now (offline drive) mustn't stop the local copy.
-        let _ = fs::create_dir_all(&cloud);
-        let _ = fs::copy(folders.backups_dir(recomp_id).join(&backup.name), cloud.join(&backup.name));
+    let made = saves::backup(&backups, &places, install_dir, reason, cloud.as_deref())?;
+    if cloud.is_some() {
+        // Playing and local backups remain available while the sync folder is offline.
+        let _ = cloud::retry_game(folders, recomp_id);
     }
     Ok(made)
 }
 
 /// Before playing: when another PC left newer saves in the cloud folder, they
-/// are put in place. The saves here are backed up first (and that copy goes to
-/// the cloud too), so whichever was right is never lost.
+/// are put in place. The safety copy of the current saves stays on this PC.
 /// Returns what happened, for a message, or `None` when nothing changed.
 pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -> Result<Option<String>, String> {
     let Some(cloud) = folders.cloud_dir(recomp_id) else {
@@ -154,14 +165,18 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let local_newest = saves::newest_with_fingerprint(&local_dir);
     // This PC played after the cloud copy was made: its saves are the newer ones.
     // A local copy of that very cloud backup counts as "already here".
-    let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| b.created > cloud_newest.created || b.name == cloud_newest.name);
+    let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| (b.created, &b.name) >= (cloud_newest.created, &cloud_newest.name));
     if local_is_newer {
         return Ok(None);
     }
-    backup_saves_to(folders, recomp_id, install_dir, "Antes de trazer da nuvem", false)?;
-    fs::create_dir_all(&local_dir).map_err(|e| e.to_string())?;
-    fs::copy(cloud.join(&cloud_newest.name), local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
-    saves::restore(&local_dir, &cloud_newest.name, install_dir)?;
+    let source = fs::File::open(cloud.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+    let temp = cloud::stage(source, &local_dir).map_err(|e| e.to_string())?;
+    let zip = zip::ZipArchive::new(temp.reopen().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    backup_saves_to(folders, recomp_id, install_dir, saves::BEFORE_CLOUD, false)?;
+    if saves::restore_open(zip, install_dir, Some(&places))? == 0 {
+        return Err("O backup na nuvem não contém saves que este PC possa restaurar.".into());
+    }
+    cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
     Ok(Some("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.".into()))
 }
 
@@ -172,8 +187,10 @@ pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
 /// Puts a backup back, after keeping a copy of the saves as they are now, so
 /// restoring the wrong one can be undone.
 pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<u32, String> {
+    // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
+    let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
     backup_saves(folders, recomp_id, install_dir, "Antes de restaurar")?;
-    saves::restore(&folders.backups_dir(recomp_id), name, install_dir)
+    saves::restore_open(selected, install_dir, None)
 }
 
 pub fn library_id(recomp_id: &str) -> String {
@@ -261,7 +278,7 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
     if !copy.exists() {
         return Err(format!("{} não existe mais.", copy.display()));
     }
-    let game = library.get(game_id).ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(game_id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err("Só recomps usam uma cópia do jogo.".into());
     };
@@ -336,10 +353,10 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 /// Every recomp in the catalog, with what this PC has: straight from the
 /// catalog, with no question to GitHub, so 1900 entries list at once.
 /// `owned` maps a recomp id to the player's copy of its game, found in their ROM folders.
-pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Vec<RecompEntry> {
-    let installed = installed_versions(library);
+pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Result<Vec<RecompEntry>, String> {
+    let installed = installed_versions(library)?;
     let all = catalog::all();
-    all.iter().filter(|entry| !entry.soon).map(|entry| to_entry(entry, &installed, owned)).collect()
+    Ok(all.iter().filter(|entry| !entry.soon).map(|entry| to_entry(entry, &installed, owned)).collect())
 }
 
 /// Why a recomp can't be installed here, if it can't.
@@ -401,12 +418,12 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     }
 }
 
-fn installed_versions(library: &LocalLibrary) -> Vec<(String, String)> {
-    let recomps = library.games().into_iter().filter_map(|game| match game.source {
+fn installed_versions(library: &LocalLibrary) -> Result<Vec<(String, String)>, String> {
+    let recomps = library.games()?.into_iter().filter_map(|game| match game.source {
         Source::Recomp { recomp_id, version, .. } => Some((recomp_id, version)),
         _ => None,
     });
-    recomps.collect()
+    Ok(recomps.collect())
 }
 
 /// Installs, or updates, a recomp to its newest release and puts it in the library.
@@ -415,6 +432,7 @@ pub async fn install(
     folders: &Folders,
     library: &LocalLibrary,
     installing: &Installing,
+    sessions: &crate::sessions::Sessions,
     id: &str,
     report: impl Fn(InstallStep) + Send + Sync,
 ) -> Result<Game, String> {
@@ -422,13 +440,16 @@ pub async fn install(
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut busy = installing.0.lock().unwrap_or_else(|p| p.into_inner());
-        if busy.contains_key(id) {
+        if busy.contains_key(&entry.id) {
             return Err(format!("{} já está sendo instalado.", entry.name));
         }
-        busy.insert(id.to_string(), cancel.clone());
+        if installed_game(library, &entry)?.is_some_and(|game| sessions.is_running(&game.id)) {
+            return Err("Feche o jogo antes de atualizá-lo.".into());
+        }
+        busy.insert(entry.id.clone(), cancel.clone());
     }
     let result = install_now(client, folders, library, &entry, &cancel, &report).await;
-    installing.0.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+    installing.0.lock().unwrap_or_else(|p| p.into_inner()).remove(&entry.id);
     result
 }
 
@@ -445,12 +466,13 @@ async fn install_now(
     // An update goes where the game already is, even if new installs now go
     // elsewhere, and keeps a copy of the saves first in case the new version
     // changes or breaks them.
-    let installed = installed_game(library, entry);
+    let installed = installed_game(library, entry)?;
     let target = match &installed {
         Some(game) => PathBuf::from(&game.install_dir),
         None => folders.install_dir(&entry.id),
     };
     if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source) {
+        check_install_folder(folders, recomp_id, &target)?;
         backup_saves(folders, recomp_id, &target, "Antes de atualizar")?;
     }
 
@@ -466,44 +488,67 @@ async fn install_now(
     let file = install::download(client, &asset, &folders.downloads, cancel, on_bytes).await?;
 
     report(InstallStep::Unpacking);
-    let staging = staging_for(&target, &entry.id);
     let unpack_target = target.clone();
-    let unpack = tauri::async_runtime::spawn_blocking(move || {
-        let result = install::unpack_over(&file, &staging, &unpack_target);
-        // The archive is not needed once its files are in place.
+    let release = entry.clone();
+    let previous = installed.clone();
+    let prepared = tauri::async_runtime::spawn_blocking(move || {
+        let result = prepare_release(&file, &unpack_target, &release, previous.as_ref());
         let _ = fs::remove_file(&file);
         result
-    });
-    unpack.await.map_err(|e| e.to_string())??;
-    fs::write(target.join(MARKER), entry.id.as_bytes()).map_err(|e| e.to_string())?;
-
-    // An installer runs on the first Play; until then, it's what Play starts.
-    let is_installer = entry.kind == "installer";
-    let program = if is_installer {
-        installer_in(&target).ok_or("O instalador baixado não foi encontrado na pasta.")?
-    } else {
-        // The catalog names the program when it knows it; otherwise it's found by its name.
-        let named = entry.start.as_ref().map(|start| target.join(start)).filter(|p| p.is_file());
-        named
-            .or_else(|| install::find_program(&target, &[&entry.name, &entry.repo]))
-            .ok_or("O recomp foi baixado, mas não achei o programa do jogo dentro dele.")?
+    }).await.map_err(|e| e.to_string())?;
+    let (program, transaction) = prepared?;
+    let result = register(library, entry, installed.as_ref(), &version, &program, &target, entry.kind == "installer");
+    let game = match transaction {
+        Some(tx) => tx.finish(result)?,
+        None => result?,
     };
-    let game = register(library, entry, installed.as_ref(), &version, &program, &target, is_installer)?;
     report(InstallStep::Finished);
     Ok(game)
+}
+
+fn prepare_release(
+    file: &Path,
+    target: &Path,
+    entry: &CatalogEntry,
+    installed: Option<&Game>,
+) -> Result<(PathBuf, Option<update::Update>), String> {
+    let transaction = installed.map(update::Update::begin).transpose()?;
+    let (destination, staging) = match &transaction {
+        Some(tx) => (tx.candidate(), tx.candidate().with_file_name("extract")),
+        None => (target.to_path_buf(), staging_for(target, &entry.id)),
+    };
+    let prepare = || {
+        let program = install::unpack_over(file, &staging, &destination, entry)?;
+        let relative = program.strip_prefix(&destination).map_err(|e| e.to_string())?;
+        let marker = match installed.map(|g| &g.source) {
+            Some(Source::Recomp { recomp_id, .. }) => recomp_id,
+            _ => &entry.id,
+        };
+        let marker_path = destination.join(MARKER);
+        // Replace an archive-supplied marker without following a link.
+        if let Err(e) = fs::remove_file(&marker_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+        fs::write(marker_path, marker).map_err(|e| e.to_string())?;
+        if let Some(tx) = &transaction {
+            tx.publish()?;
+        }
+        Ok(target.join(relative))
+    };
+    match prepare() {
+        Ok(program) => Ok((program, transaction)),
+        Err(error) => match transaction {
+            Some(tx) => tx.finish(Err(error)),
+            None => Err(error),
+        },
+    }
 }
 
 /// The game's program inside `dir`, picked by its name like after an install.
 pub fn find_game_program(dir: &Path, hints: &[&str]) -> Option<PathBuf> {
     install::find_program(dir, hints)
-}
-
-/// The installer a release brought: the program at the top of its folder.
-fn installer_in(dir: &Path) -> Option<PathBuf> {
-    let entries = fs::read_dir(dir).ok()?;
-    let mut programs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_file() && assets::is_program(&p.to_string_lossy())).collect();
-    programs.sort();
-    programs.into_iter().next()
 }
 
 /// The file to download, and its version. When the catalog has the exact file
@@ -531,11 +576,11 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
 }
 
 /// The library's game for this recomp, under its current id or an older one.
-fn installed_game(library: &LocalLibrary, entry: &CatalogEntry) -> Option<Game> {
-    library.games().into_iter().find(|game| match &game.source {
+fn installed_game(library: &LocalLibrary, entry: &CatalogEntry) -> Result<Option<Game>, String> {
+    Ok(library.games()?.into_iter().find(|game| match &game.source {
         Source::Recomp { recomp_id, .. } => entry.is(recomp_id),
         _ => false,
-    })
+    }))
 }
 
 /// Adds the recomp to the library, or updates the entry already there while
@@ -552,11 +597,11 @@ fn register(
 ) -> Result<Game, String> {
     let exe = program.to_string_lossy().into_owned();
     if let Some(existing) = installed {
-        let recomp_id = match &existing.source {
-            Source::Recomp { recomp_id, .. } => recomp_id.clone(),
-            _ => entry.id.clone(),
+        let Source::Recomp { recomp_id, generation, .. } = &existing.source else {
+            return Err("O registro do recomp mudou durante a atualização.".into());
         };
-        let source = Source::Recomp { recomp_id, version: version.to_string(), exe };
+        let generation = generation.checked_add(1).ok_or("Limite de atualizações atingido.")?;
+        let source = Source::Recomp { recomp_id: recomp_id.clone(), version: version.to_string(), exe, generation };
         let mut game = library.update(&existing.id, |game| {
             game.source = source;
             game.setup_pending = setup_pending;
@@ -565,7 +610,7 @@ fn register(
         return Ok(game);
     }
     let id = library_id(&entry.id);
-    let source = Source::Recomp { recomp_id: entry.id.clone(), version: version.to_string(), exe };
+    let source = Source::Recomp { recomp_id: entry.id.clone(), version: version.to_string(), exe, generation: 0 };
     let mut game = Game {
         id,
         name: entry.name.clone(),
@@ -577,7 +622,9 @@ fn register(
         hero_url: None,
         playtime_secs: 0,
         last_played: None,
+        last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending,
     };
@@ -594,17 +641,22 @@ pub fn delete_files(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<()
     if !dir.exists() {
         return Ok(());
     }
-    let marked = fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
-    let safe_id = recomp_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    let legacy = safe_id && dir == folders.default_installs.join(recomp_id);
-    if !marked && !legacy {
-        return Err(format!("{} não parece uma pasta instalada pelo Cerberus; nada foi apagado.", dir.display()));
-    }
+    check_install_folder(folders, recomp_id, dir)?;
     match fs::remove_dir_all(dir) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(format!("Não foi possível apagar {}: {e}. O jogo está aberto?", dir.display())),
     }
+}
+
+fn check_install_folder(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
+    let marked = fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
+    let safe_id = recomp_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let legacy = safe_id && dir == folders.default_installs.join(recomp_id);
+    if !marked && !legacy {
+        return Err(format!("O Cerberus não reconheceu a pasta de instalação {}.", dir.display()));
+    }
+    Ok(())
 }
 
 fn is_arm() -> bool {
@@ -683,12 +735,132 @@ mod tests {
 
     /// A PC's view of one recomp: its install folder with a save, and its data folder.
     fn pc(root: &Path, cloud: &Path, save: &str) -> (Folders, PathBuf) {
+        fs::create_dir_all(cloud).unwrap();
         let folders = Folders::new(&root.join("data"), None);
         folders.set_cloud(Some(cloud.to_path_buf()));
         let install = root.join("game");
         fs::create_dir_all(install.join("Save")).unwrap();
         fs::write(install.join("Save/file1.sav"), save).unwrap();
         (folders, install)
+    }
+
+    #[test]
+    fn can_restore_the_oldest_backup_while_saving_current_progress() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(&root.path().join("data"), None);
+        let install = root.path().join("game");
+        fs::create_dir_all(install.join("Save")).unwrap();
+        let slot = install.join("Save/file1.sav");
+        for round in 0..10 {
+            fs::write(&slot, round.to_string()).unwrap();
+            backup_saves(&folders, "shipwright", &install, "Manual").unwrap().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        let backups = list_backups(&folders, "shipwright");
+        assert_eq!(backups.len(), 10);
+        fs::write(&slot, "latest progress").unwrap();
+        restore_backup(&folders, "shipwright", &install, &backups.last().unwrap().name).unwrap();
+        assert_eq!(fs::read_to_string(&slot).unwrap(), "0");
+        let current = list_backups(&folders, "shipwright");
+        assert_eq!(current.len(), 10);
+        let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
+        saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
+        assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");
+    }
+
+    #[test]
+    fn offline_uploads_survive_restart_and_stay_with_the_chosen_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let desktop_dir = root.path().join("desktop");
+        let (desktop, game) = pc(&desktop_dir, &sync, "desktop progress");
+        fs::remove_dir(&sync).unwrap();
+        let made = backup_saves(&desktop, "shipwright", &game, "Depois de jogar").unwrap().unwrap();
+        assert_eq!(cloud::pending_count(&desktop), 1);
+        assert!(!sync.exists());
+        drop(desktop);
+
+        let reopened = Folders::new(&desktop_dir.join("data"), None);
+        cloud::retry(&reopened).unwrap();
+        let other = root.path().join("other");
+        fs::create_dir(&other).unwrap();
+        reopened.set_cloud(Some(other.clone()));
+        cloud::retry(&reopened).unwrap();
+        assert_eq!(fs::read_dir(other).unwrap().count(), 0);
+
+        reopened.set_cloud(Some(sync.clone()));
+        assert!(cloud::retry(&reopened).is_err());
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let (laptop, laptop_game) = pc(&root.path().join("laptop"), &sync, "newer on laptop");
+        let newer = backup_saves(&laptop, "shipwright", &laptop_game, "Depois de jogar").unwrap().unwrap();
+        cloud::retry(&reopened).unwrap();
+        assert_eq!(cloud::pending_count(&reopened), 0);
+        let destination = reopened.cloud_dir("shipwright").unwrap();
+        assert_eq!(fs::read(destination.join(&made.name)).unwrap(),
+            fs::read(reopened.backups_dir("shipwright").join(&made.name)).unwrap());
+        assert_eq!(saves::newest_with_fingerprint(&destination).unwrap().0.name, newer.name);
+        // Rechecking with identical saves must not publish a duplicate.
+        assert!(backup_saves(&reopened, "shipwright", &game, "Manual").unwrap().is_none());
+        assert_eq!(fs::read_dir(&destination).unwrap().count(), 2);
+        pull_from_cloud(&reopened, "shipwright", &game).unwrap().unwrap();
+        assert_eq!(fs::read_to_string(game.join("Save/file1.sav")).unwrap(), "newer on laptop");
+    }
+
+    #[test]
+    fn remote_backup_with_another_save_layout_preserves_local_progress() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("cloud");
+        let (pc, install) = pc(&root.path().join("pc"), &sync, "current slot");
+        let old = root.path().join("old-version");
+        fs::create_dir_all(old.join("EarlierSlots")).unwrap();
+        fs::write(old.join("EarlierSlots/slot.sav"), "legacy slot").unwrap();
+        let cloud = pc.cloud_dir("shipwright").unwrap();
+        saves::backup(&cloud, &["{install}/EarlierSlots".to_string()], &old, "Manual", None).unwrap().unwrap();
+        assert!(pull_from_cloud(&pc, "shipwright", &install).is_err());
+        assert_eq!(fs::read_to_string(install.join("Save/file1.sav")).unwrap(), "current slot");
+        assert!(!install.join("EarlierSlots").exists());
+    }
+
+    #[test]
+    fn manual_backup_can_send_an_existing_local_copy() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("cloud");
+        let (desktop, game) = pc(&root.path().join("desktop"), &sync, "existing save");
+        desktop.set_cloud(None);
+        let made = backup_saves(&desktop, "shipwright", &game, "Manual").unwrap().unwrap();
+        desktop.set_cloud(Some(sync));
+        assert!(backup_saves(&desktop, "shipwright", &game, "Manual").unwrap().is_none());
+        assert!(desktop.cloud_dir("shipwright").unwrap().join(made.name).is_file());
+        assert_eq!(list_backups(&desktop, "shipwright").len(), 1);
+    }
+
+    #[test]
+    fn interrupted_cloud_restore_can_retry_after_the_archive_is_repaired() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let (desktop, game) = pc(&root.path().join("desktop"), &sync, "remote progress");
+        let (laptop, local_game) = pc(&root.path().join("laptop"), &sync, "local progress");
+        let made = backup_saves(&desktop, "shipwright", &game, "Manual").unwrap().unwrap();
+        let remote = desktop.cloud_dir("shipwright").unwrap().join(&made.name);
+        let good = fs::read(&remote).unwrap();
+        let offset = {
+            let mut zip = zip::ZipArchive::new(fs::File::open(&remote).unwrap()).unwrap();
+            zip.by_index(0).unwrap().data_start() as usize
+        };
+        let mut damaged = good.clone();
+        damaged[offset] ^= 0xff;
+        fs::write(&remote, damaged).unwrap();
+
+        assert!(pull_from_cloud(&laptop, "shipwright", &local_game).is_err());
+        assert!(!laptop.backups_dir("shipwright").join(&made.name).exists());
+        assert_eq!(fs::read_to_string(local_game.join("Save/file1.sav")).unwrap(), "local progress");
+        fs::write(&remote, good).unwrap();
+        assert!(pull_from_cloud(&laptop, "shipwright", &local_game).unwrap().is_some());
+        assert_eq!(fs::read_to_string(local_game.join("Save/file1.sav")).unwrap(), "remote progress");
+        assert_eq!(cloud::pending_count(&laptop), 0);
+        // Closing unchanged after a pull must not republish the remote save as newer.
+        assert!(backup_saves(&laptop, "shipwright", &local_game, "Depois de jogar").unwrap().is_none());
+        assert_eq!(fs::read_dir(desktop.cloud_dir("shipwright").unwrap()).unwrap().count(), 1);
     }
 
     #[test]

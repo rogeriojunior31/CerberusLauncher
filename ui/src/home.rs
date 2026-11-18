@@ -82,7 +82,9 @@ fn not_installed(recomps: &[RecompEntry]) -> Vec<RecompEntry> {
 pub fn Home() -> impl IntoView {
     let library = expect_context::<Library>();
     move || {
-        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let library_state = library.games.get();
+        let read_error = library_state.as_ref().and_then(|state| state.as_ref().err()).cloned();
+        let games = library_state.and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
 
@@ -125,9 +127,15 @@ pub fn Home() -> impl IntoView {
         let everything = (!everything.is_empty()).then(|| {
             view! { <Shelf title="Na sua biblioteca".to_string() tiles=everything see_all=Route::Library /> }
         });
-        let loading = (games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">"Carregando..."</p> });
+        let error = read_error.as_ref().map(|message| view! {
+            <div class="card" role="alert">
+                <p>{message.clone()}</p>
+                <button type="button" class="btn" on:click=move |_| library.go(Route::Library)>"Abrir biblioteca"</button>
+            </div>
+        });
+        let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">"Carregando..."</p> });
 
-        view! { <div class="page home">{loading}{slider}{recent}{found}{popular}{newest}{everything}</div> }
+        view! { <div class="page home">{error}{loading}{slider}{recent}{found}{popular}{newest}{everything}</div> }
     }
 }
 
