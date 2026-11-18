@@ -153,6 +153,23 @@ pub async fn list_backups(id: &str) -> Result<Vec<Backup>, String> {
 }
 
 /// `None` when there was nothing new to copy.
+/// The game's own settings; `None` when the catalog offers none.
+pub async fn game_settings(id: &str) -> Result<Option<cerberus_shared::GameSettings>, String> {
+    call("game_settings", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct SettingArgs<'a> {
+    id: &'a str,
+    setting: Option<String>,
+    choice: Option<usize>,
+}
+
+/// One setting on a choice, or (both `None`) every setting back on the game's defaults.
+pub async fn set_game_setting(id: &str, setting: Option<String>, choice: Option<usize>) -> Result<cerberus_shared::GameSettings, String> {
+    call("set_game_setting", &SettingArgs { id, setting, choice }).await
+}
+
 /// What the launcher did for a game lately, newest first.
 pub async fn game_trail(id: &str) -> Result<Vec<cerberus_shared::TrailEntry>, String> {
     call("game_trail", &Id { id }).await

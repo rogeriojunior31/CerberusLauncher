@@ -109,6 +109,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         game_copy: None,
         setup_pending: false,
         next_step: Default::default(),
+        setting_picks: Default::default(),
     })
 }
 

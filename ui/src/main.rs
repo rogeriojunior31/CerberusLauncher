@@ -5,6 +5,7 @@ mod bigpicture;
 mod discover;
 mod format;
 mod game;
+mod game_settings;
 mod home;
 mod icons;
 mod library_page;

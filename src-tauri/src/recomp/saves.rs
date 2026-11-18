@@ -87,7 +87,10 @@ fn base_folder(key: &str, install: &Path) -> Option<PathBuf> {
         "{local}" if cfg!(windows) => env("LOCALAPPDATA"),
         "{appdata}" if cfg!(windows) => env("APPDATA"),
         "{local}" | "{appdata}" => config,
+        "{config}" if cfg!(windows) => env("APPDATA"),
+        "{config}" => config,
         "{documents}" => home.map(|h| h.join("Documents")),
+        "{home}" => home,
         _ => None,
     }
 }

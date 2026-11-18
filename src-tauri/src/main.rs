@@ -15,6 +15,7 @@ mod setup_runner;
 mod steam;
 mod steam_store;
 mod trail;
+mod game_settings;
 mod xdvdfs;
 
 use std::fs;
@@ -806,6 +807,59 @@ async fn restore_backup(
     result
 }
 
+/// A recomp's catalog settings offer and where it is installed.
+fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings::Offer), String> {
+    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Recomp { recomp_id, .. } = &game.source else {
+        return Err("Só recomps têm ajustes do catálogo.".into());
+    };
+    let offer = recomp::find(recomp_id).map(|e| e.settings).unwrap_or_default();
+    Ok((game, offer))
+}
+
+/// The game's own settings and the choice each is on. `None` when the catalog offers none.
+#[tauri::command]
+fn game_settings(library: State<'_, LocalLibrary>, id: String) -> Result<Option<cerberus_shared::GameSettings>, String> {
+    let (game, offer) = settings_of(&library, &id)?;
+    if offer.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(offer.view(Path::new(&game.install_dir), &game.setting_picks)))
+}
+
+/// Puts one setting on a choice (`choice: None` puts every setting back on the
+/// game's defaults), and returns the settings as they are now.
+#[tauri::command]
+fn set_game_setting(
+    app: AppHandle,
+    library: State<'_, LocalLibrary>,
+    sessions: State<'_, sessions::Sessions>,
+    id: String,
+    setting: Option<String>,
+    choice: Option<usize>,
+) -> Result<cerberus_shared::GameSettings, String> {
+    // The game writes its settings when it closes, over whatever was changed meanwhile.
+    if sessions.is_running(&id) {
+        return Err("Feche o jogo antes de mudar os ajustes.".into());
+    }
+    let (game, offer) = settings_of(&library, &id)?;
+    let install = Path::new(&game.install_dir);
+    let mut picks = game.setting_picks.clone();
+    let result = match (&setting, choice) {
+        (Some(setting), Some(choice)) => offer.choose(install, &mut picks, setting, choice),
+        _ => offer.reset(install, &mut picks),
+    };
+    if let Err(error) = &result {
+        trail::note(&app, &id, "Ajustes", &Err(error.clone()));
+    }
+    result?;
+    if picks != game.setting_picks {
+        library.update(&id, |g| g.setting_picks = picks.clone())?;
+    }
+    let updated = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    Ok(offer.view(install, &updated.setting_picks))
+}
+
 /// What the launcher did for a game lately, newest first.
 #[tauri::command]
 fn game_trail(trail: State<'_, trail::Trail>, id: String) -> Vec<cerberus_shared::TrailEntry> {
@@ -952,6 +1006,8 @@ fn main() {
             backup_now,
             restore_backup,
             game_trail,
+            game_settings,
+            set_game_setting,
             open_folder,
             open_backups,
             get_settings,

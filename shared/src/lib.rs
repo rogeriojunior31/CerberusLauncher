@@ -46,6 +46,9 @@ pub struct Game {
     /// library is listed, so every screen offers the same action.
     #[serde(default)]
     pub next_step: NextStep,
+    /// The game's command-line settings the player picked: setting id -> choice.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub setting_picks: std::collections::BTreeMap<String, usize>,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -66,6 +69,28 @@ pub enum CopyHandoff {
         #[serde(default)]
         extract: bool,
     },
+}
+
+/// A game's own settings, as its Ajustes tab shows them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GameSettings {
+    pub settings: Vec<GameSetting>,
+    /// The settings files they are written to.
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GameSetting {
+    pub id: String,
+    pub label: String,
+    pub help: String,
+    /// The heading it goes under; empty for none.
+    pub group: String,
+    pub advanced: bool,
+    pub choices: Vec<String>,
+    pub current: usize,
+    /// False while another setting makes this one irrelevant (shown greyed out).
+    pub applies: bool,
 }
 
 /// The one thing that stands between the player and the game, if anything.
@@ -264,6 +289,9 @@ pub struct RecompEntry {
     pub handoff: Option<CopyHandoff>,
     /// The copy can be a folder of extracted files, not just a file.
     pub accepts_folder: bool,
+    /// How many of the game's own settings the launcher can change.
+    #[serde(default)]
+    pub settings_count: usize,
     /// The newest full release for this PC; `None` when unknown (offline, no build for this system).
     pub latest: Option<Release>,
     /// The version installed, if any.

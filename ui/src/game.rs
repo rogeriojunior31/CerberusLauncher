@@ -21,6 +21,7 @@ enum Tab {
     Overview,
     Saves,
     Mods,
+    Settings,
     Manage,
 }
 
@@ -73,9 +74,11 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     });
     let pill = entry.clone().filter(|_| siblings > 1).map(|current| view! { <VersionPill current /> });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
+    let has_settings = has_saves && entry.as_ref().is_some_and(|e| e.settings_count > 0);
     let manageable = game.as_ref().is_some_and(|g| matches!(g.source, Source::Local { .. } | Source::Recomp { .. })) || entry.is_some();
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
+        || tab.get_untracked() == Tab::Settings && !has_settings
         || tab.get_untracked() == Tab::Manage && !manageable
     {
         tab.set(Tab::Overview);
@@ -90,6 +93,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         <nav class="tabs">
             {tab_button(Tab::Overview, "Visão geral")}
             {has_saves.then(|| tab_button(Tab::Saves, "Saves"))}
+            {has_settings.then(|| tab_button(Tab::Settings, "Ajustes"))}
             {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
             {manageable.then(|| tab_button(Tab::Manage, "Gerenciar"))}
         </nav>
@@ -105,6 +109,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         },
         Tab::Mods => match &body_game {
             Some(g) => view! { <Mods game_id=g.id.clone() /> }.into_any(),
+            None => ().into_any(),
+        },
+        Tab::Settings => match &body_game {
+            Some(g) => view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> }.into_any(),
             None => ().into_any(),
         },
         Tab::Manage => view! { <Manage game=body_game.clone() entry=body_entry.clone() /> }.into_any(),

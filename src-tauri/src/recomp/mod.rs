@@ -7,7 +7,7 @@ pub mod catalog;
 pub(crate) mod cloud;
 mod github;
 mod install;
-mod saves;
+pub(crate) mod saves;
 pub mod sources;
 mod translate;
 pub(crate) mod update;
@@ -276,6 +276,12 @@ pub fn launch_plan(game: &Game) -> LaunchPlan {
             CopyHandoff::Folder { .. } | CopyHandoff::AsksItself => {}
         }
     }
+    // The game's own command-line settings, picked in its Ajustes tab.
+    if let Source::Recomp { recomp_id, .. } = &game.source {
+        if let Some(entry) = find(recomp_id) {
+            args.extend(entry.settings.args(&game.setting_picks));
+        }
+    }
     args.extend(split_args(&game.launch_args));
     LaunchPlan { args, env }
 }
@@ -430,6 +436,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         owned_copy: owned.get(&entry.id).cloned(),
         handoff: entry.handoff.clone(),
         accepts_folder: entry.accepts_folder,
+        settings_count: entry.settings.len(),
         id: entry.id,
         title: entry.title,
         name: entry.name,
@@ -669,6 +676,7 @@ fn register(
         game_copy: None,
         setup_pending,
         next_step: Default::default(),
+        setting_picks: Default::default(),
     };
     apply_art(&mut game);
     library.add(game.clone())?;

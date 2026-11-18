@@ -700,3 +700,28 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .trail li.failed { background: color-mix(in srgb, var(--bad) 14%, transparent); }
 .trail .when { color: var(--dim); }
 @media (max-width: 720px) { .trail li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Ajustes: as opções do próprio jogo */
+.settings { max-width: 980px; }
+.settings .card-h { align-items: center; }
+.set-list { display: flex; flex-direction: column; margin-top: 8px; }
+.set-list.locked { opacity: 0.55; pointer-events: none; }
+.set-group { margin: 22px 0 4px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 0; border-top: 1px solid var(--line); }
+.set-row:first-child, .set-group + .set-row { border-top: 0; }
+.set-row.off { opacity: 0.5; }
+.set-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.set-text b { font-size: 15px; }
+.set-text small { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.set-text small.dim { color: var(--dim); }
+.segs { display: inline-flex; flex-shrink: 0; padding: 4px; gap: 2px; border-radius: 12px; background: var(--fill); border: 1px solid var(--line); }
+.seg { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 9px; cursor: pointer; white-space: nowrap; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+.seg:hover:not(:disabled) { color: var(--ink); background: var(--fill2); }
+.seg.on { background: var(--grad); color: var(--accent-ink); }
+.seg:disabled { cursor: default; }
+.set-row .select { min-width: 220px; flex-shrink: 0; }
+.settings .path { margin: 14px 0 0; word-break: break-all; }
+@media (max-width: 760px) {
+  .set-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .segs { flex-wrap: wrap; }
+}

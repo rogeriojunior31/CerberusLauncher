@@ -119,6 +119,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         game_copy: None,
         setup_pending: false,
         next_step: Default::default(),
+        setting_picks: Default::default(),
     }
 }
 

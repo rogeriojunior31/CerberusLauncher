@@ -85,6 +85,9 @@ pub struct CatalogEntry {
     pub n64: Option<crate::roms::N64Wanted>,
     /// Whether the copy can be a folder of extracted files (`"folder or iso"`).
     pub accepts_folder: bool,
+    /// The game's own settings the launcher can change.
+    #[serde(skip)]
+    pub settings: crate::game_settings::Offer,
 }
 
 impl CatalogEntry {
@@ -353,6 +356,7 @@ struct Boot {
     handoff: Option<CopyHandoff>,
     n64: Option<crate::roms::N64Wanted>,
     accepts_folder: bool,
+    settings: crate::game_settings::Offer,
 }
 
 /// How the release ships, which program starts the game, and how that program
@@ -370,6 +374,7 @@ fn boot_of(boot: Option<Value>) -> Boot {
         handoff: files.and_then(handoff_of),
         n64: files.and_then(n64_wanted),
         accepts_folder: files.and_then(|f| f.get("accepts")).and_then(Value::as_str).is_some_and(|a| a.contains("folder")),
+        settings: crate::game_settings::offer_of(value.get("settings")),
     }
 }
 
@@ -429,7 +434,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
 
     let mut list = Vec::new();
     for app in catalog.apps {
-        let Boot { kind, start, handoff, n64, accepts_folder } = boot_of(app.boot);
+        let Boot { kind, start, handoff, n64, accepts_folder, settings } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
             continue;
         }
@@ -478,6 +483,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             handoff,
             n64,
             accepts_folder,
+            settings,
             saves: Vec::new(),
             aliases: Vec::new(),
             id: app.id,
