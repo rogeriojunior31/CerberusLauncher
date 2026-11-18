@@ -108,6 +108,10 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       moldura do formato certo. O logo aparece no lugar do nome na página do jogo. "Restaurar original"
       apaga só as imagens feitas pelo Cerberus. Conferido no app com o Alan Wake (Steam); a busca no
       SteamGridDB ainda precisa de uma chave real para ser vista funcionando.
+- [ ] Vários discos, DLC e arquivos opcionais por jogo (item 4 da tabela): adiado. Em 18/11/2026
+      nenhum dos 1899 jogos do catálogo usa mais de uma entrada (`boot.inputs`); retomar quando algum usar.
+- [x] Aviso do catálogo para o jogador ("Como começar", 455 jogos) e selo de multijogador
+      (local, online ou os dois, 156 jogos) na página do jogo.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

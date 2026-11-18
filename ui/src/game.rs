@@ -238,9 +238,24 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
     let problem = entry.as_ref().and_then(|e| e.problem.clone()).map(|text| view! { <p class="problem">{text}</p> });
-    let tags = entry.as_ref().filter(|e| !e.tags.is_empty()).map(|e| {
+    let tags = entry.as_ref().filter(|e| !e.tags.is_empty() || !e.multiplayer.is_empty()).map(|e| {
+        let players = match e.multiplayer.as_str() {
+            "local" => Some("Multijogador local"),
+            "online" => Some("Multijogador online"),
+            "both" => Some("Multijogador local e online"),
+            _ => None,
+        };
+        let players = players.map(|p| view! { <span class="tag players">{p}</span> });
         let chips = e.tags.iter().map(|tag| view! { <span class="tag">{tag.clone()}</span> }).collect_view();
-        view! { <div class="tags">{chips}</div> }
+        view! { <div class="tags">{players}{chips}</div> }
+    });
+    let note = entry.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|text| {
+        view! {
+            <div class="note">
+                <Svg icon=Icon::Check size=18 />
+                <div><b>"Como começar"</b><p>{text}</p></div>
+            </div>
+        }
     });
     let features = entry.as_ref().filter(|e| !e.features.is_empty()).map(|e| {
         let items = e.features.iter().map(|f| view! { <li><Svg icon=Icon::Check size=16 />{f.clone()}</li> }).collect_view();
@@ -301,6 +316,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
                 <div class="stats">{cards}</div>
                 {untracked}
                 {about}
+                {note}
                 {tags}
                 {problem}
                 {setup}

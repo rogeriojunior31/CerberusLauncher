@@ -362,6 +362,12 @@ pub struct RecompEntry {
     /// How many of the game's own settings the launcher can change.
     #[serde(default)]
     pub settings_count: usize,
+    /// What the player should know before the first start, from the catalog (in English).
+    #[serde(default)]
+    pub player_note: String,
+    /// "local", "online" or "both"; empty for single player.
+    #[serde(default)]
+    pub multiplayer: String,
     /// The newest full release for this PC; `None` when unknown (offline, no build for this system).
     pub latest: Option<Release>,
     /// The version installed, if any.

@@ -841,3 +841,10 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .gs-slider { display: flex; align-items: center; gap: 12px; flex-shrink: 0; width: min(320px, 100%); }
 .gs-slider input { flex: 1; accent-color: var(--accent); }
 .gs-value { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Aviso do catálogo antes de jogar */
+.note { display: flex; gap: 12px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 8%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.note svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.note b { font-size: 14px; }
+.note p { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.tag.players { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--ink); }

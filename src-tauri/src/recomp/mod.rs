@@ -438,6 +438,8 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         handoff: entry.handoff.clone(),
         accepts_folder: entry.accepts_folder,
         settings_count: entry.settings.len(),
+        player_note: entry.player_note.clone(),
+        multiplayer: entry.multiplayer.clone(),
         id: entry.id,
         title: entry.title,
         name: entry.name,
