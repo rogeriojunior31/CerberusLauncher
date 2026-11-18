@@ -2867,5 +2867,562 @@
     "size_text": "13 MB",
     "stars": 21,
     "license": "GPL-3.0"
+  },
+  {
+    "id": "totk-pc-recomp",
+    "title": "the-legend-of-zelda-tears-of-the-kingdom",
+    "name": "TotK Recomp",
+    "game": "The Legend of Zelda: Tears of the Kingdom",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "valentderah/totk-pc-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Static recompilation of The Legend of Zelda: Tears of the Kingdom to native Windows and Linux x86-64, with a Vulkan renderer. Game files not included.",
+    "adds": "",
+    "needs": "Sua cópia de The Legend of Zelda: Tears of the Kingdom (Nintendo Switch).",
+    "saves": [],
+    "kind": "installer",
+    "tag": "v0.4.1",
+    "released": "2026-11-15",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "TotK-Setup-*-windows.zip",
+      "linux": "TotK-Setup-*-x86_64-pgo.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "TotK-Setup-0.4.1-windows.zip",
+        "sha256": "5b1ebd4285167e80ec0a7ee2a5c0ec85540cbeea8c83234067a76f83f7a33ee8"
+      },
+      "linux": {
+        "name": "TotK-Setup-0.4.1-x86_64-pgo.AppImage",
+        "sha256": "cb91aa7d5c90a42be4de896cc2f995220d1d40bca9b8ca96088a161654a8d1f6"
+      }
+    },
+    "size_text": "159 MB",
+    "stars": 7677,
+    "license": "MIT"
+  },
+  {
+    "id": "mkw-recomp",
+    "title": "mario-kart-world",
+    "name": "MKW Recomp",
+    "game": "Mario Kart World",
+    "console": "Nintendo Switch 2",
+    "origin": "switch2",
+    "repo": "adriadam10/mkw-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Static recompilation of Mario Kart World (Nintendo Switch 2) to a native PC program",
+    "adds": "",
+    "needs": "Sua cópia de Mario Kart World (Nintendo Switch 2).",
+    "saves": [],
+    "tag": "v0.1.13",
+    "released": "2026-11-16",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "mkw-recomp-*-windows-x64.zip",
+      "linux": "mkw-recomp-*-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "mkw-recomp-0.1.13-windows-x64.zip",
+        "sha256": "676a7ed509f9991b858b1f9d1bcb06bf597816c3641456493898f2872cf15f41"
+      },
+      "linux": {
+        "name": "mkw-recomp-0.1.13-x86_64.AppImage",
+        "sha256": "df8cae56b7f54006db658f7875a6207d9a36731239ca05f49fbf80751912ebd8"
+      }
+    },
+    "size_text": "167 MB",
+    "stars": 1484,
+    "license": "MIT"
+  },
+  {
+    "id": "ocarina-recomp",
+    "title": "the-legend-of-zelda-ocarina-of-time",
+    "name": "ocarina-recomp",
+    "game": "The Legend of Zelda: Ocarina of Time",
+    "console": "Nintendo Switch 2",
+    "origin": "switch2",
+    "repo": "sostenesfreitas/ocarina-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Ocarina of Time running natively on Windows, no emulator. Built on your PC from your own copy. No game files included.",
+    "adds": "",
+    "needs": "Sua cópia de The Legend of Zelda: Ocarina of Time (Nintendo Switch 2).",
+    "saves": [],
+    "kind": "installer",
+    "tag": "v0.3.0",
+    "released": "2026-11-09",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "Ocarina-Setup-*-windows.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Ocarina-Setup-0.3.0-windows.zip",
+        "sha256": "81d9b98efc104bc53bf221a5696a1b65d644e2862f9de0c79a6237ffec96d8e3"
+      }
+    },
+    "size_text": "111 MB",
+    "stars": 1228,
+    "license": "GPL-3.0"
+  },
+  {
+    "id": "dkb-pc-recomp",
+    "title": "dkb-pc-recomp",
+    "name": "Donkey Kong Bananza PC Recomp",
+    "game": "Donkey Kong Bananza",
+    "console": "Nintendo Switch 2",
+    "origin": "switch2",
+    "repo": "Lucas-blip-png/dkb-pc-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Static recompilation of Donkey Kong Bananza (Switch 2) to native Windows and Linux with Vulkan. 0.4.1: FSR 3.1/FSR 4 upscalers, frame generation Auto and 3x-8x, window and CRT filters, smoother audio, Polish, AppImage fix; 38 community PRs. Roadmap: #10. No game files included.",
+    "adds": "",
+    "needs": "Sua cópia de Donkey Kong Bananza (Nintendo Switch 2).",
+    "saves": [],
+    "tag": "v0.4.1",
+    "released": "2026-11-17",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "DKB-Setup-*+ac46642-windows.zip",
+      "linux": "DKB-Setup-*+ac46642-linux-x86_64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "DKB-Setup-0.4.1+ac46642-windows.zip",
+        "sha256": "cfb397208df974bc5bd9c45319b630ec9ac3274651cdf29ea71db03eb005bb38"
+      },
+      "linux": {
+        "name": "DKB-Setup-0.4.1+ac46642-linux-x86_64.tar.gz",
+        "sha256": "30d3b8a9d77c702de14137088e9381e5d704fa3b0e6e9c34f8469e896510ca57"
+      }
+    },
+    "size_text": "125 MB",
+    "stars": 1203,
+    "license": "GPL-3.0"
+  },
+  {
+    "id": "driveclub-recomp",
+    "title": "driveclub",
+    "name": "Driveclub Recomp",
+    "game": "Driveclub",
+    "console": "PlayStation 4",
+    "origin": "ps4",
+    "repo": "OverkillLabs3/driveclub-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "DriveClub (PS4, version 1.28) running natively on Windows",
+    "adds": "",
+    "needs": "Sua cópia de Driveclub (PlayStation 4).",
+    "saves": [],
+    "start": "DriveClub.exe",
+    "tag": "v0.4.2",
+    "released": "2026-11-09",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "driveclub-recomp-*-win64.zip",
+      "linux": "driveclub-recomp-*-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "driveclub-recomp-0.4.2-win64.zip",
+        "sha256": "57276e146e01b1f31b670668c53170b3e116bd5d58fca6a0cb3cc25aa298e658"
+      },
+      "linux": {
+        "name": "driveclub-recomp-0.4.2-x86_64.AppImage",
+        "sha256": "46ec6810cf5da1300afb0c15ccc0387668691e49353a9d5fc4848f879d8fa704"
+      }
+    },
+    "size_text": "160 MB",
+    "stars": 1056,
+    "license": "GPL-2.0"
+  },
+  {
+    "id": "ultratears",
+    "title": "the-legend-of-zelda-tears-of-the-kingdom",
+    "name": "UltraTears",
+    "game": "The Legend of Zelda: Tears of the Kingdom",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "kuraeow/ultratears",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Unofficial native PC and Steam Deck port of Tears of the Kingdom 1.4.3 using static recompilation. Builds locally from the player's own extracted game dump; no game files included.",
+    "adds": "",
+    "needs": "Sua cópia de The Legend of Zelda: Tears of the Kingdom (Nintendo Switch).",
+    "saves": [],
+    "tag": "v0.4.0",
+    "released": "2026-11-11",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "UltraTears-*-windows-x86_64.zip",
+      "linux": "UltraTears.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "UltraTears-0.4.0-windows-x86_64.zip",
+        "sha256": "4b24a256e37b35a00bc476e2169199972b3d2246e943a761b4c24e8926033edd"
+      },
+      "linux": {
+        "name": "UltraTears.AppImage",
+        "sha256": "859f94bd17a495c611f5509e2f53e55a218685baafddfa5329964dbb2f0395da"
+      }
+    },
+    "size_text": "154 MB",
+    "stars": 938,
+    "license": "GPL-3.0"
+  },
+  {
+    "id": "recompia",
+    "title": "pokopia",
+    "name": "Recompia",
+    "game": "Pokemon Pokopia",
+    "console": "Nintendo Switch 2",
+    "origin": "switch2",
+    "repo": "Dittobyte/Recompia",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "A cozy life-simulation and sandbox builder with fantastical creatures (Switch 2), recompiled to run natively on Windows, Linux and macOS. Multiplayer, all events, modding, enhancements and more. Discord: https://discord.recompia.com",
+    "adds": "",
+    "needs": "Sua cópia de Pokemon Pokopia (Nintendo Switch 2).",
+    "saves": [],
+    "tag": "v0.15.0",
+    "released": "2026-11-18",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "PokopiaRecomp-*-win64.zip",
+      "linux": "PokopiaRecomp-*-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "PokopiaRecomp-0.15.0-win64.zip",
+        "sha256": "abfb499dabab50c1bc213cfeae65a81b293e37db7505c25a90c490c55e36d9b9"
+      },
+      "linux": {
+        "name": "PokopiaRecomp-0.15.0-linux-x64.tar.gz",
+        "sha256": "04fbb87cded28a3c3209dbcd10b5f07205873818d69d0571a4c2a459432a62aa"
+      }
+    },
+    "size_text": "183 MB",
+    "stars": 889,
+    "license": "GPL-3.0"
+  },
+  {
+    "id": "b2recomp",
+    "title": "b2recomp",
+    "name": "B2 Recomp",
+    "game": "Bayonetta 2",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "K0NL/B2recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Unofficial static recompilation of Bayonetta 2 (Switch) for Windows. Builds the game on your PC from your own legally dumped copy. No game files, keys or SDK code included.",
+    "adds": "",
+    "needs": "Sua cópia de Bayonetta 2 (Nintendo Switch).",
+    "saves": [],
+    "start": "B2recomp.exe",
+    "tag": "v0.3.3",
+    "released": "2026-10-22",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "B2recomp-builder-26c45d7.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "B2recomp-builder-26c45d7.zip",
+        "sha256": "44be49c505b77753fe59baeb8181258e56c25b9c49a60921793f49ee1fb7ed46"
+      }
+    },
+    "size_text": "101 MB",
+    "stars": 629,
+    "license": "GPL-3.0"
+  },
+  {
+    "id": "metroid-dread-recomp",
+    "title": "metroid-dread-recomp",
+    "name": "Metroid Dread Recomp",
+    "game": "Metroid Dread",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "yozander2009-stack/Metroid-Dread-Recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Metroid Dread recomp ",
+    "adds": "",
+    "needs": "Sua cópia de Metroid Dread (Nintendo Switch).",
+    "saves": [],
+    "start": "Metroid Dread.exe",
+    "tag": "v0.5.9",
+    "released": "2026-11-12",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "MetroidDread-PC-*-Windows-x64.zip",
+      "linux": "Metroid_Dread-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "MetroidDread-PC-v0.5.9-Windows-x64.zip",
+        "sha256": "99ac48100883d50e165bb52121cb780545191bb897e178d1cf38341b6e32177e"
+      },
+      "linux": {
+        "name": "Metroid_Dread-x86_64.AppImage",
+        "sha256": "4e33123d26c67bce7931b5cd507387a0ad7c947d81072ea303bdad9d5a9f8fb1"
+      }
+    },
+    "size_text": "145 MB",
+    "stars": 449,
+    "license": "Apache-2.0"
+  },
+  {
+    "id": "super-odyssey-pc-recomp",
+    "title": "super-mario-odyssey",
+    "name": "Super Odyssey PC Recomp",
+    "game": "Super Mario Odyssey",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "Simon3Sarkis/super-odyssey-pc-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "A native Windows PC port of Super Mario Odyssey by static recompilation. Bring your own game: no game files included.",
+    "adds": "",
+    "needs": "Sua cópia de Super Mario Odyssey (Nintendo Switch).",
+    "saves": [],
+    "tag": "v0.4.5",
+    "released": "2026-11-18",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Super.Odyssey.PC.Recomp-*-windows.zip",
+      "linux": "Super.Odyssey.PC.Recomp-*-linux-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "Super.Odyssey.PC.Recomp-0.4.5-windows.zip",
+        "sha256": "9b138b864972f0fa6ca8e4e15f47d9ad80d11b2a535c0fd1c2f3531c47aa8232"
+      },
+      "linux": {
+        "name": "Super.Odyssey.PC.Recomp-0.4.5-linux-x86_64.AppImage",
+        "sha256": "930e83471ddc7952e68f8961be0ff47928349b16bb548f539a00602acdd293e7"
+      }
+    },
+    "size_text": "221 MB",
+    "stars": 393,
+    "license": "NOASSERTION"
+  },
+  {
+    "id": "botw-native",
+    "title": "the-legend-of-zelda-breath-of-the-wild",
+    "name": "BotW Native",
+    "game": "The Legend of Zelda: Breath of the Wild",
+    "console": "Wii U",
+    "origin": "wiiu",
+    "repo": "ryderclanky/BotW-Native",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Breath of the Wild (Wii U, v1.5.0) statically recompiled to a native Windows program with a Vulkan renderer. ",
+    "adds": "",
+    "needs": "Sua cópia de The Legend of Zelda: Breath of the Wild (Wii U).",
+    "saves": [],
+    "start": "BotWLauncher.exe",
+    "tag": "v0.1.2",
+    "released": "2026-10-31",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "BotW-Native-*-windows-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "BotW-Native-v0.1.2-windows-x64.zip",
+        "sha256": "3e5d575574c6fb9cf7825bd74687ee3d3cc695efbb676ee25322bc6f87564a11"
+      }
+    },
+    "size_text": "142 MB",
+    "stars": 389,
+    "license": "MIT"
+  },
+  {
+    "id": "letsgo-recomp",
+    "title": "letsgo-recomp",
+    "name": "Let's Go Recomp",
+    "game": "Pokémon: Let's Go, Pikachu!",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "raulzrrs/letsgo-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Native Windows port of Pokémon: Let's Go, Eevee! (Switch v1.0.0) by static recompilation, built on LAS Recomp. No game files included.",
+    "adds": "",
+    "needs": "Sua cópia de Pokémon: Let's Go, Pikachu! (Nintendo Switch).",
+    "saves": [],
+    "start": "LetsGoRecomp.exe",
+    "tag": "v0.7.7",
+    "released": "2026-11-18",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "LetsGoRecomp-*-windows.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "LetsGoRecomp-0.7.7-windows.zip",
+        "sha256": "c18e6955a7ba34d1abc077003382ada71cad546c2deb2d820f0cc298262a3b02"
+      }
+    },
+    "size_text": "88 MB",
+    "stars": 314,
+    "license": "NOASSERTION"
+  },
+  {
+    "id": "infamous2-port",
+    "title": "infamous-2",
+    "name": "inFAMOUS 2 Native PC Port",
+    "game": "inFAMOUS 2",
+    "console": "PlayStation 3",
+    "origin": "ps3",
+    "repo": "SamiEnazi/infamous2-port",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "inFAMOUS 2 (PS3) as a native PC program for Windows and Linux: Setup recompiles YOUR copy on your PC (static recompilation, Vulkan). No game files included.",
+    "adds": "",
+    "needs": "Sua cópia de inFAMOUS 2 (PlayStation 3).",
+    "saves": [],
+    "tag": "v0.6.2",
+    "released": "2026-11-17",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Infamous2-engine-win-x64.zip",
+      "linux": "inFAMOUS2-port-*-Linux-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Infamous2-engine-win-x64.zip",
+        "sha256": "5f5147a32d191cd207305fcaa3648d945cabc88c89528d69660421d6fb2e9ff2"
+      },
+      "linux": {
+        "name": "inFAMOUS2-port-v0.6.2-Linux-x64.zip",
+        "sha256": "90890e054abd7af56a3a2b592aeb7075013fa3cc665b849fcb2cae4ca35aec7a"
+      }
+    },
+    "size_text": "4 MB",
+    "stars": 204,
+    "license": "MIT"
+  },
+  {
+    "id": "ratchet-tod-recomp",
+    "title": "ratchet-tod-recomp",
+    "name": "Ratchet & Clank: Tools of Destruction Recompiled",
+    "game": "Ratchet & Clank Future: Tools of Destruction",
+    "console": "PlayStation 3",
+    "origin": "ps3",
+    "repo": "Re-TeRo17/ratchet-tod-recomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "Ratchet & Clank: Tools of Destruction native PC port (PS3 static recompilation) – 4K, 60 fps, DualSense, Windows",
+    "adds": "",
+    "needs": "Sua cópia de Ratchet & Clank Future: Tools of Destruction (PlayStation 3).",
+    "saves": [],
+    "start": "Play.bat",
+    "tag": "v1.3.0",
+    "released": "2026-11-16",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "tod-recomp-*-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "tod-recomp-1.3.0-win64.zip",
+        "sha256": "f016d2e018a13aea8fb753fc9263179057742b46334c2e8af8e2fce8c88e2b64"
+      }
+    },
+    "size_text": "72 MB",
+    "stars": 177,
+    "license": "NOASSERTION"
+  },
+  {
+    "id": "ascension-r",
+    "title": "god-of-war-ascension",
+    "name": "Ascension-R",
+    "game": "God of War: Ascension",
+    "console": "PlayStation 3",
+    "origin": "ps3",
+    "repo": "rigaz29/Ascension-R",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "God of War: Ascension PC port: an unofficial, native Windows port of the PS3 game by static recompilation, no emulator. No game files included: you build it from your own copy.",
+    "adds": "",
+    "needs": "Sua cópia de God of War: Ascension (PlayStation 3).",
+    "saves": [],
+    "tag": "v0.1.0-alpha.15",
+    "released": "2026-11-17",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "Ascension-R-*-kit-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Ascension-R-0.1.0-alpha.15-kit-win64.zip",
+        "sha256": "33cea69d1d5ee6010d12687c259d14a507e4d3ffdf4f46d8ded5f7303bece6c4"
+      }
+    },
+    "size_text": "148 MB",
+    "stars": 163,
+    "license": "NOASSERTION"
   }
 ]

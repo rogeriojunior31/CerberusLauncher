@@ -33,45 +33,6 @@
     "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
   },
   {
-    "id": "totk-pc-recomp",
-    "title": "totk-pc-recomp",
-    "name": "totk pc recomp",
-    "repo": "valentderah/totk-pc-recomp",
-    "about": "Static recompilation of The Legend of Zelda: Tears of the Kingdom to native Windows and Linux x86-64, with a Vulkan renderer. Game files not included.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.4.1",
-    "released": "2026-11-15",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "TotK-Setup-*-windows.zip",
-      "linux": "TotK-Setup-*-x86_64-pgo.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "TotK-Setup-0.4.1-windows.zip",
-        "sha256": "5b1ebd4285167e80ec0a7ee2a5c0ec85540cbeea8c83234067a76f83f7a33ee8"
-      },
-      "linux": {
-        "name": "TotK-Setup-0.4.1-x86_64-pgo.AppImage",
-        "sha256": "cb91aa7d5c90a42be4de896cc2f995220d1d40bca9b8ca96088a161654a8d1f6"
-      }
-    },
-    "size_text": "159 MB",
-    "stars": 7677,
-    "review_note": "Console recente (switch): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
     "id": "gen1recomp",
     "title": "gen1recomp",
     "name": "gen1recomp",
@@ -195,156 +156,6 @@
     "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
   },
   {
-    "id": "mkw-recomp",
-    "title": "mkw-recomp",
-    "name": "mkw recomp",
-    "repo": "adriadam10/mkw-recomp",
-    "about": "Static recompilation of Mario Kart World (Nintendo Switch 2) to a native PC program",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.1.13",
-    "released": "2026-11-16",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "mkw-recomp-*-windows-x64.zip",
-      "linux": "mkw-recomp-*-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "mkw-recomp-0.1.13-windows-x64.zip",
-        "sha256": "676a7ed509f9991b858b1f9d1bcb06bf597816c3641456493898f2872cf15f41"
-      },
-      "linux": {
-        "name": "mkw-recomp-0.1.13-x86_64.AppImage",
-        "sha256": "df8cae56b7f54006db658f7875a6207d9a36731239ca05f49fbf80751912ebd8"
-      }
-    },
-    "size_text": "167 MB",
-    "stars": 1484,
-    "review_note": "Console recente (switch2): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
-    "id": "ocarina-recomp",
-    "title": "ocarina-recomp",
-    "name": "ocarina recomp",
-    "repo": "sostenesfreitas/ocarina-recomp",
-    "about": "Ocarina of Time running natively on Windows, no emulator. Built on your PC from your own copy. No game files included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.3.0",
-    "released": "2026-11-09",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "Ocarina-Setup-*-windows.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "Ocarina-Setup-0.3.0-windows.zip",
-        "sha256": "81d9b98efc104bc53bf221a5696a1b65d644e2862f9de0c79a6237ffec96d8e3"
-      }
-    },
-    "size_text": "111 MB",
-    "stars": 1228,
-    "review_note": "Console recente (switch2): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
-    "id": "dkb-pc-recomp",
-    "title": "dkb-pc-recomp",
-    "name": "dkb pc recomp",
-    "repo": "Lucas-blip-png/dkb-pc-recomp",
-    "about": "Static recompilation of Donkey Kong Bananza (Switch 2) to native Windows and Linux with Vulkan. 0.4.1: FSR 3.1/FSR 4 upscalers, frame generation Auto and 3x-8x, window and CRT filters, smoother audio, Polish, AppImage fix; 38 community PRs. Roadmap: #10. No game files included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.4.1",
-    "released": "2026-11-17",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "DKB-Setup-*+ac46642-windows.zip",
-      "linux": "DKB-Setup-*+ac46642-linux-x86_64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "DKB-Setup-0.4.1+ac46642-windows.zip",
-        "sha256": "cfb397208df974bc5bd9c45319b630ec9ac3274651cdf29ea71db03eb005bb38"
-      },
-      "linux": {
-        "name": "DKB-Setup-0.4.1+ac46642-linux-x86_64.tar.gz",
-        "sha256": "30d3b8a9d77c702de14137088e9381e5d704fa3b0e6e9c34f8469e896510ca57"
-      }
-    },
-    "size_text": "125 MB",
-    "stars": 1203,
-    "review_note": "Console recente (switch2): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
-    "id": "driveclub-recomp",
-    "title": "driveclub-recomp",
-    "name": "driveclub recomp",
-    "repo": "OverkillLabs3/driveclub-recomp",
-    "about": "DriveClub (PS4, version 1.28) running natively on Windows",
-    "license": "GPL-2.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.4.2",
-    "released": "2026-11-09",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "driveclub-recomp-*-win64.zip",
-      "linux": "driveclub-recomp-*-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "driveclub-recomp-0.4.2-win64.zip",
-        "sha256": "57276e146e01b1f31b670668c53170b3e116bd5d58fca6a0cb3cc25aa298e658"
-      },
-      "linux": {
-        "name": "driveclub-recomp-0.4.2-x86_64.AppImage",
-        "sha256": "46ec6810cf5da1300afb0c15ccc0387668691e49353a9d5fc4848f879d8fa704"
-      }
-    },
-    "size_text": "160 MB",
-    "stars": 1056,
-    "review_note": "Console recente (ps4): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
     "id": "marathonrecomp",
     "title": "marathonrecomp",
     "name": "MarathonRecomp",
@@ -376,84 +187,6 @@
     "size_text": "37 MB",
     "stars": 957,
     "review_note": "Instalação do tipo 'None': precisa de passos que o Cerberus ainda não confere sozinho."
-  },
-  {
-    "id": "ultratears",
-    "title": "ultratears",
-    "name": "ultratears",
-    "repo": "kuraeow/ultratears",
-    "about": "Unofficial native PC and Steam Deck port of Tears of the Kingdom 1.4.3 using static recompilation. Builds locally from the player's own extracted game dump; no game files included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.4.0",
-    "released": "2026-11-11",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "UltraTears-*-windows-x86_64.zip",
-      "linux": "UltraTears.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "UltraTears-0.4.0-windows-x86_64.zip",
-        "sha256": "4b24a256e37b35a00bc476e2169199972b3d2246e943a761b4c24e8926033edd"
-      },
-      "linux": {
-        "name": "UltraTears.AppImage",
-        "sha256": "859f94bd17a495c611f5509e2f53e55a218685baafddfa5329964dbb2f0395da"
-      }
-    },
-    "size_text": "154 MB",
-    "stars": 938,
-    "review_note": "Console recente (switch): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
-    "id": "recompia",
-    "title": "recompia",
-    "name": "Recompia",
-    "repo": "Dittobyte/Recompia",
-    "about": "A cozy life-simulation and sandbox builder with fantastical creatures (Switch 2), recompiled to run natively on Windows, Linux and macOS. Multiplayer, all events, modding, enhancements and more. Discord: https://discord.recompia.com",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.15.0",
-    "released": "2026-11-18",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "PokopiaRecomp-*-win64.zip",
-      "linux": "PokopiaRecomp-*-linux-x64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "PokopiaRecomp-0.15.0-win64.zip",
-        "sha256": "abfb499dabab50c1bc213cfeae65a81b293e37db7505c25a90c490c55e36d9b9"
-      },
-      "linux": {
-        "name": "PokopiaRecomp-0.15.0-linux-x64.tar.gz",
-        "sha256": "04fbb87cded28a3c3209dbcd10b5f07205873818d69d0571a4c2a459432a62aa"
-      }
-    },
-    "size_text": "183 MB",
-    "stars": 889,
-    "review_note": "Console recente (switch2): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "ps3recomp",
@@ -532,39 +265,6 @@
     "size_text": "81 MB",
     "stars": 713,
     "review_note": "Instalação do tipo 'None': precisa de passos que o Cerberus ainda não confere sozinho."
-  },
-  {
-    "id": "b2recomp",
-    "title": "b2recomp",
-    "name": "B2recomp",
-    "repo": "K0NL/B2recomp",
-    "about": "Unofficial static recompilation of Bayonetta 2 (Switch) for Windows. Builds the game on your PC from your own legally dumped copy. No game files, keys or SDK code included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.3.3",
-    "released": "2026-10-22",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "B2recomp-builder-26c45d7.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "B2recomp-builder-26c45d7.zip",
-        "sha256": "44be49c505b77753fe59baeb8181258e56c25b9c49a60921793f49ee1fb7ed46"
-      }
-    },
-    "size_text": "101 MB",
-    "stars": 629,
-    "review_note": "Console recente (switch): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "forzahorizon1-reimagined",
@@ -651,45 +351,6 @@
     "review_note": "Instalação do tipo 'None': precisa de passos que o Cerberus ainda não confere sozinho."
   },
   {
-    "id": "metroid-dread-recomp",
-    "title": "metroid-dread-recomp",
-    "name": "Metroid Dread Recomp",
-    "repo": "yozander2009-stack/Metroid-Dread-Recomp",
-    "about": "Metroid Dread recomp ",
-    "license": "Apache-2.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.5.9",
-    "released": "2026-11-12",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "MetroidDread-PC-*-Windows-x64.zip",
-      "linux": "Metroid_Dread-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "MetroidDread-PC-v0.5.9-Windows-x64.zip",
-        "sha256": "99ac48100883d50e165bb52121cb780545191bb897e178d1cf38341b6e32177e"
-      },
-      "linux": {
-        "name": "Metroid_Dread-x86_64.AppImage",
-        "sha256": "4e33123d26c67bce7931b5cd507387a0ad7c947d81072ea303bdad9d5a9f8fb1"
-      }
-    },
-    "size_text": "145 MB",
-    "stars": 449,
-    "review_note": "Console recente (switch): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
     "id": "recompstore",
     "title": "recompstore",
     "name": "RecompStore",
@@ -721,45 +382,6 @@
     "size_text": "25 MB",
     "stars": 401,
     "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
-  },
-  {
-    "id": "super-odyssey-pc-recomp",
-    "title": "super-odyssey-pc-recomp",
-    "name": "super odyssey pc recomp",
-    "repo": "Simon3Sarkis/super-odyssey-pc-recomp",
-    "about": "A native Windows PC port of Super Mario Odyssey by static recompilation. Bring your own game: no game files included.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.4.5",
-    "released": "2026-11-18",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "Super.Odyssey.PC.Recomp-*-windows.zip",
-      "linux": "Super.Odyssey.PC.Recomp-*-linux-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "Super.Odyssey.PC.Recomp-0.4.5-windows.zip",
-        "sha256": "9b138b864972f0fa6ca8e4e15f47d9ad80d11b2a535c0fd1c2f3531c47aa8232"
-      },
-      "linux": {
-        "name": "Super.Odyssey.PC.Recomp-0.4.5-linux-x86_64.AppImage",
-        "sha256": "930e83471ddc7952e68f8961be0ff47928349b16bb548f539a00602acdd293e7"
-      }
-    },
-    "size_text": "221 MB",
-    "stars": 393,
-    "review_note": "Console recente (switch): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "shadowrecomp",
@@ -799,39 +421,6 @@
     "size_text": "30 MB",
     "stars": 390,
     "review_note": "Instalação do tipo 'None': precisa de passos que o Cerberus ainda não confere sozinho."
-  },
-  {
-    "id": "botw-native",
-    "title": "botw-native",
-    "name": "BotW Native",
-    "repo": "ryderclanky/BotW-Native",
-    "about": "Breath of the Wild (Wii U, v1.5.0) statically recompiled to a native Windows program with a Vulkan renderer. ",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.1.2",
-    "released": "2026-10-31",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "BotW-Native-*-windows-x64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "BotW-Native-v0.1.2-windows-x64.zip",
-        "sha256": "3e5d575574c6fb9cf7825bd74687ee3d3cc695efbb676ee25322bc6f87564a11"
-      }
-    },
-    "size_text": "142 MB",
-    "stars": 389,
-    "review_note": "Console recente (wiiu): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "weeping-of-the-empire",
@@ -904,39 +493,6 @@
     "size_text": "15 MB",
     "stars": 322,
     "review_note": "Não é um jogo (ferramenta ou biblioteca)."
-  },
-  {
-    "id": "letsgo-recomp",
-    "title": "letsgo-recomp",
-    "name": "letsgo recomp",
-    "repo": "raulzrrs/letsgo-recomp",
-    "about": "Native Windows port of Pokémon: Let's Go, Eevee! (Switch v1.0.0) by static recompilation, built on LAS Recomp. No game files included.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.7.7",
-    "released": "2026-11-18",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "LetsGoRecomp-*-windows.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "LetsGoRecomp-0.7.7-windows.zip",
-        "sha256": "c18e6955a7ba34d1abc077003382ada71cad546c2deb2d820f0cc298262a3b02"
-      }
-    },
-    "size_text": "88 MB",
-    "stars": 314,
-    "review_note": "Console recente (switch): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "ng2recomp",
@@ -1161,45 +717,6 @@
     "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
   },
   {
-    "id": "infamous2-port",
-    "title": "infamous2-port",
-    "name": "infamous2 port",
-    "repo": "SamiEnazi/infamous2-port",
-    "about": "inFAMOUS 2 (PS3) as a native PC program for Windows and Linux: Setup recompiles YOUR copy on your PC (static recompilation, Vulkan). No game files included.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.6.2",
-    "released": "2026-11-17",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "Infamous2-engine-win-x64.zip",
-      "linux": "inFAMOUS2-port-*-Linux-x64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "Infamous2-engine-win-x64.zip",
-        "sha256": "5f5147a32d191cd207305fcaa3648d945cabc88c89528d69660421d6fb2e9ff2"
-      },
-      "linux": {
-        "name": "inFAMOUS2-port-v0.6.2-Linux-x64.zip",
-        "sha256": "90890e054abd7af56a3a2b592aeb7075013fa3cc665b849fcb2cae4ca35aec7a"
-      }
-    },
-    "size_text": "4 MB",
-    "stars": 204,
-    "review_note": "Console recente (ps3): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
-  },
-  {
     "id": "armyoftworecompilation",
     "title": "armyoftworecompilation",
     "name": "ArmyOfTwoRecompilation",
@@ -1231,39 +748,6 @@
     "size_text": "35 MB",
     "stars": 188,
     "review_note": "Instalação do tipo 'None': precisa de passos que o Cerberus ainda não confere sozinho."
-  },
-  {
-    "id": "ratchet-tod-recomp",
-    "title": "ratchet-tod-recomp",
-    "name": "ratchet tod recomp",
-    "repo": "Re-TeRo17/ratchet-tod-recomp",
-    "about": "Ratchet & Clank: Tools of Destruction native PC port (PS3 static recompilation) – 4K, 60 fps, DualSense, Windows",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v1.3.0",
-    "released": "2026-11-16",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "tod-recomp-*-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "tod-recomp-1.3.0-win64.zip",
-        "sha256": "f016d2e018a13aea8fb753fc9263179057742b46334c2e8af8e2fce8c88e2b64"
-      }
-    },
-    "size_text": "72 MB",
-    "stars": 177,
-    "review_note": "Console recente (ps3): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "conker-recomped-and-reloaded",
@@ -1348,39 +832,6 @@
     "size_text": "118 MB",
     "stars": 163,
     "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
-  },
-  {
-    "id": "ascension-r",
-    "title": "ascension-r",
-    "name": "Ascension R",
-    "repo": "rigaz29/Ascension-R",
-    "about": "God of War: Ascension PC port: an unofficial, native Windows port of the PS3 game by static recompilation, no emulator. No game files included: you build it from your own copy.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.1.0-alpha.15",
-    "released": "2026-11-17",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "Ascension-R-*-kit-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "Ascension-R-0.1.0-alpha.15-kit-win64.zip",
-        "sha256": "33cea69d1d5ee6010d12687c259d14a507e4d3ffdf4f46d8ded5f7303bece6c4"
-      }
-    },
-    "size_text": "148 MB",
-    "stars": 163,
-    "review_note": "Console recente (ps3): projetos assim costumam ser falsos ou distribuir vírus. Conferir com muito cuidado."
   },
   {
     "id": "dq8-recompiled",

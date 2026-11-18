@@ -121,8 +121,10 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       Critério: o repositório já está no catálogo do recomplauncher.com como jogo jogável, instala por
       arquivo (`portable`), é de console antigo e tem arquivo para Windows com SHA-256. Só fatos (jogo,
       console, programa) vieram de lá; capas e textos não. Os 52 restantes ficaram em `candidates.json`
-      com o motivo em `review_note`, incluindo 15 de consoles recentes com o padrão de repositórios
-      falsos (estrelas em massa, jogos recém-lançados).
+      com o motivo em `review_note`.
+- [x] Os 15 projetos de consoles recentes (Switch, Switch 2, Wii U, PS3, PS4) também entraram, por
+      decisão do mantenedor: são os mais procurados agora e já estão no catálogo do site. O SHA-256
+      garante o arquivo que o autor publicou, não a confiança no autor. Catálogo próprio: 87 jogos.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
