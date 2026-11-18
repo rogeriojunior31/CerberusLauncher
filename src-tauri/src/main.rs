@@ -665,7 +665,10 @@ async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String>
     let Some(program) = pick_one(dialog).await? else {
         return Ok(None);
     };
-    setup_runner::use_program(&app, &id, &program).map(Some)
+    let result = setup_runner::use_program(&app, &id, &program);
+    let outcome = result.as_ref().map(|_| program.display().to_string()).map_err(Clone::clone);
+    trail::note(&app, &id, "Localizar programa", &outcome);
+    result.map(Some)
 }
 
 #[tauri::command]

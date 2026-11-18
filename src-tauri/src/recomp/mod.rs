@@ -247,7 +247,11 @@ fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&Str
     let copy_missing = match (handoff, &game.game_copy) {
         // Passed on every start: the file itself must still be there.
         (Some(CopyHandoff::Flag { .. } | CopyHandoff::Env { .. }), copy) => !copy.as_deref().is_some_and(|c| Path::new(c).exists()),
-        // Copied into the game's folder once; the original may be gone since.
+        // Copied into the game's folder under a fixed name: that file must be there
+        // (the original may be gone since). Unpacked discs have no single file to check.
+        (Some(CopyHandoff::Folder { folder, file_name: Some(name), .. }), _) => {
+            !Path::new(&game.install_dir).join(folder).join(name).is_file()
+        }
         (Some(CopyHandoff::Folder { .. }), copy) => copy.is_none(),
         (Some(CopyHandoff::AsksItself) | None, _) => false,
     };
@@ -731,11 +735,20 @@ mod tests {
         assert_eq!(next_step_with(&game, None, None), NextStep::Play);
 
         // A copy passed on the command line must still exist; one copied into the folder needn't.
-        let game = recomp_at(dir.path(), Some(&rom));
+        let mut game = recomp_at(dir.path(), Some(&rom));
+        game.install_dir = dir.path().to_string_lossy().into_owned();
         assert_eq!(next_step_with(&game, Some(&flag), None), NextStep::ChooseCopy { found: None });
         assert_eq!(next_step_with(&game, Some(&folder), None), NextStep::Play);
         fs::write(&rom, b"rom").unwrap();
         assert_eq!(next_step_with(&game, Some(&flag), None), NextStep::Play);
+
+        // A fixed file name in the game's folder (SpaghettiKart's mk64.us.z64): its presence decides.
+        let named = CopyHandoff::Folder { folder: ".".into(), file_name: Some("mk64.us.z64".into()), extract: false };
+        assert_eq!(next_step_with(&game, Some(&named), None), NextStep::ChooseCopy { found: None });
+        fs::write(dir.path().join("mk64.us.z64"), b"rom").unwrap();
+        assert_eq!(next_step_with(&game, Some(&named), None), NextStep::Play);
+        game.game_copy = None;
+        assert_eq!(next_step_with(&game, Some(&named), None), NextStep::Play, "set up by hand, outside Cerberus");
     }
 
     #[test]

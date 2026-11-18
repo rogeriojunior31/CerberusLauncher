@@ -306,6 +306,9 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
     let id = StoredValue::new(game.id.clone());
     let busy = RwSignal::new(false);
     let current = RwSignal::new(game.game_copy.clone());
+    // Chosen once, but no longer where the game reads it (deleted from its folder,
+    // or a file that moved): the backend's next step says so, and the card agrees.
+    let lost = RwSignal::new(matches!(game.next_step, cerberus_shared::NextStep::ChooseCopy { .. }) && game.game_copy.is_some());
 
     let accepts_folder = entry.accepts_folder;
     let choose_from = move |use_found: bool, folder: bool| {
@@ -314,6 +317,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
             let set = library.report(api::set_game_copy(&id.get_value(), use_found, folder).await).flatten();
             busy.set(false);
             if let Some(game) = set {
+                lost.set(false);
                 current.set(game.game_copy.clone());
                 library.games.refetch();
                 library.toast("Pronto: o jogo vai abrir com a sua cópia.");
@@ -329,7 +333,10 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
 
     let found = entry.owned_copy.clone();
     let what = if entry.needs.is_empty() { format!("Sua cópia de {}.", entry.game) } else { entry.needs.clone() };
-    let body = move || match (current.get(), found.clone()) {
+    let warning = move || lost.get().then(|| view! {
+        <p class="problem small">"A cópia escolhida não está mais onde o jogo procura. Escolha de novo."</p>
+    });
+    let body = move || match (current.get().filter(|_| !lost.get()), found.clone()) {
         (Some(path), _) => view! {
             <div class="need found">
                 <Svg icon=Icon::Check size=18 />
@@ -362,6 +369,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
     view! {
         <aside class="card ready">
             <h3>"Easy Setup"</h3>
+            {warning}
             {body}
             <p class="muted small">"O Cerberus entrega sua cópia ao jogo do jeito que ele espera. Nada sai do seu PC."</p>
         </aside>
