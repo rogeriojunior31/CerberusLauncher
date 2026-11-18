@@ -5,6 +5,7 @@ mod bigpicture;
 mod discover;
 mod format;
 mod game;
+mod looks;
 mod customize;
 mod adopt;
 mod first_run;

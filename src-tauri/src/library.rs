@@ -122,6 +122,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         setting_picks: Default::default(),
         external: false,
         logo_path: None,
+        look: None,
     }
 }
 

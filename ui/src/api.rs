@@ -248,6 +248,22 @@ pub async fn art_save(id: &str, kind: &str, data: Option<String>) -> Result<(), 
     call("art_save", &ArtSaveArgs { id, kind, data }).await
 }
 
+/// Whether a game can take a picture filter, and the one it has.
+pub async fn look_status(id: &str) -> Result<cerberus_shared::LookStatus, String> {
+    call("look_status", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct LookArgs<'a> {
+    id: &'a str,
+    look: Option<cerberus_shared::Look>,
+}
+
+/// Picks a game's picture filter, or (`None`) turns it off.
+pub async fn set_look(id: &str, look: Option<cerberus_shared::Look>) -> Result<cerberus_shared::LookStatus, String> {
+    call("set_look", &LookArgs { id, look }).await
+}
+
 /// The game's own settings; `None` when the catalog offers none.
 pub async fn game_settings(id: &str) -> Result<Option<cerberus_shared::GameSettings>, String> {
     call("game_settings", &Id { id }).await

@@ -74,7 +74,8 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     });
     let pill = entry.clone().filter(|_| siblings > 1).map(|current| view! { <VersionPill current /> });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
-    let has_settings = has_saves && entry.as_ref().is_some_and(|e| e.settings_count > 0);
+    // Every game Cerberus starts gets the tab: picture filters, and the catalog's settings when it has some.
+    let has_settings = game.as_ref().is_some_and(|g| g.is_tracked());
     let manageable = game.is_some() || entry.is_some();
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
@@ -112,7 +113,17 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             None => ().into_any(),
         },
         Tab::Settings => match &body_game {
-            Some(g) => view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> }.into_any(),
+            Some(g) => {
+                let preview = hero_sources(g).into_iter().next().or_else(|| cover_sources(g).into_iter().next());
+                let catalog = body_entry.as_ref().is_some_and(|e| e.settings_count > 0);
+                view! {
+                    <div class="settings-tab">
+                        <crate::looks::LooksCard game_id=g.id.clone() preview />
+                        {catalog.then(|| view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> })}
+                    </div>
+                }
+                .into_any()
+            }
             None => ().into_any(),
         },
         Tab::Manage => view! { <Manage game=body_game.clone() entry=body_entry.clone() /> }.into_any(),

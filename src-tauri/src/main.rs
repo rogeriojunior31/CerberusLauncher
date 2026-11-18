@@ -17,6 +17,7 @@ mod steam_store;
 mod trail;
 mod game_settings;
 mod art_custom;
+mod looks;
 mod xdvdfs;
 
 use std::fs;
@@ -341,6 +342,51 @@ async fn art_pick_file(app: AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 fn art_save(art: State<'_, art_custom::CustomArt>, id: String, kind: String, data: Option<String>) -> Result<(), String> {
     art.set(&id, &kind, data.as_deref())
+}
+
+/// The program a game's picture comes from: the one picked to be watched, else the one started.
+fn drawing_program(game: &Game) -> Option<PathBuf> {
+    if let Some(tracked) = &game.tracking_exe {
+        return Some(PathBuf::from(tracked));
+    }
+    match &game.source {
+        Source::Recomp { exe, .. } | Source::Local { exe } if !game.setup_pending => Some(PathBuf::from(exe)),
+        _ => None,
+    }
+}
+
+/// Whether a game can take a picture filter, and the one it has.
+#[tauri::command]
+fn look_status(library: State<'_, LocalLibrary>, id: String) -> Result<cerberus_shared::LookStatus, String> {
+    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let unsupported = match drawing_program(&game) {
+        None => Some("Filtros funcionam em jogos que o Cerberus abre (recomps e jogos adicionados à mão).".to_string()),
+        Some(exe) => match looks::route(&exe) {
+            looks::Route::Dxgi { .. } => None,
+            looks::Route::Unsupported(why) => Some(why),
+        },
+    };
+    Ok(cerberus_shared::LookStatus { unsupported, current: game.look })
+}
+
+/// Picks a game's picture filter (`None` turns it off). The first one downloads ReShade.
+#[tauri::command]
+async fn set_look(
+    app: AppHandle,
+    library: State<'_, LocalLibrary>,
+    http: State<'_, reqwest::Client>,
+    id: String,
+    look: Option<cerberus_shared::Look>,
+) -> Result<cerberus_shared::LookStatus, String> {
+    if let Some(look) = &look {
+        if !looks::LOOKS.iter().any(|(known, _, _)| *known == look.id) {
+            return Err("Esse filtro não existe.".into());
+        }
+        let data = app.state::<DataDir>().0.clone();
+        looks::ensure(&http, &data).await?;
+    }
+    library.update(&id, |game| game.look = look.clone())?;
+    look_status(library, id)
 }
 
 /// Ends the first-run setup with how the player plays (desk or TV).
@@ -1109,6 +1155,8 @@ fn main() {
             let data_dir = app.path().app_data_dir()?;
             let chosen = settings::load(&data_dir);
             app.manage(LocalLibrary::load(&data_dir));
+            // Filters left beside a game by a crash or a forced close go now.
+            looks::take_back_all(&data_dir);
             app.manage(trail::Trail::new(&data_dir));
             let folders = recomp::Folders::new(&data_dir, chosen.recomps_dir.clone());
             folders.set_cloud(chosen.cloud_dir.clone());
@@ -1193,6 +1241,8 @@ fn main() {
             art_fetch,
             art_pick_file,
             art_save,
+            look_status,
+            set_look,
             open_steamgriddb_keys,
             scan_for_recomps,
             adopt_recomp,

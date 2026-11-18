@@ -112,6 +112,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         setting_picks: Default::default(),
         external: false,
         logo_path: None,
+        look: None,
     })
 }
 

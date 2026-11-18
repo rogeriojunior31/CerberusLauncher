@@ -848,3 +848,24 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .note b { font-size: 14px; }
 .note p { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .tag.players { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--ink); }
+
+/* Filtros visuais */
+.settings-tab { display: flex; flex-direction: column; gap: 16px; }
+.looks { max-width: 980px; }
+.lk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 10px; }
+.lk-tile { --s: 0.6; display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 12px; border-radius: 14px; background: var(--fill); border: 2px solid transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s var(--ease), transform 0.15s var(--ease); }
+.lk-tile:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--line2); }
+.lk-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--fill)); }
+.lk-tile b { font-size: 14px; padding: 0 4px; }
+.lk-tile small { color: var(--muted); font-size: 12px; line-height: 1.4; padding: 0 4px; }
+.lk-pic { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--card3); margin-bottom: 6px; }
+.lk-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lk-pic::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.lk-sharp .lk-pic img { filter: contrast(calc(1 + 0.15 * var(--s))) saturate(calc(1 + 0.08 * var(--s))); }
+.lk-vivid .lk-pic img { filter: saturate(calc(1 + 0.8 * var(--s))) contrast(calc(1 + 0.15 * var(--s))); }
+.lk-crt .lk-pic img { filter: contrast(calc(1 + 0.1 * var(--s))) brightness(calc(1 + 0.08 * var(--s))); }
+.lk-crt .lk-pic::after { opacity: var(--s); background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.45) 2px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.6) 100%); }
+.lk-film .lk-pic img { filter: sepia(calc(0.4 * var(--s))) saturate(calc(1 - 0.1 * var(--s))) contrast(calc(1 - 0.06 * var(--s))); }
+.lk-film .lk-pic::after { opacity: var(--s); background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.55) 100%); }
+.lk-strength { margin-top: 14px; max-width: 520px; }
+.lk-tip { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; }

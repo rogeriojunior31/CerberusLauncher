@@ -112,6 +112,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       nenhum dos 1899 jogos do catálogo usa mais de uma entrada (`boot.inputs`); retomar quando algum usar.
 - [x] Aviso do catálogo para o jogador ("Como começar", 455 jogos) e selo de multijogador
       (local, online ou os dois, 156 jogos) na página do jogo.
+- [x] Filtros visuais (Nítido, Cores vivas, CRT, Filme) com intensidade, na aba Ajustes, para jogos
+      com Direct3D 10/11/12. Shaders próprios aplicados pelo ReShade, baixado do site oficial na primeira
+      escolha. O `dxgi.dll` fica ao lado do jogo só durante a partida, nunca substitui um que já exista e
+      é retirado no próximo início se o Cerberus fechar no meio. Conferido no SpaghettiKart (CRT e Filme),
+      com a pasta do jogo idêntica ao backup depois. Vulkan e OpenGL ficam para depois.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

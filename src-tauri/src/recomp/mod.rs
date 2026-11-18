@@ -689,6 +689,7 @@ fn register(
         setting_picks: Default::default(),
         external: false,
         logo_path: None,
+        look: None,
     };
     apply_art(&mut game);
     library.add(game.clone())?;

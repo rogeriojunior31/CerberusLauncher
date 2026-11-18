@@ -129,6 +129,20 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let plan = recomp::launch_plan(game);
     let mut command = Command::new(exe);
     command.current_dir(dir).args(plan.args).envs(plan.env);
+    // The picture filter: ReShade beside the game until it closes. A look that
+    // can't go on never stops the game from starting.
+    if let Some(look) = &game.look {
+        let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        match crate::looks::prepare(&data, &game.id, exe, look) {
+            Ok(prepared) => {
+                command.envs(prepared.env);
+            }
+            Err(error) => {
+                crate::trail::note(app, &game.id, "Filtro", &Err(error.clone()));
+                let _ = app.emit("toast", format!("Filtro desligado nesta partida: {error}"));
+            }
+        }
+    }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
         sessions.lock().remove(&game.id);
         let message = format!("Não foi possível abrir {}: {e}", exe.display());
@@ -233,6 +247,9 @@ pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shar
 }
 
 pub fn release(app: &AppHandle, id: &str) {
+    if let Ok(data) = app.path().app_data_dir() {
+        crate::looks::take_back(&data, id);
+    }
     app.state::<Sessions>().lock().remove(id);
     notify(app, id, false);
 }

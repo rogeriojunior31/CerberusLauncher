@@ -56,6 +56,9 @@ pub struct Game {
     /// The game's logo, when the player picked one; shown in place of its name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logo_path: Option<String>,
+    /// A picture filter applied while the game runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<Look>,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -111,6 +114,21 @@ pub struct SettingSlider {
     pub value: f64,
     /// The value as the game writes it ("0.50", "80").
     pub text: String,
+}
+
+/// A picture filter for a game: which one (`sharp`, `vivid`, `crt`, `film`) and how strong, 0-100.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Look {
+    pub id: String,
+    pub strength: u8,
+}
+
+/// Whether a game can take a look, and the one it has.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LookStatus {
+    /// Why it can't, in words for the player; `None` when it can.
+    pub unsupported: Option<String>,
+    pub current: Option<Look>,
 }
 
 /// A game on SteamGridDB.
