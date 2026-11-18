@@ -56,9 +56,14 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       Testes com releases locais simulam interrupções na preparação, entre as renomeações e antes
       e depois do registro. Também forçam uma falha de gravação e conferem executável, configuração
       e save após a recuperação e a nova tentativa.
-- [ ] Fechar o ciclo com um instalador real e uma imagem própria. O teste do ReStreet chegou
-      ao checksum e ao registro do instalador pendente. Ainda faltam preparar a ISO de FIFA Street,
-      iniciar o jogo, fechar, reabrir o launcher e conferir executável e histórico da sessão.
+- [x] Abrir FIFA Street pelo ReStreet. O jogador confirmou o funcionamento no Windows.
+      A biblioteca gravou o caminho de `FifaStreetLauncher.exe`, a conclusão da instalação
+      e 3 segundos de tempo de jogo.
+- [ ] Conferir a duração da sessão do ReStreet. Medir uma partida e comparar com o tempo
+      registrado, verificando se o executável inicial entrega o jogo a outro processo.
+- [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
+      o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
+      em uma cópia separada.
 
 ## Feito
 
