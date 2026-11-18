@@ -33,19 +33,21 @@ impl LocalLibrary {
         if games.iter().any(|known| known.id == game.id) {
             return Ok(());
         }
-        games.push(game);
-        save(&self.file, &games)
+        let mut next = games.clone();
+        next.push(game);
+        self.commit(&mut games, next)
     }
 
     /// Applies `change` to one game, saves, and returns the game as it is now.
     pub fn update(&self, id: &str, change: impl FnOnce(&mut Game)) -> Result<Game, String> {
         let mut games = self.lock();
-        let Some(game) = games.iter_mut().find(|game| game.id == id) else {
+        let mut next = games.clone();
+        let Some(game) = next.iter_mut().find(|game| game.id == id) else {
             return Err("Esse jogo não está mais na biblioteca.".into());
         };
         change(game);
         let updated = game.clone();
-        save(&self.file, &games)?;
+        self.commit(&mut games, next)?;
         Ok(updated)
     }
 
@@ -54,9 +56,17 @@ impl LocalLibrary {
         let Some(index) = games.iter().position(|game| game.id == id) else {
             return Ok(None);
         };
-        let removed = games.remove(index);
-        save(&self.file, &games)?;
+        let mut next = games.clone();
+        let removed = next.remove(index);
+        self.commit(&mut games, next)?;
         Ok(Some(removed))
+    }
+
+    // Callers hold the library lock until the rename succeeds and readers can see the same list.
+    fn commit(&self, current: &mut Vec<Game>, next: Vec<Game>) -> Result<(), String> {
+        save(&self.file, &next)?;
+        *current = next;
+        Ok(())
     }
 
     fn lock(&self) -> MutexGuard<'_, Vec<Game>> {
@@ -202,6 +212,34 @@ mod tests {
         library.add(celeste()).unwrap();
         library.update(&celeste().id, |game| game.name = "Celeste 64".into()).unwrap();
         assert_eq!(LocalLibrary::load(&dir).games()[0].name, "Celeste 64");
+    }
+
+    #[test]
+    fn failed_writes_keep_the_last_committed_library_and_can_be_retried() {
+        let dir = empty_dir("write-failure");
+        let library = LocalLibrary::load(&dir);
+        let original = celeste();
+        let other = game_from_exe(Path::new("OtherGame.exe"));
+        library.add(original.clone()).unwrap();
+
+        // A directory where save needs to create its temporary file fails on every OS.
+        let blocker = dir.join("library.json.tmp");
+        fs::create_dir(&blocker).unwrap();
+        assert!(library.add(other.clone()).is_err());
+        assert!(library.get(&other.id).is_none());
+        assert!(library.update(&original.id, |game| game.name = "Renamed".into()).is_err());
+        assert_eq!(library.get(&original.id), Some(original.clone()));
+        assert!(library.remove(&original.id).is_err());
+        assert_eq!(library.games(), vec![original.clone()]);
+        assert_eq!(LocalLibrary::load(&dir).games(), library.games());
+
+        fs::remove_dir(blocker).unwrap();
+        library.add(other.clone()).unwrap();
+        library.update(&other.id, |game| game.name = "Renamed".into()).unwrap();
+        assert_eq!(library.remove(&original.id).unwrap(), Some(original));
+        let reloaded = LocalLibrary::load(&dir);
+        assert_eq!(reloaded.games(), library.games());
+        assert_eq!(reloaded.get(&other.id).unwrap().name, "Renamed");
     }
 
     #[test]
