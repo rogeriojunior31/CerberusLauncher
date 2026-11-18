@@ -369,6 +369,7 @@ fn remove_game(
     folder: State<'_, CoverFolder>,
     recomps: State<'_, recomp::Folders>,
     sessions: State<'_, sessions::Sessions>,
+    installing: State<'_, recomp::Installing>,
     id: String,
 ) -> Result<(), String> {
     let Some(game) = library.get(&id)? else {
@@ -380,10 +381,17 @@ fn remove_game(
     // Files first: if they can't go, the game stays listed. Saves are copied
     // before anything is deleted, and the copies outlive the uninstall.
     if let Source::Recomp { recomp_id, .. } = &game.source {
-        recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
-        recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+        installing.while_idle(recomp_id, || {
+            if sessions.is_running(&id) {
+                return Err("Feche o jogo antes de removê-lo.".into());
+            }
+            recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
+            recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            library.remove(&id)
+        })?;
+    } else {
+        library.remove(&id)?;
     }
-    library.remove(&id)?;
     forget_cover(&folder.0, game.cover_path);
     Ok(())
 }
@@ -435,7 +443,8 @@ async fn install_recomp(
         let progress = InstallProgress { recomp_id: id.clone(), step };
         let _ = app.emit("recomp-progress", progress);
     };
-    let result = recomp::install(&http, &folders, &library, &installing, &id, &report).await;
+    let sessions = app.state::<sessions::Sessions>();
+    let result = recomp::install(&http, &folders, &library, &installing, &sessions, &id, &report).await;
     let game = match result {
         Ok(game) => game,
         Err(message) => {
@@ -604,7 +613,14 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
     let url = match &game.source {
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
-        Source::Local { exe } | Source::Recomp { exe, .. } => return sessions::start(&app, &game, Path::new(exe)),
+        Source::Local { exe } => return sessions::start(&app, &game, Path::new(exe)),
+        Source::Recomp { recomp_id, .. } => {
+            return app.state::<recomp::Installing>().while_idle(recomp_id, || {
+                let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+                let Source::Recomp { exe, .. } = &current.source else { return Err("Registro do recomp inválido.".into()) };
+                sessions::start(&app, &current, Path::new(exe))
+            });
+        }
     };
     app.opener()
         .open_url(url, None::<&str>)

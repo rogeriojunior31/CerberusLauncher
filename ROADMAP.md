@@ -50,9 +50,12 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       então sobrepor a instalação. Testes com dois pacotes locais confirmam que uma release sem
       programa preserva o executável anterior, os dados e os saves. O teste de instalador confirma que o
       caminho registrado aponta para o programa do novo pacote.
-- [ ] Tornar recuperável a confirmação da atualização. Hoje a sobreposição de arquivos, a gravação
-      do marcador e o registro na biblioteca ainda são etapas separadas. Testar interrupção durante
-      a cópia e falha ao registrar a versão, reabrir o launcher e conferir versão, arquivos e saves.
+- [x] Recuperar atualizações interrompidas de recomps já instalados. O launcher prepara o novo
+      pacote ao lado da instalação e guarda a pasta anterior até gravar a biblioteca. Ao reabrir,
+      o registro em disco determina qual pasta usar, inclusive ao reinstalar a mesma versão.
+      Testes com releases locais simulam interrupções na preparação, entre as renomeações e antes
+      e depois do registro. Também forçam uma falha de gravação e conferem executável, configuração
+      e save após a recuperação e a nova tentativa.
 - [ ] Fechar o ciclo com um instalador real e uma imagem própria. O teste do ReStreet chegou
       ao checksum e ao registro do instalador pendente. Ainda faltam preparar a ISO de FIFA Street,
       iniciar o jogo, fechar, reabrir o launcher e conferir executável e histórico da sessão.

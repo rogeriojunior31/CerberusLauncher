@@ -150,7 +150,14 @@ pub enum Source {
     /// Any executable the user added by hand.
     Local { exe: String },
     /// A recomp installed from its developer's GitHub releases.
-    Recomp { recomp_id: String, version: String, exe: String },
+    Recomp {
+        recomp_id: String,
+        version: String,
+        exe: String,
+        /// Identifies the last committed file replacement, including a reinstall of the same version.
+        #[serde(default)]
+        generation: u64,
+    },
 }
 
 /// One recomp in Discover: what the catalog says about it, plus what we know right now.

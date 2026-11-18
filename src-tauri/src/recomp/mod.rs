@@ -9,6 +9,7 @@ mod install;
 mod saves;
 pub mod sources;
 mod translate;
+pub(crate) mod update;
 
 use std::collections::HashMap;
 use std::fs;
@@ -105,9 +106,19 @@ fn staging_for(target: &Path, id: &str) -> PathBuf {
 pub struct Installing(Mutex<HashMap<String, Arc<AtomicBool>>>);
 
 impl Installing {
+    pub fn while_idle<T>(&self, id: &str, action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if busy.contains_key(&key) {
+            return Err("Aguarde a atualização do jogo terminar.".into());
+        }
+        action()
+    }
+
     pub fn cancel(&self, id: &str) {
         let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(flag) = busy.get(id) {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        if let Some(flag) = busy.get(&key) {
             flag.store(true, Ordering::Relaxed);
         }
     }
@@ -415,6 +426,7 @@ pub async fn install(
     folders: &Folders,
     library: &LocalLibrary,
     installing: &Installing,
+    sessions: &crate::sessions::Sessions,
     id: &str,
     report: impl Fn(InstallStep) + Send + Sync,
 ) -> Result<Game, String> {
@@ -422,13 +434,16 @@ pub async fn install(
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut busy = installing.0.lock().unwrap_or_else(|p| p.into_inner());
-        if busy.contains_key(id) {
+        if busy.contains_key(&entry.id) {
             return Err(format!("{} já está sendo instalado.", entry.name));
         }
-        busy.insert(id.to_string(), cancel.clone());
+        if installed_game(library, &entry)?.is_some_and(|game| sessions.is_running(&game.id)) {
+            return Err("Feche o jogo antes de atualizá-lo.".into());
+        }
+        busy.insert(entry.id.clone(), cancel.clone());
     }
     let result = install_now(client, folders, library, &entry, &cancel, &report).await;
-    installing.0.lock().unwrap_or_else(|p| p.into_inner()).remove(id);
+    installing.0.lock().unwrap_or_else(|p| p.into_inner()).remove(&entry.id);
     result
 }
 
@@ -451,6 +466,7 @@ async fn install_now(
         None => folders.install_dir(&entry.id),
     };
     if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source) {
+        check_install_folder(folders, recomp_id, &target)?;
         backup_saves(folders, recomp_id, &target, "Antes de atualizar")?;
     }
 
@@ -466,23 +482,62 @@ async fn install_now(
     let file = install::download(client, &asset, &folders.downloads, cancel, on_bytes).await?;
 
     report(InstallStep::Unpacking);
-    let staging = staging_for(&target, &entry.id);
     let unpack_target = target.clone();
     let release = entry.clone();
-    let unpack = tauri::async_runtime::spawn_blocking(move || {
-        let result = install::unpack_over(&file, &staging, &unpack_target, &release);
-        // The archive is not needed once its files are in place.
+    let previous = installed.clone();
+    let prepared = tauri::async_runtime::spawn_blocking(move || {
+        let result = prepare_release(&file, &unpack_target, &release, previous.as_ref());
         let _ = fs::remove_file(&file);
         result
-    });
-    let program = unpack.await.map_err(|e| e.to_string())??;
-    fs::write(target.join(MARKER), entry.id.as_bytes()).map_err(|e| e.to_string())?;
-
-    // An installer runs on the first Play; until then, it's what Play starts.
-    let is_installer = entry.kind == "installer";
-    let game = register(library, entry, installed.as_ref(), &version, &program, &target, is_installer)?;
+    }).await.map_err(|e| e.to_string())?;
+    let (program, transaction) = prepared?;
+    let result = register(library, entry, installed.as_ref(), &version, &program, &target, entry.kind == "installer");
+    let game = match transaction {
+        Some(tx) => tx.finish(result)?,
+        None => result?,
+    };
     report(InstallStep::Finished);
     Ok(game)
+}
+
+fn prepare_release(
+    file: &Path,
+    target: &Path,
+    entry: &CatalogEntry,
+    installed: Option<&Game>,
+) -> Result<(PathBuf, Option<update::Update>), String> {
+    let transaction = installed.map(update::Update::begin).transpose()?;
+    let (destination, staging) = match &transaction {
+        Some(tx) => (tx.candidate(), tx.candidate().with_file_name("extract")),
+        None => (target.to_path_buf(), staging_for(target, &entry.id)),
+    };
+    let prepare = || {
+        let program = install::unpack_over(file, &staging, &destination, entry)?;
+        let relative = program.strip_prefix(&destination).map_err(|e| e.to_string())?;
+        let marker = match installed.map(|g| &g.source) {
+            Some(Source::Recomp { recomp_id, .. }) => recomp_id,
+            _ => &entry.id,
+        };
+        let marker_path = destination.join(MARKER);
+        // Replace an archive-supplied marker without following a link.
+        if let Err(e) = fs::remove_file(&marker_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+        fs::write(marker_path, marker).map_err(|e| e.to_string())?;
+        if let Some(tx) = &transaction {
+            tx.publish()?;
+        }
+        Ok(target.join(relative))
+    };
+    match prepare() {
+        Ok(program) => Ok((program, transaction)),
+        Err(error) => match transaction {
+            Some(tx) => tx.finish(Err(error)),
+            None => Err(error),
+        },
+    }
 }
 
 /// The game's program inside `dir`, picked by its name like after an install.
@@ -536,11 +591,11 @@ fn register(
 ) -> Result<Game, String> {
     let exe = program.to_string_lossy().into_owned();
     if let Some(existing) = installed {
-        let recomp_id = match &existing.source {
-            Source::Recomp { recomp_id, .. } => recomp_id.clone(),
-            _ => entry.id.clone(),
+        let Source::Recomp { recomp_id, generation, .. } = &existing.source else {
+            return Err("O registro do recomp mudou durante a atualização.".into());
         };
-        let source = Source::Recomp { recomp_id, version: version.to_string(), exe };
+        let generation = generation.checked_add(1).ok_or("Limite de atualizações atingido.")?;
+        let source = Source::Recomp { recomp_id: recomp_id.clone(), version: version.to_string(), exe, generation };
         let mut game = library.update(&existing.id, |game| {
             game.source = source;
             game.setup_pending = setup_pending;
@@ -549,7 +604,7 @@ fn register(
         return Ok(game);
     }
     let id = library_id(&entry.id);
-    let source = Source::Recomp { recomp_id: entry.id.clone(), version: version.to_string(), exe };
+    let source = Source::Recomp { recomp_id: entry.id.clone(), version: version.to_string(), exe, generation: 0 };
     let mut game = Game {
         id,
         name: entry.name.clone(),
@@ -578,17 +633,22 @@ pub fn delete_files(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<()
     if !dir.exists() {
         return Ok(());
     }
-    let marked = fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
-    let safe_id = recomp_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    let legacy = safe_id && dir == folders.default_installs.join(recomp_id);
-    if !marked && !legacy {
-        return Err(format!("{} não parece uma pasta instalada pelo Cerberus; nada foi apagado.", dir.display()));
-    }
+    check_install_folder(folders, recomp_id, dir)?;
     match fs::remove_dir_all(dir) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(format!("Não foi possível apagar {}: {e}. O jogo está aberto?", dir.display())),
     }
+}
+
+fn check_install_folder(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
+    let marked = fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
+    let safe_id = recomp_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let legacy = safe_id && dir == folders.default_installs.join(recomp_id);
+    if !marked && !legacy {
+        return Err(format!("O Cerberus não reconheceu a pasta de instalação {}.", dir.display()));
+    }
+    Ok(())
 }
 
 fn is_arm() -> bool {

@@ -29,6 +29,9 @@ impl LocalLibrary {
                 if let Some(text) = notice {
                     let _ = self.recovery_notice.set(text);
                 }
+                for game in &games {
+                    crate::recomp::update::recover(game)?;
+                }
                 cache.insert(games)
             }
         };

@@ -374,7 +374,7 @@ fn name_words(name: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::io::Write;
 
@@ -390,7 +390,7 @@ mod tests {
         fs::write(path, b"x").unwrap();
     }
 
-    fn make_zip(path: &Path, files: &[(&str, &str)]) {
+    pub(in crate::recomp) fn make_zip(path: &Path, files: &[(&str, &str)]) {
         let mut zip = zip::ZipWriter::new(fs::File::create(path).unwrap());
         let options = zip::write::SimpleFileOptions::default();
         for (name, body) in files {
