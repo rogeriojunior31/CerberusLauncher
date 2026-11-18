@@ -11,6 +11,13 @@ Launcher de jogos para PC, 100% Rust: backend em [Tauri 2](https://tauri.app) e 
   das releases no GitHub de cada desenvolvedor, conferindo o SHA-256 que o GitHub guarda de cada
   arquivo. O Cerberus nunca baixa arquivos de jogo: cada recomp pede a sua cópia quando abre.
 
+Para jogos locais e recomps no Windows, abra **Gerenciar → Processo acompanhado** se quiser escolher
+qual executável marca a duração da partida. Isso serve para jogos que abrem um menu antes de iniciar.
+O Cerberus grava o tempo observado a cada 15 segundos, ao fechar a partida e ao sair normalmente.
+
+Em **Configurações**, confira o espaço livre da pasta de downloads e da pasta de instalação.
+Os dois valores podem ser diferentes quando você instala jogos em outra unidade.
+
 O catálogo de recomps fica em `src-tauri/catalog/recomps.json`.
 
 ## Estrutura

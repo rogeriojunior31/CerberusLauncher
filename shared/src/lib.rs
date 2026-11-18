@@ -32,6 +32,9 @@ pub struct Game {
     /// Extra command-line options the player added, passed after the launcher's own.
     #[serde(default)]
     pub launch_args: String,
+    /// Optional Windows child executable used as the session clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking_exe: Option<String>,
     /// The player's copy of the original game (ROM or disc image) a recomp is set up with.
     #[serde(default)]
     pub game_copy: Option<String>,
@@ -109,6 +112,8 @@ pub struct ModList {
 pub struct SettingsView {
     /// Where new recomps are installed.
     pub recomps_dir: String,
+    pub install_free_bytes: Option<u64>,
+    pub download_free_bytes: Option<u64>,
     /// Whether that is the default folder.
     pub recomps_dir_is_default: bool,
     /// The app's own data folder (library, saves backups, caches).

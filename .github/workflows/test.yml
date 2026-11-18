@@ -1,0 +1,21 @@
+name: Testes do launcher
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Testar biblioteca, sessões e instalação
+        run: cargo test --workspace --locked
+      - name: Compilar a interface WebAssembly
+        run: cargo build -p cerberus-ui --target wasm32-unknown-unknown --locked

@@ -52,7 +52,7 @@ pub async fn download(
             }
             Err(Stop::Fatal(message)) => return Err(message),
             Err(Stop::Retry(_)) if tries < TRIES => {
-                tokio::time::sleep(Duration::from_secs(2 * tries as u64)).await;
+                let _ = until_cancelled(tokio::time::sleep(Duration::from_secs(2 * tries as u64)), cancel).await;
             }
             Err(Stop::Retry(message)) => return Err(message),
         }
@@ -68,6 +68,20 @@ pub async fn download(
     }
     fs::rename(&part, &target).map_err(|e| e.to_string())?;
     Ok(target)
+}
+
+// Cancel a stalled connection or retry delay even if the server sends no further bytes.
+async fn until_cancelled<F: std::future::Future>(task: F, cancel: &AtomicBool) -> Result<F::Output, Stop> {
+    use futures_util::future::{Either, select};
+    if cancel.load(Ordering::Relaxed) { return Err(Stop::Cancelled); }
+    let cancelled = async {
+        while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(Duration::from_millis(150)).await; }
+    };
+    futures_util::pin_mut!(task, cancelled);
+    match select(task, cancelled).await {
+        Either::Left((value, _)) => Ok(value),
+        Either::Right(_) => Err(Stop::Cancelled),
+    }
 }
 
 enum Stop {
@@ -113,57 +127,86 @@ async fn fetch_into(
     cancel: &AtomicBool,
     report: &(impl Fn(u64, u64) + Send),
 ) -> Result<(), Stop> {
+    if cancel.load(Ordering::Relaxed) { return Err(Stop::Cancelled); }
     if *done == *total && *total > 0 {
         return Ok(());
     }
-    // The client's short timeout is for quick questions; a big file on a slow line takes longer.
-    let mut request = client.get(&asset.url).timeout(Duration::from_secs(6 * 60 * 60));
-    if *done > 0 {
-        request = request.header(header::RANGE, format!("bytes={done}-"));
-    }
+    let request = || client.get(&asset.url).timeout(Duration::from_secs(6 * 60 * 60));
     let dropped = || Stop::Retry("A conexão caiu durante o download. Tente de novo; ele continua de onde parou.".into());
-    let reply = request.send().await.map_err(|_| dropped())?;
+    let mut get = request();
+    if *done > 0 {
+        get = get.header(header::RANGE, format!("bytes={done}-"));
+    }
+    let mut reply = until_cancelled(get.send(), cancel).await?.map_err(|_| dropped())?;
+    let range = reply.headers().get(header::CONTENT_RANGE).and_then(|h| h.to_str().ok());
+    let partial = range.and_then(|r| partial_range(r, *done, asset.size));
+    if reply.status() == StatusCode::RANGE_NOT_SATISFIABLE && *done > 0 {
+        let length = range.and_then(|r| r.strip_prefix("bytes */")).and_then(|n| n.parse::<u64>().ok());
+        if length == Some(*done) && (asset.size == 0 || asset.size == *done) {
+            *total = *done;
+            return Ok(());
+        }
+    }
+    let restart = reply.status() == StatusCode::RANGE_NOT_SATISFIABLE
+        || (reply.status() == StatusCode::PARTIAL_CONTENT && partial.is_none());
+    if restart {
+        // Keep the existing part until the server actually supplies a full replacement.
+        reply = until_cancelled(request().send(), cancel).await?.map_err(|_| dropped())?;
+    }
     let status = reply.status();
-    // Asked for the bytes after the end: the copy is already whole (the checksum says if it's right).
-    if status == StatusCode::RANGE_NOT_SATISFIABLE && *done > 0 {
-        return Ok(());
-    }
-    if *total == 0 {
-        let rest = reply.content_length().unwrap_or(0);
-        *total = if status == StatusCode::PARTIAL_CONTENT { *done + rest } else { rest };
-    }
-    let total = *total;
-    let busy = status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
-    if busy {
+    if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
         return Err(Stop::Retry(format!("O GitHub está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
     }
-    if !status.is_success() {
+    let continuing = !restart && status == StatusCode::PARTIAL_CONTENT;
+    let response_end = if continuing {
+        let (end, size) = partial.ok_or_else(|| Stop::Fatal("O servidor enviou um intervalo inválido.".into()))?;
+        *total = size;
+        end
+    } else if status == StatusCode::OK {
+        let length = reply.content_length();
+        if asset.size > 0 && length.is_some_and(|n| n != asset.size) {
+            return Err(Stop::Fatal("O tamanho da release mudou. Atualize o catálogo e tente de novo.".into()));
+        }
+        *total = length.unwrap_or(asset.size);
+        *total
+    } else {
         return Err(Stop::Fatal(format!("O GitHub respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
-    }
-    // A plain 200 to a ranged request sends the whole file again: start the copy over.
-    let continuing = status == StatusCode::PARTIAL_CONTENT;
+    };
+    crate::disk::require(part.parent().unwrap_or(part), total.saturating_sub(*done)).map_err(Stop::Fatal)?;
     if !continuing {
         *hash = Sha256::new();
         *done = 0;
     }
+    let total = *total;
     let mut options = tokio::fs::OpenOptions::new();
     options.create(true);
     if continuing { options.append(true) } else { options.write(true).truncate(true) };
     let mut out = options.open(part).await.map_err(|e| Stop::Fatal(e.to_string()))?;
 
     let mut stream = reply.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(Stop::Cancelled);
-        }
+    while let Some(chunk) = until_cancelled(stream.next(), cancel).await? {
         let chunk = chunk.map_err(|_| dropped())?;
+        if response_end > 0 && chunk.len() as u64 > response_end.saturating_sub(*done) {
+            return Err(Stop::Fatal("A resposta excede o tamanho anunciado pela release.".into()));
+        }
         out.write_all(&chunk).await.map_err(|e| Stop::Fatal(e.to_string()))?;
         hash.update(&chunk);
         *done += chunk.len() as u64;
         report(*done, total);
     }
     out.flush().await.map_err(|e| Stop::Fatal(e.to_string()))?;
+    if total > 0 && *done != total { return Err(dropped()); }
     Ok(())
+}
+
+/// End (exclusive) and size of the file. Append only if the bytes continue our exact offset.
+fn partial_range(value: &str, offset: u64, expected: u64) -> Option<(u64, u64)> {
+    let (span, size) = value.strip_prefix("bytes ")?.split_once('/')?;
+    let (first, last) = span.split_once('-')?;
+    let start = first.parse::<u64>().ok()?;
+    let end = last.parse::<u64>().ok()?.checked_add(1)?;
+    let size = size.parse::<u64>().ok()?;
+    (start == offset && start < end && end <= size && (expected == 0 || size == expected)).then_some((end, size))
 }
 
 /// Unpacks into `staging`, then moves the files over `target`. Files already in
@@ -188,6 +231,7 @@ fn install_staged(archive: &Path, staging: &Path, target: &Path, entry: &Catalog
         Some(Kind::TarGz) => untar_gz(archive, staging)?,
         // A release that is a program (the game, or its installer) goes in as it is.
         None if super::assets::is_program(&name) => {
+            crate::disk::require(staging, fs::metadata(archive).map_err(|e| e.to_string())?.len())?;
             fs::copy(archive, staging.join(name.as_ref())).map_err(|e| e.to_string())?;
         }
         None => return Err(format!("{name} não é um formato que o Cerberus saiba instalar.")),
@@ -223,6 +267,9 @@ fn unzip(file: &Path, to: &Path) -> Result<(), String> {
     let broken = |e: zip::result::ZipError| format!("O arquivo baixado está corrompido: {e}");
     let reader = fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(reader).map_err(broken)?;
+    if let Some(size) = archive.decompressed_size() {
+        crate::disk::require(to, u64::try_from(size).unwrap_or(u64::MAX))?;
+    }
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(broken)?;
         // A name like "../../x" would write outside the game's folder.
@@ -250,6 +297,9 @@ fn unzip(file: &Path, to: &Path) -> Result<(), String> {
 
 /// Entries naming `..`, a root or a drive are refused by the library itself.
 fn un7z(file: &Path, to: &Path) -> Result<(), String> {
+    let archive = sevenz_rust2::Archive::open(file).map_err(|e| e.to_string())?;
+    let size = archive.files.iter().fold(0u64, |sum, item| sum.saturating_add(item.size()));
+    crate::disk::require(to, size)?;
     sevenz_rust2::decompress_file(file, to).map_err(|e| format!("O arquivo baixado está corrompido: {e}"))
 }
 
@@ -377,6 +427,122 @@ fn name_words(name: &str) -> Vec<String> {
 pub(super) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn resumptions_validate_the_server_range_before_publishing() {
+        use std::{io::{BufRead, BufReader}, net::TcpListener};
+        for (first, fallback) in [
+            ("206 Partial Content\r\nContent-Range: bytes 3-6/7\r\nContent-Length: 4\r\n\r\nDEFG", false),
+            ("416 Range Not Satisfiable\r\nContent-Range: bytes */2\r\nContent-Length: 0\r\n\r\n", true),
+            ("206 Partial Content\r\nContent-Range: bytes 1-4/7\r\nContent-Length: 4\r\n\r\nBCDE", true),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let mut replies = vec![first];
+                if fallback { replies.push("200 OK\r\nContent-Length: 7\r\n\r\nABCDEFG"); }
+                for (i, response) in replies.into_iter().enumerate() {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    let head: Vec<_> = BufReader::new(&socket).lines().map(Result::unwrap)
+                        .take_while(|line| !line.is_empty()).collect();
+                    assert_eq!(head.iter().any(|s| s.eq_ignore_ascii_case("range: bytes=3-")), i == 0);
+                    write!(socket, "HTTP/1.1 {response}").unwrap();
+                }
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let key = format!("{:x}", Sha256::digest(format!("0|{url}")));
+            fs::write(dir.path().join(format!("game.zip.{}.part", &key[..10])), b"ABC").unwrap();
+            let asset = Asset { name: "game.zip".into(), url, size: 0, sha256: None };
+            let client = Client::builder().no_proxy().build().unwrap();
+            let path = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &AtomicBool::new(false), |_, _| {})).unwrap();
+            assert_eq!(fs::read(path).unwrap(), b"ABCDEFG");
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn cancel_works_even_when_the_server_has_not_sent_headers() {
+        use std::{net::TcpListener, sync::{Arc, mpsc}};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/stalled.zip", listener.local_addr().unwrap());
+        let cancel = Arc::new(AtomicBool::new(false));
+        let flag = cancel.clone();
+        let (finished, wait) = mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (_socket, _) = listener.accept().unwrap();
+            flag.store(true, Ordering::Relaxed);
+            assert!(wait.recv_timeout(Duration::from_secs(5)).is_ok(), "download waited for server headers");
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let hash = format!("{:x}", Sha256::digest(format!("0|{url}")));
+        let part = dir.path().join(format!("stalled.zip.{}.part", &hash[..10]));
+        fs::write(&part, b"ABC").unwrap();
+        let asset = Asset { name: "stalled.zip".into(), url, size: 0, sha256: None };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let result = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &cancel, |_, _| {}));
+        finished.send(()).unwrap();
+        server.join().unwrap();
+        assert_eq!(result.unwrap_err(), CANCELLED);
+        assert!(!part.exists());
+    }
+
+    #[test]
+    fn insufficient_space_keeps_the_existing_part() {
+        use std::{io::{BufRead, BufReader}, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/large.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            for line in BufReader::new(&socket).lines() { if line.unwrap().is_empty() { break; } }
+            write!(socket, "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 3-3/{}\r\nContent-Length: 1\r\n\r\nD", u64::MAX).unwrap();
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let hash = format!("{:x}", Sha256::digest(format!("0|{url}")));
+        let part = dir.path().join(format!("large.zip.{}.part", &hash[..10]));
+        fs::write(&part, b"ABC").unwrap();
+        let asset = Asset { name: "large.zip".into(), url, size: 0, sha256: None };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let err = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &AtomicBool::new(false), |_, _| {})).unwrap_err();
+        server.join().unwrap();
+        assert!(err.contains("Espaço insuficiente"));
+        assert_eq!(fs::read(part).unwrap(), b"ABC");
+        assert!(!dir.path().join("large.zip").exists());
+    }
+
+    #[test]
+    fn resumed_archive_installs_on_the_selected_volume() {
+        use std::{io::{BufRead, BufReader}, net::TcpListener};
+        let cache = tempfile::tempdir().unwrap();
+        let install = match std::env::var_os("CERBERUS_TEST_INSTALL_VOLUME") {
+            Some(root) => tempfile::tempdir_in(root).unwrap(),
+            None => tempfile::tempdir().unwrap(),
+        };
+        let release = cache.path().join("origin.zip");
+        make_zip(&release, &[("Game.exe", "playable"), ("data.bin", "data")]);
+        let bytes = fs::read(release).unwrap();
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        let size = bytes.len();
+        let offset = size / 2;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/sample.zip", listener.local_addr().unwrap());
+        let asset = Asset { name: "sample.zip".into(), url: url.clone(), size: size as u64, sha256: Some(digest) };
+        let hash = format!("{:x}", Sha256::digest(format!("{size}|{url}")));
+        fs::write(cache.path().join(format!("sample.zip.{}.part", &hash[..10])), &bytes[..offset]).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let head: Vec<_> = BufReader::new(&socket).lines().map(Result::unwrap).take_while(|s| !s.is_empty()).collect();
+            assert!(head.iter().any(|s| s.eq_ignore_ascii_case(&format!("range: bytes={offset}-"))));
+            write!(socket, "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {offset}-{}/{size}\r\nContent-Length: {}\r\n\r\n", size - 1, size - offset).unwrap();
+            socket.write_all(&bytes[offset..]).unwrap();
+        });
+        let client = Client::builder().no_proxy().build().unwrap();
+        let archive = tauri::async_runtime::block_on(download(&client, &asset, cache.path(), &AtomicBool::new(false), |_, _| {})).unwrap();
+        server.join().unwrap();
+        let target = install.path().join("game");
+        let exe = unpack_over(&archive, &install.path().join("stage"), &target, &portable("Game.exe")).unwrap();
+        assert_eq!(fs::read(exe).unwrap(), b"playable");
+        assert_eq!(fs::read(target.join("data.bin")).unwrap(), b"data");
+    }
 
     fn empty_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cerberus-install-{name}-{}", std::process::id()));

@@ -135,6 +135,7 @@ pub fn SettingsPage() -> impl IntoView {
                     <div>
                         <b>"Pasta dos recomps"</b>
                         <small class="path">{s.recomps_dir.clone()}</small>
+                        {s.install_free_bytes.map(|free| view! { <small>{format!("Espaço livre para instalar: {:.1} GiB", free as f64 / 1073741824.0)}</small> })}
                         <small>"Jogos já instalados continuam onde estão; só as próximas instalações vão para a nova pasta."</small>
                     </div>
                     <div class="row">
@@ -153,6 +154,7 @@ pub fn SettingsPage() -> impl IntoView {
                         <b>"Dados do Cerberus"</b>
                         <small class="path">{s.data_dir.clone()}</small>
                         <small>"Biblioteca, backups de saves e caches."</small>
+                        {s.download_free_bytes.map(|free| view! { <small>{format!("Espaço livre para downloads: {:.1} GiB", free as f64 / 1073741824.0)}</small> })}
                     </div>
                     <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_data_dir().await); })>
                         "Abrir pasta"

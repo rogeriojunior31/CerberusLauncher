@@ -3,6 +3,7 @@
 
 mod art_cache;
 mod epic;
+mod disk;
 mod iso9660;
 mod library;
 mod mods;
@@ -72,6 +73,8 @@ fn settings_view(app: &AppHandle) -> SettingsView {
     let data = app.state::<DataDir>();
     let chosen = settings::load(&data.0);
     SettingsView {
+        install_free_bytes: disk::available(&installs),
+        download_free_bytes: disk::available(&data.0.join("downloads")),
         recomps_dir_is_default: installs == folders.default_installs,
         recomps_dir: installs.to_string_lossy().into_owned(),
         data_dir: data.0.to_string_lossy().into_owned(),
@@ -640,6 +643,28 @@ async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String>
 }
 
 #[tauri::command]
+fn tracking_mode(library: State<'_, LocalLibrary>, id: String) -> Result<Option<String>, String> {
+    Ok(library.get(&id)?.as_ref().and_then(sessions::tracking_mode))
+}
+
+#[tauri::command]
+async fn pick_tracking_exe(app: AppHandle, id: String, automatic: bool) -> Result<Option<Game>, String> {
+    let library = app.state::<LocalLibrary>();
+    let game = library.get(&id)?.ok_or("Jogo removido da biblioteca.")?;
+    if sessions::tracking_mode(&game).is_none() { return Err("A seleção de processo está indisponível para este jogo.".into()); }
+    let selected = if automatic { None } else {
+        let dialog = app.dialog().file().set_title("Escolha o executável que roda durante a partida").add_filter("Programa", &["exe"]);
+        let Some(path) = pick_one(dialog).await? else { return Ok(None) };
+        let path = dunce::canonicalize(path).map_err(|e| e.to_string())?;
+        if !path.is_file() || !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
+            return Err("Escolha o arquivo .exe do jogo.".into());
+        }
+        Some(path.to_string_lossy().into_owned())
+    };
+    library.update(&id, |g| g.tracking_exe = selected).map(Some)
+}
+
+#[tauri::command]
 fn set_launch_args(library: State<'_, LocalLibrary>, id: String, args: String) -> Result<Game, String> {
     let args = args.trim().to_string();
     library.update(&id, |game| game.launch_args = args)
@@ -668,7 +693,11 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
     let url = match &game.source {
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
-        Source::Local { exe } => return sessions::start(&app, &game, Path::new(exe)),
+        Source::Local { .. } => {
+            let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+            let Source::Local { exe } = &current.source else { return Err("Registro do jogo inválido.".into()) };
+            return sessions::start(&app, &current, Path::new(exe));
+        }
         Source::Recomp { recomp_id, .. } => {
             return app.state::<recomp::Installing>().while_idle(recomp_id, || {
                 let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
@@ -799,6 +828,11 @@ fn main() {
             app.manage(folders);
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(15));
+                sessions::checkpoint(&handle);
+            });
 
             // The catalog and the last ROM scan from disk, so the window has them at once.
             let data = DataDir(data_dir.clone());
@@ -870,6 +904,8 @@ fn main() {
             refresh_catalog,
             set_game_copy,
             set_launch_args,
+            tracking_mode,
+            pick_tracking_exe,
             locate_game,
             set_cloud_dir,
             add_source,
@@ -881,6 +917,9 @@ fn main() {
             remove_mod,
             play
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to start Cerberus Launcher");
+        .build(tauri::generate_context!())
+        .expect("failed to start Cerberus Launcher")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) { sessions::checkpoint(app); }
+        });
 }

@@ -1,4 +1,5 @@
 //! Track the processes from one click on Play, including descendants of short-lived launchers.
+use super::Observation;
 use std::ffi::OsString;
 use std::io;
 use std::mem::{offset_of, size_of, size_of_val};
@@ -17,13 +18,13 @@ use windows_sys::Win32::System::Threading::*;
 pub(super) struct GameProcess {
     job: OwnedHandle,
     launcher: Child,
-    runtime: Option<String>,
+    runtime: Option<PathBuf>,
     started: Instant,
 }
 
 // Common installations such as ReStreet ship FooLauncher.exe beside Foo.exe or Binaries/Foo.exe.
 // Only select this mode when the corresponding playable file exists.
-fn runtime_for(exe: &Path) -> Option<String> {
+pub(super) fn runtime_for(exe: &Path) -> Option<PathBuf> {
     let stem = exe.file_stem()?.to_str()?.to_ascii_lowercase();
     let title = stem.strip_suffix("launcher")?.trim_end_matches([' ', '-', '_']);
     if title.is_empty() {
@@ -34,11 +35,15 @@ fn runtime_for(exe: &Path) -> Option<String> {
     ["", "Binaries", "bin"]
         .iter()
         .any(|dir| parent.join(dir).join(&runtime).is_file())
-        .then_some(runtime)
+        .then(|| PathBuf::from(runtime))
 }
 
-pub(super) fn spawn_game(mut command: Command) -> io::Result<GameProcess> {
-    let runtime = runtime_for(Path::new(command.get_program()));
+pub(super) fn spawn_game(mut command: Command, selected: Option<&Path>) -> io::Result<GameProcess> {
+    let runtime = match selected {
+        Some(path) => Some(dunce::canonicalize(path).map_err(|e|
+            io::Error::new(e.kind(), format!("Confira o executável acompanhado em Gerenciar ({}): {e}", path.display())))?),
+        None => runtime_for(Path::new(command.get_program())),
+    };
     // An unnamed job without termination limits leaves the game alive if Cerberus closes.
     let handle = unsafe { CreateJobObjectW(null(), null()) };
     if handle.is_null() {
@@ -65,9 +70,10 @@ pub(super) fn spawn_game(mut command: Command) -> io::Result<GameProcess> {
 }
 
 impl GameProcess {
-    pub(super) fn observe(mut self, mut played: impl FnMut(Duration)) -> io::Result<()> {
+    pub(super) fn observe(mut self, mut report: impl FnMut(Observation)) -> io::Result<()> {
         let mut buffer = vec![0usize; 32];
         if self.runtime.is_none() {
+            report(Observation::Started(self.started));
             self.launcher.wait()?;
         }
         loop {
@@ -77,14 +83,15 @@ impl GameProcess {
             }
             if let Some(runtime) = &self.runtime {
                 if let Some(game) = members.iter().find_map(|&pid| self.playable(pid as u32, runtime)) {
-                    played(runtime_duration(game)?);
+                    report(Observation::Started(Instant::now()));
+                    report(Observation::Closed(runtime_duration(game)?));
                     continue;
                 }
             }
             std::thread::sleep(Duration::from_millis(250));
         }
         if self.runtime.is_none() {
-            played(self.started.elapsed());
+            report(Observation::Closed(self.started.elapsed()));
         }
         Ok(())
     }
@@ -114,7 +121,7 @@ impl GameProcess {
         }
     }
 
-    fn playable(&self, pid: u32, name: &str) -> Option<OwnedHandle> {
+    fn playable(&self, pid: u32, target: &Path) -> Option<OwnedHandle> {
         let raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
         if raw.is_null() {
             return None;
@@ -131,7 +138,14 @@ impl GameProcess {
             return None;
         }
         let path = PathBuf::from(OsString::from_wide(&path[..len as usize]));
-        path.file_name()?.eq_ignore_ascii_case(name).then_some(process)
+        let matches = if target.is_absolute() {
+            path.as_os_str().eq_ignore_ascii_case(target.as_os_str())
+                || (path.file_name()?.eq_ignore_ascii_case(target.file_name()?)
+                    && dunce::canonicalize(&path).is_ok_and(|canonical| canonical == target))
+        } else {
+            path.file_name()?.eq_ignore_ascii_case(target.as_os_str())
+        };
+        matches.then_some(process)
     }
 }
 

@@ -72,11 +72,13 @@ impl LocalLibrary {
         })
     }
 
-    pub fn record_session(&self, id: &str, seconds: u64, closed_at: u64) -> Result<Game, String> {
+    pub fn record_session(&self, id: &str, credited: u64, elapsed: u64, closed_at: Option<u64>) -> Result<Game, String> {
         self.update(id, |game| {
-            game.playtime_secs = game.playtime_secs.saturating_add(seconds);
-            game.last_played = Some(closed_at);
-            game.last_session_secs = Some(seconds);
+            game.playtime_secs = game.playtime_secs.saturating_sub(credited).saturating_add(elapsed);
+            if let Some(end) = closed_at {
+                game.last_played = Some(end);
+                game.last_session_secs = Some(elapsed);
+            }
         })
     }
 
@@ -113,6 +115,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         last_played: None,
         last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending: false,
     }
@@ -222,8 +225,11 @@ mod tests {
         fs::write(dir.path().join("library.json"), json).unwrap();
         let library = LocalLibrary::load(dir.path());
         assert_eq!(library.get(&old.id).unwrap().unwrap().last_session_secs, None);
-        library.record_session(&old.id, 62, 100).unwrap();
-        library.record_session(&old.id, 17, 200).unwrap();
+        library.record_session(&old.id, 0, 40, None).unwrap();
+        let reopened = LocalLibrary::load(dir.path()).get(&old.id).unwrap().unwrap();
+        assert_eq!((reopened.playtime_secs, reopened.last_session_secs), (1376, None));
+        library.record_session(&old.id, 40, 62, Some(100)).unwrap();
+        library.record_session(&old.id, 0, 17, Some(200)).unwrap();
         let game = LocalLibrary::load(dir.path()).get(&old.id).unwrap().unwrap();
         assert_eq!(game.playtime_secs, 1415);
         assert_eq!(game.last_session_secs, Some(17));

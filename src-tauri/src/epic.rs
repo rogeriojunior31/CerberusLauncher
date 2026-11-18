@@ -98,6 +98,7 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         last_played: None,
         last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending: false,
     }

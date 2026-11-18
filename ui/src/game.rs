@@ -28,6 +28,7 @@ enum Tab {
 pub fn GamePage(id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(id);
+    let tab = RwSignal::new(Tab::Overview);
     let content = move || {
         let game = library.games.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|g| g.id == id.get_value()));
         let recomp_id = id.get_value().strip_prefix("recomp:").map(str::to_string);
@@ -40,7 +41,7 @@ pub fn GamePage(id: String) -> impl IntoView {
             let text = if loading { "Carregando..." } else { "Esse jogo não está mais na biblioteca." };
             return view! { <div class="page"><p class="muted">{text}</p></div> }.into_any();
         }
-        view! { <Page game entry /> }.into_any()
+        view! { <Page game entry tab /> }.into_any()
     };
     view! {
         <div class="gp">
@@ -53,9 +54,7 @@ pub fn GamePage(id: String) -> impl IntoView {
 }
 
 #[component]
-fn Page(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
-    let tab = RwSignal::new(Tab::Overview);
-
+fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> impl IntoView {
     let title = game.as_ref().map(|g| g.name.clone()).or_else(|| entry.as_ref().map(|e| e.name.clone())).unwrap_or_default();
     let covers = game.as_ref().map(cover_sources).filter(|c| !c.is_empty()).or_else(|| entry.as_ref().map(recomp_covers)).unwrap_or_default();
     let heroes = game.as_ref().map(hero_sources).filter(|h| !h.is_empty()).or_else(|| entry.as_ref().map(recomp_heroes)).unwrap_or_default();
@@ -76,6 +75,11 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
     let manageable = game.as_ref().is_some_and(|g| matches!(g.source, Source::Local { .. } | Source::Recomp { .. })) || entry.is_some();
 
+    if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
+        || tab.get_untracked() == Tab::Manage && !manageable
+    {
+        tab.set(Tab::Overview);
+    }
     let action = primary_action(game.clone(), entry.clone());
     let tab_button = move |which: Tab, label: &'static str| {
         view! {
@@ -548,11 +552,41 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <div class="card launch">
                 <h3>{if g.setup_pending { "Instalador de primeira execução" } else { "Programa de abertura" }}</h3>
                 <p class="path">{exe.clone()}</p>
+                {(!g.setup_pending).then(|| view! { <TrackingProgram id=g.id.clone() selected=g.tracking_exe.is_some() /> })}
             </div>
         }),
         _ => None,
     });
     view! { <div class="manage">{program}{options}{folder}{edit}{project}{remove}</div> }
+}
+
+#[component]
+fn TrackingProgram(id: String, selected: bool) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(id);
+    let busy = RwSignal::new(false);
+    let mode = LocalResource::new(move || {
+        let id = id.get_value();
+        async move { api::tracking_mode(&id).await }
+    });
+    let choose = move |automatic| {
+        busy.set(true);
+        spawn_local(async move {
+            if library.report(api::pick_tracking_exe(&id.get_value(), automatic).await).flatten().is_some() {
+                library.games.refetch();
+                library.toast("A medição escolhida vale a partir da próxima abertura.");
+            }
+            busy.set(false);
+        });
+    };
+    move || mode.get().and_then(Result::ok).flatten().map(|label| view! {
+        <h3>"Processo acompanhado"</h3>
+        <p class="path">{label}</p>
+        <div class="row">
+            <button class="btn sm" disabled=move || busy.get() on:click=move |_| choose(false)>"Escolher executável"</button>
+            {selected.then(|| view! { <button class="btn sm" disabled=move || busy.get() on:click=move |_| choose(true)>"Usar automático"</button> })}
+        </div>
+    })
 }
 
 /// Extra command-line options for a game the launcher starts itself.

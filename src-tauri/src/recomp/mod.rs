@@ -618,6 +618,7 @@ fn register(
         last_played: None,
         last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending,
     };

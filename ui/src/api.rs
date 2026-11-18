@@ -255,6 +255,16 @@ struct LaunchArgs<'a> {
     args: &'a str,
 }
 
+pub async fn tracking_mode(id: &str) -> Result<Option<String>, String> {
+    call("tracking_mode", &Id { id }).await
+}
+
+pub async fn pick_tracking_exe(id: &str, automatic: bool) -> Result<Option<Game>, String> {
+    #[derive(Serialize)]
+    struct Pick<'a> { id: &'a str, automatic: bool }
+    call("pick_tracking_exe", &Pick { id, automatic }).await
+}
+
 pub async fn set_launch_args(id: &str, args: &str) -> Result<Game, String> {
     call("set_launch_args", &LaunchArgs { id, args }).await
 }

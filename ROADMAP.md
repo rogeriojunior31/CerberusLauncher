@@ -10,8 +10,8 @@ Comparação com o checkout local do Hydra em `6b7ad7bf2`.
 | Área | Comportamento observado no Hydra | Entrega no Cerberus |
 | --- | --- | --- |
 | Fontes | O cliente cadastra a URL via HydraApi e persiste a fonte. As publicações têm título, tamanho e data. [Cadastro](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/events/download-sources/add-download-source.ts) e [tipos](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/types/index.ts) | Implementado. Configurações importa os metadados por HTTPS, guarda a última cópia válida e permite pesquisar por fonte. Cada fonte mostra a última sincronização e eventuais erros. |
-| Sessões | O observador compara caminhos de executáveis e grava incrementos de tempo durante a execução. [Observador](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/process-watcher.ts) | Implementado nesta rodada o registro da duração da última partida concluída. Próximo passo: permitir selecionar o executável acompanhado e recuperar o tempo já observado se o Cerberus fechar no meio da partida. Validar com launcher e jogo em pastas diferentes. |
-| Disco e downloads | O Hydra compara os bytes restantes com o espaço disponível no volume de destino e considera dados reaproveitáveis. [Verificação de espaço](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download/disk-space.ts) | Pendente. Exibir espaço disponível para download e instalação e testar retomada com o arquivo parcial em um volume e a instalação em outro. |
+| Sessões | O observador compara caminhos de executáveis e grava incrementos de tempo durante a execução. [Observador](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/process-watcher.ts) | O Cerberus grava o tempo a cada 15 segundos e ao sair normalmente. No Windows, Gerenciar permite escolher o executável acompanhado. O teste usa processos reais em pastas distintas e inclui um segundo executável de mesmo nome. Falta comparar a próxima partida real do ReStreet com o relógio. |
+| Disco e downloads | O Hydra compara os bytes restantes com o espaço disponível no volume de destino e considera dados reaproveitáveis. [Verificação de espaço](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download/disk-space.ts) | Configurações mostra o espaço dos dois destinos. O download verifica os bytes restantes quando o tamanho é conhecido. ZIP, 7z e executáveis verificam espaço antes da extração ou cópia. O teste retomou um ZIP em C: e instalou em D:. A previsão do espaço descompactado para tar.gz segue pendente. |
 | Novidades por jogo | O Hydra cruza a identidade do jogo com mudanças das fontes e mantém a referência anterior se uma consulta falhar. [Verificador de fontes](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download-sources-checker.ts) | Pendente. Vincular publicação e jogo com confirmação quando o título for ambíguo. Só então mostrar novidades na página do jogo. |
 
 ## Prioridade atual — confiabilidade dos recomps
@@ -42,8 +42,8 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
   localizar o executável ou jogar. Expor esse resultado em `shared` permite que Início,
   Biblioteca, Tela Grande e a página do jogo mostrem a mesma ação. Hoje `ui/src/main.rs` escolhe
   o botão com `setup_pending`, enquanto `setup_runner.rs` e `recomp/mod.rs` decidem o que executar.
-- Colocar os testes de ciclo de vida ao lado dos módulos Rust e executá-los em pull requests,
-  junto com a compilação WASM. A Action atual cuida do catálogo. Um cenário de referência deve
+- O workflow `Testes do launcher` roda os testes Rust e compila a interface WASM no Windows em
+  pull requests. O catálogo tem seu próprio workflow. Um cenário de referência deve
   instalar uma release de teste, simular falha na atualização, reiniciar e ler os dados da versão anterior.
   O teste manual com mídia própria cobre a interação final com o jogo.
 
@@ -74,6 +74,9 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       acompanha `fifastreet.exe` aberto por `FifaStreetLauncher.exe` e grava cada partida ao
       fechar o jogo, inclusive quando o menu fica aberto. Testes com processos reais no Windows
       cobrem a saída antecipada do launcher e duas partidas no mesmo menu.
+- [x] Distinguir o cancelamento ou falha de um instalador externo antes de procurar o jogo instalado.
+      O teste cobre os códigos de saída, inclusive cancelamento do MSI e sucesso que pede reinício.
+- [ ] Recuperar a espera por um instalador externo após reiniciar o Cerberus e testar com uma instalação anterior presente.
 - [ ] Comparar a próxima partida real do ReStreet com a duração registrada após a correção.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração

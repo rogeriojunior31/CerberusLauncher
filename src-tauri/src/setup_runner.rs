@@ -17,7 +17,8 @@ pub const NEEDS_LOCATION: &str = "setup-needs-location";
 
 pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String> {
     let lower = installer.to_string_lossy().to_lowercase();
-    let mut command = if lower.ends_with(".msi") {
+    let msi_package = lower.ends_with(".msi");
+    let mut command = if msi_package {
         let mut msi = Command::new("msiexec");
         msi.arg("/i").arg(installer);
         msi
@@ -33,10 +34,26 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
     let app = app.clone();
     let game = game.clone();
     std::thread::spawn(move || {
-        let _ = child.wait();
-        finish(&app, &game);
+        let outcome = child.wait()
+            .map_err(|e| format!("Falha ao aguardar o instalador: {e}"))
+            .and_then(|status| installer_result(status.code(), msi_package));
+        match outcome {
+            Ok(()) => finish(&app, &game),
+            Err(message) => { let _ = app.emit("toast", message); }
+        }
+        crate::sessions::release(&app, &game.id);
     });
     Ok(())
+}
+
+fn installer_result(code: Option<i32>, msi_package: bool) -> Result<(), String> {
+    match code {
+        Some(0) => Ok(()),
+        Some(1641 | 3010) if msi_package => Ok(()),
+        Some(1602) if msi_package => Err("Instalação cancelada. Você pode tentar de novo em Jogar.".into()),
+        Some(code) => Err(format!("O instalador encerrou com código {code}. Você pode tentar de novo em Jogar.")),
+        None => Err("O instalador foi interrompido. Você pode tentar de novo em Jogar.".into()),
+    }
 }
 
 fn finish(app: &AppHandle, game: &Game) {
@@ -142,6 +159,18 @@ fn same_name(wanted: &str, shown: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_success_can_trigger_game_detection() {
+        assert!(installer_result(Some(0), false).is_ok());
+        assert!(installer_result(Some(1602), true).unwrap_err().contains("cancelada"));
+        assert!(installer_result(Some(1), false).is_err());
+        assert!(installer_result(None, false).is_err());
+        for code in [1641, 3010] {
+            assert!(installer_result(Some(code), true).is_ok());
+            assert!(installer_result(Some(code), false).is_err());
+        }
+    }
 
     #[test]
     fn matches_installed_apps_by_name() {

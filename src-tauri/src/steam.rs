@@ -105,6 +105,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         last_played: None,
         last_session_secs: None,
         launch_args: String::new(),
+        tracking_exe: None,
         game_copy: None,
         setup_pending: false,
     })
