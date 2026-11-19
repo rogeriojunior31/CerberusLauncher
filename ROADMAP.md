@@ -125,6 +125,13 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Os 15 projetos de consoles recentes (Switch, Switch 2, Wii U, PS3, PS4) também entraram, por
       decisão do mantenedor: são os mais procurados agora e já estão no catálogo do site. O SHA-256
       garante o arquivo que o autor publicou, não a confiança no autor. Catálogo próprio: 87 jogos.
+- [x] Tela grande refeita: abas (Início, Biblioteca, Descobrir, Downloads, Configurações) com LB/RB;
+      Início com destaque do jogo em foco e fileiras; grade na Biblioteca e no Descobrir; página do jogo
+      com botão principal que segue o estado (jogar, instalar, atualizar, progresso que cancela); painel de
+      opções no X; teclado na tela para busca; Downloads com progresso e atualizações; B volta ao item de
+      onde veio e, no Início, pergunta se quer sair; ícones de botão de Xbox, PlayStation ou Nintendo
+      conforme o controle; sons de navegação; relógio. Segurar Menu ou F11 entra e sai. Conferido no app
+      pelo teclado; o controle físico (Xbox 360 conectado) ainda precisa ser testado à mão.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

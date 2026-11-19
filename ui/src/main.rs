@@ -1,7 +1,7 @@
 mod api;
 mod art;
 mod backups;
-mod bigpicture;
+mod tv;
 mod discover;
 mod format;
 mod game;
@@ -224,6 +224,7 @@ fn App() -> impl IntoView {
         library.games.refetch();
     });
     api::on_toast(move |text| library.toast(text));
+    tv::watch_for_tv(library);
 
     // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
     let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
@@ -291,7 +292,7 @@ fn App() -> impl IntoView {
             </div>
         })
     };
-    let big_picture = move || (library.route.get() == Route::BigPicture).then(|| view! { <bigpicture::BigPicture /> });
+    let big_picture = move || (library.route.get() == Route::BigPicture).then(|| view! { <tv::TvMode /> });
 
     view! {
         <div class="app">

@@ -1,0 +1,230 @@
+//! Controller and keyboard for the TV screen.
+//!
+//! Controllers are read through the browser's Gamepad API at 30 Hz. Buttons are
+//! named by the label printed on them: a Nintendo pad's A sits on the right, so
+//! its face buttons are swapped back. A held direction repeats after 400 ms,
+//! then every 120 ms. The left stick only counts once it has been seen resting,
+//! so a drifting stick can't scroll on its own. Menu tapped opens Settings;
+//! held for 0.9 s it leaves the TV screen.
+
+use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Btn {
+    Up,
+    Down,
+    Left,
+    Right,
+    A,
+    B,
+    X,
+    Y,
+    Lb,
+    Rb,
+    Menu,
+    MenuHold,
+    /// A letter or digit typed on a physical keyboard (for the search keyboard).
+    Type(char),
+    Erase,
+}
+
+/// Which controller the player uses, for its button pictures.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum PadKind {
+    #[default]
+    Xbox,
+    PlayStation,
+    Nintendo,
+}
+
+fn kind_of(id: &str) -> PadKind {
+    let id = id.to_lowercase();
+    if id.contains("054c") || id.contains("playstation") || id.contains("dualsense") || id.contains("dualshock") || id.contains("wireless controller") {
+        PadKind::PlayStation
+    } else if id.contains("057e") || id.contains("nintendo") || id.contains("pro controller") || id.contains("joy-con") {
+        PadKind::Nintendo
+    } else {
+        PadKind::Xbox
+    }
+}
+
+const REPEAT_FIRST: f64 = 400.0;
+const REPEAT_NEXT: f64 = 120.0;
+const MENU_HOLD: f64 = 900.0;
+const STICK_ON: f64 = 0.6;
+const STICK_REST: f64 = 0.3;
+
+#[derive(Default)]
+struct PadState {
+    pressed: [bool; 6],
+    dir: Option<Btn>,
+    next_repeat: f64,
+    menu_since: Option<f64>,
+    menu_fired: bool,
+    stick_seen_resting: bool,
+}
+
+/// One snapshot of the first connected controller: face and shoulder buttons
+/// (A, B, X, Y, LB, RB), Menu, the direction held, and its kind.
+fn read_pad() -> Option<([bool; 6], bool, Option<Btn>, (f64, f64), PadKind)> {
+    let pads = web_sys::window()?.navigator().get_gamepads().ok()?;
+    for pad in pads.iter() {
+        let Ok(pad) = pad.dyn_into::<web_sys::Gamepad>() else { continue };
+        if !pad.connected() {
+            continue;
+        }
+        let kind = kind_of(&pad.id());
+        let buttons = pad.buttons();
+        let down = |i: u32| buttons.get(i).dyn_into::<web_sys::GamepadButton>().is_ok_and(|b| b.pressed());
+        // Standard layout: 0 bottom, 1 right, 2 left, 3 top. Nintendo prints A on the right, B at the bottom.
+        let (a, b, x, y) = if kind == PadKind::Nintendo { (down(1), down(0), down(3), down(2)) } else { (down(0), down(1), down(2), down(3)) };
+        let face = [a, b, x, y, down(4), down(5)];
+        let dpad = if down(12) {
+            Some(Btn::Up)
+        } else if down(13) {
+            Some(Btn::Down)
+        } else if down(14) {
+            Some(Btn::Left)
+        } else if down(15) {
+            Some(Btn::Right)
+        } else {
+            None
+        };
+        let axes = pad.axes();
+        let stick = (axes.get(0).as_f64().unwrap_or(0.0), axes.get(1).as_f64().unwrap_or(0.0));
+        return Some((face, down(9), dpad, stick, kind));
+    }
+    None
+}
+
+fn now() -> f64 {
+    js_sys::Date::now()
+}
+
+/// Starts reading the controller and the keyboard; `on` gets every press.
+/// Everything stops when the calling component goes away.
+pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
+    let state = StoredValue::new_local(PadState::default());
+    let on_pad = on.clone();
+    let poll = set_interval_with_handle(
+        move || {
+            let Some((face, menu, dpad, stick, kind)) = read_pad() else { return };
+            if pad_kind.get_untracked() != kind {
+                pad_kind.set(kind);
+            }
+            let t = now();
+            let mut fire = Vec::new();
+            state.update_value(|s| {
+                const FACE: [Btn; 6] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb];
+                for (i, btn) in FACE.iter().enumerate() {
+                    if face[i] && !s.pressed[i] {
+                        fire.push(*btn);
+                    }
+                }
+                s.pressed = face;
+
+                // Menu: a tap opens Settings, a long hold leaves.
+                match (menu, s.menu_since) {
+                    (true, None) => {
+                        s.menu_since = Some(t);
+                        s.menu_fired = false;
+                    }
+                    (true, Some(since)) if !s.menu_fired && t - since >= MENU_HOLD => {
+                        s.menu_fired = true;
+                        fire.push(Btn::MenuHold);
+                    }
+                    (false, Some(_)) => {
+                        if !s.menu_fired {
+                            fire.push(Btn::Menu);
+                        }
+                        s.menu_since = None;
+                    }
+                    _ => {}
+                }
+
+                // The stick counts only after it has been seen at rest.
+                let (sx, sy) = stick;
+                if sx.abs() < STICK_REST && sy.abs() < STICK_REST {
+                    s.stick_seen_resting = true;
+                }
+                let from_stick = if !s.stick_seen_resting {
+                    None
+                } else if sx.abs() > sy.abs() && sx.abs() > STICK_ON {
+                    Some(if sx < 0.0 { Btn::Left } else { Btn::Right })
+                } else if sy.abs() > STICK_ON {
+                    Some(if sy < 0.0 { Btn::Up } else { Btn::Down })
+                } else {
+                    None
+                };
+                let dir = dpad.or(from_stick);
+                match dir {
+                    Some(d) if s.dir != Some(d) => {
+                        fire.push(d);
+                        s.next_repeat = t + REPEAT_FIRST;
+                    }
+                    Some(d) if t >= s.next_repeat => {
+                        fire.push(d);
+                        s.next_repeat = t + REPEAT_NEXT;
+                    }
+                    _ => {}
+                }
+                s.dir = dir;
+            });
+            for btn in fire {
+                on_pad(btn);
+            }
+        },
+        std::time::Duration::from_millis(33),
+    );
+
+    let keys = window_event_listener(leptos::ev::keydown, move |e| {
+        let key = e.key();
+        let btn = match key.as_str() {
+            "ArrowUp" => Btn::Up,
+            "ArrowDown" => Btn::Down,
+            "ArrowLeft" => Btn::Left,
+            "ArrowRight" => Btn::Right,
+            "Enter" | " " => Btn::A,
+            "Escape" => Btn::B,
+            "Backspace" => Btn::Erase,
+            // Q/E and X/Y arrive as letters: the TV screen reads them as LB/RB and X/Y
+            // except while the search keyboard is open, where they type.
+            "PageUp" => Btn::Lb,
+            "PageDown" => Btn::Rb,
+            "F10" => Btn::Menu,
+            "F11" => Btn::MenuHold,
+            k if k.chars().count() == 1 => {
+                let c = k.chars().next().unwrap_or(' ');
+                if c.is_ascii_alphanumeric() { Btn::Type(c) } else { return }
+            }
+            _ => return,
+        };
+        e.prevent_default();
+        on(btn);
+    });
+    let keys = StoredValue::new_local(Some(keys));
+
+    on_cleanup(move || {
+        if let Ok(handle) = poll {
+            handle.clear();
+        }
+        keys.update_value(|k| {
+            if let Some(k) = k.take() {
+                k.remove();
+            }
+        });
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pads_are_told_apart_by_their_names() {
+        assert_eq!(kind_of("Xbox 360 Controller (XInput STANDARD GAMEPAD)"), PadKind::Xbox);
+        assert_eq!(kind_of("DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"), PadKind::PlayStation);
+        assert_eq!(kind_of("Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)"), PadKind::Nintendo);
+    }
+}
