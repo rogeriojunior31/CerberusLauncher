@@ -131,6 +131,30 @@ pub struct LookStatus {
     pub current: Option<Look>,
 }
 
+/// Facts about the original game, from the catalog (IGDB).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OriginalGame {
+    #[serde(default)]
+    pub released: String,
+    #[serde(default)]
+    pub developer: String,
+    #[serde(default)]
+    pub publisher: String,
+    #[serde(default)]
+    pub series: String,
+    #[serde(default)]
+    pub genres: Vec<String>,
+    #[serde(default)]
+    pub modes: Vec<String>,
+    #[serde(default)]
+    pub platforms: Vec<String>,
+    /// 0-100.
+    #[serde(default)]
+    pub rating: Option<f64>,
+    #[serde(default)]
+    pub summary: String,
+}
+
 /// A game on SteamGridDB.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArtGame {
@@ -349,6 +373,23 @@ pub struct RecompEntry {
     pub cover: Option<String>,
     /// Wide art (a screenshot of the original game) for banners and the page backdrop.
     pub hero: Option<String>,
+    /// The game's logo from the catalog, shown in place of its name.
+    #[serde(default)]
+    pub logo: Option<String>,
+    /// The recomp's kind of game: "action", "racing"...
+    #[serde(default)]
+    pub genre: String,
+    /// What is known about the original game.
+    #[serde(default)]
+    pub original: Option<OriginalGame>,
+    /// When the project put out its first release, and how many it has.
+    #[serde(default)]
+    pub first_release: String,
+    #[serde(default)]
+    pub releases: u64,
+    /// PCs that played it lately, as the catalog counts them.
+    #[serde(default)]
+    pub players: u64,
     /// One or two sentences about the recomp.
     pub about: String,
     /// What this version brings, to tell it from the game's other versions.

@@ -213,10 +213,10 @@ pub fn Home() -> impl IntoView {
             Item::Game(g) => entry_of(library, g),
             Item::Entry(e) => Some(e.clone()),
         };
-        let based = entry.filter(|e| !e.game.is_empty()).map(|e| format!("Baseado em {} · {}", e.game, e.console));
+        let based = entry.clone().filter(|e| !e.game.is_empty()).map(|e| format!("Baseado em {} · {}", e.game, e.console));
         let logo = match &item {
-            Item::Game(g) => g.logo_path.clone(),
-            _ => None,
+            Item::Game(g) => g.logo_path.clone().or_else(|| entry.as_ref().and_then(|e| e.logo.clone())),
+            Item::Entry(e) => e.logo.clone(),
         };
         let title = match logo {
             Some(path) => view! { <img class="tv-logo" src=crate::art::src(&path) alt=item.name() /> }.into_any(),

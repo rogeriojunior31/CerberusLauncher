@@ -91,6 +91,22 @@ fn sort_games(games: &mut [(RecompEntry, usize)], sort: Sort) {
     }
 }
 
+const BY_GAME_KEY: &str = "cerberus.discover.by-game";
+
+/// Whether Discover lists games by the original game's name, remembered per PC.
+fn by_game_saved() -> bool {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(BY_GAME_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+fn save_by_game(on: bool) {
+    if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = s.set_item(BY_GAME_KEY, if on { "1" } else { "0" });
+    }
+}
+
 fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
@@ -106,6 +122,8 @@ pub fn DiscoverPage() -> impl IntoView {
     let console = RwSignal::new(String::new());
     let sort = RwSignal::new(Sort::Popular);
     let only_owned = RwSignal::new(false);
+    // Recomps by their own names ("Zelda 64: Recompiled"), or by the game they bring back ("Majora's Mask").
+    let by_game = RwSignal::new(by_game_saved());
     let shown = RwSignal::new(PAGE);
     // A new search or filter starts from the top of the list again.
     Effect::new(move |_| {
@@ -150,6 +168,9 @@ pub fn DiscoverPage() -> impl IntoView {
             })
             .collect();
         sort_games(&mut games, sort.get());
+        if by_game.get() && sort.get() == Sort::Name {
+            games.sort_by_key(|(e, _)| if e.game.is_empty() { e.name.to_lowercase() } else { e.game.to_lowercase() });
+        }
         games
     };
 
@@ -184,7 +205,11 @@ pub fn DiscoverPage() -> impl IntoView {
             .take(shown.get())
             .map(|(entry, versions)| {
                 let mut info = recomp_tile(&entry);
+                if by_game.get() && !entry.game.is_empty() {
+                    info.title = entry.game.clone();
+                }
                 info.sub = match (&entry.latest, &entry.problem) {
+                    _ if by_game.get() => format!("{} · {}", entry.console, if versions > 1 { format!("{versions} recomps") } else { entry.name.clone() }),
                     _ if versions > 1 => format!("{} · {versions} versões", entry.console),
                     (Some(release), _) if release.size > 0 => format!("{} · {}", entry.console, megabytes(release.size)),
                     (None, Some(_)) => format!("{} · Indisponível", entry.console),
@@ -246,6 +271,12 @@ pub fn DiscoverPage() -> impl IntoView {
                             on:input=move |e| search.set(event_target_value(&e))
                         />
                     </label>
+                    <div class="segs" role="radiogroup" aria-label="Mostrar por">
+                        <button type="button" class="seg" role="radio" class:on=move || !by_game.get() aria-checked=move || (!by_game.get()).to_string()
+                            on:click=move |_| { by_game.set(false); save_by_game(false); }>"Recomps"</button>
+                        <button type="button" class="seg" role="radio" class:on=move || by_game.get() aria-checked=move || by_game.get().to_string()
+                            on:click=move |_| { by_game.set(true); save_by_game(true); }>"Jogos"</button>
+                    </div>
                     <button type="button" class="chip-btn" aria-pressed=move || only_owned.get().to_string() class:on=move || only_owned.get() on:click=move |_| only_owned.update(|o| *o = !*o)>
                         "Tenho o jogo"
                     </button>

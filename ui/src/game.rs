@@ -139,7 +139,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                 <div class="gp-cover"><Poster sources=covers title=title.clone() /></div>
                 <div class="gp-info">
                     <span class="kick">{kicker}</span>
-                    {match game.as_ref().and_then(|g| g.logo_path.clone()) {
+                    {match game.as_ref().and_then(|g| g.logo_path.clone()).or_else(|| entry.as_ref().and_then(|e| e.logo.clone())) {
                         Some(logo) => view! { <img class="gp-logo" src=crate::art::src(&logo) alt=title.clone() /> }.into_any(),
                         None => view! { <h1>{title.clone()}</h1> }.into_any(),
                     }}
@@ -238,6 +238,15 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         if e.stars > 0 {
             stats.push(("Estrelas no GitHub", format::count(e.stars)));
         }
+        if e.players > 0 {
+            stats.push(("Jogadores recentes", format::count(e.players)));
+        }
+        if e.releases > 0 {
+            stats.push(("Versões lançadas", e.releases.to_string()));
+        }
+        if !e.first_release.is_empty() {
+            stats.push(("Primeira versão", day(&e.first_release)));
+        }
     }
     let cards = stats
         .into_iter()
@@ -332,6 +341,8 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
                 {problem}
                 {setup}
                 {features}
+                {entry.clone().and_then(|e| e.original.clone().map(|o| view! { <OriginalGameCard original=o game=e.game.clone() /> }))}
+                {entry.clone().map(|e| view! { <SimilarGames entry=e /> })}
             </div>
             {setup_card}
             {needs}
@@ -798,6 +809,85 @@ fn LinkToCatalog(id: String) -> impl IntoView {
                 <p class="muted small">"Vinculado, ele ganha ajustes, mods, backups de saves e a arte do catálogo. O tempo de jogo continua."</p>
                 <div class="manage">{buttons}</div>
             </div>
+        })
+    }
+}
+
+/// "2017-03-18" -> "18/03/2017"; anything else as it is.
+fn day(text: &str) -> String {
+    let parts: Vec<&str> = text.get(..10).unwrap_or(text).split('-').collect();
+    match parts.as_slice() {
+        [y, m, d] if y.len() == 4 => format!("{d}/{m}/{y}"),
+        _ => text.to_string(),
+    }
+}
+
+/// What is known about the game the recomp was made from.
+#[component]
+fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> impl IntoView {
+    let join = |list: &[String], most: usize| list.iter().take(most).cloned().collect::<Vec<_>>().join(", ");
+    let facts: Vec<(&'static str, String)> = [
+        ("Lançamento", if original.released.is_empty() { String::new() } else { day(&original.released) }),
+        ("Desenvolvedora", original.developer.clone()),
+        ("Publicadora", original.publisher.clone()),
+        ("Série", original.series.clone()),
+        ("Gêneros", join(&original.genres, 4)),
+        ("Modos", join(&original.modes, 4)),
+        ("Lançado para", join(&original.platforms, 5)),
+        ("Nota da crítica", original.rating.map(|r| format!("{:.0}/100", r)).unwrap_or_default()),
+    ]
+    .into_iter()
+    .filter(|(_, v)| !v.trim().is_empty())
+    .collect();
+    let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
+    let summary = (!original.summary.is_empty()).then(|| view! { <p class="og-summary">{original.summary.clone()}</p> });
+    view! {
+        <section class="card original">
+            <h3>{format!("Sobre {game}")}</h3>
+            {summary}
+            <dl class="og-facts">{rows}</dl>
+            <p class="muted small">"Dados do jogo original pelo IGDB, em inglês."</p>
+        </section>
+    }
+}
+
+/// Other recomps someone who likes this one might like: shared tags count
+/// twice, then the same series, genre and console. Other versions of the same
+/// game are left out.
+pub fn similar(entry: &RecompEntry, all: &[RecompEntry], most: usize) -> Vec<RecompEntry> {
+    let series = entry.original.as_ref().map(|o| o.series.clone()).filter(|s| !s.is_empty());
+    let mut scored: Vec<(f32, &RecompEntry)> = crate::versions::one_each(all)
+        .into_iter()
+        .map(|(lead, _)| lead)
+        .filter(|x| x.title != entry.title && x.game != entry.game && x.latest.is_some())
+        .filter_map(|x| {
+            let shared = x.tags.iter().filter(|t| entry.tags.contains(t)).count() as f32;
+            let mut score = shared * 2.0;
+            if !entry.genre.is_empty() && x.genre == entry.genre {
+                score += 3.0;
+            }
+            if x.origin == entry.origin {
+                score += 1.5;
+            }
+            if series.is_some() && x.original.as_ref().map(|o| &o.series) == series.as_ref() {
+                score += 4.0;
+            }
+            (score >= 3.0).then_some((score, all.iter().find(|e| e.id == x.id)?))
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.downloads.cmp(&a.1.downloads)));
+    scored.into_iter().take(most).map(|(_, e)| e.clone()).collect()
+}
+
+#[component]
+fn SimilarGames(entry: RecompEntry) -> impl IntoView {
+    let library = expect_context::<Library>();
+    move || {
+        let all = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let list = similar(&entry, &all, 12);
+        (!list.is_empty()).then(|| {
+            let tiles = list.iter().map(crate::tiles::recomp_tile).collect::<Vec<_>>();
+            view! { <crate::tiles::Shelf title="Jogos parecidos".to_string() tiles /> }
         })
     }
 }

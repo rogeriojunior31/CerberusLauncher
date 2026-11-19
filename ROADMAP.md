@@ -138,6 +138,11 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       onde veio e, no Início, pergunta se quer sair; ícones de botão de Xbox, PlayStation ou Nintendo
       conforme o controle; sons de navegação; relógio. Segurar Menu ou F11 entra e sai. Conferido no app
       pelo teclado; o controle físico (Xbox 360 conectado) ainda precisa ser testado à mão.
+- [x] Página do jogo mais completa: logo do catálogo no lugar do nome, jogadores recentes, versões
+      lançadas, primeira versão, cartão do jogo original (resumo, desenvolvedora, publicadora, série,
+      gêneros, modos, plataformas, nota, pelo IGDB) e "Jogos parecidos" (tags, gênero, série, console).
+- [x] Descobrir lista por "Recomps" ou por "Jogos" (nome do jogo original), escolha lembrada.
+- [x] MHGU Recomp e Budokai Tenkaichi 4 Tag Team no catálogo próprio (117 jogos).
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

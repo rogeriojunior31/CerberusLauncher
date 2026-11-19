@@ -542,7 +542,7 @@
       }
     },
     "size_text": "148 MB",
-    "stars": 1005,
+    "stars": 1006,
     "license": "GPL-3.0"
   },
   {
@@ -4478,5 +4478,81 @@
     },
     "size_text": "43 MB",
     "stars": 92
+  },
+  {
+    "id": "mhgurecomp",
+    "title": "mhgurecomp",
+    "name": "MHGU Recomp",
+    "game": "Monster Hunter Generations Ultimate",
+    "console": "Nintendo Switch",
+    "origin": "switch",
+    "repo": "morerokk/MHGURecomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "",
+    "adds": "",
+    "needs": "Sua cópia de Monster Hunter Generations Ultimate (Nintendo Switch).",
+    "saves": [],
+    "tag": "0.17.8",
+    "released": "2026-11-18",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Windows-MHGURecomp.*.zip",
+      "linux": "Linux-MHGURecomp.*.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "Windows-MHGURecomp.0.17.8.zip",
+        "sha256": "0e85bf046092ca6a8db43ed113eb6ac4c7e26ac3a7b2dca82fc23c4b30e9aab5"
+      },
+      "linux": {
+        "name": "Linux-MHGURecomp.0.17.8.tar.gz",
+        "sha256": "855175629ba520113927d6506cc3361ea4863e4932e8ae10198875719896f038"
+      }
+    },
+    "size_text": "44 MB",
+    "stars": 662
+  },
+  {
+    "id": "dbz-bt4-tag-team-decomp",
+    "title": "dbz-bt4-tag-team-decomp",
+    "name": "Budokai Tenkaichi 4 Tag Team Decomp",
+    "game": "Dragon Ball Z: Budokai Tenkaichi 3 (mod Tenkaichi 4)",
+    "console": "PlayStation 2",
+    "origin": "ps2",
+    "repo": "NauTaro/DBZ-BT4-Tag-Team-Decomp",
+    "icon": null,
+    "cover": null,
+    "hero": null,
+    "about": "",
+    "adds": "",
+    "needs": "Sua cópia de Dragon Ball Z: Budokai Tenkaichi 3 (mod Tenkaichi 4) (PlayStation 2).",
+    "saves": [],
+    "tag": "v0.1.39.6-R1.5",
+    "released": "2026-11-18",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "BT4decomp-windows-x64.zip",
+      "linux": "BT4decomp-linux-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "BT4decomp-windows-x64.zip",
+        "sha256": "9e64aa49ffe4a0e82492c8c17a7f096a69039d3748fd0d7fd93d4b6f910b7215"
+      },
+      "linux": {
+        "name": "BT4decomp-linux-x64.zip",
+        "sha256": "9c54bc145903465a0bf87ad7098dee73ff3d95b5211b9b36c5e2f0063c1776ab"
+      }
+    },
+    "size_text": "71 MB",
+    "stars": 129
   }
 ]

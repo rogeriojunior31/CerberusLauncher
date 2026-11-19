@@ -40,6 +40,14 @@ pub struct CatalogEntry {
     pub icon: Option<String>,
     pub cover: Option<String>,
     pub hero: Option<String>,
+    /// The game's logo, a see-through picture shown in place of its name.
+    pub logo: Option<String>,
+    pub genre: String,
+    #[serde(skip)]
+    pub original: Option<cerberus_shared::OriginalGame>,
+    pub first_release: String,
+    pub releases: u64,
+    pub players: u64,
     pub about: String,
     pub adds: String,
     pub needs: String,
@@ -321,6 +329,19 @@ struct RlApp {
     icon: Option<String>,
     cover: Option<String>,
     hero: Option<String>,
+    #[serde(default)]
+    logo: Option<String>,
+    #[serde(default)]
+    genre: Option<String>,
+    /// The original game's facts (IGDB), read loosely.
+    #[serde(default)]
+    about: Value,
+    #[serde(default)]
+    first: Option<String>,
+    #[serde(default)]
+    releases: Value,
+    #[serde(default)]
+    players: Value,
     title: Option<String>,
     // The site's list isn't strict about shapes: an empty map can come as `[]`,
     // and missing parts as `null`. These are read loosely, so one odd entry
@@ -335,6 +356,24 @@ struct RlApp {
     soon: Option<bool>,
     /// An object, or the same object written as a JSON string.
     boot: Option<Value>,
+}
+
+/// The original game's facts, when the catalog has an object with some.
+fn original_of(value: &Value) -> Option<cerberus_shared::OriginalGame> {
+    let text = |k: &str| value.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let list = |k: &str| value.get(k).and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let facts = cerberus_shared::OriginalGame {
+        released: text("released"),
+        developer: text("developer"),
+        publisher: text("publisher"),
+        series: text("series"),
+        genres: list("genres"),
+        modes: list("modes"),
+        platforms: list("platforms"),
+        rating: value.get("rating").and_then(Value::as_f64),
+        summary: text("summary"),
+    };
+    (!facts.summary.is_empty() || !facts.developer.is_empty() || !facts.genres.is_empty()).then_some(facts)
 }
 
 /// A map when it is one; anything else (`[]`, `null`) is an empty map.
@@ -468,6 +507,12 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             icon: some(app.icon),
             cover: some(app.cover),
             hero: some(app.hero),
+            logo: some(app.logo),
+            genre: app.genre.unwrap_or_default(),
+            original: original_of(&app.about),
+            first_release: app.first.unwrap_or_default(),
+            releases: app.releases.as_u64().unwrap_or(0),
+            players: app.players.as_u64().unwrap_or(0),
             about: app.blurb.unwrap_or_default(),
             adds: app.adds.unwrap_or_default(),
             needs: super::translate::needs(&app.needs.unwrap_or_default()),
