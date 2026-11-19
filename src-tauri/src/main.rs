@@ -1203,6 +1203,35 @@ fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
     installing.cancel(&id);
 }
 
+/// Moves an installed recomp to a folder the player picks (another drive, say).
+/// `None` when the picker is cancelled.
+#[tauri::command]
+async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
+    let game = app.state::<LocalLibrary>().get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let Source::Recomp { recomp_id, .. } = &game.source else {
+        return Err("Só recomps instalados pelo Cerberus podem ser movidos por aqui.".into());
+    };
+    if app.state::<sessions::Sessions>().is_running(&id) {
+        return Err("Feche o jogo antes de movê-lo.".into());
+    }
+    app.state::<recomp::Installing>().while_idle(recomp_id, || Ok(()))?;
+    let dialog = app.dialog().file().set_title("Escolha para onde mover o jogo");
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
+    let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let into = picked.into_path().map_err(|e| e.to_string())?;
+    // Copying to another drive can take minutes.
+    let handle = app.clone();
+    let moved = tauri::async_runtime::spawn_blocking(move || {
+        recomp::relocate::move_install(&handle.state::<recomp::Folders>(), &handle.state::<LocalLibrary>(), &id, &into)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    trail::note(&app, &moved.id, "Mover", &Ok(format!("Movido para {}", moved.install_dir)));
+    Ok(Some(moved))
+}
+
 #[tauri::command]
 fn pause_install(installing: State<'_, recomp::Installing>, id: String) {
     installing.pause(&id);
@@ -1637,6 +1666,7 @@ fn main() {
             open_recomp_request,
             cancel_install,
             pause_install,
+            move_game,
             running_games,
             list_backups,
             backup_now,

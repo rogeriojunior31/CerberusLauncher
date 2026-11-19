@@ -313,7 +313,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play). Falta: "Adicionar à Steam".
 - [x] Configurações › Seu PC: Visual C++ 2015-2022 x64 (versão, em dia ou antigo) e instalar pelo link da Microsoft. Falta: DirectX.
 - [x] Pausar e continuar download de recomp (o arquivo parcial fica guardado; cancelar apaga), na página do jogo e no Big Picture.
-- [ ] Reinstalar/reparar recomp, mover jogo para outro disco.
+- [x] Reparar instalação (baixa a versão de novo por cima, com backup dos saves) e mover o jogo para outra pasta ou disco (Gerenciar).
 - [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.
 - [ ] Discord "Jogando...", coleções e jogos ocultos, multi-disco nos clássicos.
 

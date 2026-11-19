@@ -167,6 +167,11 @@ pub async fn cancel_install(id: &str) -> Result<(), String> {
     call("cancel_install", &Id { id }).await
 }
 
+/// Moves a recomp to a folder the player picks; `None` when they cancel.
+pub async fn move_game(id: &str) -> Result<Option<Game>, String> {
+    call("move_game", &Id { id }).await
+}
+
 pub async fn pause_install(id: &str) -> Result<(), String> {
     call("pause_install", &Id { id }).await
 }

@@ -587,6 +587,31 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    let moving = RwSignal::new(false);
+    let relocate = game.as_ref().filter(|g| is_recomp && !g.external && !g.setup_pending).map(|g| {
+        let id = g.id.clone();
+        let on_move = move |_| {
+            let id = id.clone();
+            moving.set(true);
+            spawn_local(async move {
+                let moved = library.report(api::move_game(&id).await);
+                moving.set(false);
+                if let Some(Some(game)) = moved {
+                    library.games.refetch();
+                    library.toast(format!("{} foi movido para {}.", game.name, game.install_dir));
+                }
+            });
+        };
+        view! {
+            <button type="button" class="row-btn" on:click=on_move disabled=move || moving.get()>
+                <Svg icon=Icon::Folder />
+                <span>
+                    <b>{move || if moving.get() { "Movendo… pode levar alguns minutos" } else { "Mover para outra pasta ou disco" }}</b>
+                    <small>"Leva a pasta inteira, com saves, mods e configurações, e o Cerberus passa a abrir de lá"</small>
+                </span>
+            </button>
+        }
+    });
     let shortcut = game.as_ref().map(|g| {
         let id = g.id.clone();
         let on_shortcut = move |_| {
@@ -633,6 +658,27 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <button type="button" class="row-btn" on:click=on_project>
                 <Svg icon=Icon::External />
                 <span><b>"Projeto no GitHub"</b><small>{repo}</small></span>
+            </button>
+        }
+    });
+    // Reinstalls the newest release over the game: missing or broken files come
+    // back, the saves get a backup first, and files the game made stay.
+    let repair = game.as_ref().filter(|g| is_recomp && !g.external && !g.setup_pending).zip(entry.as_ref()).map(|(_, e)| {
+        let rid = e.id.clone();
+        let downloading = {
+            let rid = rid.clone();
+            move || library.progress.with(|all| all.contains_key(&rid))
+        };
+        let version = e.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default();
+        let detail = if version.is_empty() {
+            "Baixa o jogo de novo por cima; saves, configurações e mods ficam".to_string()
+        } else {
+            format!("Baixa a versão {version} de novo por cima; saves, configurações e mods ficam")
+        };
+        view! {
+            <button type="button" class="row-btn" disabled=downloading on:click=move |_| crate::discover::start_install(library, rid.clone())>
+                <Svg icon=Icon::Download />
+                <span><b>"Reparar instalação"</b><small>{detail}</small></span>
             </button>
         }
     });
@@ -692,7 +738,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <p class="muted small">"Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele."</p>
         </div>
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{shortcut}{customize}{edit}{project}{remove}</div> }
+    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{relocate}{shortcut}{customize}{edit}{project}{repair}{remove}</div> }
 }
 
 #[component]

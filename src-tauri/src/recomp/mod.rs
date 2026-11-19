@@ -12,6 +12,7 @@ pub(crate) mod saves;
 pub mod sources;
 mod translate;
 pub(crate) mod update;
+pub mod relocate;
 
 use std::collections::HashMap;
 use std::fs;
