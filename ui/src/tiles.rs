@@ -18,6 +18,8 @@ pub struct TileInfo {
     pub badge: Option<String>,
     /// The player's favorite: a heart on the cover.
     pub favorite: bool,
+    /// The library game behind the tile, for its right-click menu.
+    pub game: Option<Game>,
     pub open: Route,
     /// Catalog tiles follow installation events without rebuilding the surrounding shelf.
     recomp_id: Option<String>,
@@ -71,6 +73,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         covers: cover_sources(game),
         badge,
         favorite: game.favorite,
+        game: Some(game.clone()),
         open: Route::Game(game.id.clone()),
         recomp_id: None,
     }
@@ -94,6 +97,7 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         covers: recomp_covers(entry),
         badge,
         favorite: false,
+        game: None,
         open: Route::Game(format!("recomp:{}", entry.id)),
         recomp_id: Some(entry.id.clone()),
     }
@@ -104,6 +108,13 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
     let library = expect_context::<Library>();
     let open = info.open.clone();
     let on_open = move |_| library.go(open.clone());
+    let menu = expect_context::<crate::game_menu::GameMenu>();
+    let menu_game = info.game.clone();
+    let on_menu = move |e: leptos::ev::MouseEvent| {
+        if let Some(game) = menu_game.clone() {
+            menu.open(game, &e);
+        }
+    };
     let step = Memo::new(move |_| {
         info.recomp_id.as_ref().and_then(|id| library.progress.with(|all| all.get(id).cloned()))
     });
@@ -126,7 +137,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
     };
     view! {
         <div class="tile">
-            <button type="button" class="tile-b" on:click=on_open title=info.title.clone()>
+            <button type="button" class="tile-b" on:click=on_open on:contextmenu=on_menu title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
                     {info.favorite.then(|| view! { <span class="fav-mark" title="Favorito"><Svg icon=Icon::HeartFill size=16 /></span> })}

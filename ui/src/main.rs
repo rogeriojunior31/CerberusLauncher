@@ -19,6 +19,7 @@ mod settings_page;
 mod shell;
 mod tiles;
 mod news;
+mod game_menu;
 mod versions;
 
 use std::collections::{HashMap, HashSet};
@@ -158,7 +159,7 @@ impl Library {
 }
 
 /// The main button's label and icon: the step the backend says comes next.
-fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
+pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
     match &game.next_step {
         NextStep::Play => ("Jogar", icons::Icon::Play),
         NextStep::RunInstaller => ("Abrir instalador", icons::Icon::External),
@@ -214,6 +215,7 @@ fn App() -> impl IntoView {
         customizing: RwSignal::new(None),
     };
     provide_context(library);
+    provide_context(game_menu::GameMenu(RwSignal::new(None)));
     provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.
@@ -342,6 +344,7 @@ fn App() -> impl IntoView {
         <shell::Toasts />
         {editor}
         {locate}
+        <game_menu::GameMenuLayer />
     }
 }
 

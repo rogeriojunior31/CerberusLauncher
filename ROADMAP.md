@@ -295,6 +295,9 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       atalhos no menu lateral. Guardados em favorites.json, à parte da biblioteca, para valer também para
       jogos da Steam e da Epic, que são lidos das lojas a cada vez.
 
+- [x] Botão direito numa capa (como no Hydra): menu com Jogar (ou o próximo passo), Página do jogo,
+      Favoritar/Tirar dos favoritos e Abrir pasta do jogo. Fica dentro da janela e fecha com clique fora ou Esc.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada
