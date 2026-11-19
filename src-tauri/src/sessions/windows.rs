@@ -72,9 +72,10 @@ pub(super) fn spawn_game(mut command: Command, selected: Option<&Path>) -> io::R
 impl GameProcess {
     pub(super) fn observe(mut self, mut report: impl FnMut(Observation)) -> io::Result<()> {
         let mut buffer = vec![0usize; 32];
+        let mut launcher_code = None;
         if self.runtime.is_none() {
             report(Observation::Started(self.started));
-            self.launcher.wait()?;
+            launcher_code = self.launcher.wait()?.code();
         }
         loop {
             let members = self.members(&mut buffer)?;
@@ -84,13 +85,18 @@ impl GameProcess {
             if let Some(runtime) = &self.runtime {
                 if let Some(game) = members.iter().find_map(|&pid| self.playable(pid as u32, runtime)) {
                     report(Observation::Started(Instant::now()));
-                    report(Observation::Closed(runtime_duration(game)?));
+                    let (played, code) = runtime_duration(game)?;
+                    report(Observation::Exited(code));
+                    report(Observation::Closed(played));
                     continue;
                 }
             }
             std::thread::sleep(Duration::from_millis(250));
         }
         if self.runtime.is_none() {
+            if let Some(code) = launcher_code {
+                report(Observation::Exited(code));
+            }
             report(Observation::Closed(self.started.elapsed()));
         }
         Ok(())
@@ -149,7 +155,8 @@ impl GameProcess {
     }
 }
 
-fn runtime_duration(process: OwnedHandle) -> io::Result<Duration> {
+/// How long the game ran, and its exit code.
+fn runtime_duration(process: OwnedHandle) -> io::Result<(Duration, i32)> {
     let raw = process.as_raw_handle();
     if unsafe { WaitForSingleObject(raw, INFINITE) } != WAIT_OBJECT_0 {
         return Err(io::Error::last_os_error());
@@ -163,5 +170,7 @@ fn runtime_duration(process: OwnedHandle) -> io::Result<Duration> {
     }
     let ticks = |time: FILETIME| (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
     let elapsed = ticks(exited).saturating_sub(ticks(created));
-    Ok(Duration::from_secs(elapsed / 10_000_000) + Duration::from_nanos(elapsed % 10_000_000 * 100))
+    let mut code = 0u32;
+    unsafe { GetExitCodeProcess(raw, &mut code) };
+    Ok((Duration::from_secs(elapsed / 10_000_000) + Duration::from_nanos(elapsed % 10_000_000 * 100), code as i32))
 }

@@ -301,6 +301,21 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Big Picture Mode com mouse: abas, capas (abrem a página), botões da página do jogo, "Voltar" e
       painéis respondem a clique. Sair sempre desfaz a tela cheia, mesmo saindo no meio de um clique.
 
+### 4.3d Paridade com Hydra e RecompLauncher (levantamento de 19/11/2026)
+
+- [x] Uma instância só: abrir de novo traz a janela aberta (até da bandeja).
+- [x] Avisos do Windows para conquistas e jogos prontos quando a janela não está em foco.
+- [x] Jogo que fecha com erro: código de saída explicado (DLL faltando, Visual C++ antigo, travamento),
+      log do jogo apontado, no histórico e como aviso.
+- [ ] Opções de inicialização (abrir com o Windows, abrir minimizado).
+- [ ] Tempo de jogo dos jogos da Steam e da Epic (vigiar os processos deles).
+- [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
+- [ ] Atalhos na área de trabalho e "Adicionar à Steam".
+- [ ] Instalar runtimes comuns (Visual C++, DirectX) quando faltam.
+- [ ] Pausar download, reinstalar/reparar recomp, mover jogo para outro disco.
+- [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.
+- [ ] Discord "Jogando...", coleções e jogos ocultos, multi-disco nos clássicos.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada

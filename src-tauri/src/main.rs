@@ -15,6 +15,7 @@ mod setup_runner;
 mod background;
 mod favorites;
 mod notify;
+mod crash;
 mod steam;
 mod steam_store;
 mod trail;
