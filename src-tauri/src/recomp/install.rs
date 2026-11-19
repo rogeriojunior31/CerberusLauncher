@@ -3,6 +3,7 @@
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -15,6 +16,39 @@ use super::CatalogEntry;
 use super::assets::{Asset, Kind, kind, words};
 
 pub const CANCELLED: &str = "Instalação cancelada.";
+pub use cerberus_shared::PAUSED;
+
+/// Stops a download: cancelled (its bytes are thrown away) or paused (they are
+/// kept, and the next download of the same file carries on from them).
+#[derive(Default)]
+pub struct Halt {
+    stop: AtomicBool,
+    keep: AtomicBool,
+    part: Mutex<Option<PathBuf>>,
+}
+
+impl Halt {
+    pub fn cancel(&self) {
+        self.keep.store(false, Ordering::Relaxed);
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    pub fn pause(&self) {
+        self.keep.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+
+    /// Throws away what a paused download kept.
+    pub fn discard(&self) {
+        if let Some(part) = self.part.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            let _ = fs::remove_file(part);
+        }
+    }
+}
 /// Tries per download. Each try carries on from the bytes already saved.
 const TRIES: u32 = 4;
 
@@ -29,7 +63,7 @@ pub async fn download(
     client: &Client,
     asset: &Asset,
     dir: &Path,
-    cancel: &AtomicBool,
+    cancel: &Halt,
     report: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf, String> {
     tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
@@ -37,8 +71,11 @@ pub async fn download(
     let target = dir.join(&safe_name);
     let tag = &format!("{:x}", Sha256::digest(format!("{}|{}", asset.size, asset.url)))[..10];
     let part = dir.join(format!("{safe_name}.{tag}.part"));
+    *cancel.part.lock().unwrap_or_else(|p| p.into_inner()) = Some(part.clone());
 
-    let (mut hash, mut done) = resume_state(&part, asset.size);
+    // Re-reading a large paused file takes seconds: off the async workers.
+    let (resume_part, size) = (part.clone(), asset.size);
+    let (mut hash, mut done) = tauri::async_runtime::spawn_blocking(move || resume_state(&resume_part, size)).await.map_err(|e| e.to_string())?;
     // 0 until the server says, when the catalog didn't know the exact size.
     let mut total = asset.size;
     let mut tries = 0;
@@ -46,6 +83,7 @@ pub async fn download(
         tries += 1;
         match fetch_into(client, asset, &part, &mut hash, &mut done, &mut total, cancel, &report).await {
             Ok(()) => break,
+            Err(Stop::Cancelled) if cancel.keep.load(Ordering::Relaxed) => return Err(PAUSED.into()),
             Err(Stop::Cancelled) => {
                 let _ = fs::remove_file(&part);
                 return Err(CANCELLED.into());
@@ -71,11 +109,11 @@ pub async fn download(
 }
 
 // Cancel a stalled connection or retry delay even if the server sends no further bytes.
-async fn until_cancelled<F: std::future::Future>(task: F, cancel: &AtomicBool) -> Result<F::Output, Stop> {
+async fn until_cancelled<F: std::future::Future>(task: F, cancel: &Halt) -> Result<F::Output, Stop> {
     use futures_util::future::{Either, select};
-    if cancel.load(Ordering::Relaxed) { return Err(Stop::Cancelled); }
+    if cancel.stopped() { return Err(Stop::Cancelled); }
     let cancelled = async {
-        while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(Duration::from_millis(150)).await; }
+        while !cancel.stopped() { tokio::time::sleep(Duration::from_millis(150)).await; }
     };
     futures_util::pin_mut!(task, cancelled);
     match select(task, cancelled).await {
@@ -124,10 +162,10 @@ async fn fetch_into(
     hash: &mut Sha256,
     done: &mut u64,
     total: &mut u64,
-    cancel: &AtomicBool,
+    cancel: &Halt,
     report: &(impl Fn(u64, u64) + Send),
 ) -> Result<(), Stop> {
-    if cancel.load(Ordering::Relaxed) { return Err(Stop::Cancelled); }
+    if cancel.stopped() { return Err(Stop::Cancelled); }
     if *done == *total && *total > 0 {
         return Ok(());
     }
@@ -454,7 +492,7 @@ pub(super) mod tests {
             fs::write(dir.path().join(format!("game.zip.{}.part", &key[..10])), b"ABC").unwrap();
             let asset = Asset { name: "game.zip".into(), url, size: 0, sha256: None };
             let client = Client::builder().no_proxy().build().unwrap();
-            let path = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &AtomicBool::new(false), |_, _| {})).unwrap();
+            let path = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &Halt::default(), |_, _| {})).unwrap();
             assert_eq!(fs::read(path).unwrap(), b"ABCDEFG");
             server.join().unwrap();
         }
@@ -465,12 +503,12 @@ pub(super) mod tests {
         use std::{net::TcpListener, sync::{Arc, mpsc}};
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/stalled.zip", listener.local_addr().unwrap());
-        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel = Arc::new(Halt::default());
         let flag = cancel.clone();
         let (finished, wait) = mpsc::channel::<()>();
         let server = std::thread::spawn(move || {
             let (_socket, _) = listener.accept().unwrap();
-            flag.store(true, Ordering::Relaxed);
+            flag.cancel();
             assert!(wait.recv_timeout(Duration::from_secs(5)).is_ok(), "download waited for server headers");
         });
         let dir = tempfile::tempdir().unwrap();
@@ -483,6 +521,35 @@ pub(super) mod tests {
         finished.send(()).unwrap();
         server.join().unwrap();
         assert_eq!(result.unwrap_err(), CANCELLED);
+        assert!(!part.exists());
+    }
+
+    #[test]
+    fn a_paused_download_keeps_its_bytes_for_next_time() {
+        use std::{net::TcpListener, sync::{Arc, mpsc}};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/paused.zip", listener.local_addr().unwrap());
+        let halt = Arc::new(Halt::default());
+        let flag = halt.clone();
+        let (finished, wait) = mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (_socket, _) = listener.accept().unwrap();
+            flag.pause();
+            let _ = wait.recv_timeout(Duration::from_secs(5));
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let hash = format!("{:x}", Sha256::digest(format!("0|{url}")));
+        let part = dir.path().join(format!("paused.zip.{}.part", &hash[..10]));
+        fs::write(&part, b"ABC").unwrap();
+        let asset = Asset { name: "paused.zip".into(), url, size: 0, sha256: None };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let result = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &halt, |_, _| {}));
+        finished.send(()).unwrap();
+        server.join().unwrap();
+        assert_eq!(result.unwrap_err(), PAUSED);
+        assert_eq!(fs::read(&part).unwrap(), b"ABC");
+        // Giving up on it afterwards throws the bytes away.
+        halt.discard();
         assert!(!part.exists());
     }
 
@@ -502,7 +569,7 @@ pub(super) mod tests {
         fs::write(&part, b"ABC").unwrap();
         let asset = Asset { name: "large.zip".into(), url, size: 0, sha256: None };
         let client = Client::builder().no_proxy().build().unwrap();
-        let err = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &AtomicBool::new(false), |_, _| {})).unwrap_err();
+        let err = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &Halt::default(), |_, _| {})).unwrap_err();
         server.join().unwrap();
         assert!(err.contains("Espaço insuficiente"));
         assert_eq!(fs::read(part).unwrap(), b"ABC");
@@ -536,7 +603,7 @@ pub(super) mod tests {
             socket.write_all(&bytes[offset..]).unwrap();
         });
         let client = Client::builder().no_proxy().build().unwrap();
-        let archive = tauri::async_runtime::block_on(download(&client, &asset, cache.path(), &AtomicBool::new(false), |_, _| {})).unwrap();
+        let archive = tauri::async_runtime::block_on(download(&client, &asset, cache.path(), &Halt::default(), |_, _| {})).unwrap();
         server.join().unwrap();
         let target = install.path().join("game");
         let exe = unpack_over(&archive, &install.path().join("stage"), &target, &portable("Game.exe")).unwrap();

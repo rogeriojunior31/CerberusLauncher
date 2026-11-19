@@ -11,12 +11,20 @@ use crate::{Library, api, format::megabytes};
 
 /// Starts installing (or updating) a recomp; progress fills in from the backend's events.
 pub fn start_install(library: Library, id: String) {
-    let starting = InstallStep::Downloading { done: 0, total: 0 };
     library.progress.update(|all| {
+        // Carrying on from a pause starts where the bar stopped.
+        let starting = match all.get(&id) {
+            Some(InstallStep::Paused { done, total }) => InstallStep::Downloading { done: *done, total: *total },
+            _ => InstallStep::Downloading { done: 0, total: 0 },
+        };
         all.insert(id.clone(), starting);
     });
     spawn_local(async move {
         let result = api::install_recomp(&id).await;
+        // Paused: the bar stays, showing where it stopped, until it carries on.
+        if result.as_ref().is_err_and(|e| e == cerberus_shared::PAUSED) {
+            return;
+        }
         library.progress.update(|all| {
             all.remove(&id);
         });
@@ -33,16 +41,35 @@ pub fn start_install(library: Library, id: String) {
 }
 
 pub fn cancel_install(library: Library, id: String) {
+    // A paused download has no install running to report back: clear its bar here.
+    if is_paused(library, &id) {
+        library.progress.update(|all| {
+            all.remove(&id);
+        });
+    }
     spawn_local(async move {
         library.report(api::cancel_install(&id).await);
     });
 }
 
-/// A progress bar with what is happening, and a cancel button while downloading.
+pub fn pause_install(library: Library, id: String) {
+    spawn_local(async move {
+        library.report(api::pause_install(&id).await);
+    });
+}
+
+pub fn is_paused(library: Library, id: &str) -> bool {
+    library.progress.with(|all| matches!(all.get(id), Some(InstallStep::Paused { .. })))
+}
+
+/// A progress bar with what is happening, and pause or cancel while downloading.
 pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     // Only a download stops cleanly; unpacking is quick and half-unpacked files help no one.
-    let cancellable = matches!(step, InstallStep::Downloading { .. });
+    let cancellable = matches!(step, InstallStep::Downloading { .. } | InstallStep::Paused { .. });
+    let paused = matches!(step, InstallStep::Paused { .. });
+    // Pausing before the first byte would keep nothing worth carrying on from.
+    let pausable = matches!(step, InstallStep::Downloading { done, .. } if done > 0);
     let (label, percent) = match step {
         InstallStep::Downloading { done, total } if total > 0 => {
             let percent = u128::from(done.min(total)) * 100 / u128::from(total);
@@ -50,10 +77,22 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
         }
         InstallStep::Downloading { done, .. } if done > 0 => (format!("Baixando · {}", megabytes(done)), None),
         InstallStep::Downloading { .. } => ("Iniciando download…".into(), None),
+        InstallStep::Paused { done, total } if total > 0 => {
+            let percent = u128::from(done.min(total)) * 100 / u128::from(total);
+            (format!("Pausado em {percent}% · {} de {}", megabytes(done), megabytes(total)), Some(percent))
+        }
+        InstallStep::Paused { done, .. } => (format!("Pausado · {}", megabytes(done)), None),
         InstallStep::Unpacking => ("Preparando arquivos…".into(), None),
         InstallStep::Finished => ("Concluído".into(), Some(100)),
         InstallStep::Failed { message } => (format!("Falha na instalação · {message}"), Some(0)),
     };
+    let (pause_id, resume_id) = (recomp_id.clone(), recomp_id.clone());
+    let pause = pausable.then(|| {
+        view! { <button type="button" class="btn" on:click=move |_| pause_install(library, pause_id.clone())>"Pausar"</button> }
+    });
+    let resume = paused.then(|| {
+        view! { <button type="button" class="btn primary" on:click=move |_| start_install(library, resume_id.clone())>"Continuar"</button> }
+    });
     let cancel = cancellable.then(|| {
         view! {
             <button type="button" class="btn" on:click=move |_| cancel_install(library, recomp_id.clone())>"Cancelar"</button>
@@ -65,6 +104,8 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
                 <span>{label}</span>
                 <progress max="100" value=percent.map(|n| n.to_string())></progress>
             </label>
+            {resume}
+            {pause}
             {cancel}
         </div>
     }

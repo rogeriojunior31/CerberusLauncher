@@ -18,6 +18,8 @@ enum Act {
     Running,
     Install(String),
     Cancel(String),
+    Pause(String),
+    Resume(String),
     Update(String),
     Backup(String),
     Options,
@@ -32,11 +34,23 @@ fn label(act: &Act, library: Library, entry: &Option<RecompEntry>) -> String {
             Some(r) if r.size > 0 => format!("Instalar · {}", format::megabytes(r.size)),
             _ => "Instalar".into(),
         },
+        Act::Cancel(rid) if crate::discover::is_paused(library, rid) => "Cancelar download".into(),
         Act::Cancel(rid) => format!("Baixando {}% · cancelar", progress_of(library, rid).unwrap_or(0)),
+        Act::Pause(_) => "Pausar download".into(),
+        Act::Resume(rid) => format!("Continuar download · {}%", progress_of(library, rid).unwrap_or(0)),
         Act::Update(_) => format!("Atualizar para {}", entry.as_ref().and_then(|e| e.latest.as_ref()).map(|l| l.version.clone()).unwrap_or_default()),
         Act::Backup(_) => "Fazer backup dos saves".into(),
         Act::Options => "Opções".into(),
         Act::Unavailable => "Indisponível".into(),
+    }
+}
+
+/// While downloading: cancel, then pause; once paused: carry on, then cancel.
+fn download_acts(library: Library, rid: String) -> Vec<Act> {
+    if crate::discover::is_paused(library, &rid) {
+        vec![Act::Resume(rid.clone()), Act::Cancel(rid)]
+    } else {
+        vec![Act::Cancel(rid.clone()), Act::Pause(rid)]
     }
 }
 
@@ -71,7 +85,7 @@ pub fn GamePage(id: String) -> impl IntoView {
         match (game.get(), entry.get()) {
             (Some(g), e) => {
                 if downloading {
-                    list.push(Act::Cancel(rid.clone().unwrap_or_default()));
+                    list.extend(download_acts(library, rid.clone().unwrap_or_default()));
                 } else if library.running.with(|r| r.contains(&g.id)) {
                     list.push(Act::Running);
                 } else {
@@ -89,13 +103,8 @@ pub fn GamePage(id: String) -> impl IntoView {
                     list.push(Act::Backup(g.id.clone()));
                 }
             }
-            (None, Some(e)) => list.push(if downloading {
-                Act::Cancel(e.id.clone())
-            } else if e.latest.is_some() {
-                Act::Install(e.id.clone())
-            } else {
-                Act::Unavailable
-            }),
+            (None, Some(e)) if downloading => list.extend(download_acts(library, e.id.clone())),
+            (None, Some(e)) => list.push(if e.latest.is_some() { Act::Install(e.id.clone()) } else { Act::Unavailable }),
             (None, None) => {}
         }
         list.push(Act::Options);
@@ -110,13 +119,17 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             play_game(library, g);
         }
-        Act::Install(rid) | Act::Update(rid) => {
+        Act::Install(rid) | Act::Update(rid) | Act::Resume(rid) => {
             play(Sound::Select);
             start_install(library, rid);
         }
         Act::Cancel(rid) => {
             play(Sound::Back);
             cancel_install(library, rid);
+        }
+        Act::Pause(rid) => {
+            play(Sound::Back);
+            crate::discover::pause_install(library, rid);
         }
         Act::Backup(gid) => {
             play(Sound::Select);
@@ -163,7 +176,7 @@ pub fn GamePage(id: String) -> impl IntoView {
                 let main = c == 0;
                 let text = label(&act, library, &e);
                 let progress = match &act {
-                    Act::Cancel(rid) => progress_of(library, rid),
+                    Act::Cancel(rid) | Act::Resume(rid) => progress_of(library, rid),
                     _ => None,
                 };
                 let clicked = act.clone();

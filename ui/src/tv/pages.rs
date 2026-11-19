@@ -72,7 +72,7 @@ pub fn entry_of(library: Library, game: &Game) -> Option<RecompEntry> {
 /// Download progress for a recomp, 0-100, while one runs.
 pub fn progress_of(library: Library, recomp_id: &str) -> Option<u64> {
     library.progress.with(|p| match p.get(recomp_id)? {
-        InstallStep::Downloading { done, total } if *total > 0 => Some(done.min(total) * 100 / total),
+        InstallStep::Downloading { done, total } | InstallStep::Paused { done, total } if *total > 0 => Some(done.min(total) * 100 / total),
         InstallStep::Downloading { .. } => Some(0),
         InstallStep::Unpacking => Some(100),
         _ => None,
@@ -617,6 +617,7 @@ pub fn Downloads() -> impl IntoView {
                         match library.progress.with(|p| p.get(&rid).cloned()) {
                             Some(InstallStep::Downloading { done, total }) if total > 0 => format!("Baixando · {} de {}", format::megabytes(done), format::megabytes(total)),
                             Some(InstallStep::Unpacking) => "Preparando arquivos".to_string(),
+                            Some(InstallStep::Paused { done, total }) => format!("Pausado · {} de {}", format::megabytes(done), format::megabytes(total)),
                             Some(InstallStep::Failed { message }) => format!("Falhou · {message}"),
                             _ => "Começando".to_string(),
                         }

@@ -123,11 +123,12 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
         let text = match step {
             Some(InstallStep::Downloading { .. }) => Some("Baixando"),
             Some(InstallStep::Unpacking) => Some("Preparando"),
+            Some(InstallStep::Paused { .. }) => Some("Pausado"),
             _ => info.badge.as_deref(),
         };
         let badge = text.map(|text| view! { <span class="chip">{text.to_owned()}</span> });
         let bar = match step {
-            Some(InstallStep::Downloading { done, total }) if total > 0 => {
+            Some(InstallStep::Downloading { done, total } | InstallStep::Paused { done, total }) if total > 0 => {
                 let percent = u128::from(done.min(total)) * 100 / u128::from(total);
                 Some(view! { <span class="bar-p"><i style:width=format!("{percent}%")></i></span> })
             }

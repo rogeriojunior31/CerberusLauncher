@@ -547,6 +547,9 @@ pub struct Release {
     pub size: u64,
 }
 
+/// The error an install ends with when the player pauses its download.
+pub const PAUSED: &str = "Download pausado.";
+
 /// Sent from the backend while a recomp installs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstallProgress {
@@ -558,6 +561,8 @@ pub struct InstallProgress {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InstallStep {
     Downloading { done: u64, total: u64 },
+    /// Stopped by the player with its bytes kept; installing again carries on.
+    Paused { done: u64, total: u64 },
     Unpacking,
     Finished,
     Failed { message: String },

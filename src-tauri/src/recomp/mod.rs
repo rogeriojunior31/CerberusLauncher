@@ -16,7 +16,7 @@ pub(crate) mod update;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use cerberus_shared::{Backup, CopyHandoff, Game, InstallStep, NextStep, Release, RecompEntry, Source};
@@ -24,6 +24,7 @@ use reqwest::Client;
 
 use crate::library::LocalLibrary;
 pub use assets::Asset;
+pub use install::Halt;
 use assets::Os;
 pub use catalog::{CatalogEntry, find};
 
@@ -32,7 +33,7 @@ pub async fn download_file(
     client: &Client,
     asset: &Asset,
     dir: &Path,
-    cancel: &AtomicBool,
+    cancel: &install::Halt,
     report: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf, String> {
     install::download(client, asset, dir, cancel, report).await
@@ -121,8 +122,9 @@ fn staging_for(target: &Path, id: &str) -> PathBuf {
 
 /// Recomps being installed right now, with the flag that cancels each. Also stops
 /// a second click from starting a second copy.
+/// Paused downloads are kept too, so cancelling one later throws its bytes away.
 #[derive(Default)]
-pub struct Installing(Mutex<HashMap<String, Arc<AtomicBool>>>);
+pub struct Installing(Mutex<HashMap<String, Arc<install::Halt>>>, Mutex<HashMap<String, Arc<install::Halt>>>);
 
 impl Installing {
     pub fn while_idle<T>(&self, id: &str, action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
@@ -135,10 +137,20 @@ impl Installing {
     }
 
     pub fn cancel(&self, id: &str) {
-        let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
         let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
-        if let Some(flag) = busy.get(&key) {
-            flag.store(true, Ordering::Relaxed);
+        if let Some(flag) = self.0.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
+            flag.cancel();
+        }
+        if let Some(paused) = self.1.lock().unwrap_or_else(|p| p.into_inner()).remove(&key) {
+            paused.discard();
+        }
+    }
+
+    /// Stops the download but keeps its bytes for the next install.
+    pub fn pause(&self, id: &str) {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        if let Some(flag) = self.0.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
+            flag.pause();
         }
     }
 }
@@ -559,7 +571,7 @@ pub async fn install(
     report: impl Fn(InstallStep) + Send + Sync,
 ) -> Result<Game, String> {
     let entry = find(id).ok_or("Esse recomp não está no catálogo.")?;
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::new(install::Halt::default());
     {
         let mut busy = installing.0.lock().unwrap_or_else(|p| p.into_inner());
         if busy.contains_key(&entry.id) {
@@ -577,8 +589,12 @@ pub async fn install(
         }
         busy.insert(entry.id.clone(), cancel.clone());
     }
+    installing.1.lock().unwrap_or_else(|p| p.into_inner()).remove(&entry.id);
     let result = install_now(client, folders, library, &entry, &cancel, &report).await;
     installing.0.lock().unwrap_or_else(|p| p.into_inner()).remove(&entry.id);
+    if result.as_ref().is_err_and(|e| e == install::PAUSED) {
+        installing.1.lock().unwrap_or_else(|p| p.into_inner()).insert(entry.id.clone(), cancel);
+    }
     result
 }
 
@@ -587,7 +603,7 @@ async fn install_now(
     folders: &Folders,
     library: &LocalLibrary,
     entry: &CatalogEntry,
-    cancel: &AtomicBool,
+    cancel: &install::Halt,
     report: &(impl Fn(InstallStep) + Send + Sync),
 ) -> Result<Game, String> {
     let (asset, version) = choose_download(client, folders, entry).await?;
@@ -607,14 +623,23 @@ async fn install_now(
 
     // Progress is sent at most once per percent; a 70 MB file has thousands of chunks.
     let last_percent = AtomicU64::new(u64::MAX);
+    let (got, of) = (AtomicU64::new(0), AtomicU64::new(0));
     let on_bytes = |done: u64, total: u64| {
+        got.store(done, Ordering::Relaxed);
+        of.store(total, Ordering::Relaxed);
         let percent = if total == 0 { 0 } else { done * 100 / total };
         if percent != last_percent.swap(percent, Ordering::Relaxed) {
             report(InstallStep::Downloading { done, total });
         }
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
-    let file = install::download(client, &asset, &folders.downloads, cancel, on_bytes).await?;
+    let file = match install::download(client, &asset, &folders.downloads, cancel, on_bytes).await {
+        Err(e) if e == install::PAUSED => {
+            report(InstallStep::Paused { done: got.load(Ordering::Relaxed), total: of.load(Ordering::Relaxed) });
+            return Err(e);
+        }
+        other => other?,
+    };
 
     report(InstallStep::Unpacking);
     let unpack_target = target.clone();

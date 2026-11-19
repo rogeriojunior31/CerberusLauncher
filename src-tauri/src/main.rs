@@ -951,6 +951,8 @@ async fn install_recomp(
     let result = recomp::install(&http, &folders, &library, &installing, &sessions, &id, &report).await;
     let game = match result {
         Ok(game) => game,
+        // Paused: the bytes wait for the next install, nothing went wrong.
+        Err(message) if message == cerberus_shared::PAUSED => return Err(message),
         Err(message) => {
             report(cerberus_shared::InstallStep::Failed { message: message.clone() });
             // Keyed by the library id a successful install would have had.
@@ -1199,6 +1201,11 @@ fn running_games(sessions: State<'_, sessions::Sessions>) -> Vec<String> {
 #[tauri::command]
 fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
     installing.cancel(&id);
+}
+
+#[tauri::command]
+fn pause_install(installing: State<'_, recomp::Installing>, id: String) {
+    installing.pause(&id);
 }
 
 /// The recomp behind a library entry, and where it is installed.
@@ -1629,6 +1636,7 @@ fn main() {
             open_project,
             open_recomp_request,
             cancel_install,
+            pause_install,
             running_games,
             list_backups,
             backup_now,

@@ -11,7 +11,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use cerberus_shared::{CoreView, EmulationView};
@@ -245,7 +244,7 @@ pub async fn install(http: &reqwest::Client, data: &Path, report: impl Fn(u64, u
         sha256: None,
     };
     let downloads = data.join("downloads");
-    let cancel = AtomicBool::new(false);
+    let cancel = crate::recomp::Halt::default();
     let archive = crate::recomp::download_file(http, &asset, &downloads, &cancel, report).await?;
     let staging = data.join("emulators").join(".retroarch-new");
     let _ = fs::remove_dir_all(&staging);

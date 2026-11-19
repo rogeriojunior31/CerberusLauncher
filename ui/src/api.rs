@@ -167,6 +167,10 @@ pub async fn cancel_install(id: &str) -> Result<(), String> {
     call("cancel_install", &Id { id }).await
 }
 
+pub async fn pause_install(id: &str) -> Result<(), String> {
+    call("pause_install", &Id { id }).await
+}
+
 pub async fn running_games() -> Result<Vec<String>, String> {
     call("running_games", &()).await
 }
