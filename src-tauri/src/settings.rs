@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     /// Where new recomps are installed; `None` for the default inside the data folder.
     #[serde(default)]
@@ -38,6 +38,9 @@ pub struct Settings {
     pub ra_user: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
+    /// recomplauncher.com's catalog is used besides Cerberus's own (on unless turned off).
+    #[serde(default = "yes")]
+    pub site_catalog: bool,
     /// A RetroArch the player picked, instead of Cerberus's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch: Option<PathBuf>,
@@ -45,6 +48,14 @@ pub struct Settings {
 
 fn yes() -> bool {
     true
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        // Every field's own default, except that a brand-new player hasn't done the setup yet.
+        let all: Settings = serde_json::from_str("{}").expect("every field has a default");
+        Settings { setup_done: false, ..all }
+    }
 }
 
 pub fn load(data_dir: &Path) -> Settings {
@@ -80,6 +91,15 @@ pub fn folder_size(dir: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_site_catalog_is_on_unless_turned_off() {
+        assert!(Settings::default().site_catalog);
+        let old: Settings = serde_json::from_str(r#"{"rom_dirs": []}"#).unwrap();
+        assert!(old.site_catalog);
+        let off: Settings = serde_json::from_str(r#"{"site_catalog": false}"#).unwrap();
+        assert!(!off.site_catalog);
+    }
 
     #[test]
     fn only_a_new_player_gets_the_first_run_setup() {

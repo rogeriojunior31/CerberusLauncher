@@ -314,8 +314,13 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
     view! {
         <section class="card set">
             <h3>"Catálogo de recomps"</h3>
-            {row(format!("{} recomps", s.catalog_count), format!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado do GitHub do próprio desenvolvedor.", s.catalog_source),
+            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { format!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado do GitHub do próprio desenvolvedor.", s.catalog_source) } else { "Só o catálogo próprio do Cerberus e as suas fontes. Cada recomp é baixado do GitHub do próprio desenvolvedor.".to_string() },
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), "Catálogo atualizado.")>"Atualizar agora"</button> })}
+            {row("Catálogo do recomplauncher.com", "A lista grande, com quase 1.900 recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes.",
+                switch(s.site_catalog, "Catálogo do recomplauncher.com", busy, move || {
+                    let on = !s.site_catalog;
+                    apply(Box::pin(api::set_site_catalog(on)), if on { "Catálogo do recomplauncher.com ligado." } else { "Usando só o catálogo do Cerberus." })
+                }))}
         </section>
     }
 }

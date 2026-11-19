@@ -97,6 +97,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         start_in_tv: chosen.start_in_tv,
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
+        site_catalog: chosen.site_catalog,
         ra_user: chosen.ra_user.clone(),
         roms: {
             let played = emulation::played(&data.0);
@@ -567,6 +568,22 @@ fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> 
     let mut chosen = settings::load(&data.0);
     chosen.start_page = page;
     settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Turns recomplauncher.com's catalog on or off; Cerberus's own list stays.
+#[tauri::command]
+async fn set_site_catalog(app: AppHandle, http: State<'_, reqwest::Client>, on: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.site_catalog = on;
+    settings::save(&data.0, &chosen)?;
+    recomp::catalog::use_site(on);
+    if on {
+        recomp::catalog::load_copy(&data.cache());
+        let _ = recomp::catalog::refresh(&http, &data.cache(), false).await;
+    }
+    let _ = app.emit("catalog-changed", ());
     Ok(settings_view(&app))
 }
 
@@ -1406,6 +1423,7 @@ fn main() {
 
             // The catalog and the last ROM scan from disk, so the window has them at once.
             let data = DataDir(data_dir.clone());
+            recomp::catalog::use_site(chosen.site_catalog);
             recomp::catalog::load_copy(&data.cache());
             app.manage(RomIndex(std::sync::Mutex::new(roms::load_index(&data.rom_index()))));
             app.manage(Sources::default());
@@ -1489,6 +1507,7 @@ fn main() {
             pick_retroarch,
             install_core,
             play_classic,
+            set_site_catalog,
             import_bios,
             link_retroarch_achievements,
             rerun_setup,

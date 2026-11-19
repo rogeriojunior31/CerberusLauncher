@@ -275,7 +275,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 
 ### 4.4 Transição
 
-- [ ] Quando o catálogo próprio cobrir os recomps principais, o do recomplauncher.com vira opcional
-      (fonte nas Configurações) em vez de padrão.
+- [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada
+      por padrão (decisão do usuário em 19/11/2026). Desligado, ficam os 117 recomps do Cerberus e as fontes.
 - [ ] Pedir permissão ao mantenedor do RecompLauncher para usar a lista de repositórios deles como
       ponto de partida da descoberta (só os fatos: quais projetos existem; nunca textos ou arte).

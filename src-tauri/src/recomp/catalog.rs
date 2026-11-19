@@ -129,6 +129,18 @@ static STORE: RwLock<Option<Arc<Vec<CatalogEntry>>>> = RwLock::new(None);
 static BASE: RwLock<Option<Vec<CatalogEntry>>> = RwLock::new(None);
 /// The games of each source the player added.
 static EXTRAS: RwLock<Vec<Vec<CatalogEntry>>> = RwLock::new(Vec::new());
+/// The site's list is used (the player can turn it off in Configurações).
+static SITE_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Uses recomplauncher.com's list, or only Cerberus's own and the player's sources.
+pub fn use_site(on: bool) {
+    SITE_ON.store(on, std::sync::atomic::Ordering::Relaxed);
+    rebuild();
+}
+
+pub fn site_on() -> bool {
+    SITE_ON.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// The catalog in use: the site's list once read, else the bundled one, plus the player's sources.
 pub fn all() -> Arc<Vec<CatalogEntry>> {
@@ -152,7 +164,7 @@ pub fn set_extras(sources: Vec<Vec<CatalogEntry>>) {
 
 /// The main list first; a source's game that's already listed (same id or repo) is left out.
 fn rebuild() {
-    let base = BASE.read().unwrap_or_else(|p| p.into_inner()).clone();
+    let base = if site_on() { BASE.read().unwrap_or_else(|p| p.into_inner()).clone() } else { None };
     let mut list = base.unwrap_or_else(bundled);
     for source in EXTRAS.read().unwrap_or_else(|p| p.into_inner()).iter() {
         for game in source {
@@ -174,10 +186,21 @@ static OWN: RwLock<Option<Vec<CatalogEntry>>> = RwLock::new(None);
 
 /// Our own list: the repository's newest copy when there is one, else the one built in.
 pub fn bundled() -> Vec<CatalogEntry> {
-    if let Some(list) = OWN.read().unwrap_or_else(|p| p.into_inner()).clone() {
-        return list;
+    let published = OWN.read().unwrap_or_else(|p| p.into_inner()).clone().unwrap_or_default();
+    with_published(built_in(), published)
+}
+
+/// The built-in list with the published copy's entries in place of the same
+/// recomps, and its new ones added. A published copy older than this build
+/// never takes recomps away.
+fn with_published(mut list: Vec<CatalogEntry>, published: Vec<CatalogEntry>) -> Vec<CatalogEntry> {
+    for entry in published {
+        match list.iter_mut().find(|e| e.id == entry.id) {
+            Some(slot) => *slot = entry,
+            None => list.push(entry),
+        }
     }
-    built_in()
+    list
 }
 
 fn built_in() -> Vec<CatalogEntry> {
@@ -242,6 +265,10 @@ pub fn load_copy(cache_dir: &Path) {
 /// switches to it. Errors leave the current list in place.
 pub async fn refresh(client: &Client, cache_dir: &Path, force: bool) -> Result<(), String> {
     refresh_own(client, cache_dir, force).await;
+    if !site_on() {
+        rebuild();
+        return Ok(());
+    }
     let file = copy_file(cache_dir);
     let age = fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|t| SystemTime::now().duration_since(t).ok());
     if !force && age.is_some_and(|a| a < FRESH_FOR) {
@@ -582,6 +609,15 @@ pub fn bytes_of(size_text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_older_published_list_updates_entries_but_never_drops_any() {
+        let entry = |id: &str, name: &str| CatalogEntry { id: id.into(), name: name.into(), ..Default::default() };
+        let merged = with_published(vec![entry("a", "A"), entry("b", "B")], vec![entry("a", "A novo"), entry("c", "C")]);
+        let names: Vec<&str> = merged.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["A novo", "B", "C"]);
+        assert!(bundled().len() >= built_in().len());
+    }
 
     const SAMPLE: &str = r#"{
         "apps": [

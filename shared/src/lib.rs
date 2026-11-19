@@ -308,6 +308,9 @@ pub struct SettingsView {
     /// "home", "library" or "discover".
     #[serde(default)]
     pub start_page: String,
+    /// recomplauncher.com's catalog is in use.
+    #[serde(default)]
+    pub site_catalog: bool,
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,
