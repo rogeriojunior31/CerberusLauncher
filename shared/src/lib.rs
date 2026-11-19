@@ -499,6 +499,9 @@ pub struct RecompEntry {
     pub handoff: Option<CopyHandoff>,
     /// The copy can be a folder of extracted files, not just a file.
     pub accepts_folder: bool,
+    /// Only a folder of extracted files will do (a disc or cartridge file won't).
+    #[serde(default)]
+    pub only_folder: bool,
     /// How many of the game's own settings the launcher can change.
     #[serde(default)]
     pub settings_count: usize,

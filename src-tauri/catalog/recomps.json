@@ -4492,7 +4492,7 @@
     "hero": null,
     "about": "",
     "adds": "",
-    "needs": "Sua cópia de Monster Hunter Generations Ultimate (Nintendo Switch).",
+    "needs": "Sua cópia de Monster Hunter Generations Ultimate (Nintendo Switch), versão 1.4.0, já extraída nas pastas exefs e romfs.",
     "saves": [],
     "tag": "0.17.8",
     "released": "2026-11-18",
@@ -4515,7 +4515,18 @@
       }
     },
     "size_text": "44 MB",
-    "stars": 662
+    "stars": 662,
+    "handoff": {
+      "kind": "folder",
+      "folder": "data"
+    },
+    "accepts_folder": true,
+    "copy_accepts": "folder",
+    "copy_contains": [
+      "exefs",
+      "romfs"
+    ],
+    "player_note": "O recomp não abre o arquivo .nsp ou .xci: ele precisa das pastas exefs e romfs da versão 1.4.0, com a atualização junta. Pelo Ryujinx: instale a atualização 1.4.0 no jogo, clique com o botão direito nele, Extrair dados, ExeFS e depois RomFS. Depois escolha aqui a pasta que tem as duas."
   },
   {
     "id": "dbz-bt4-tag-team-decomp",

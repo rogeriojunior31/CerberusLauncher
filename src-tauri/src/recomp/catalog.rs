@@ -305,6 +305,26 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
         if theirs.saves.is_empty() {
             theirs.saves = mine.saves;
         }
+        // How the copy is handed over: theirs when they say, ours otherwise.
+        if theirs.handoff.is_none() {
+            theirs.handoff = mine.handoff;
+            theirs.accepts_folder |= mine.accepts_folder;
+        }
+        if theirs.copy_accepts.is_empty() {
+            theirs.copy_accepts = mine.copy_accepts;
+        }
+        if theirs.copy_contains.is_empty() {
+            theirs.copy_contains = mine.copy_contains;
+        }
+        // Ours, in Portuguese, when it says more than the usual "your copy of".
+        let generic = format!("Sua cópia de {} ({}).", mine.game, mine.console);
+        if !mine.needs.is_empty() && mine.needs != generic {
+            theirs.needs = mine.needs;
+        }
+        // Our note is written in Portuguese, for our players.
+        if !mine.player_note.is_empty() {
+            theirs.player_note = mine.player_note;
+        }
         if theirs.id != mine.id {
             theirs.aliases.push(mine.id);
         }
@@ -609,6 +629,22 @@ pub fn bytes_of(size_text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mhgu_takes_only_the_extracted_folders_even_without_the_site() {
+        let own = built_in();
+        let mhgu = own.iter().find(|e| e.id == "mhgurecomp").expect("MHGU in our catalog");
+        assert_eq!(mhgu.copy_accepts, "folder");
+        assert_eq!(mhgu.copy_contains, ["exefs", "romfs"]);
+        assert!(matches!(&mhgu.handoff, Some(CopyHandoff::Folder { folder, .. }) if folder == "data"));
+        assert!(mhgu.player_note.contains("Ryujinx"));
+        // With the site's entry, which already has the rules, ours keeps the Portuguese note.
+        let theirs = CatalogEntry { id: "mhgurecomp".into(), copy_accepts: "folder".into(), player_note: "Put the game's exefs".into(), ..Default::default() };
+        let merged = merge(vec![theirs], own);
+        let mhgu = merged.iter().find(|e| e.id == "mhgurecomp").unwrap();
+        assert!(mhgu.player_note.contains("Ryujinx"));
+        assert_eq!(mhgu.copy_contains, ["exefs", "romfs"]);
+    }
 
     #[test]
     fn an_older_published_list_updates_entries_but_never_drops_any() {

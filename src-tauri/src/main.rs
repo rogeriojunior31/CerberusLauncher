@@ -935,6 +935,8 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err("Só recomps usam uma cópia do jogo.".into());
     };
+    // A recomp that takes only extracted folders always gets the folder picker.
+    let folder = folder || recomp::find(recomp_id).is_some_and(|e| e.copy_accepts == "folder");
     let copy = if use_found {
         let owned = owned_games(&app);
         let entry = recomp::find(recomp_id).ok_or("Esse recomp não está no catálogo.")?;

@@ -500,7 +500,8 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     RecompEntry {
         owned_copy: owned.get(&entry.id).cloned(),
         handoff: entry.handoff.clone(),
-        accepts_folder: entry.accepts_folder,
+        accepts_folder: entry.accepts_folder || entry.copy_accepts == "folder",
+        only_folder: entry.copy_accepts == "folder",
         settings_count: entry.settings.len(),
         player_note: entry.player_note.clone(),
         multiplayer: entry.multiplayer.clone(),

@@ -386,6 +386,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
     let lost = RwSignal::new(matches!(game.next_step, cerberus_shared::NextStep::ChooseCopy { .. }) && game.game_copy.is_some());
 
     let accepts_folder = entry.accepts_folder;
+    let only_folder = entry.only_folder;
     let choose_from = move |use_found: bool, folder: bool| {
         busy.set(true);
         spawn_local(async move {
@@ -399,9 +400,12 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
             }
         });
     };
-    let choose = move |use_found: bool| choose_from(use_found, false);
+    // A recomp that takes only extracted folders never gets a file picker.
+    let choose = move |use_found: bool| choose_from(use_found, only_folder && !use_found);
+    let pick = if only_folder { "Escolher pasta..." } else { "Escolher arquivo..." };
+    let change = if only_folder { "Trocar pasta..." } else { "Trocar arquivo..." };
     let folder_button = move || {
-        accepts_folder.then(|| {
+        (accepts_folder && !only_folder).then(|| {
             view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| choose_from(false, true)>"Escolher pasta..."</button> }
         })
     };
@@ -417,7 +421,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
                 <Svg icon=Icon::Check size=18 />
                 <div><b>"Cópia selecionada"</b><span class="path">{path}</span></div>
             </div>
-            <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| choose(false)>"Trocar arquivo..."</button>
+            <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| choose(false)>{change}</button>
         }
         .into_any(),
         (None, Some(path)) => view! {
@@ -434,7 +438,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
         (None, None) => view! {
             <p class="muted">{what.clone()}</p>
             <div class="row">
-                <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| choose(false)>"Escolher arquivo..."</button>
+                <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| choose(false)>{pick}</button>
                 {folder_button}
             </div>
         }
