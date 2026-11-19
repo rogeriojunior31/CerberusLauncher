@@ -545,7 +545,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         let seconds = started.elapsed().as_secs();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
         let saved = emulation::add_played(&data, &path, seconds, now);
-        trail::note(&app, &id, "Partida", &saved.map(|_| format!("{} min jogados", seconds / 60)));
+        trail::note(&app, &id, "Partida", &saved.map(|_| if seconds < 60 { "Menos de 1 min jogado".to_string() } else { format!("{} min jogados", seconds / 60) }));
         let _ = app.emit("catalog-changed", ());
         background::classic_ended(&app);
     });
@@ -1337,6 +1337,12 @@ fn set_game_setting(
 }
 
 /// What the launcher did for a game lately, newest first.
+/// What happened lately across every game, newest first.
+#[tauri::command]
+fn recent_activity(trail: State<'_, trail::Trail>) -> Vec<cerberus_shared::TrailEntry> {
+    trail.recent(40)
+}
+
 #[tauri::command]
 fn game_trail(trail: State<'_, trail::Trail>, id: String) -> Vec<cerberus_shared::TrailEntry> {
     trail.for_game(&id, 30)
@@ -1526,6 +1532,7 @@ fn main() {
             play_classic,
             set_site_catalog,
             set_close_to_tray,
+            recent_activity,
             import_bios,
             link_retroarch_achievements,
             rerun_setup,

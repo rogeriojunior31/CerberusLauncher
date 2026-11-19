@@ -1073,3 +1073,20 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .engine-pick:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--fill)); }
 .engine-pick b { font-size: 16px; }
 .engine-pick span { color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+/* Novidades */
+.news-sec { max-width: 980px; margin-bottom: 36px; }
+.news-sec h2 { display: flex; align-items: center; gap: 10px; font-size: 20px; margin: 0 0 14px; }
+.news-sec h2 svg { color: var(--accent); }
+.dl-row .row { margin-left: auto; flex: none; }
+.activity { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; }
+.act { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; }
+.act + .act { border-top: 1px solid var(--line); }
+.act.clickable { cursor: pointer; }
+.act.clickable:hover { background: var(--card2); }
+.act > svg { flex: none; color: var(--ok, #3ccf8e); }
+.act.bad > svg { color: var(--bad, #ff6b6b); }
+.act div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.act b { font-size: 14px; }
+.act span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act time { color: var(--dim); font-size: 12px; flex: none; }

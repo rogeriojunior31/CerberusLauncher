@@ -11,8 +11,12 @@ pub fn Sidebar() -> impl IntoView {
     let item = move |route: Route, icon: Icon, label: &'static str| {
         let target = route.clone();
         let on = move || library.route.with(|now| now.section() == target);
-        let count = (route == Route::Downloads).then(|| {
-            view! { <b class="n">{move || { let n = library.progress.with(|p| p.len()); (n > 0).then_some(n) }}</b> }
+        let downloads = route == Route::Downloads;
+        let count = matches!(route, Route::Downloads | Route::News).then(|| {
+            view! { <b class="n">{move || {
+                let n = if downloads { library.progress.with(|p| p.len()) } else { crate::news::update_count(library) };
+                (n > 0).then_some(n)
+            }}</b> }
         });
         view! {
             <button type="button" class="nav" class:on=on title=label on:click=move |_| library.go(route.clone())>
@@ -35,6 +39,7 @@ pub fn Sidebar() -> impl IntoView {
                 {item(Route::Discover, Icon::Discover, "Descobrir")}
                 {item(Route::Downloads, Icon::Download, "Downloads")}
                 {item(Route::Saves, Icon::Saves, "Saves")}
+                {item(Route::News, Icon::Bell, "Novidades")}
             </nav>
             <div class="side-foot">
                 <button type="button" class="nav" on:click=move |_| library.add_game()>

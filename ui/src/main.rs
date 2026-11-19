@@ -18,6 +18,7 @@ mod pages;
 mod settings_page;
 mod shell;
 mod tiles;
+mod news;
 mod versions;
 
 use std::collections::{HashMap, HashSet};
@@ -41,6 +42,8 @@ pub enum Route {
     Discover,
     Downloads,
     Saves,
+    /// Updates waiting and what happened lately.
+    News,
     Settings,
     /// The full-screen view for a TV and a controller.
     BigPicture,
@@ -269,6 +272,7 @@ fn App() -> impl IntoView {
         Route::Discover => view! { <discover::DiscoverPage /> }.into_any(),
         Route::Downloads => view! { <pages::DownloadsPage /> }.into_any(),
         Route::Saves => view! { <pages::SavesPage /> }.into_any(),
+        Route::News => view! { <news::NewsPage /> }.into_any(),
         Route::Settings => view! { <settings_page::SettingsPage /> }.into_any(),
         // Drawn over the whole window instead, below.
         Route::BigPicture => ().into_any(),

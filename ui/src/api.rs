@@ -288,6 +288,10 @@ pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result
 }
 
 /// What the launcher did for a game lately, newest first.
+pub async fn recent_activity() -> Result<Vec<cerberus_shared::TrailEntry>, String> {
+    call("recent_activity", &()).await
+}
+
 pub async fn game_trail(id: &str) -> Result<Vec<cerberus_shared::TrailEntry>, String> {
     call("game_trail", &Id { id }).await
 }

@@ -281,6 +281,12 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       RetroArch, janela fechada, partida registrada e Cerberus fechado 1 s depois; com a opção ligada, o
       ícone na bandeja reabre a janela.
 
+### 4.3c Novidades
+
+- [x] Página "Novidades" no menu (como as notificações do Hydra): atualizações disponíveis dos recomps instalados
+      pelo Cerberus, com "Atualizar" ali mesmo e um número no menu, e a atividade recente de todos os jogos
+      (instalações, partidas, conquistas, erros) a partir do histórico. Conferido no app com o histórico real.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada

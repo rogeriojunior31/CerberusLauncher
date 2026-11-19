@@ -32,6 +32,7 @@ pub enum Icon {
     Puzzle,
     Trophy,
     Gamepad,
+    Bell,
 }
 
 impl Icon {
@@ -57,6 +58,7 @@ impl Icon {
             Icon::Trash => "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
             Icon::Edit => "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
             Icon::Check => "M5 12.5l4.5 4.5L19 7.5",
+            Icon::Bell => "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0",
             Icon::Clock => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
             Icon::Settings => "M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4",
             Icon::Tv => "M3.5 5h17v12h-17zM8.5 20.5h7M10.5 8.5l4 2.5-4 2.5z",
