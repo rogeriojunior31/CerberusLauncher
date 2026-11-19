@@ -98,12 +98,25 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
         ra_user: chosen.ra_user.clone(),
-        roms: app
-            .state::<RomIndex>()
-            .get()
-            .into_iter()
-            .map(|r| cerberus_shared::RomView { path: r.path.to_string_lossy().into_owned(), title: r.title, system: r.system, region: r.region })
-            .collect(),
+        roms: {
+            let played = emulation::played(&data.0);
+            app.state::<RomIndex>()
+                .get()
+                .into_iter()
+                .map(|r| {
+                    let path = r.path.to_string_lossy().into_owned();
+                    let time = played.get(&path).cloned().unwrap_or_default();
+                    cerberus_shared::RomView {
+                        path,
+                        title: r.title,
+                        system: r.system,
+                        region: r.region,
+                        playtime_secs: time.seconds,
+                        last_played: (time.last > 0).then_some(time.last),
+                    }
+                })
+                .collect()
+        },
         sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
@@ -479,10 +492,41 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     if !known {
         return Err("Esse arquivo não está nas suas pastas de ROMs.".into());
     }
-    let result = emulation::launch(&exe, &rom, &console);
+    let log = data.join("emulators").join("retroarch-session.log");
+    let result = emulation::launch(&exe, &rom, &console, Some(&log));
     let id = format!("classic:{path}");
     trail::note(&app, &id, "Jogar clássico", &result.as_ref().map(|_| "Aberto no RetroArch".to_string()).map_err(Clone::clone));
-    result.map(|_| ())
+    let mut child = result?;
+    let started = std::time::Instant::now();
+    // While it runs: achievements from RetroArch's log appear at once. When it
+    // closes: the time played is kept.
+    std::thread::spawn(move || {
+        let mut read = 0usize;
+        loop {
+            let done = child.try_wait().ok().flatten().is_some();
+            if let Ok(text) = fs::read_to_string(&log) {
+                if text.len() > read {
+                    for line in text[read..].lines() {
+                        if let Some(title) = emulation::unlocked(line) {
+                            trail::note(&app, &id, "Conquista", &Ok(title.clone()));
+                            let _ = app.emit("toast", format!("Conquista desbloqueada: {title}"));
+                        }
+                    }
+                    read = text.len();
+                }
+            }
+            if done {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(700));
+        }
+        let seconds = started.elapsed().as_secs();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+        let saved = emulation::add_played(&data, &path, seconds, now);
+        trail::note(&app, &id, "Partida", &saved.map(|_| format!("{} min jogados", seconds / 60)));
+        let _ = app.emit("catalog-changed", ());
+    });
+    Ok(())
 }
 
 /// Logs RetroArch in to RetroAchievements with the linked account.

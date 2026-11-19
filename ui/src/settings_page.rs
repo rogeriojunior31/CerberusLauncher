@@ -369,7 +369,7 @@ fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
                 view! { <small>{text}</small> }.into_any()
             }
             (Some(path), _) => view! { <small><span class="path">{path.clone()}</span><br/>{if v.managed { "Instalado pelo Cerberus, do site oficial do libretro." } else { "O seu RetroArch." }}</small> }.into_any(),
-            (None, _) => view! { <small>"O RetroArch roda NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive. O Cerberus instala a versão oficial (cerca de 200 MB) numa pasta só dele, ou usa o seu."</small> }.into_any(),
+            (None, _) => view! { <small>"O RetroArch roda NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PSP, GameCube e Wii. O Cerberus instala a versão oficial (cerca de 200 MB) numa pasta só dele, ou usa o seu."</small> }.into_any(),
         };
         let has = v.retroarch.is_some();
         let disabled = move || busy.get().is_some();

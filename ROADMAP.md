@@ -158,8 +158,12 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       RetroArch 1.22.2 instalado, núcleo de N64 baixado e Mario Kart 64 aberto pela página do jogo.
 - [x] RetroAchievements no RetroArch: a senha é trocada por um código de acesso no site e só o código vai para
       o retroarch.cfg (com cópia de segurança). Ainda não testado com uma conta real.
-- [ ] Próximo: conquistas aparecendo no Cerberus na hora (lendo o log do RetroArch, como o Hydra), tempo de
-      jogo dos clássicos, PS1/PS2/PSP/GameCube (DuckStation, PCSX2, PPSSPP, Dolphin) e BIOS.
+- [x] PlayStation, PSP e GameCube/Wii pelo RetroArch (núcleos pcsx_rearmed, ppsspp e dolphin, com os arquivos de
+      sistema do PSP e do Dolphin). Crash Bandicoot original (PS1) aberto pela página do recomp.
+- [x] Tempo de jogo dos clássicos (`classics.json`), mostrado na aba Clássicos e no histórico.
+- [x] Conquistas na hora: o RetroArch escreve um log (`--log-file`) e o Cerberus mostra um aviso a cada
+      "Awarding achievement". Texto conferido dentro do programa do RetroArch; ainda sem conquista real.
+- [ ] PS2 (pcsx2, precisa da BIOS do console do jogador), BIOS opcional do PS1 e Big Picture com clássicos.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

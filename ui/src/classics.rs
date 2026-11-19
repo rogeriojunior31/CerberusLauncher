@@ -61,11 +61,11 @@ pub fn console_of(rom: &RomView) -> &'static str {
 }
 
 /// Consoles RetroArch plays in Cerberus (cores in Configurações › Emulação).
-const EMULATED: &[&str] = &["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg"];
+const EMULATED: &[&str] = &["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg", "ps1", "psp", "gc", "wii"];
 
 /// The console RetroArch would play this copy of a game on, if it plays it at all.
 pub fn emulated_console(path: &str) -> Option<&'static str> {
-    let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new() };
+    let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new(), playtime_secs: 0, last_played: None };
     let console = console_of(&rom);
     EMULATED.contains(&console).then_some(console)
 }
@@ -215,7 +215,10 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 let sub = match &recomp {
                     Some(e) if emulated => format!("{} · recomp ou RetroArch", console_name(console)),
                     Some(e) => format!("{} · tem recomp: {}", console_name(console), e.name),
-                    None if emulated => format!("{} · RetroArch", console_name(console)),
+                    None if emulated => match rom.last_played {
+                        Some(t) => format!("{} · jogado {} · {}", console_name(console), crate::format::ago(t), crate::format::playtime(rom.playtime_secs)),
+                        None => format!("{} · RetroArch", console_name(console)),
+                    },
                     None => console_name(console).to_string(),
                 };
                 let badge = recomp.as_ref().map(|_| view! { <span class="chip">"Tem recomp"</span> });
@@ -225,7 +228,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 let on_open = move |_| match &open {
                     Some(id) => library.go(Route::Game(format!("recomp:{id}"))),
                     None if emulated => play_original(library, path.clone(), console_id.clone()),
-                    None => library.toast("Esse console ainda não tem emulação no Cerberus. Por enquanto: NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive."),
+                    None => library.toast("Esse console ainda não tem emulação no Cerberus. Por enquanto: NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PSP, GameCube e Wii."),
                 };
                 view! {
                     <div class="tile">
@@ -257,7 +260,7 @@ mod tests {
     use super::*;
 
     fn rom(path: &str, system: &str) -> RomView {
-        RomView { path: path.into(), title: String::new(), system: system.into(), region: String::new() }
+        RomView { path: path.into(), title: String::new(), system: system.into(), region: String::new(), playtime_secs: 0, last_played: None }
     }
 
     #[test]

@@ -274,6 +274,14 @@ fn App() -> impl IntoView {
         Route::BigPicture => ().into_any(),
         Route::Game(id) => view! { <game::GamePage id /> }.into_any(),
     };
+    // Every page opens at its top, not where the last one was scrolled to.
+    let main_ref = NodeRef::<leptos::html::Main>::new();
+    Effect::new(move |_| {
+        library.route.track();
+        if let Some(main) = main_ref.get_untracked() {
+            main.set_scroll_top(0);
+        }
+    });
     let editor = move || library.editing.get().map(|game| view! { <EditDialog game /> });
     let locate = move || {
         let id = locating.get()?;
@@ -307,7 +315,7 @@ fn App() -> impl IntoView {
             <shell::Sidebar />
             <div class="mainwrap">
                 <shell::TitleBar />
-                <main class="main">{page}</main>
+                <main class="main" node_ref=main_ref>{page}</main>
             </div>
         </div>
         {big_picture}

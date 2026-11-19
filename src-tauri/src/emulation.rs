@@ -30,7 +30,22 @@ pub const CORES: &[(&str, &str, &str)] = &[
     ("genesis", "genesis_plus_gx", "Mega Drive"),
     ("sms", "genesis_plus_gx", "Master System"),
     ("gg", "genesis_plus_gx", "Game Gear"),
+    ("ps1", "pcsx_rearmed", "PlayStation"),
+    ("psp", "ppsspp", "PSP"),
+    ("gc", "dolphin", "GameCube"),
+    ("wii", "dolphin", "Wii"),
 ];
+
+/// Files some cores need in RetroArch's `system` folder, from libretro's site.
+fn system_files(core: &str) -> Option<&'static str> {
+    match core {
+        "ppsspp" => Some("PPSSPP"),
+        "dolphin" => Some("Dolphin"),
+        _ => None,
+    }
+}
+
+const SYSTEM_FILES: &str = "https://buildbot.libretro.com/assets/system";
 
 pub fn core_for(console: &str) -> Option<&'static str> {
     CORES.iter().find(|(c, _, _)| *c == console).map(|(_, core, _)| *core)
@@ -217,11 +232,48 @@ pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Res
     }
     let target = core_file(exe, core);
     fs::create_dir_all(target.parent().unwrap_or(Path::new("."))).map_err(|e| e.to_string())?;
-    fs::write(&target, dll).map_err(|e| format!("Não foi possível guardar o núcleo: {e}"))
+    fs::write(&target, dll).map_err(|e| format!("Não foi possível guardar o núcleo: {e}"))?;
+    if let Some(pack) = system_files(core) {
+        install_system_files(http, exe, pack).await?;
+    }
+    Ok(())
 }
 
-/// Starts a classic in RetroArch with its console's core.
-pub fn launch(exe: &Path, rom: &Path, console: &str) -> Result<std::process::Child, String> {
+/// Unpacks a core's support files into RetroArch's `system` folder.
+async fn install_system_files(http: &reqwest::Client, exe: &Path, pack: &str) -> Result<(), String> {
+    let bytes = http
+        .get(format!("{SYSTEM_FILES}/{pack}.zip"))
+        .timeout(Duration::from_secs(300))
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| format!("Não foi possível baixar os arquivos do núcleo: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    let system = exe.parent().unwrap_or(Path::new(".")).join("system");
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "Os arquivos do núcleo vieram corrompidos.".to_string())?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
+        // Only names that stay inside the system folder.
+        let Some(name) = entry.enclosed_name() else { continue };
+        let out = system.join(name);
+        if entry.is_dir() {
+            fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut file = fs::File::create(&out).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut file).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Starts a classic in RetroArch with its console's core. With `log`, RetroArch
+/// writes what happens (achievements unlocked among it) to that file.
+pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Result<std::process::Child, String> {
     let core = core_for(console).ok_or("Esse console ainda não tem emulação no Cerberus.")?;
     let core_path = core_file(exe, core);
     if !core_path.is_file() {
@@ -230,10 +282,13 @@ pub fn launch(exe: &Path, rom: &Path, console: &str) -> Result<std::process::Chi
     if !rom.is_file() {
         return Err(format!("{} não existe mais.", rom.display()));
     }
-    Command::new(exe)
-        .current_dir(exe.parent().unwrap_or(Path::new(".")))
-        .arg("-L")
-        .arg(&core_path)
+    let mut command = Command::new(exe);
+    command.current_dir(exe.parent().unwrap_or(Path::new("."))).arg("-L").arg(&core_path);
+    if let Some(log) = log {
+        let _ = fs::remove_file(log);
+        command.arg("--verbose").arg(format!("--log-file={}", log.display()));
+    }
+    command
         .arg(rom)
         .spawn()
         .map_err(|e| format!("Não foi possível abrir o RetroArch: {e}"))
@@ -267,9 +322,72 @@ pub async fn link_retroachievements(http: &reqwest::Client, exe: &Path, user: &s
     Ok(name)
 }
 
+/// An achievement RetroArch unlocked, from a line of its log:
+/// `[INFO] [RCHEEVOS]: Awarding achievement 1234: Title (description)`.
+pub fn unlocked(line: &str) -> Option<String> {
+    let at = line.find("chievement ")?;
+    let before = line[..at].to_lowercase();
+    if !(before.ends_with("awarding a") || before.ends_with("awarded a")) || before.contains("error") {
+        return None;
+    }
+    let rest = &line[at + "chievement ".len()..];
+    let (id, text) = rest.split_once(':')?;
+    if !id.trim().chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let text = text.trim();
+    let title = match text.rfind(" (") {
+        Some(i) if text.ends_with(')') => &text[..i],
+        _ => text,
+    };
+    (!title.is_empty()).then(|| title.to_string())
+}
+
+/// Time played and when, per classic (by its file), kept in `classics.json`.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Played {
+    pub seconds: u64,
+    pub last: u64,
+}
+
+pub fn played(data: &Path) -> std::collections::HashMap<String, Played> {
+    fs::read_to_string(data.join("classics.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), String> {
+    let mut all = played(data);
+    let entry = all.entry(rom.to_string()).or_default();
+    entry.seconds += seconds;
+    entry.last = now;
+    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
+    let file = data.join("classics.json");
+    let temp = file.with_extension("json.tmp");
+    fs::write(&temp, text).map_err(|e| e.to_string())?;
+    fs::rename(&temp, &file).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn achievements_are_read_from_the_log() {
+        assert_eq!(unlocked("[INFO] [RCHEEVOS]: Awarding achievement 12345: First Blood (Win a race)").as_deref(), Some("First Blood"));
+        assert_eq!(unlocked("[RCHEEVOS] Awarded achievement 9: Speedy").as_deref(), Some("Speedy"));
+        assert_eq!(unlocked("[INFO] [RCHEEVOS]: Achievement 12 primed"), None);
+        assert_eq!(unlocked("[INFO] Loading achievement list"), None);
+        // A failed award isn't an unlock.
+        assert_eq!(unlocked("[RCHEEVOS]: Error awarding achievement 12: Speedy, retrying in 5 seconds"), None);
+    }
+
+    #[test]
+    fn play_time_adds_up_per_classic_and_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        add_played(dir.path(), "D:/a.z64", 60, 10).unwrap();
+        add_played(dir.path(), "D:/a.z64", 30, 20).unwrap();
+        let all = played(dir.path());
+        assert_eq!((all["D:/a.z64"].seconds, all["D:/a.z64"].last), (90, 20));
+    }
 
     #[test]
     fn settings_lines_are_set_in_place_and_others_kept() {
@@ -309,7 +427,7 @@ fn launch_real_rom() {
     let data = PathBuf::from(std::env::var("APPDATA").unwrap()).join("app.cerberus.launcher");
     let exe = retroarch(&data, None).expect("RetroArch installed");
     let rom = PathBuf::from(std::env::var("CERBERUS_ROM").unwrap());
-    let mut child = launch(&exe, &rom, "n64").expect("started");
+    let mut child = launch(&exe, &rom, "n64", None).expect("started");
     std::thread::sleep(Duration::from_secs(12));
     println!("ainda aberto: {}", child.try_wait().unwrap().is_none());
 }

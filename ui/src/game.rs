@@ -187,9 +187,11 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
                 }
             });
             let (label, icon) = if running { ("Jogando", Icon::Play) } else { crate::launch_action(&game) };
+            // The copy the recomp was given, else the one found in the ROM folders.
             let original = game
                 .game_copy
                 .clone()
+                .or_else(|| entry.as_ref().and_then(|e| e.owned_copy.clone()))
                 .filter(|_| matches!(game.source, Source::Recomp { .. }))
                 .and_then(|copy| crate::classics::emulated_console(&copy).map(|c| (copy, c.to_string())))
                 .map(|(copy, console)| view! {

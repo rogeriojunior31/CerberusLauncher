@@ -345,6 +345,11 @@ pub struct RomView {
     /// "n64", "3ds", "ps2"...; empty for a disc image of an unknown console.
     pub system: String,
     pub region: String,
+    /// Seconds played through Cerberus, and when last (Unix seconds).
+    #[serde(default)]
+    pub playtime_secs: u64,
+    #[serde(default)]
+    pub last_played: Option<u64>,
 }
 
 /// A linked RetroAchievements account, as the settings and the library show it.
