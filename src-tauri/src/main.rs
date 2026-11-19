@@ -14,6 +14,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod notify;
 mod steam;
 mod steam_store;
 mod trail;
@@ -532,7 +533,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
                     for line in text[read..].lines() {
                         if let Some(title) = emulation::unlocked(line) {
                             trail::note(&app, &id, "Conquista", &Ok(title.clone()));
-                            let _ = app.emit("toast", format!("Conquista desbloqueada: {title}"));
+                            notify::tell(&app, "Conquista desbloqueada", &title);
                         }
                     }
                     read = text.len();
@@ -932,6 +933,10 @@ async fn install_recomp(
         _ => String::new(),
     };
     trail::note(&app, &game.id, "Instalação", &Ok(format!("Versão {version} instalada")));
+    // The download may have taken a while: say it's ready even if the player is elsewhere.
+    if !app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false)) {
+        notify::tell(&app, &format!("{} está pronto", game.name), &format!("Versão {version} instalada. Abra o Cerberus para jogar."));
+    }
     // Easy Setup: the player's copy was found in their ROM folders, so the recomp
     // is set up with it right away. Failing that only means setting it by hand.
     let found = owned_games(&app).remove(&id);
@@ -1440,6 +1445,7 @@ fn main() {
         // Opening it again brings the running one forward, even from the tray.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show(app)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
