@@ -125,6 +125,12 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Os 15 projetos de consoles recentes (Switch, Switch 2, Wii U, PS3, PS4) também entraram, por
       decisão do mantenedor: são os mais procurados agora e já estão no catálogo do site. O SHA-256
       garante o arquivo que o autor publicou, não a confiança no autor. Catálogo próprio: 87 jogos.
+- [x] Mais 28 jogos (catálogo próprio: 115): os 22 que o site lista sem dizer como iniciar (o Cerberus
+      acha o programa sozinho), Skate 3, Zelda TOTK "Weeping of the Empire", e Yu-Gi-Oh! FM, Kingdom
+      Hearts 358/2 Days, Rayman 3 HD e Forza Horizon 1 conferidos à mão. Ficaram 9 em revisão: 7
+      ferramentas (N64Recomp, bibliotecas, lojas, outros launchers) e 2 que não são para Windows.
+- [x] O gerador escolhia arquivos auxiliares no lugar do jogo (editor, "Studio", tradução). Agora os
+      evita e prefere a versão portátil, com testes, sem trocar jogos que são eles mesmos um mod.
 - [x] Tela grande refeita: abas (Início, Biblioteca, Descobrir, Downloads, Configurações) com LB/RB;
       Início com destaque do jogo em foco e fileiras; grade na Biblioteca e no Descobrir; página do jogo
       com botão principal que segue o estado (jogar, instalar, atualizar, progresso que cancela); painel de

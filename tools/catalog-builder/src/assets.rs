@@ -30,6 +30,9 @@ fn system_words(system: &str) -> &'static [&'static str] {
 const NOT_A_BUILD: &[&str] = &[
     "symbols", "pdb", "debug", "dbg", "source", "sources", "src", "cheats", "switch", "android", "apk", "ios", "flatpak",
 ];
+const COMPANION: &[&str] = &[
+    "editor", "studio", "converter", "lgpl", "turkish", "translation", "texturepack", "tools", "sdk", "server",
+];
 const ARM: &[&str] = &["arm64", "aarch64", "arm", "armhf", "armv7"];
 const X64: &[&str] = &["x64", "x86_64", "amd64", "win64", "64bit"];
 
@@ -70,6 +73,14 @@ pub fn pick<'a>(files: &'a [ReleaseFile], system: &str) -> Option<&'a ReleaseFil
         }
         let lower = file.name.to_lowercase();
         let mut score = if mine { 50 } else { 0 };
+        // Companion files a release ships beside the game: editors, studios, save
+        // converters, translations, source bundles. They lose to the game itself.
+        if has(COMPANION) {
+            score -= 60;
+        }
+        if lower.contains("portable") {
+            score += 15;
+        }
         if has(X64) {
             score += 20;
         }
@@ -125,6 +136,19 @@ mod tests {
     fn leaves_out_extras_and_console_builds() {
         let list = files(&["Game-PDB-RelWithDebInfo.zip", "Game-Switch.zip", "Game-Windows-RelWithDebInfo.zip"]);
         assert_eq!(pick(&list, "windows").unwrap().name, "Game-Windows-RelWithDebInfo.zip");
+    }
+
+    #[test]
+    fn the_game_wins_over_its_companion_files() {
+        let list = files(&["fm-editor-v0.3.1-windows.zip", "yfm-redecomp-hd-mod-v0.3.1.zip", "yfm-redecomp-v0.3.1-windows.zip"]);
+        assert_eq!(pick(&list, "windows").unwrap().name, "yfm-redecomp-v0.3.1-windows.zip");
+        let list = files(&["rayman3hd-turkish-1.0.1.zip", "Rayman3HDRecompiled-1.2.0-pc-save-converter.zip", "Rayman3HDRecompiled-1.2.0-portable.zip", "Rayman3HDRecompiled-1.2.0-setup.exe", "r3hd-lgpl-source-1.2.0.zip"]);
+        assert_eq!(pick(&list, "windows").unwrap().name, "Rayman3HDRecompiled-1.2.0-portable.zip");
+        let list = files(&["KH-Studio-0.1.5.zip", "KH358-2-Days-Port-Setup-0.1.5.exe"]);
+        assert_eq!(pick(&list, "windows").unwrap().name, "KH358-2-Days-Port-Setup-0.1.5.exe");
+        // A game that is itself a mod keeps its package.
+        let list = files(&["pd-dabs-mod-x86_64-windows.zip", "pd.x86_64-windows.exe"]);
+        assert_eq!(pick(&list, "windows").unwrap().name, "pd-dabs-mod-x86_64-windows.zip");
     }
 
     #[test]
