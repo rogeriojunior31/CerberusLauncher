@@ -123,6 +123,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         external: false,
         logo_path: None,
         look: None,
+        favorite: false,
     }
 }
 

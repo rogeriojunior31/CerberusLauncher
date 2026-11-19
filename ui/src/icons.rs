@@ -33,6 +33,8 @@ pub enum Icon {
     Trophy,
     Gamepad,
     Bell,
+    Heart,
+    HeartFill,
 }
 
 impl Icon {
@@ -58,6 +60,7 @@ impl Icon {
             Icon::Trash => "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
             Icon::Edit => "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
             Icon::Check => "M5 12.5l4.5 4.5L19 7.5",
+            Icon::Heart | Icon::HeartFill => "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
             Icon::Bell => "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0",
             Icon::Clock => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
             Icon::Settings => "M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4",
@@ -72,8 +75,8 @@ impl Icon {
 
 #[component]
 pub fn Svg(icon: Icon, #[prop(default = 20)] size: u32) -> impl IntoView {
-    // Play reads better solid; everything else is drawn as lines.
-    let filled = icon == Icon::Play;
+    // Play and a favorite's heart read better solid; everything else is drawn as lines.
+    let filled = matches!(icon, Icon::Play | Icon::HeartFill);
     view! {
         <svg
             width=size

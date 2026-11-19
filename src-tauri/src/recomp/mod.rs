@@ -761,6 +761,7 @@ fn register(
         external: false,
         logo_path: None,
         look: None,
+        favorite: false,
     };
     apply_art(&mut game);
     library.add(game.clone())?;

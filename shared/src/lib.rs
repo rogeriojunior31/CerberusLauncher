@@ -59,6 +59,9 @@ pub struct Game {
     /// A picture filter applied while the game runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub look: Option<Look>,
+    /// The player marked it as a favorite (kept in favorites.json, not here).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub favorite: bool,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.

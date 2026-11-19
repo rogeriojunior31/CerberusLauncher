@@ -16,6 +16,8 @@ pub struct TileInfo {
     pub covers: Vec<String>,
     /// A corner chip: "Atualização", "Jogando"...
     pub badge: Option<String>,
+    /// The player's favorite: a heart on the cover.
+    pub favorite: bool,
     pub open: Route,
     /// Catalog tiles follow installation events without rebuilding the surrounding shelf.
     recomp_id: Option<String>,
@@ -68,6 +70,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         sub,
         covers: cover_sources(game),
         badge,
+        favorite: game.favorite,
         open: Route::Game(game.id.clone()),
         recomp_id: None,
     }
@@ -90,6 +93,7 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         sub: entry.console.clone(),
         covers: recomp_covers(entry),
         badge,
+        favorite: false,
         open: Route::Game(format!("recomp:{}", entry.id)),
         recomp_id: Some(entry.id.clone()),
     }
@@ -125,6 +129,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             <button type="button" class="tile-b" on:click=on_open title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
+                    {info.favorite.then(|| view! { <span class="fav-mark" title="Favorito"><Svg icon=Icon::HeartFill size=16 /></span> })}
                     {overlay}
                 </div>
                 <span class="t">{info.title.clone()}</span>

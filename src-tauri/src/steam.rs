@@ -113,6 +113,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         external: false,
         logo_path: None,
         look: None,
+        favorite: false,
     })
 }
 

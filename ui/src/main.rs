@@ -64,6 +64,16 @@ impl Route {
     }
 }
 
+/// Marks or unmarks a game as a favorite, and lists the library again.
+pub fn toggle_favorite(library: Library, id: String, on: bool) {
+    leptos::task::spawn_local(async move {
+        if library.report(api::set_favorite(id, on).await).is_some() {
+            library.games.refetch();
+            library.toast(if on { "Adicionado aos favoritos." } else { "Tirado dos favoritos." });
+        }
+    });
+}
+
 #[derive(Clone, PartialEq)]
 pub struct Toast {
     id: u64,

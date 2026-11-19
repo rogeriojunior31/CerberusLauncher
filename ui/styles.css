@@ -1094,3 +1094,17 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 /* Página do clássico */
 .classic-file { margin-top: 18px; max-width: 980px; }
 .classic-file .path { display: block; margin: 6px 0; word-break: break-all; }
+
+/* Favoritos */
+.fav-mark { position: absolute; left: 10px; bottom: 10px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #ff5470; backdrop-filter: blur(6px); }
+.gp-tags { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.fav-btn { display: inline-flex; align-items: center; gap: 8px; }
+.fav-btn.on { color: #ff5470; border-color: color-mix(in srgb, #ff5470 45%, transparent); }
+.side-favs { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; margin-top: 6px; border-top: 1px solid var(--line); min-height: 0; overflow-y: auto; }
+.side-h { display: flex; align-items: center; gap: 6px; padding: 4px 8px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.side-h svg { color: #ff5470; }
+.fav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 10px; background: none; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.fav-item:hover, .fav-item.on { background: var(--card2); color: var(--ink); }
+.fav-item > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fav-thumb { flex: none; width: 26px; height: 34px; border-radius: 6px; overflow: hidden; }
+.fav-thumb img { width: 100%; height: 100%; object-fit: cover; }

@@ -288,6 +288,16 @@ pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result
 }
 
 /// What the launcher did for a game lately, newest first.
+/// Marks or unmarks a game as a favorite.
+pub async fn set_favorite(id: String, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        id: String,
+        on: bool,
+    }
+    call("set_favorite", &Arg { id, on }).await
+}
+
 /// Shows a classic's file in its folder.
 pub async fn open_rom_folder(path: String) -> Result<(), String> {
     #[derive(serde::Serialize)]

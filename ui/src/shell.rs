@@ -41,6 +41,29 @@ pub fn Sidebar() -> impl IntoView {
                 {item(Route::Saves, Icon::Saves, "Saves")}
                 {item(Route::News, Icon::Bell, "Novidades")}
             </nav>
+            {move || {
+                let mut favorites: Vec<cerberus_shared::Game> = library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.favorite).collect();
+                favorites.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
+                (!favorites.is_empty()).then(|| {
+                    let rows = favorites.into_iter().take(8).map(|g| {
+                        let route = Route::Game(g.id.clone());
+                        let here = route.clone();
+                        let on = move || library.route.with(|now| *now == here);
+                        view! {
+                            <button type="button" class="fav-item" class:on=on title=g.name.clone() on:click=move |_| library.go(route.clone())>
+                                <span class="fav-thumb"><crate::art::Poster sources=crate::art::cover_sources(&g) title=g.name.clone() /></span>
+                                <span>{g.name.clone()}</span>
+                            </button>
+                        }
+                    }).collect_view();
+                    view! {
+                        <div class="side-favs">
+                            <span class="side-h"><Svg icon=Icon::HeartFill size=12 />"Favoritos"</span>
+                            {rows}
+                        </div>
+                    }
+                })
+            }}
             <div class="side-foot">
                 <button type="button" class="nav" on:click=move |_| library.add_game()>
                     <Svg icon=Icon::Plus />

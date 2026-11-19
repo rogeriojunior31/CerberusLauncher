@@ -13,6 +13,7 @@ mod roms;
 mod settings;
 mod setup_runner;
 mod background;
+mod favorites;
 mod steam;
 mod steam_store;
 mod trail;
@@ -748,6 +749,8 @@ async fn list_games(
     // The player's own pictures win over every other art.
     let custom = app.state::<art_custom::CustomArt>();
     games.iter_mut().for_each(|game| custom.apply(game));
+    let favorite = favorites::load(&app.state::<DataDir>().0);
+    games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
 }
@@ -1337,6 +1340,12 @@ fn set_game_setting(
 }
 
 /// What the launcher did for a game lately, newest first.
+/// Marks or unmarks a game as a favorite.
+#[tauri::command]
+fn set_favorite(app: AppHandle, id: String, on: bool) -> Result<(), String> {
+    favorites::set(&app.state::<DataDir>().0, &id, on)
+}
+
 /// Opens the folder holding a classic; only files from the player's ROM folders.
 #[tauri::command]
 fn open_rom_folder(app: AppHandle, path: String) -> Result<(), String> {
@@ -1547,6 +1556,7 @@ fn main() {
             set_close_to_tray,
             recent_activity,
             open_rom_folder,
+            set_favorite,
             import_bios,
             link_retroarch_achievements,
             rerun_setup,

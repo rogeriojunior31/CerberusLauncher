@@ -14,17 +14,19 @@ use crate::tiles::{Tile, game_tile, source_name};
 #[derive(Clone, Copy, PartialEq)]
 enum Category {
     All,
+    Favorites,
     Recomps,
     Pc,
     Classics,
 }
 
 impl Category {
-    const ALL: [Category; 4] = [Category::All, Category::Recomps, Category::Pc, Category::Classics];
+    const ALL: [Category; 5] = [Category::All, Category::Favorites, Category::Recomps, Category::Pc, Category::Classics];
 
     fn label(self) -> &'static str {
         match self {
             Category::All => "Todos",
+            Category::Favorites => "Favoritos",
             Category::Recomps => "Recomps",
             Category::Pc => "PC",
             Category::Classics => "Clássicos",
@@ -34,6 +36,7 @@ impl Category {
     fn keeps(self, game: &Game) -> bool {
         match self {
             Category::All => true,
+            Category::Favorites => game.favorite,
             Category::Recomps => matches!(game.source, Source::Recomp { .. }),
             Category::Pc => !matches!(game.source, Source::Recomp { .. }),
             Category::Classics => false,
@@ -185,6 +188,15 @@ pub fn LibraryPage() -> impl IntoView {
         let source = filter.get();
         let kind = category.get();
         games.retain(|g| kind.keeps(g) && source.keeps(g) && (needle.is_empty() || g.name.to_lowercase().contains(&needle)));
+        if games.is_empty() && kind == Category::Favorites && needle.is_empty() {
+            return view! {
+                <div class="empty">
+                    <Svg icon=Icon::Heart size=32 />
+                    <h2>"Nenhum favorito ainda"</h2>
+                    <p class="muted">"Na página de um jogo, clique em Favoritar. Os favoritos aparecem aqui e no menu lateral."</p>
+                </div>
+            }.into_any();
+        }
         if games.is_empty() {
             return view! {
                 <div class="empty">

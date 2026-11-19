@@ -291,6 +291,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       "Abrir pasta", histórico, "Jogar no RetroArch" e, quando existe, "Ver o recomp". Aberta pela aba
       Clássicos (jogos sem recomp) e pela Atividade recente das Novidades. Conferida com o Mario Kart 64.
 
+- [x] Favoritos (como no Hydra): "Favoritar" na página do jogo, coração na capa, aba Favoritos na Biblioteca e
+      atalhos no menu lateral. Guardados em favorites.json, à parte da biblioteca, para valer também para
+      jogos da Steam e da Epic, que são lidos das lojas a cada vez.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada

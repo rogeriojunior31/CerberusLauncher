@@ -73,6 +73,17 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         })
     });
     let pill = entry.clone().filter(|_| siblings > 1).map(|current| view! { <VersionPill current /> });
+    let heart = game.as_ref().map(|g| {
+        let (id, on) = (g.id.clone(), g.favorite);
+        let label = if on { "Tirar dos favoritos" } else { "Adicionar aos favoritos" };
+        view! {
+            <button type="button" class="btn glass fav-btn" class:on=on title=label aria-label=label aria-pressed=on.to_string()
+                on:click=move |_| crate::toggle_favorite(library, id.clone(), !on)>
+                <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=18 />
+                {if on { "Favorito" } else { "Favoritar" }}
+            </button>
+        }
+    });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
     // Every game Cerberus starts gets the tab: picture filters, and the catalog's settings when it has some.
     let has_settings = game.as_ref().is_some_and(|g| g.is_tracked());
@@ -153,7 +164,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                         None => view! { <h1>{title.clone()}</h1> }.into_any(),
                     }}
                     {based}
-                    {pill}
+                    <div class="gp-tags">{pill}{heart}</div>
                 </div>
                 <div class="gp-act">{action}</div>
             </section>
