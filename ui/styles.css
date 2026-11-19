@@ -1117,3 +1117,6 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .ctx button:hover:not(:disabled) { background: var(--card2); }
 .ctx button:disabled { color: var(--dim); cursor: default; }
 .ctx button svg { color: var(--muted); flex: none; }
+
+/* Mouse nos painéis da TV */
+.tv-choice { cursor: pointer; }

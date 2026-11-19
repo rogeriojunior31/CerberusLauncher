@@ -151,6 +151,17 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
     let runs = StoredValue::new_local(runs);
     tv.sheet_hints.set(vec![(Btn::A, "Escolher"), (Btn::B, "Fechar")]);
     let is_options = matches!(sheet, Sheet::Options(_));
+    // A on the focused choice, or a click on any choice.
+    let pick = move |i: usize| {
+        play(Sound::Select);
+        // Taken before closing: closing drops this sheet, and its choices with it.
+        let run = runs.try_with_value(|r| r.get(i).cloned()).flatten();
+        // Close first: a choice may open another sheet.
+        close();
+        if let Some(run) = run {
+            run();
+        }
+    };
     tv.handle_sheet(move |btn| {
         match btn {
             Btn::Up | Btn::Down => {
@@ -158,15 +169,7 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                     play(Sound::Move);
                 }
             }
-            Btn::A => {
-                let i = focus.row.get_untracked();
-                play(Sound::Select);
-                // Close first: a choice may open another sheet.
-                close();
-                if let Some(run) = runs.with_value(|r| r.get(i).cloned()) {
-                    run();
-                }
-            }
+            Btn::A => pick(focus.row.get_untracked()),
             Btn::B => {
                 play(Sound::Back);
                 close();
@@ -184,15 +187,18 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
         .into_iter()
         .enumerate()
         .map(|(r, c)| {
-            view! { <div class="tv-choice" class:danger=c.danger class:on=move || focus.is(r, 0) data-tvf=focus.key(r, 0)>{c.label}</div> }
+            view! {
+                <div class="tv-choice" class:danger=c.danger class:on=move || focus.is(r, 0) data-tvf=focus.key(r, 0)
+                    on:mouseenter=move |_| focus.set(r, 0) on:click=move |_| pick(r)>{c.label}</div>
+            }
         })
         .collect_view();
     let head = header.map(|(name, covers)| {
         view! { <div class="tv-sheet-head"><div class="tv-sheet-cover"><Poster sources=covers title=name.clone() /></div><b>{name}</b></div> }
     });
     view! {
-        <div class="tv-scrim">
-            <aside class="tv-sheet">
+        <div class="tv-scrim" on:click=move |_| { play(Sound::Back); close(); }>
+            <aside class="tv-sheet" on:click=|e| e.stop_propagation()>
                 {head}
                 <h2>{title}</h2>
                 <div class="tv-choices">{items}</div>

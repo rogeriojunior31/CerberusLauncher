@@ -328,6 +328,13 @@ fn App() -> impl IntoView {
         })
     };
     let big_picture = move || (library.route.get() == Route::BigPicture).then(|| view! { <tv::TvMode /> });
+    // Outside Big Picture Mode the window is never full screen, however the TV
+    // screen was left (its own cleanup can be skipped when it closes mid-event).
+    Effect::new(move |_| {
+        if library.route.get() != Route::BigPicture {
+            api::window_toggle("setFullscreen", false);
+        }
+    });
 
     view! {
         <div class="app">
