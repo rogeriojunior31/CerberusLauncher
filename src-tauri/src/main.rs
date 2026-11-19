@@ -481,6 +481,24 @@ async fn install_core(app: AppHandle, http: State<'_, reqwest::Client>, core: St
     Ok(emulation::status(&data, picked.as_deref()))
 }
 
+/// Copies the player's own console BIOS files into RetroArch from a folder they pick.
+#[tauri::command]
+async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, String), String> {
+    let (data, picked) = retroarch_choice(&app);
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale ou escolha o RetroArch primeiro.")?;
+    let dialog = app.dialog().file().set_title("Pasta com a BIOS do seu PlayStation ou PlayStation 2");
+    let Some(folder) = pick_folder(dialog).await? else {
+        return Ok((emulation::status(&data, picked.as_deref()), String::new()));
+    };
+    let (ps1, ps2) = emulation::import_bios(&exe, &folder)?;
+    let said = match (ps1, ps2) {
+        (0, n) => format!("{n} BIOS de PlayStation 2 adicionada(s)."),
+        (n, 0) => format!("{n} BIOS de PlayStation adicionada(s)."),
+        (a, b) => format!("{a} BIOS de PlayStation e {b} de PlayStation 2 adicionadas."),
+    };
+    Ok((emulation::status(&data, picked.as_deref()), said))
+}
+
 /// Starts a classic from the ROM folders in RetroArch.
 #[tauri::command]
 fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
@@ -1468,6 +1486,7 @@ fn main() {
             pick_retroarch,
             install_core,
             play_classic,
+            import_bios,
             link_retroarch_achievements,
             rerun_setup,
             ra_connect,

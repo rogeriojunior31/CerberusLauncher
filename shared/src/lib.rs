@@ -326,6 +326,11 @@ pub struct EmulationView {
     pub cores: Vec<CoreView>,
     /// The RetroAchievements user RetroArch is logged in as.
     pub ra_user: Option<String>,
+    /// The player's BIOS files are in place.
+    #[serde(default)]
+    pub ps1_bios: bool,
+    #[serde(default)]
+    pub ps2_bios: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

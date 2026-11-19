@@ -34,7 +34,72 @@ pub const CORES: &[(&str, &str, &str)] = &[
     ("psp", "ppsspp", "PSP"),
     ("gc", "dolphin", "GameCube"),
     ("wii", "dolphin", "Wii"),
+    ("ps2", "pcsx2", "PlayStation 2"),
 ];
+
+/// A PlayStation BIOS is 512 KB; a PlayStation 2 BIOS, 4 MB.
+const PS1_BIOS: u64 = 512 * 1024;
+const PS2_BIOS: u64 = 4 * 1024 * 1024;
+
+fn system_dir(exe: &Path) -> PathBuf {
+    exe.parent().unwrap_or(Path::new(".")).join("system")
+}
+
+fn ps2_bios_dir(exe: &Path) -> PathBuf {
+    system_dir(exe).join("pcsx2").join("bios")
+}
+
+fn has_file(dir: &Path, wanted: impl Fn(&Path, u64) -> bool) -> bool {
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|e| e.metadata().is_ok_and(|m| m.is_file() && wanted(&e.path(), m.len())))
+    })
+}
+
+fn is_bin(path: &Path) -> bool {
+    path.extension().is_some_and(|x| x.eq_ignore_ascii_case("bin"))
+}
+
+/// Which BIOS files RetroArch has: (PlayStation, PlayStation 2).
+pub fn bios_status(exe: &Path) -> (bool, bool) {
+    let ps1 = has_file(&system_dir(exe), |p, size| is_bin(p) && size == PS1_BIOS);
+    let ps2 = has_file(&ps2_bios_dir(exe), |p, size| is_bin(p) && size == PS2_BIOS);
+    (ps1, ps2)
+}
+
+/// Copies the player's BIOS files (from their own consoles) where the cores
+/// look for them, telling PlayStation from PlayStation 2 by size. Returns how
+/// many of each were copied.
+pub fn import_bios(exe: &Path, from: &Path) -> Result<(usize, usize), String> {
+    let entries = fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))?;
+    let (mut ps1, mut ps2) = (0, 0);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let lower = name.to_string_lossy().to_lowercase();
+        let target = if ext == "bin" && meta.len() == PS1_BIOS {
+            ps1 += 1;
+            system_dir(exe)
+        } else if (ext == "bin" && meta.len() == PS2_BIOS) || matches!(ext.as_str(), "mec" | "nvm") || lower == "erom.bin" || lower.starts_with("rom1") || lower.starts_with("rom2") {
+            if ext == "bin" && meta.len() == PS2_BIOS {
+                ps2 += 1;
+            }
+            ps2_bios_dir(exe)
+        } else {
+            continue;
+        };
+        fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+        fs::copy(&path, target.join(&name)).map_err(|e| format!("Não foi possível copiar {}: {e}", name.to_string_lossy()))?;
+    }
+    if ps1 == 0 && ps2 == 0 {
+        return Err("Nenhuma BIOS de PlayStation (512 KB) ou PlayStation 2 (4 MB) nessa pasta.".into());
+    }
+    Ok((ps1, ps2))
+}
 
 /// Files some cores need in RetroArch's `system` folder, from libretro's site.
 fn system_files(core: &str) -> Option<&'static str> {
@@ -134,7 +199,10 @@ pub fn status(data: &Path, picked: Option<&Path>) -> EmulationView {
         let token = config_value(&t, "cheevos_token").filter(|v| !v.is_empty());
         config_value(&t, "cheevos_username").filter(|u| enabled && token.is_some() && !u.is_empty())
     });
+    let (ps1_bios, ps2_bios) = exe.as_deref().map(bios_status).unwrap_or_default();
     EmulationView {
+        ps1_bios,
+        ps2_bios,
         managed: exe.as_ref().is_some_and(|e| e.starts_with(managed_dir(data))),
         retroarch: exe.map(|e| e.display().to_string()),
         cores,
@@ -275,6 +343,9 @@ async fn install_system_files(http: &reqwest::Client, exe: &Path, pack: &str) ->
 /// writes what happens (achievements unlocked among it) to that file.
 pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Result<std::process::Child, String> {
     let core = core_for(console).ok_or("Esse console ainda não tem emulação no Cerberus.")?;
+    if console == "ps2" && !bios_status(exe).1 {
+        return Err("O PlayStation 2 precisa da BIOS do seu console. Adicione em Configurações › Emulação › BIOS.".into());
+    }
     let core_path = core_file(exe, core);
     if !core_path.is_file() {
         return Err("O núcleo desse console não está instalado. Instale em Configurações › Emulação.".into());
@@ -371,6 +442,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bios_files_go_where_each_core_looks_for_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("RetroArch").join("retroarch.exe");
+        fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        fs::write(&exe, b"MZ").unwrap();
+        let from = dir.path().join("bios");
+        fs::create_dir_all(&from).unwrap();
+        fs::write(from.join("scph5501.bin"), vec![0u8; PS1_BIOS as usize]).unwrap();
+        fs::write(from.join("SCPH-70012.bin"), vec![0u8; PS2_BIOS as usize]).unwrap();
+        fs::write(from.join("SCPH-70012.nvm"), b"x").unwrap();
+        fs::write(from.join("notes.txt"), b"x").unwrap();
+        assert_eq!(bios_status(&exe), (false, false));
+        assert_eq!(import_bios(&exe, &from).unwrap(), (1, 1));
+        assert!(system_dir(&exe).join("scph5501.bin").is_file());
+        assert!(ps2_bios_dir(&exe).join("SCPH-70012.bin").is_file());
+        assert!(ps2_bios_dir(&exe).join("SCPH-70012.nvm").is_file());
+        assert!(!system_dir(&exe).join("notes.txt").exists());
+        assert_eq!(bios_status(&exe), (true, true));
+        let empty = dir.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        assert!(import_bios(&exe, &empty).is_err());
+    }
+
+    #[test]
     fn achievements_are_read_from_the_log() {
         assert_eq!(unlocked("[INFO] [RCHEEVOS]: Awarding achievement 12345: First Blood (Win a race)").as_deref(), Some("First Blood"));
         assert_eq!(unlocked("[RCHEEVOS] Awarded achievement 9: Speedy").as_deref(), Some("Speedy"));
@@ -400,7 +495,8 @@ mod tests {
     #[test]
     fn every_supported_console_has_a_core_and_status_lists_each_core_once() {
         assert_eq!(core_for("gba"), Some("mgba"));
-        assert_eq!(core_for("ps2"), None);
+        assert_eq!(core_for("ps2"), Some("pcsx2"));
+        assert_eq!(core_for("x360"), None);
         let dir = tempfile::tempdir().unwrap();
         let view = status(dir.path(), None);
         let mut names: Vec<&str> = view.cores.iter().map(|c| c.core.as_str()).collect();

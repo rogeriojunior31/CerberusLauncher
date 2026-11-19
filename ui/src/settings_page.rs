@@ -369,7 +369,7 @@ fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
                 view! { <small>{text}</small> }.into_any()
             }
             (Some(path), _) => view! { <small><span class="path">{path.clone()}</span><br/>{if v.managed { "Instalado pelo Cerberus, do site oficial do libretro." } else { "O seu RetroArch." }}</small> }.into_any(),
-            (None, _) => view! { <small>"O RetroArch roda NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PSP, GameCube e Wii. O Cerberus instala a versão oficial (cerca de 200 MB) numa pasta só dele, ou usa o seu."</small> }.into_any(),
+            (None, _) => view! { <small>"O RetroArch roda NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PlayStation 2, PSP, GameCube e Wii. O Cerberus instala a versão oficial (cerca de 200 MB) numa pasta só dele, ou usa o seu."</small> }.into_any(),
         };
         let has = v.retroarch.is_some();
         let disabled = move || busy.get().is_some();
@@ -438,6 +438,32 @@ fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
                 <h3>"Núcleos"</h3>
                 <p class="muted small">"Cada console usa um núcleo do RetroArch, baixado do site oficial do libretro."</p>
                 {cores}
+            </section>
+            <section class="card set">
+                <h3>"BIOS"</h3>
+                <p class="muted small">"A BIOS é o programa interno do console. O PlayStation 2 só roda com a do seu próprio console; o PlayStation roda sem, mas fica mais compatível com ela. O Cerberus nunca baixa BIOS: aponte a pasta onde você guarda as suas."</p>
+                {row("PlayStation", if v.ps1_bios { "BIOS encontrada." } else { "Opcional. Arquivo de 512 KB, como scph5501.bin." },
+                    if v.ps1_bios { view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />"Pronta"</span> }.into_any() } else { view! { <span class="pill soon">"Embutida"</span> }.into_any() })}
+                {row("PlayStation 2", if v.ps2_bios { "BIOS encontrada." } else { "Necessária. Arquivos de 4 MB, como SCPH-70012.bin." },
+                    if v.ps2_bios { view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />"Pronta"</span> }.into_any() } else { view! { <span class="pill soon">"Falta"</span> }.into_any() })}
+                <div class="row">
+                    <button type="button" class="btn sm main" disabled=move || disabled() || !has
+                        on:click=move |_| {
+                            busy.set(Some("bios".to_string()));
+                            spawn_local(async move {
+                                let got = library.report(api::import_bios().await);
+                                busy.set(None);
+                                if let Some((view, said)) = got {
+                                    state.set(Some(view));
+                                    if !said.is_empty() {
+                                        library.toast(said);
+                                    }
+                                }
+                            });
+                        }>
+                        <Svg icon=Icon::Folder size=16 />"Adicionar BIOS de uma pasta"
+                    </button>
+                </div>
             </section>
             <section class="card set">
                 <h3>"Conquistas no RetroArch"</h3>

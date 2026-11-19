@@ -61,7 +61,12 @@ pub fn console_of(rom: &RomView) -> &'static str {
 }
 
 /// Consoles RetroArch plays in Cerberus (cores in Configurações › Emulação).
-const EMULATED: &[&str] = &["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg", "ps1", "psp", "gc", "wii"];
+const EMULATED: &[&str] = &["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg", "ps1", "ps2", "psp", "gc", "wii"];
+
+/// RetroArch plays this console in Cerberus.
+pub fn is_emulated(console: &str) -> bool {
+    EMULATED.contains(&console)
+}
 
 /// The console RetroArch would play this copy of a game on, if it plays it at all.
 pub fn emulated_console(path: &str) -> Option<&'static str> {
@@ -168,7 +173,7 @@ pub fn display_name(rom: &RomView) -> String {
     name[..cut].trim().to_string()
 }
 
-fn box_art(rom: &RomView, console: &str) -> Vec<String> {
+pub fn box_art(rom: &RomView, console: &str) -> Vec<String> {
     let Some(repo) = thumbnails_repo(console) else { return Vec::new() };
     // libretro replaces these characters in file names with "_".
     let name: String = file_name(rom).chars().map(|c| if "&*/:`<>?\\|\"".contains(c) { '_' } else { c }).collect();
@@ -228,7 +233,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 let on_open = move |_| match &open {
                     Some(id) => library.go(Route::Game(format!("recomp:{id}"))),
                     None if emulated => play_original(library, path.clone(), console_id.clone()),
-                    None => library.toast("Esse console ainda não tem emulação no Cerberus. Por enquanto: NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PSP, GameCube e Wii."),
+                    None => library.toast("Esse console ainda não tem emulação no Cerberus. Por enquanto: NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PlayStation 2, PSP, GameCube e Wii."),
                 };
                 view! {
                     <div class="tile">

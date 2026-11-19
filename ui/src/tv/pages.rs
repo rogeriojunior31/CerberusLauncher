@@ -15,6 +15,8 @@ use crate::{Library, api, format, play_game};
 pub enum Item {
     Game(Game),
     Entry(RecompEntry),
+    /// A game from the ROM folders, with its console.
+    Classic(cerberus_shared::RomView, &'static str),
 }
 
 impl Item {
@@ -22,18 +24,21 @@ impl Item {
         match self {
             Item::Game(g) => g.id.clone(),
             Item::Entry(e) => format!("recomp:{}", e.id),
+            Item::Classic(r, _) => format!("classic:{}", r.path),
         }
     }
     pub fn name(&self) -> String {
         match self {
             Item::Game(g) => g.name.clone(),
             Item::Entry(e) => e.name.clone(),
+            Item::Classic(r, _) => crate::classics::display_name(r),
         }
     }
     pub fn covers(&self) -> Vec<String> {
         match self {
             Item::Game(g) => cover_sources(g),
             Item::Entry(e) => recomp_covers(e),
+            Item::Classic(r, c) => crate::classics::box_art(r, c),
         }
     }
     pub fn heroes(&self) -> Vec<String> {
@@ -46,6 +51,7 @@ impl Item {
                 let h = recomp_heroes(e);
                 if h.is_empty() { recomp_covers(e) } else { h }
             }
+            Item::Classic(r, c) => crate::classics::box_art(r, c),
         }
     }
     pub fn recomp_id(&self) -> Option<String> {
@@ -87,6 +93,7 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
             match &item {
                 Item::Game(g) if g.next_step != cerberus_shared::NextStep::Play => Some("Configurar"),
                 Item::Entry(e) if e.installed.is_some() => Some("Instalado"),
+                Item::Classic(..) => Some("Clássico"),
                 Item::Entry(e) if e.owned_copy.is_some() => Some("Você tem"),
                 _ => None,
             }
@@ -112,6 +119,35 @@ fn library_games(library: Library) -> Vec<Game> {
     library.games.get().and_then(Result::ok).unwrap_or_default()
 }
 
+/// The player's classics RetroArch plays, the ones played lately first.
+fn classics(roms: &[cerberus_shared::RomView]) -> Vec<Item> {
+    let mut list: Vec<Item> = roms
+        .iter()
+        .filter_map(|r| {
+            let console = crate::classics::console_of(r);
+            crate::classics::is_emulated(console).then(|| Item::Classic(r.clone(), console))
+        })
+        .collect();
+    list.sort_by_key(|i| match i {
+        Item::Classic(r, _) => (std::cmp::Reverse(r.last_played), crate::classics::display_name(r)),
+        _ => (std::cmp::Reverse(None), String::new()),
+    });
+    list
+}
+
+/// Starts a classic: the recomp's page when the catalog has one for it,
+/// otherwise the original in RetroArch.
+fn open_classic(library: Library, tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
+    let recomp = catalog(library).into_iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str()));
+    match recomp {
+        Some(e) => tv.open(View::Game(format!("recomp:{}", e.id))),
+        None => {
+            play(Sound::Select);
+            crate::classics::play_original(library, rom.path.clone(), console.to_string());
+        }
+    }
+}
+
 fn catalog(library: Library) -> Vec<RecompEntry> {
     library.recomps.get().and_then(Result::ok).unwrap_or_default()
 }
@@ -125,7 +161,9 @@ pub fn Home() -> impl IntoView {
     let focus = Focus::new("home", false);
     tv.keep_position(focus);
 
+    let roms = LocalResource::new(|| async { api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
     let shelves = Memo::new(move |_| {
+        let classic_items = classics(&roms.get().unwrap_or_default());
         let mut games = library_games(library);
         games.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         let dock: Vec<Item> = games.iter().take(12).cloned().map(Item::Game).collect();
@@ -141,6 +179,7 @@ pub fn Home() -> impl IntoView {
         vec![
             ("Jogados recentemente", dock),
             ("Sua biblioteca", rest),
+            ("Seus clássicos", classic_items.into_iter().take(14).collect()),
             ("Você já tem o jogo", entries(owned)),
             ("Populares", entries(popular)),
             ("Atualizados recentemente", entries(fresh)),
@@ -176,19 +215,22 @@ pub fn Home() -> impl IntoView {
                         play(Sound::Select);
                         play_game(library, g);
                     }
+                    Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
                     Some(i) => tv.open(View::Game(i.id())),
                     None => {}
                 }
                 true
             }
             Btn::Y => {
-                if let Some(i) = item {
-                    tv.open(View::Game(i.id()));
+                match item {
+                    Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
+                    Some(i) => tv.open(View::Game(i.id())),
+                    None => {}
                 }
                 true
             }
             Btn::X => {
-                if let Some(i) = item {
+                if let Some(i) = item.filter(|i| !matches!(i, Item::Classic(..))) {
                     tv.sheet.set(Some(Sheet::Options(i.id())));
                     play(Sound::Select);
                 }
@@ -208,15 +250,21 @@ pub fn Home() -> impl IntoView {
             },
             Item::Entry(e) if e.owned_copy.is_some() => "Você já tem o jogo".to_string(),
             Item::Entry(e) => format!("{} downloads", format::count(e.downloads)),
+            Item::Classic(r, c) => match r.last_played {
+                Some(t) => format!("{} · jogado {} · {}", crate::classics::console_name(c), format::ago(t), format::playtime(r.playtime_secs)),
+                None => format!("Clássico · {}", crate::classics::console_name(c)),
+            },
         };
         let entry = match &item {
             Item::Game(g) => entry_of(library, g),
             Item::Entry(e) => Some(e.clone()),
+            Item::Classic(..) => None,
         };
         let based = entry.clone().filter(|e| !e.game.is_empty()).map(|e| format!("Baseado em {} · {}", e.game, e.console));
         let logo = match &item {
             Item::Game(g) => g.logo_path.clone().or_else(|| entry.as_ref().and_then(|e| e.logo.clone())),
             Item::Entry(e) => e.logo.clone(),
+            Item::Classic(..) => None,
         };
         let title = match logo {
             Some(path) => view! { <img class="tv-logo" src=crate::art::src(&path) alt=item.name() /> }.into_any(),
@@ -226,6 +274,7 @@ pub fn Home() -> impl IntoView {
             Item::Game(g) if focus.row.get() == 0 => crate::launch_action(g).0,
             Item::Game(_) => "Abrir",
             Item::Entry(_) => "Ver e instalar",
+            Item::Classic(..) => "Jogar",
         };
         let kind = tv.pad.get();
         Some(view! {
