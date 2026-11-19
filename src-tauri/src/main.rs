@@ -1337,6 +1337,19 @@ fn set_game_setting(
 }
 
 /// What the launcher did for a game lately, newest first.
+/// Opens the folder holding a classic; only files from the player's ROM folders.
+#[tauri::command]
+fn open_rom_folder(app: AppHandle, path: String) -> Result<(), String> {
+    let rom = PathBuf::from(&path);
+    if !app.state::<RomIndex>().get().iter().any(|r| r.path == rom) {
+        return Err("Esse arquivo não está nas suas pastas de ROMs.".into());
+    }
+    let folder = rom.parent().ok_or("Esse arquivo não tem pasta.")?;
+    app.opener()
+        .open_path(folder.to_string_lossy(), None::<&str>)
+        .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
+}
+
 /// What happened lately across every game, newest first.
 #[tauri::command]
 fn recent_activity(trail: State<'_, trail::Trail>) -> Vec<cerberus_shared::TrailEntry> {
@@ -1533,6 +1546,7 @@ fn main() {
             set_site_catalog,
             set_close_to_tray,
             recent_activity,
+            open_rom_folder,
             import_bios,
             link_retroarch_achievements,
             rerun_setup,

@@ -725,7 +725,7 @@ fn LaunchOptions(game: Game) -> impl IntoView {
 /// The launcher's recent steps for this game, kept across restarts, with the
 /// last failure up top so its cause can still be read after the notice is gone.
 #[component]
-fn History(id: String) -> impl IntoView {
+pub fn History(id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let open = RwSignal::new(false);
     let entries = LocalResource::new(move || {

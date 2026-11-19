@@ -1090,3 +1090,7 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .act b { font-size: 14px; }
 .act span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act time { color: var(--dim); font-size: 12px; flex: none; }
+
+/* Página do clássico */
+.classic-file { margin-top: 18px; max-width: 980px; }
+.classic-file .path { display: block; margin: 6px 0; word-break: break-all; }

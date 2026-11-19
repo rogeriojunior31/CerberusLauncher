@@ -287,6 +287,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       pelo Cerberus, com "Atualizar" ali mesmo e um número no menu, e a atividade recente de todos os jogos
       (instalações, partidas, conquistas, erros) a partir do histórico. Conferido no app com o histórico real.
 
+- [x] Página própria para cada clássico: capa, console, região, tempo de jogo, última vez, arquivo com
+      "Abrir pasta", histórico, "Jogar no RetroArch" e, quando existe, "Ver o recomp". Aberta pela aba
+      Clássicos (jogos sem recomp) e pela Atividade recente das Novidades. Conferida com o Mario Kart 64.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada

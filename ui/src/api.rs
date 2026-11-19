@@ -288,6 +288,15 @@ pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result
 }
 
 /// What the launcher did for a game lately, newest first.
+/// Shows a classic's file in its folder.
+pub async fn open_rom_folder(path: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        path: String,
+    }
+    call("open_rom_folder", &Arg { path }).await
+}
+
 pub async fn recent_activity() -> Result<Vec<cerberus_shared::TrailEntry>, String> {
     call("recent_activity", &()).await
 }

@@ -64,6 +64,9 @@ fn page_of(id: &str, games: &[Game]) -> Option<Route> {
     if games.iter().any(|g| g.id == id) {
         return Some(Route::Game(id.to_string()));
     }
+    if let Some(path) = id.strip_prefix("classic:") {
+        return Some(Route::Classic(path.to_string()));
+    }
     id.starts_with("recomp:").then(|| Route::Game(id.to_string()))
 }
 

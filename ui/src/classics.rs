@@ -1,7 +1,8 @@
 //! Clássicos: the console games found in the player's ROM folders. Each shows
 //! its box art (from the libretro thumbnails, by its No-Intro name), its
-//! console, and whether a recomp already plays it natively. Emulation itself is
-//! still to come; a classic with a recomp opens that recomp.
+//! console, and whether a recomp already plays it natively. A classic with a
+//! recomp opens that recomp's page (which plays the original too); the others
+//! have their own page, played in RetroArch.
 
 use cerberus_shared::{RecompEntry, RomView};
 use leptos::prelude::*;
@@ -228,13 +229,13 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 };
                 let badge = recomp.as_ref().map(|_| view! { <span class="chip">"Tem recomp"</span> });
                 let open = recomp.map(|e| e.id);
-                let (path, console_id) = (rom.path.clone(), console.to_string());
+                let path = rom.path.clone();
                 // A classic with a recomp opens the recomp's page, which offers both ways to play.
                 let on_open = move |_| match &open {
                     Some(id) => library.go(Route::Game(format!("recomp:{id}"))),
-                    None if emulated => play_original(library, path.clone(), console_id.clone()),
-                    None => library.toast("Esse console ainda não tem emulação no Cerberus. Por enquanto: NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PlayStation 2, PSP, GameCube e Wii."),
+                    None => library.go(Route::Classic(path.clone())),
                 };
+
                 view! {
                     <div class="tile">
                         <button type="button" class="tile-b" on:click=on_open title=hover>
@@ -274,5 +275,93 @@ mod tests {
         assert_eq!(console_of(&rom("D:\\ROMS\\Xbox 360\\FIFA Street.iso", "")), "x360");
         assert_eq!(console_of(&rom("D:\\ROMS\\Playstation\\Crash\\Crash Bandicoot (USA).cue", "")), "ps1");
         assert_eq!(display_name(&rom("D:/x/Monster Hunter Generations (USA).3ds", "3ds")), "Monster Hunter Generations");
+    }
+}
+
+/// A classic's own page: its box art, how much it was played, and Play in RetroArch.
+#[component]
+pub fn ClassicPage(path: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let wanted = StoredValue::new(path);
+    let roms = LocalResource::new(move || async move { crate::api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
+    let content = move || {
+        let list = roms.get()?;
+        let Some(rom) = list.into_iter().find(|r| r.path == wanted.get_value()) else {
+            return Some(view! { <div class="page"><p class="muted">"Esse jogo não está mais nas suas pastas de ROMs."</p></div> }.into_any());
+        };
+        let console = console_of(&rom);
+        let title = display_name(&rom);
+        let emulated = is_emulated(console);
+        let recomp = library.recomps.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str())));
+        let art = box_art(&rom, console);
+        let (path, console_id) = (rom.path.clone(), console.to_string());
+        let play = if emulated {
+            view! {
+                <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
+                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />"Jogar no RetroArch"
+                </button>
+            }
+            .into_any()
+        } else {
+            view! { <p class="muted small">"Esse console ainda não tem emulação no Cerberus."</p> }.into_any()
+        };
+        let to_recomp = recomp.map(|e| {
+            let id = e.id.clone();
+            view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{format!("Ver o recomp: {}", e.name)}</button> }
+        });
+        let folder = rom.path.clone();
+        let open_folder = move |_| {
+            let folder = folder.clone();
+            leptos::task::spawn_local(async move {
+                library.report(crate::api::open_rom_folder(folder).await);
+            });
+        };
+        let stats = [
+            ("Tempo de jogo", if rom.playtime_secs > 0 { crate::format::playtime(rom.playtime_secs) } else { "Ainda não jogado".to_string() }),
+            ("Última vez", rom.last_played.map(crate::format::ago).unwrap_or_else(|| "Nunca".to_string())),
+            ("Console", console_name(console).to_string()),
+            ("Região", if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
+        ]
+        .into_iter()
+        .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
+        .collect_view();
+        let history_id = format!("classic:{}", rom.path);
+        Some(
+            view! {
+                <div class="gp-hero">
+                    <crate::art::Backdrop sources=art.clone() soft=true />
+                    <div class="gp-shade"></div>
+                </div>
+                <div class="page gp-page">
+                    <section class="gp-head">
+                        <div class="gp-cover"><Poster sources=art title=title.clone() /></div>
+                        <div class="gp-info">
+                            <span class="kick">{format!("Clássico · {}", console_name(console))}</span>
+                            <h1>{title.clone()}</h1>
+                        </div>
+                        <div class="gp-act">{to_recomp}{play}</div>
+                    </section>
+                    <div class="stats">{stats}</div>
+                    <section class="card classic-file">
+                        <div class="card-h">
+                            <h3>"Arquivo do jogo"</h3>
+                            <button type="button" class="btn sm" on:click=open_folder>"Abrir pasta"</button>
+                        </div>
+                        <span class="path">{rom.path.clone()}</span>
+                        <p class="muted small">"O RetroArch abre esse arquivo como está; o Cerberus nunca o altera."</p>
+                    </section>
+                    <crate::game::History id=history_id />
+                </div>
+            }
+            .into_any(),
+        )
+    };
+    view! {
+        <div class="gp">
+            <button type="button" class="btn glass back" on:click=move |_| library.back()>
+                <crate::icons::Svg icon=crate::icons::Icon::Back size=18 />"Voltar"
+            </button>
+            {content}
+        </div>
     }
 }
