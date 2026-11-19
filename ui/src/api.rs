@@ -57,6 +57,14 @@ pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
 }
 
+pub async fn pc_status() -> Result<cerberus_shared::PcStatus, String> {
+    call("pc_status", &()).await
+}
+
+pub async fn install_vc() -> Result<cerberus_shared::PcStatus, String> {
+    call("install_vc", &()).await
+}
+
 /// A desktop shortcut asked the running Cerberus to play a game.
 pub fn on_play_request(handler: impl FnMut(String) + 'static) {
     on_event("play-request", handler);

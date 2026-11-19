@@ -18,6 +18,7 @@ mod notify;
 mod crash;
 mod store_time;
 mod shortcut;
+mod runtimes;
 mod steam;
 mod steam_store;
 mod trail;
@@ -1424,6 +1425,28 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
     Ok(link.display().to_string())
 }
 
+fn pc_now() -> cerberus_shared::PcStatus {
+    let vc_version = runtimes::vc_version();
+    let vc_ok = vc_version.as_deref().is_some_and(runtimes::recent_enough);
+    cerberus_shared::PcStatus { vc_version, vc_ok }
+}
+
+/// What the PC has that games need.
+#[tauri::command]
+fn pc_status() -> cerberus_shared::PcStatus {
+    pc_now()
+}
+
+/// Installs or updates the Visual C++ runtime from Microsoft.
+#[tauri::command]
+async fn install_vc(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::PcStatus, String> {
+    let downloads = app.state::<DataDir>().0.join("downloads");
+    let installed = runtimes::install_vc(&http, &downloads).await;
+    trail::note(&app, "pc", "Visual C++", &installed.clone().map(|v| v.unwrap_or_else(|| "Instalado".into())));
+    installed?;
+    Ok(pc_now())
+}
+
 /// What happened lately across every game, newest first.
 #[tauri::command]
 fn recent_activity(trail: State<'_, trail::Trail>) -> Vec<cerberus_shared::TrailEntry> {
@@ -1645,6 +1668,8 @@ fn main() {
             open_rom_folder,
             take_play_request,
             create_shortcut,
+            pc_status,
+            install_vc,
             set_favorite,
             import_bios,
             link_retroarch_achievements,

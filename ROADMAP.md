@@ -311,7 +311,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Tempo de jogo dos jogos da Steam e da Epic: o Cerberus vigia os programas abertos (mesmo na bandeja). Falta conferir com uma partida real.
 - [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
 - [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play). Falta: "Adicionar à Steam".
-- [ ] Instalar runtimes comuns (Visual C++, DirectX) quando faltam.
+- [x] Configurações › Seu PC: Visual C++ 2015-2022 x64 (versão, em dia ou antigo) e instalar pelo link da Microsoft. Falta: DirectX.
 - [ ] Pausar download, reinstalar/reparar recomp, mover jogo para outro disco.
 - [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.
 - [ ] Discord "Jogando...", coleções e jogos ocultos, multi-disco nos clássicos.

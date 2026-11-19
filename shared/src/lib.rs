@@ -425,6 +425,15 @@ pub struct SourcePage {
     pub total: usize,
 }
 
+/// What the PC has that games need (Configurações › Seu PC).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcStatus {
+    /// The Visual C++ 2015-2022 x64 runtime's version, when installed.
+    pub vc_version: Option<String>,
+    /// Installed and recent enough for today's recomps.
+    pub vc_ok: bool,
+}
+
 /// Sent when a game the launcher started opens or closes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionEvent {

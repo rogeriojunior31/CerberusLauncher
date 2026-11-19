@@ -21,6 +21,7 @@ enum Section {
     Catalog,
     Emulation,
     Retro,
+    Pc,
     Storage,
     About,
 }
@@ -39,7 +40,7 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
     ),
     ("Clássicos", &[(Section::Emulation, "Emulação", Icon::Gamepad)]),
     ("Contas", &[(Section::Retro, "RetroAchievements", Icon::Trophy)]),
-    ("Sistema", &[(Section::Storage, "Armazenamento", Icon::Folder), (Section::About, "Sobre", Icon::Info)]),
+    ("Sistema", &[(Section::Pc, "Seu PC", Icon::Check), (Section::Storage, "Armazenamento", Icon::Folder), (Section::About, "Sobre", Icon::Info)]),
 ];
 
 type Task = std::pin::Pin<Box<dyn std::future::Future<Output = Result<SettingsView, String>>>>;
@@ -151,6 +152,7 @@ pub fn SettingsPage() -> impl IntoView {
             .into_any(),
             Section::Emulation => emulation(s).into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() /> }.into_any(),
+            Section::Pc => view! { <YourPc /> }.into_any(),
             Section::Storage => storage(s, busy, apply).into_any(),
             Section::About => about(s, busy, apply).into_any(),
         }
@@ -502,6 +504,56 @@ fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
             </section>
         }
         .into_any()
+    }
+}
+
+/// What the PC has that games need, with a way to put it right.
+#[component]
+fn YourPc() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let state = RwSignal::new(None::<cerberus_shared::PcStatus>);
+    let working = RwSignal::new(false);
+    spawn_local(async move {
+        state.set(library.report(api::pc_status().await));
+    });
+    let install = move |_| {
+        working.set(true);
+        spawn_local(async move {
+            let got = library.report(api::install_vc().await);
+            working.set(false);
+            if let Some(s) = got {
+                state.set(Some(s));
+                library.toast("Visual C++ instalado.");
+            }
+        });
+    };
+    move || {
+        let s = state.get()?;
+        let (about, pill) = match (&s.vc_version, s.vc_ok) {
+            (Some(v), true) => (format!("Versão {v}. Em dia para os recomps de hoje."), view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />"Em dia"</span> }.into_any()),
+            (Some(v), false) => (format!("Versão {v}, antiga: recomps novos fecham ao abrir (erro 0xC0000139)."), view! { <span class="pill soon">"Antigo"</span> }.into_any()),
+            (None, _) => ("Não instalado. Sem ele, a maioria dos recomps não abre (erro 0xC0000135).".to_string(), view! { <span class="pill soon">"Falta"</span> }.into_any()),
+        };
+        // Up to date, reinstalling is only a repair: no call to action.
+        let label = match (&s.vc_version, s.vc_ok) {
+            (Some(_), true) => "Reinstalar",
+            (Some(_), false) => "Atualizar",
+            (None, _) => "Instalar",
+        };
+        let calm = s.vc_ok;
+        Some(view! {
+            <section class="card set">
+                <h3>"Seu PC"</h3>
+                <p class="muted small">"O que os jogos precisam no Windows. Quando um jogo fecha logo ao abrir, o Cerberus diz qual destes falta."</p>
+                {row("Visual C++ 2015-2022 (64 bits)", about, pill)}
+                <div class="row">
+                    <button type="button" class="btn sm" class:main=!calm disabled=move || working.get() on:click=install>
+                        {move || if working.get() { "Instalando... confirme no Windows".to_string() } else { format!("{label} pelo site da Microsoft") }}
+                    </button>
+                </div>
+                <p class="muted small">"O instalador oficial é baixado da Microsoft e o Windows pede sua permissão."</p>
+            </section>
+        })
     }
 }
 

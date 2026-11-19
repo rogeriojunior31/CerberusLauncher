@@ -12,9 +12,9 @@ pub fn reason(code: i32, seconds: u64) -> Option<String> {
     let status = code as u32;
     let text = match status {
         0 => return None,
-        0xC000_0135 => "Falta uma DLL que o jogo precisa. Quase sempre é o Visual C++ 2015-2022 (x64) ou o DirectX.".to_string(),
-        0xC000_0139 => "Uma DLL do Windows é antiga demais para o jogo, quase sempre o Visual C++ 2015-2022 (x64). Instale a versão mais nova, do site da Microsoft.".to_string(),
-        0xC000_007B => "O jogo encontrou uma DLL de 32 bits ou corrompida. Reinstalar o Visual C++ 2015-2022 (x64) costuma resolver.".to_string(),
+        0xC000_0135 => "Falta uma DLL que o jogo precisa. Quase sempre é o Visual C++ 2015-2022 (x64): instale em Configurações › Seu PC.".to_string(),
+        0xC000_0139 => "Uma DLL do Windows é antiga demais para o jogo, quase sempre o Visual C++ 2015-2022 (x64). Atualize em Configurações › Seu PC.".to_string(),
+        0xC000_007B => "O jogo encontrou uma DLL de 32 bits ou corrompida. Reinstalar o Visual C++ em Configurações › Seu PC costuma resolver.".to_string(),
         0xC000_0005 => "O jogo travou (acesso inválido à memória). Se acontecer sempre no mesmo ponto, atualize o recomp ou o driver de vídeo.".to_string(),
         0xC000_00FD => "O jogo travou (estouro de pilha).".to_string(),
         0xC000_0409 | 0xC000_0602 => "O jogo se encerrou por um erro interno dele.".to_string(),
