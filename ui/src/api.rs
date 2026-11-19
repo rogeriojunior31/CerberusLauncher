@@ -65,6 +65,10 @@ pub async fn install_vc() -> Result<cerberus_shared::PcStatus, String> {
     call("install_vc", &()).await
 }
 
+pub async fn install_dx() -> Result<cerberus_shared::PcStatus, String> {
+    call("install_dx", &()).await
+}
+
 /// A desktop shortcut asked the running Cerberus to play a game.
 pub fn on_play_request(handler: impl FnMut(String) + 'static) {
     on_event("play-request", handler);

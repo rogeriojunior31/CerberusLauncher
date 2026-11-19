@@ -513,9 +513,21 @@ fn YourPc() -> impl IntoView {
     let library = expect_context::<Library>();
     let state = RwSignal::new(None::<cerberus_shared::PcStatus>);
     let working = RwSignal::new(false);
+    let working_dx = RwSignal::new(false);
     spawn_local(async move {
         state.set(library.report(api::pc_status().await));
     });
+    let install_dx = move |_| {
+        working_dx.set(true);
+        spawn_local(async move {
+            let got = library.report(api::install_dx().await);
+            working_dx.set(false);
+            if let Some(s) = got {
+                library.toast(if s.dx_missing.is_empty() { "DirectX instalado." } else { "O DirectX terminou, mas ainda falta uma parte." });
+                state.set(Some(s));
+            }
+        });
+    };
     let install = move |_| {
         working.set(true);
         spawn_local(async move {
@@ -541,6 +553,12 @@ fn YourPc() -> impl IntoView {
             (None, _) => "Instalar",
         };
         let calm = s.vc_ok;
+        let dx_ok = s.dx_missing.is_empty();
+        let (dx_about, dx_pill) = if dx_ok {
+            ("D3DX, XInput 1.3 e XAudio 2.7 instalados, para os ports de PC mais antigos.".to_string(), view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />"Em dia"</span> }.into_any())
+        } else {
+            (format!("Falta: {}. Ports de PC mais antigos fecham ao abrir sem eles (erro 0xC0000135).", s.dx_missing.join(", ")), view! { <span class="pill soon">"Falta"</span> }.into_any())
+        };
         Some(view! {
             <section class="card set">
                 <h3>"Seu PC"</h3>
@@ -551,7 +569,13 @@ fn YourPc() -> impl IntoView {
                         {move || if working.get() { "Instalando... confirme no Windows".to_string() } else { format!("{label} pelo site da Microsoft") }}
                     </button>
                 </div>
-                <p class="muted small">"O instalador oficial é baixado da Microsoft e o Windows pede sua permissão."</p>
+                {row("DirectX (componentes antigos)", dx_about, dx_pill)}
+                <div class="row">
+                    <button type="button" class="btn sm" class:main=!dx_ok disabled=move || working_dx.get() on:click=install_dx>
+                        {move || if working_dx.get() { "Instalando... confirme no Windows" } else if dx_ok { "Reinstalar pelo site da Microsoft" } else { "Instalar pelo site da Microsoft" }}
+                    </button>
+                </div>
+                <p class="muted small">"Os instaladores oficiais são baixados da Microsoft e o Windows pede sua permissão."</p>
             </section>
         })
     }

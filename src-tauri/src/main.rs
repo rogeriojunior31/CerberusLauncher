@@ -1464,7 +1464,7 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
 fn pc_now() -> cerberus_shared::PcStatus {
     let vc_version = runtimes::vc_version();
     let vc_ok = vc_version.as_deref().is_some_and(runtimes::recent_enough);
-    cerberus_shared::PcStatus { vc_version, vc_ok }
+    cerberus_shared::PcStatus { vc_version, vc_ok, dx_missing: runtimes::dx_missing() }
 }
 
 /// What the PC has that games need.
@@ -1479,6 +1479,16 @@ async fn install_vc(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
     let downloads = app.state::<DataDir>().0.join("downloads");
     let installed = runtimes::install_vc(&http, &downloads).await;
     trail::note(&app, "pc", "Visual C++", &installed.clone().map(|v| v.unwrap_or_else(|| "Instalado".into())));
+    installed?;
+    Ok(pc_now())
+}
+
+/// Installs DirectX's older parts from Microsoft.
+#[tauri::command]
+async fn install_dx(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::PcStatus, String> {
+    let downloads = app.state::<DataDir>().0.join("downloads");
+    let installed = runtimes::install_dx(&http, &downloads).await;
+    trail::note(&app, "pc", "DirectX", &installed.clone().map(|still| if still.is_empty() { "Instalado".into() } else { format!("Ainda falta: {}", still.join(", ")) }));
     installed?;
     Ok(pc_now())
 }
@@ -1708,6 +1718,7 @@ fn main() {
             create_shortcut,
             pc_status,
             install_vc,
+            install_dx,
             set_favorite,
             import_bios,
             link_retroarch_achievements,

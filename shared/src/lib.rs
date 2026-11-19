@@ -432,6 +432,9 @@ pub struct PcStatus {
     pub vc_version: Option<String>,
     /// Installed and recent enough for today's recomps.
     pub vc_ok: bool,
+    /// DirectX's older parts (D3DX9, XInput 1.3...) the PC lacks.
+    #[serde(default)]
+    pub dx_missing: Vec<String>,
 }
 
 /// Sent when a game the launcher started opens or closes.
