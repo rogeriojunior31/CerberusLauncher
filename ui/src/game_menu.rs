@@ -12,7 +12,7 @@ use crate::{Library, Route, api};
 pub struct GameMenu(pub RwSignal<Option<(Game, i32, i32)>>);
 
 const WIDTH: i32 = 230;
-const HEIGHT: i32 = 210;
+const HEIGHT: i32 = 250;
 
 impl GameMenu {
     /// Opens the menu at the pointer, kept inside the window.
@@ -63,6 +63,22 @@ pub fn GameMenuLayer() -> impl IntoView {
                     <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
                     {if on { "Tirar dos favoritos" } else { "Adicionar aos favoritos" }}
                 </button>
+                {
+                    let id = game.id.clone();
+                    view! {
+                        <button type="button" role="menuitem" on:click=move |_| {
+                            menu.close();
+                            let id = id.clone();
+                            leptos::task::spawn_local(async move {
+                                if library.report(api::create_shortcut(&id).await).is_some() {
+                                    library.toast("Atalho criado na área de trabalho.");
+                                }
+                            });
+                        }>
+                            <Svg icon=Icon::External size=16 />"Criar atalho na área de trabalho"
+                        </button>
+                    }
+                }
                 {has_folder.then(|| view! {
                     <button type="button" role="menuitem" on:click=move |_| {
                         menu.close();

@@ -17,6 +17,7 @@ mod favorites;
 mod notify;
 mod crash;
 mod store_time;
+mod shortcut;
 mod steam;
 mod steam_store;
 mod trail;
@@ -1392,6 +1393,37 @@ fn open_rom_folder(app: AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
 }
 
+/// A game asked for by a desktop shortcut (`--play <id>`) when Cerberus started.
+#[derive(Default)]
+struct PlayRequest(std::sync::Mutex<Option<String>>);
+
+/// The game a shortcut asked for at start, once: the window plays it when ready.
+#[tauri::command]
+fn take_play_request(request: State<'_, PlayRequest>) -> Option<String> {
+    request.0.lock().ok().and_then(|mut r| r.take())
+}
+
+/// Puts a shortcut on the desktop that plays this game through Cerberus.
+#[tauri::command]
+fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<String, String> {
+    let game = match library.get(&id)? {
+        Some(game) => game,
+        None => {
+            let mut found = steam::installed_games();
+            found.extend(epic::installed_games());
+            found.into_iter().find(|g| g.id == id).ok_or("Esse jogo não está mais na biblioteca.")?
+        }
+    };
+    let icon = match &game.source {
+        Source::Recomp { exe, .. } | Source::Local { exe } => Some(PathBuf::from(exe)),
+        _ => None,
+    };
+    let desktop = app.path().desktop_dir().map_err(|e| e.to_string())?;
+    let link = shortcut::create(&desktop, &game.name, &game.id, icon.as_deref())?;
+    trail::note(&app, &game.id, "Atalho", &Ok(link.display().to_string()));
+    Ok(link.display().to_string())
+}
+
 /// What happened lately across every game, newest first.
 #[tauri::command]
 fn recent_activity(trail: State<'_, trail::Trail>) -> Vec<cerberus_shared::TrailEntry> {
@@ -1471,7 +1503,13 @@ fn main() {
     tauri::Builder::default()
         // One Cerberus at a time: two would write the same library and settings.
         // Opening it again brings the running one forward, even from the tray.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            background::show(app);
+            // A desktop shortcut while Cerberus runs: the open window plays the game.
+            if let Some(id) = shortcut::play_request(&args) {
+                let _ = app.emit("play-request", id);
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         // Started by Windows, Cerberus is told so, to start in the tray when asked to.
@@ -1489,6 +1527,8 @@ fn main() {
             app.manage(folders);
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
+            let asked: Vec<String> = std::env::args().collect();
+            app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
             background::tray(app.handle())?;
             store_time::watch(app.handle().clone());
             if chosen.start_hidden && std::env::args().any(|a| a == "--autostart") {
@@ -1603,6 +1643,8 @@ fn main() {
             set_start_hidden,
             recent_activity,
             open_rom_folder,
+            take_play_request,
+            create_shortcut,
             set_favorite,
             import_bios,
             link_retroarch_achievements,

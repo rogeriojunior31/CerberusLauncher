@@ -57,6 +57,21 @@ pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
 }
 
+/// A desktop shortcut asked the running Cerberus to play a game.
+pub fn on_play_request(handler: impl FnMut(String) + 'static) {
+    on_event("play-request", handler);
+}
+
+/// The game a shortcut asked for when Cerberus started, if any.
+pub async fn take_play_request() -> Option<String> {
+    call::<(), Option<String>>("take_play_request", &()).await.ok().flatten()
+}
+
+/// Puts a shortcut that plays this game on the desktop; where it went.
+pub async fn create_shortcut(id: &str) -> Result<String, String> {
+    call("create_shortcut", &Id { id }).await
+}
+
 pub fn on_playtime_updated(mut handler: impl FnMut() + 'static) {
     on_event("playtime-updated", move |_: String| handler());
 }

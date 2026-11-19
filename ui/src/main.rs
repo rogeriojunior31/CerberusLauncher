@@ -301,6 +301,26 @@ fn App() -> impl IntoView {
             main.set_scroll_top(0);
         }
     });
+    // A desktop shortcut's game: played once the library is listed.
+    let wanted = RwSignal::new(None::<String>);
+    spawn_local(async move {
+        if let Some(id) = api::take_play_request().await {
+            wanted.set(Some(id));
+        }
+    });
+    api::on_play_request(move |id| wanted.set(Some(id)));
+    Effect::new(move |_| {
+        let Some(id) = wanted.get() else { return };
+        let Some(Ok(games)) = library.games.get() else { return };
+        wanted.set(None);
+        match games.into_iter().find(|g| g.id == id) {
+            Some(game) => {
+                library.go(Route::Game(game.id.clone()));
+                play_game(library, game);
+            }
+            None => library.toast("O jogo desse atalho não está mais na biblioteca."),
+        }
+    });
     let editor = move || library.editing.get().map(|game| view! { <EditDialog game /> });
     let locate = move || {
         let id = locating.get()?;

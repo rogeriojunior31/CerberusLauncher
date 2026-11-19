@@ -587,6 +587,23 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    let shortcut = game.as_ref().map(|g| {
+        let id = g.id.clone();
+        let on_shortcut = move |_| {
+            let id = id.clone();
+            spawn_local(async move {
+                if library.report(api::create_shortcut(&id).await).is_some() {
+                    library.toast("Atalho criado na área de trabalho.");
+                }
+            });
+        };
+        view! {
+            <button type="button" class="row-btn" on:click=on_shortcut>
+                <Svg icon=Icon::External />
+                <span><b>"Criar atalho na área de trabalho"</b><small>"Abre o jogo pelo Cerberus: tempo de jogo, backups e filtros continuam valendo"</small></span>
+            </button>
+        }
+    });
     let customize = game.clone().map(|g| {
         view! {
             <button type="button" class="row-btn" on:click=move |_| library.customizing.set(Some(g.clone()))>
@@ -675,7 +692,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <p class="muted small">"Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele."</p>
         </div>
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{customize}{edit}{project}{remove}</div> }
+    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{shortcut}{customize}{edit}{project}{remove}</div> }
 }
 
 #[component]
