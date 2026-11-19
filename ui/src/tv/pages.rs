@@ -168,6 +168,7 @@ pub fn Home() -> impl IntoView {
         games.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         let dock: Vec<Item> = games.iter().take(12).cloned().map(Item::Game).collect();
         let rest: Vec<Item> = games.iter().skip(12).take(14).cloned().map(Item::Game).collect();
+        let favorites: Vec<Item> = games.iter().filter(|g| g.favorite).take(14).cloned().map(Item::Game).collect();
         let lead = one_each(&catalog(library)).into_iter().map(|(e, _)| e).collect::<Vec<_>>();
         let mut owned: Vec<RecompEntry> = lead.iter().filter(|e| e.owned_copy.is_some() && e.installed.is_none()).cloned().collect();
         owned.sort_by_key(|e| std::cmp::Reverse(e.downloads));
@@ -178,6 +179,7 @@ pub fn Home() -> impl IntoView {
         let entries = |list: Vec<RecompEntry>| list.into_iter().take(14).map(Item::Entry).collect::<Vec<_>>();
         vec![
             ("Jogados recentemente", dock),
+            ("Favoritos", favorites),
             ("Sua biblioteca", rest),
             ("Seus clássicos", classic_items.into_iter().take(14).collect()),
             ("Você já tem o jogo", entries(owned)),

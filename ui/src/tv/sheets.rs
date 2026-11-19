@@ -88,6 +88,10 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                 list.push(choice("Página do jogo", move || tv.open(View::Game(open.clone()))));
             }
             if let Some(g) = &game {
+                let (gid, on) = (g.id.clone(), g.favorite);
+                list.push(choice(if on { "Tirar dos favoritos" } else { "Adicionar aos favoritos" }, move || {
+                    crate::toggle_favorite(library, gid.clone(), !on)
+                }));
                 if matches!(g.source, Source::Recomp { .. }) {
                     let gid = g.id.clone();
                     list.push(choice("Fazer backup dos saves", move || {
