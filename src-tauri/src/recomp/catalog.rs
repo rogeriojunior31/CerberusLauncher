@@ -37,6 +37,8 @@ pub struct CatalogEntry {
     /// The console's short id (`n64`, `x360`...).
     pub origin: String,
     pub repo: String,
+    /// Where the project lives: empty for GitHub, `gitlab` or `forgejo`.
+    pub host: String,
     pub icon: Option<String>,
     pub cover: Option<String>,
     pub hero: Option<String>,
@@ -109,6 +111,11 @@ pub struct CatalogEntry {
 impl CatalogEntry {
     pub fn is(&self, id: &str) -> bool {
         self.id == id || self.aliases.iter().any(|alias| alias == id)
+    }
+
+    /// The project's server, or `None` when the catalog's repo doesn't read as one.
+    pub fn forge(&self) -> Option<super::forge::Forge<'_>> {
+        super::forge::of(&self.host, &self.repo)
     }
 }
 
@@ -337,10 +344,23 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
 #[derive(Deserialize)]
 struct RlCatalog {
     apps: Vec<RlApp>,
+    /// More apps, kept apart for launchers new enough to install them (their
+    /// projects are on GitLab or Forgejo servers, not GitHub).
+    #[serde(default)]
+    apps_min: Vec<RlAppsFor>,
+    /// Old id -> new id, for recomps that were renamed.
+    #[serde(default)]
+    replaced: Value,
     #[serde(default)]
     origins: Vec<RlOrigin>,
     #[serde(default)]
     titles: Vec<RlTitle>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct RlAppsFor {
+    apps: Vec<RlApp>,
 }
 
 #[derive(Deserialize)]
@@ -366,6 +386,7 @@ struct RlApp {
     game: Option<String>,
     origin: Option<String>,
     repo: String,
+    host: Option<String>,
     tag: Option<String>,
     version: Option<String>,
     size: Option<String>,
@@ -544,15 +565,18 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
         }
     }
 
+    let renamed: HashMap<String, String> = map_of(catalog.replaced);
     let mut list: Vec<CatalogEntry> = Vec::new();
-    for app in catalog.apps {
+    let more = catalog.apps_min.into_iter().flat_map(|group| group.apps);
+    for app in catalog.apps.into_iter().chain(more) {
         let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
             continue;
         }
         // The id names the install folder, so only plain names are taken.
         let plain_id = !app.id.is_empty() && app.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if !plain_id {
+        // Listed twice (the same app in both lists): the first one counts.
+        if !plain_id || list.iter().any(|e| e.id == app.id) {
             continue;
         }
         let origin = app.origin.unwrap_or_default();
@@ -569,6 +593,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             name: app.name,
             game: app.game.unwrap_or_default(),
             repo: app.repo,
+            host: app.host.unwrap_or_default(),
             icon: some(app.icon),
             cover: some(app.cover),
             hero: some(app.hero),
@@ -607,7 +632,8 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             player_note,
             multiplayer,
             saves: Vec::new(),
-            aliases: Vec::new(),
+            // Games installed under an old name still find their recomp.
+            aliases: renamed.iter().filter(|(_, new)| **new == app.id).map(|(old, _)| old.clone()).collect(),
             id: app.id,
         });
         // The site doesn't always say a release is an installer; its file name does.
@@ -785,6 +811,20 @@ mod tests {
         let merged = merge(theirs, ours);
         let entry = merged.iter().find(|e| e.is("2ship2harkinian")).unwrap();
         assert_eq!(entry.id, "2ship", "the site's entry, found by our id");
+    }
+
+    #[test]
+    fn reads_the_apps_kept_apart_and_the_renamed_ids() {
+        let text = r#"{"apps": [{"id": "dkb-pc-recomp", "name": "DKB", "repo": "a/dkb"}],
+            "apps_min": [{"min": "0.90.0", "apps": [
+                {"id": "fe3h", "name": "FE3H", "repo": "git.onerag90.de/recomps/fe3h-recomp", "host": "forgejo"},
+                {"id": "dkb-pc-recomp", "name": "Again", "repo": "a/dkb"}]}],
+            "replaced": {"dbk-recomp": "dkb-pc-recomp"}}"#;
+        let list = from_recomplauncher(text).unwrap();
+        assert_eq!(list.len(), 2, "an app listed twice shows once");
+        let fe3h = list.iter().find(|e| e.id == "fe3h").unwrap();
+        assert_eq!(fe3h.forge().unwrap().name(), "git.onerag90.de");
+        assert!(list.iter().any(|e| e.is("dbk-recomp") && e.id == "dkb-pc-recomp"));
     }
 
     #[test]

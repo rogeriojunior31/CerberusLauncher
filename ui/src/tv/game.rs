@@ -235,7 +235,7 @@ pub fn GamePage(id: String) -> impl IntoView {
                 facts.push(("Downloads", format::count(e.downloads)));
             }
             if e.stars > 0 {
-                facts.push(("Estrelas no GitHub", format::count(e.stars)));
+                facts.push(("Estrelas", format::count(e.stars)));
             }
             if let Some(copy) = e.owned_copy.clone() {
                 facts.push(("Sua cópia", copy.rsplit(['\\', '/']).next().unwrap_or_default().to_string()));

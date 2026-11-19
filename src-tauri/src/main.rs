@@ -1152,7 +1152,7 @@ fn open_steamgriddb_keys(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn open_project(app: AppHandle, id: String) -> Result<(), String> {
     let entry = recomp::find(&id).ok_or("Esse recomp não está no catálogo.")?;
-    let url = format!("https://github.com/{}", entry.repo);
+    let url = entry.forge().ok_or("O endereço do projeto no catálogo não é válido.")?.page();
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 

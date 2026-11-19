@@ -271,7 +271,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             stats.push(("Downloads", format::count(e.downloads)));
         }
         if e.stars > 0 {
-            stats.push(("Estrelas no GitHub", format::count(e.stars)));
+            stats.push(("Estrelas", format::count(e.stars)));
         }
         if e.players > 0 {
             stats.push(("Jogadores recentes", format::count(e.players)));
@@ -648,6 +648,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     let project = entry.as_ref().map(|e| {
         let rid = e.id.clone();
         let repo = e.repo.clone();
+        let host = if e.host.is_empty() { "GitHub".to_string() } else { e.host.clone() };
         let on_project = move |_| {
             let rid = rid.clone();
             spawn_local(async move {
@@ -657,7 +658,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         view! {
             <button type="button" class="row-btn" on:click=on_project>
                 <Svg icon=Icon::External />
-                <span><b>"Projeto no GitHub"</b><small>{repo}</small></span>
+                <span><b>{format!("Projeto no {host}")}</b><small>{repo}</small></span>
             </button>
         }
     });

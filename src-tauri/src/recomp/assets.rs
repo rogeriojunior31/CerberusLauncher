@@ -72,6 +72,23 @@ pub fn by_pattern<'a>(assets: &'a [Asset], pattern: &str) -> Option<&'a Asset> {
     assets.iter().find(fits)
 }
 
+/// GitLab release links are often named without the file's extension
+/// ("Game-v1-Windows" for Game-v1-Windows.zip): found by the pattern without
+/// it, and given it back so the installer knows how to unpack the file.
+pub fn by_bare_pattern(assets: &[Asset], pattern: &str) -> Option<Asset> {
+    let lower = pattern.to_lowercase();
+    let ext = [".tar.gz", ".tgz", ".zip", ".7z", ".exe", ".msi"].into_iter().find(|e| lower.ends_with(e))?;
+    let bare = &pattern[..pattern.len() - ext.len()];
+    let fits = |a: &&Asset| kind(&a.name).is_none() && !is_program(&a.name) && super::saves::matches_pattern(bare, &a.name);
+    assets.iter().find(fits).map(|a| Asset { name: format!("{}{}", a.name, &pattern[pattern.len() - ext.len()..]), ..a.clone() })
+}
+
+/// A release link named `link` is the file `file`, with or without its extension.
+pub fn same_file(link: &str, file: &str) -> bool {
+    let (link, file) = (link.to_lowercase(), file.to_lowercase());
+    link == file || file.strip_prefix(&link).is_some_and(|ext| ext.starts_with('.') && !ext[1..].contains(['.', '/']) || ext == ".tar.gz")
+}
+
 /// A release file that is a program to run as it is (the game itself, or its installer).
 pub fn is_program(name: &str) -> bool {
     let lower = name.to_lowercase();
@@ -161,6 +178,19 @@ pub fn words(name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_gitlab_links_named_without_the_extension() {
+        let link = |name: &str| Asset { name: name.into(), size: 0, url: format!("https://gitlab.com/{name}"), sha256: None };
+        let links = [link("Game-v0.9.2-Linux-X64-Release"), link("Game-v0.9.2-Windows-RelWithDebInfo")];
+        let found = by_bare_pattern(&links, "Game-*-Windows-RelWithDebInfo.zip").unwrap();
+        assert_eq!(found.name, "Game-v0.9.2-Windows-RelWithDebInfo.zip");
+        assert_eq!(found.url, "https://gitlab.com/Game-v0.9.2-Windows-RelWithDebInfo");
+        assert!(same_file("Game-v0.9.2-Windows-RelWithDebInfo", "Game-v0.9.2-Windows-RelWithDebInfo.zip"));
+        assert!(same_file("a.zip", "A.zip"));
+        assert!(same_file("game", "game.tar.gz"));
+        assert!(!same_file("Game", "Game-Windows.zip"));
+    }
 
     fn assets(names: &[&str]) -> Vec<Asset> {
         let to_asset = |name: &&str| Asset { name: name.to_string(), size: 1, url: String::new(), sha256: None };

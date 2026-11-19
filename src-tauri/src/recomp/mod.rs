@@ -6,7 +6,8 @@ pub mod adopt;
 mod assets;
 pub mod catalog;
 pub(crate) mod cloud;
-mod github;
+mod forge;
+mod releases;
 mod install;
 pub(crate) mod saves;
 pub mod sources;
@@ -509,6 +510,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         }),
         _ => None,
     };
+    let host = entry.forge().map(|f| f.name()).unwrap_or_default();
     let entry = entry.clone();
     RecompEntry {
         owned_copy: owned.get(&entry.id).cloned(),
@@ -523,6 +525,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         name: entry.name,
         game: entry.game,
         console: entry.console,
+        host,
         repo: entry.repo,
         icon: entry.icon,
         cover: entry.cover,
@@ -707,27 +710,37 @@ pub fn find_game_program(dir: &Path, hints: &[&str]) -> Option<PathBuf> {
 }
 
 /// The file to download, and its version. When the catalog has the exact file
-/// with GitHub's checksum, it comes straight from the release: no question to
-/// GitHub's API, whose hourly limit is easy to reach. Otherwise the newest
+/// with its checksum, it comes straight from the release: no question to the
+/// server's API (GitHub's hourly limit is easy to reach). Otherwise the newest
 /// release is asked for and its file picked by the catalog's pattern.
 async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntry) -> Result<(Asset, String), String> {
     if let Some(problem) = problem_with(entry) {
         return Err(problem);
     }
+    let forge = entry.forge().ok_or("O endereço do projeto no catálogo não é válido.")?;
     let direct = entry.files.get(os_key()).filter(|f| !f.name.is_empty() && !f.sha256.is_empty());
-    if let (Some(tag), Some(file)) = (&entry.tag, direct) {
-        let name = file.name.replace(' ', "%20");
-        let url = format!("https://github.com/{}/releases/download/{tag}/{name}", entry.repo);
+    if let (Some(tag), Some(file)) = (&entry.tag, direct)
+        && let Some(url) = forge.release_file(tag, &file.name)
+    {
         // The size comes with the download itself.
         let asset = Asset { name: file.name.clone(), size: 0, url, sha256: Some(file.sha256.to_lowercase()) };
         return Ok((asset, tag.clone()));
     }
-    let release = github::latest(client, &folders.cache, &entry.repo, true).await?;
-    let by_pattern = entry.assets.get(os_key()).and_then(|pattern| assets::by_pattern(&release.assets, pattern));
+    let release = releases::latest(client, &folders.cache, &forge, true).await?;
+    // GitLab: the catalog's file among the release's links, which may leave out
+    // the file's extension; the catalog's name and checksum stand.
+    if let Some(file) = direct
+        && let Some(link) = release.assets.iter().find(|a| assets::same_file(&a.name, &file.name))
+    {
+        let asset = Asset { name: file.name.clone(), sha256: Some(file.sha256.to_lowercase()), ..link.clone() };
+        return Ok((asset, release.version));
+    }
+    let pattern = entry.assets.get(os_key());
+    let by_pattern = pattern.and_then(|p| assets::by_pattern(&release.assets, p).cloned().or_else(|| assets::by_bare_pattern(&release.assets, p)));
     let asset = by_pattern
-        .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()))
+        .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()).cloned())
         .ok_or("Ainda não tem uma versão para este sistema.")?;
-    Ok((asset.clone(), release.version))
+    Ok((asset, release.version))
 }
 
 /// The library's game for this recomp, under its current id or an older one.
@@ -1153,4 +1166,24 @@ mod tests {
         let target = Path::new(r"D:\Recomps\zelda64recomp");
         assert_eq!(staging_for(target, "zelda64recomp"), Path::new(r"D:\Recomps\.staging-zelda64recomp"));
     }
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "asks GitHub, GitLab and Forgejo servers about catalog recomps downloaded on this PC"]
+fn real_downloads_resolve_on_every_server() {
+    let cache = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("app.cerberus.launcher/cache");
+    catalog::load_copy(&cache);
+    let temp = tempfile::tempdir().unwrap();
+    let folders = Folders::new(temp.path(), None);
+    let client = Client::builder().user_agent("CerberusLauncher").build().unwrap();
+    tauri::async_runtime::block_on(async {
+        for id in ["mariokart64recomp-2", "commander-genius", "fe3h-recomp-2", "longshot", "hookshot", "zelda64recomp"] {
+            let entry = find(id).unwrap_or_else(|| panic!("{id} not in the catalog"));
+            let (asset, version) = choose_download(&client, &folders, &entry).await.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let reply = client.get(&asset.url).header("Range", "bytes=0-0").send().await.unwrap();
+            println!("{id} {version} {} -> {} {}", asset.name, reply.status(), reply.url().host_str().unwrap_or_default());
+            assert!(reply.status().is_success(), "{id}: {}", reply.status());
+        }
+    });
 }

@@ -470,6 +470,9 @@ pub struct RecompEntry {
     pub game: String,
     pub console: String,
     pub repo: String,
+    /// Where the project lives, for the player: "GitHub", "GitLab" or its server's name.
+    #[serde(default)]
+    pub host: String,
     pub icon: Option<String>,
     /// Box art of the original game.
     pub cover: Option<String>,
