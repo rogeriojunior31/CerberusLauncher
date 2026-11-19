@@ -457,6 +457,12 @@ struct Boot {
     multiplayer: String,
 }
 
+/// The Windows release is a lone setup program ("srb2kart-v16-Installer.exe").
+fn windows_installer(entry: &CatalogEntry) -> bool {
+    let name = entry.files.get("windows").map(|f| f.name.as_str()).or(entry.assets.get("windows").map(String::as_str)).unwrap_or_default();
+    super::assets::looks_like_installer(name)
+}
+
 /// How the release ships, which program starts the game, and how that program
 /// is given the player's copy of the game (and which version of it).
 fn boot_of(boot: Option<Value>) -> Boot {
@@ -538,7 +544,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
         }
     }
 
-    let mut list = Vec::new();
+    let mut list: Vec<CatalogEntry> = Vec::new();
     for app in catalog.apps {
         let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
@@ -604,6 +610,10 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             aliases: Vec::new(),
             id: app.id,
         });
+        // The site doesn't always say a release is an installer; its file name does.
+        if let Some(entry) = list.last_mut().filter(|e| e.kind == "portable" && windows_installer(e)) {
+            entry.kind = "installer".into();
+        }
     }
     if list.is_empty() {
         return Err("O catálogo veio vazio.".into());
@@ -682,6 +692,20 @@ mod tests {
         assert_eq!(zelda.start.as_deref(), Some("Zelda64Recompiled.exe"));
         assert_eq!(zelda.files["windows"].name, "Zelda64Recompiled-v1.2.2-Windows.zip");
         assert_eq!(zelda.hero, None, "an empty picture is no picture");
+    }
+
+    #[test]
+    fn a_release_named_as_an_installer_is_one() {
+        let text = r#"{"apps": [
+            {"id": "kart-public", "name": "SRB2Kart", "origin": "pc", "repo": "STJr/Kart-Public",
+             "assets": {"windows": "srb2kart-v16-Installer.exe"},
+             "files": {"windows": {"name": "srb2kart-v16-Installer.exe", "sha256": "abc"}}},
+            {"id": "srb2", "name": "Sonic Robo Blast 2", "origin": "pc", "repo": "STJr/SRB2",
+             "assets": {"windows": "SRB2-v2215-Full.zip"}}
+        ]}"#;
+        let list = from_recomplauncher(text).unwrap();
+        assert_eq!(list[0].kind, "installer");
+        assert_eq!(list[1].kind, "portable");
     }
 
     #[test]

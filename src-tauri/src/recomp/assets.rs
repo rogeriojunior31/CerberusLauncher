@@ -78,6 +78,12 @@ pub fn is_program(name: &str) -> bool {
     lower.ends_with(".exe") || lower.ends_with(".msi")
 }
 
+/// A setup program rather than the game: "Game-Installer.exe", "setup.exe", any .msi.
+pub fn looks_like_installer(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.ends_with(".msi") || (lower.ends_with(".exe") && (lower.contains("installer") || lower.contains("setup")))
+}
+
 /// The archive kinds the installer can unpack.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
