@@ -101,7 +101,21 @@ pub fn tracking_mode(game: &Game) -> Option<String> {
 pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let sessions = app.state::<Sessions>();
     sessions.reserve(game)?;
-    // An installer release runs its setup on the first Play instead of a session.
+    // An installer release runs its setup on the first Play instead of a session,
+    // unless an earlier run already installed the game.
+    let found;
+    let (game, exe) = match game.setup_pending.then(|| crate::setup_runner::already_installed(app, game)).flatten() {
+        Some(g) => {
+            found = g;
+            let program = match &found.source {
+                Source::Recomp { exe, .. } | Source::Local { exe } => PathBuf::from(exe),
+                _ => exe.to_path_buf(),
+            };
+            (&found, program)
+        }
+        None => (game, exe.to_path_buf()),
+    };
+    let exe = exe.as_path();
     if game.setup_pending {
         notify(app, &game.id, true);
         let result = crate::setup_runner::run(app, game, exe);

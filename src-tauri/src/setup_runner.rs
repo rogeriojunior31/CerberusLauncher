@@ -47,6 +47,28 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
     Ok(())
 }
 
+/// Games whose installer ran while Cerberus was closed (or closed before it
+/// finished): if the game is already installed, it's ready without asking.
+pub fn recover(app: &AppHandle) {
+    let Ok(games) = app.state::<LocalLibrary>().games() else { return };
+    for game in games.into_iter().filter(|g| g.setup_pending) {
+        if let Some(program) = locate(&game) {
+            if use_program(app, &game.id, &program).is_ok() {
+                crate::trail::note(app, &game.id, "Localizar o jogo", &Ok(format!("Encontrado depois de reiniciar: {}", program.display())));
+            }
+        }
+    }
+}
+
+/// The game, when its installer already put it somewhere, so Play doesn't run
+/// the installer a second time.
+pub fn already_installed(app: &AppHandle, game: &Game) -> Option<Game> {
+    let program = locate(game)?;
+    let found = use_program(app, &game.id, &program).ok()?;
+    crate::trail::note(app, &game.id, "Localizar o jogo", &Ok(format!("Já instalado: {}", program.display())));
+    Some(found)
+}
+
 fn installer_result(code: Option<i32>, msi_package: bool) -> Result<(), String> {
     match code {
         Some(0) => Ok(()),
@@ -174,6 +196,25 @@ mod tests {
             assert!(installer_result(Some(code), true).is_ok());
             assert!(installer_result(Some(code), false).is_err());
         }
+    }
+
+    #[test]
+    fn a_game_its_installer_already_unpacked_is_found_but_never_the_installer() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = dir.path().join("ReStreet-Setup.exe");
+        std::fs::write(&installer, b"MZ").unwrap();
+        let game: Game = serde_json::from_value(serde_json::json!({
+            "id": "recomp:zz-test", "name": "ReStreet",
+            "source": {"kind": "recomp", "recomp_id": "zz-test", "version": "1", "exe": installer.to_string_lossy(), "generation": 0},
+            "install_dir": dir.path().to_string_lossy(), "setup_pending": true
+        }))
+        .unwrap();
+        // Only the installer: nothing installed yet, so Play runs it.
+        assert_eq!(locate(&game), None);
+        let program = dir.path().join("ReStreet").join("ReStreet.exe");
+        std::fs::create_dir_all(program.parent().unwrap()).unwrap();
+        std::fs::write(&program, b"MZ").unwrap();
+        assert_eq!(locate(&game), Some(program));
     }
 
     #[test]

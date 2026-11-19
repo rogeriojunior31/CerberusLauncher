@@ -1389,6 +1389,9 @@ fn main() {
             app.manage(folders);
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
+            // An installer that finished while Cerberus was closed.
+            let recovering = app.handle().clone();
+            std::thread::spawn(move || setup_runner::recover(&recovering));
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(15));
