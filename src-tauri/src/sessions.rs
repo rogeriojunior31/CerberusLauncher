@@ -266,6 +266,7 @@ pub fn release(app: &AppHandle, id: &str) {
     }
     app.state::<Sessions>().lock().remove(id);
     notify(app, id, false);
+    crate::background::game_ended(app);
 }
 
 fn notify(app: &AppHandle, game_id: &str, running: bool) {

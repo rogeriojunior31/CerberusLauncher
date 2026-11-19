@@ -12,6 +12,7 @@ mod sessions;
 mod roms;
 mod settings;
 mod setup_runner;
+mod background;
 mod steam;
 mod steam_store;
 mod trail;
@@ -98,6 +99,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
+        close_to_tray: chosen.close_to_tray,
         ra_user: chosen.ra_user.clone(),
         roms: {
             let played = emulation::played(&data.0);
@@ -517,6 +519,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     trail::note(&app, &id, "Jogar clássico", &result.as_ref().map(|_| "Aberto no RetroArch".to_string()).map_err(Clone::clone));
     let mut child = result?;
     let started = std::time::Instant::now();
+    background::classic_started();
     // While it runs: achievements from RetroArch's log appear at once. When it
     // closes: the time played is kept.
     std::thread::spawn(move || {
@@ -544,6 +547,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         let saved = emulation::add_played(&data, &path, seconds, now);
         trail::note(&app, &id, "Partida", &saved.map(|_| format!("{} min jogados", seconds / 60)));
         let _ = app.emit("catalog-changed", ());
+        background::classic_ended(&app);
     });
     Ok(())
 }
@@ -567,6 +571,16 @@ fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> 
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
     chosen.start_page = page;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Whether closing the window keeps Cerberus in the tray.
+#[tauri::command]
+fn set_close_to_tray(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.close_to_tray = on;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
 }
@@ -1408,6 +1422,7 @@ fn main() {
             app.manage(folders);
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
+            background::tray(app.handle())?;
             // An installer that finished while Cerberus was closed.
             let recovering = app.handle().clone();
             std::thread::spawn(move || setup_runner::recover(&recovering));
@@ -1510,6 +1525,7 @@ fn main() {
             install_core,
             play_classic,
             set_site_catalog,
+            set_close_to_tray,
             import_bios,
             link_retroarch_achievements,
             rerun_setup,
@@ -1541,6 +1557,13 @@ fn main() {
             remove_mod,
             play
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && background::on_close(window, window.app_handle()) {
+                    api.prevent_close();
+                }
+            }
+        })
         .build(tauri::generate_context!())
         .expect("failed to start Cerberus Launcher")
         .run(|app, event| {

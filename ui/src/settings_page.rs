@@ -185,6 +185,15 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                 view! { <button type="button" class="btn sm" disabled=move || busy.get()
                     on:click=move |_| apply(Box::pin(api::rerun_setup()), "Na próxima vez que o Cerberus abrir, a configuração inicial aparece.")>"Mostrar de novo"</button> })}
         </section>
+        <section class="card set">
+            <h3>"Ao fechar a janela"</h3>
+            {row("Continuar na bandeja", "O Cerberus fica perto do relógio do Windows, pronto para abrir. Para sair de vez, clique com o botão direito no ícone dele e escolha Sair.",
+                switch(s.close_to_tray, "Continuar na bandeja", busy, move || {
+                    let on = !s.close_to_tray;
+                    apply(Box::pin(api::set_close_to_tray(on)), if on { "Ao fechar a janela, o Cerberus fica na bandeja." } else { "Ao fechar a janela, o Cerberus fecha." })
+                }))}
+            <p class="muted small">"Com um jogo aberto, fechar a janela sempre deixa o Cerberus na bandeja, para contar o tempo de jogo e guardar os saves no fim da partida. Ele fecha sozinho quando o jogo terminar."</p>
+        </section>
     }
 }
 

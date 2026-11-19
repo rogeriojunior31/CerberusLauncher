@@ -273,6 +273,14 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [ ] Busca com índice local (SQLite com busca de texto) se a base passar de algumas dezenas de
       milhares de jogos; para os recomps a busca em memória continua bastando.
 
+### 4.3b Bandeja do Windows
+
+- [x] Configurações › Geral › "Ao fechar a janela": continuar na bandeja (desligado por padrão). Com um jogo ou
+      clássico aberto, fechar a janela sempre esconde o Cerberus, para não perder tempo de jogo, backup de
+      saves e conquistas; ele fecha sozinho quando o último jogo termina. Conferido no app: Mario Kart 64 no
+      RetroArch, janela fechada, partida registrada e Cerberus fechado 1 s depois; com a opção ligada, o
+      ícone na bandeja reabre a janela.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada

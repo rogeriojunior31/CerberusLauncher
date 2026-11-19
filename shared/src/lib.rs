@@ -311,6 +311,9 @@ pub struct SettingsView {
     /// recomplauncher.com's catalog is in use.
     #[serde(default)]
     pub site_catalog: bool,
+    /// Closing the window keeps Cerberus in the tray.
+    #[serde(default)]
+    pub close_to_tray: bool,
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,

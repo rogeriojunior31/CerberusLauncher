@@ -342,6 +342,14 @@ struct PageArg {
 }
 
 /// The page the desktop window opens on: "home", "library" or "discover".
+pub async fn set_close_to_tray(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_close_to_tray", &Arg { on }).await
+}
+
 pub async fn set_site_catalog(on: bool) -> Result<SettingsView, String> {
     #[derive(serde::Serialize)]
     struct Arg {

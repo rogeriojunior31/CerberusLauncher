@@ -41,6 +41,9 @@ pub struct Settings {
     /// recomplauncher.com's catalog is used besides Cerberus's own (on unless turned off).
     #[serde(default = "yes")]
     pub site_catalog: bool,
+    /// Closing the window keeps Cerberus in the notification area (tray).
+    #[serde(default)]
+    pub close_to_tray: bool,
     /// A RetroArch the player picked, instead of Cerberus's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch: Option<PathBuf>,
