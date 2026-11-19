@@ -379,6 +379,53 @@ pub async fn ra_open(keys: bool) -> Result<(), String> {
     call("ra_open", &KeysArg { keys }).await
 }
 
+pub async fn emulation_status() -> Result<cerberus_shared::EmulationView, String> {
+    call("emulation_status", &()).await
+}
+
+/// Installs RetroArch; progress comes through `on_emu_progress`.
+pub async fn install_retroarch() -> Result<cerberus_shared::EmulationView, String> {
+    call("install_retroarch", &()).await
+}
+
+pub fn on_emu_progress(handler: impl FnMut((u64, u64)) + 'static) {
+    on_event("emu-progress", handler);
+}
+
+pub async fn pick_retroarch() -> Result<cerberus_shared::EmulationView, String> {
+    call("pick_retroarch", &()).await
+}
+
+#[derive(Serialize)]
+struct CoreArg {
+    core: String,
+}
+
+pub async fn install_core(core: String) -> Result<cerberus_shared::EmulationView, String> {
+    call("install_core", &CoreArg { core }).await
+}
+
+#[derive(Serialize)]
+struct ClassicArgs {
+    path: String,
+    console: String,
+}
+
+/// Starts a classic from the ROM folders in RetroArch.
+pub async fn play_classic(path: String, console: String) -> Result<(), String> {
+    call("play_classic", &ClassicArgs { path, console }).await
+}
+
+#[derive(Serialize)]
+struct PasswordArg {
+    password: String,
+}
+
+/// Logs RetroArch in to RetroAchievements; the password is traded for a token and not kept.
+pub async fn link_retroarch_achievements(password: String) -> Result<cerberus_shared::EmulationView, String> {
+    call("link_retroarch_achievements", &PasswordArg { password }).await
+}
+
 /// Whether Cerberus opens in the TV screen.
 pub async fn set_start_in_tv(on: bool) -> Result<SettingsView, String> {
     call("set_start_in_tv", &OnArg { on }).await

@@ -321,16 +321,134 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 }
 
 fn emulation(s: SettingsView) -> impl IntoView {
+    view! { <Emulation roms=s.roms.len() ra_user=s.ra_user.clone() /> }
+}
+
+/// RetroArch for the classics: install or pick it, its cores, and RetroAchievements in it.
+#[component]
+fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
     let library = expect_context::<Library>();
-    let count = s.roms.len();
-    view! {
-        <section class="card set">
-            <h3>"Emulação"</h3>
-            <p class="muted small">"O próximo passo do Cerberus: jogar os clássicos que ainda não têm recomp, por emuladores, com conquistas do RetroAchievements. Por enquanto, os seus clássicos aparecem na aba Clássicos da Biblioteca."</p>
-            {row("Seus clássicos", format!("{count} jogos encontrados nas pastas de ROMs."),
-                view! { <button type="button" class="btn sm main" on:click=move |_| library.go(Route::Library)>"Ver na Biblioteca"</button> })}
-            {row("Emuladores", "RetroArch (NES, SNES, N64, Game Boy, GBA), PCSX2, DuckStation, PPSSPP, Dolphin: em breve, com detecção e BIOS.", view! { <span class="pill soon">"Em breve"</span> })}
-        </section>
+    let state = RwSignal::new(None::<cerberus_shared::EmulationView>);
+    let busy = RwSignal::new(None::<String>);
+    let progress = RwSignal::new((0u64, 0u64));
+    let password = RwSignal::new(String::new());
+    spawn_local(async move {
+        state.set(library.report(api::emulation_status().await));
+    });
+    api::on_emu_progress(move |p| progress.set(p));
+    let run = move |label: String, task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<cerberus_shared::EmulationView, String>>>>, done: &'static str| {
+        busy.set(Some(label));
+        spawn_local(async move {
+            let got = library.report(task.await);
+            busy.set(None);
+            if let Some(v) = got {
+                state.set(Some(v));
+                if !done.is_empty() {
+                    library.toast(done);
+                }
+            }
+        });
+    };
+    let ra_linked = ra_user.is_some();
+
+    move || {
+        let Some(v) = state.get() else {
+            return view! { <section class="card set"><h3>"Emulação"</h3><p class="muted">"Verificando..."</p></section> }.into_any();
+        };
+        let working = busy.get();
+        let status = match (&v.retroarch, &working) {
+            (_, Some(label)) if label == "install" => {
+                let (done, total) = progress.get();
+                let text = if total > 0 && done >= total {
+                    "Extraindo o RetroArch... leva um minuto.".to_string()
+                } else if total > 0 {
+                    format!("Baixando o RetroArch · {} de {}", format::megabytes(done), format::megabytes(total))
+                } else {
+                    "Preparando o RetroArch...".to_string()
+                };
+                view! { <small>{text}</small> }.into_any()
+            }
+            (Some(path), _) => view! { <small><span class="path">{path.clone()}</span><br/>{if v.managed { "Instalado pelo Cerberus, do site oficial do libretro." } else { "O seu RetroArch." }}</small> }.into_any(),
+            (None, _) => view! { <small>"O RetroArch roda NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive. O Cerberus instala a versão oficial (cerca de 200 MB) numa pasta só dele, ou usa o seu."</small> }.into_any(),
+        };
+        let has = v.retroarch.is_some();
+        let disabled = move || busy.get().is_some();
+        let cores = v
+            .cores
+            .iter()
+            .map(|c| {
+                let core = c.core.clone();
+                let installing = working.as_deref() == Some(core.as_str());
+                let control = if c.installed {
+                    view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />"Instalado"</span> }.into_any()
+                } else {
+                    let core = core.clone();
+                    view! {
+                        <button type="button" class="btn sm" disabled=move || disabled() || !has
+                            on:click=move |_| {
+                                let name = core.clone();
+                                run(name.clone(), Box::pin(api::install_core(name)), "Núcleo instalado.");
+                            }>
+                            {if installing { "Baixando..." } else { "Instalar" }}
+                        </button>
+                    }
+                    .into_any()
+                };
+                view! {
+                    <div class="set-row sub">
+                        <div><b>{c.consoles.clone()}</b><small>{format!("Núcleo {}", c.core)}</small></div>
+                        {control}
+                    </div>
+                }
+            })
+            .collect_view();
+        let retro = match (&v.ra_user, ra_linked) {
+            (Some(user), _) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{format!("Conectado como {user}")}</span> }.into_any(),
+            (None, false) => view! { <small>"Conecte sua conta em Contas › RetroAchievements primeiro."</small> }.into_any(),
+            (None, true) => view! {
+                <form class="row" on:submit=move |e: leptos::ev::SubmitEvent| {
+                    e.prevent_default();
+                    let pass = password.get_untracked();
+                    password.set(String::new());
+                    run("ra".to_string(), Box::pin(api::link_retroarch_achievements(pass)), "RetroArch conectado ao RetroAchievements.");
+                }>
+                    <input class="input" type="password" placeholder="Sua senha do RetroAchievements" prop:value=move || password.get()
+                        on:input=move |e| password.set(event_target_value(&e)) />
+                    <button type="submit" class="btn sm main" disabled=move || disabled() || !has || password.get().is_empty()>"Conectar"</button>
+                </form>
+            }
+            .into_any(),
+        };
+        view! {
+            <section class="card set">
+                <div class="card-h">
+                    <h3>"RetroArch"</h3>
+                    <div class="row">
+                        <button type="button" class="btn sm" disabled=disabled
+                            on:click=move |_| run("pick".to_string(), Box::pin(api::pick_retroarch()), "")>"Usar o meu"</button>
+                        <button type="button" class="btn sm main" disabled=disabled
+                            on:click=move |_| run("install".to_string(), Box::pin(api::install_retroarch()), "RetroArch instalado.")>
+                            <Svg icon=Icon::Download size=16 />{if has { "Reinstalar" } else { "Instalar" }}
+                        </button>
+                    </div>
+                </div>
+                {row(if has { "Pronto" } else { "Não instalado" }, status, ())}
+            </section>
+            <section class="card set">
+                <h3>"Núcleos"</h3>
+                <p class="muted small">"Cada console usa um núcleo do RetroArch, baixado do site oficial do libretro."</p>
+                {cores}
+            </section>
+            <section class="card set">
+                <h3>"Conquistas no RetroArch"</h3>
+                {row("RetroAchievements", "O Cerberus troca sua senha por um código de acesso no site e grava só o código no RetroArch. A senha não fica guardada. O arquivo de configurações do RetroArch ganha uma cópia de segurança antes.", retro)}
+            </section>
+            <section class="card set">
+                {row("Seus clássicos", format!("{roms} jogos encontrados nas pastas de ROMs. Jogue pela aba Clássicos da Biblioteca."),
+                    view! { <button type="button" class="btn sm" on:click=move |_| library.go(Route::Library)>"Ver na Biblioteca"</button> })}
+            </section>
+        }
+        .into_any()
     }
 }
 

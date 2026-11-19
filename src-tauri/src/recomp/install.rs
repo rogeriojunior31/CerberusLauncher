@@ -296,7 +296,7 @@ fn unzip(file: &Path, to: &Path) -> Result<(), String> {
 }
 
 /// Entries naming `..`, a root or a drive are refused by the library itself.
-fn un7z(file: &Path, to: &Path) -> Result<(), String> {
+pub(super) fn un7z(file: &Path, to: &Path) -> Result<(), String> {
     let archive = sevenz_rust2::Archive::open(file).map_err(|e| e.to_string())?;
     let size = archive.files.iter().fold(0u64, |sum, item| sum.saturating_add(item.size()));
     crate::disk::require(to, size)?;

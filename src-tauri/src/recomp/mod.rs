@@ -23,8 +23,25 @@ use cerberus_shared::{Backup, CopyHandoff, Game, InstallStep, NextStep, Release,
 use reqwest::Client;
 
 use crate::library::LocalLibrary;
-use assets::{Asset, Os};
+pub use assets::Asset;
+use assets::Os;
 pub use catalog::{CatalogEntry, find};
+
+/// Downloads a file with resume and retries, for other parts of the launcher.
+pub async fn download_file(
+    client: &Client,
+    asset: &Asset,
+    dir: &Path,
+    cancel: &AtomicBool,
+    report: impl Fn(u64, u64) + Send,
+) -> Result<PathBuf, String> {
+    install::download(client, asset, dir, cancel, report).await
+}
+
+/// Unpacks a .7z archive into a folder.
+pub fn extract_7z(archive: &Path, to: &Path) -> Result<(), String> {
+    install::un7z(archive, to)
+}
 
 /// This PC's system, as the catalog names it.
 fn os_key() -> &'static str {

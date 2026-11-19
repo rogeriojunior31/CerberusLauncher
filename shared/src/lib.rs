@@ -316,6 +316,27 @@ pub struct SettingsView {
     pub roms: Vec<RomView>,
 }
 
+/// Emulation as Configurações shows it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct EmulationView {
+    /// The RetroArch program in use, if any.
+    pub retroarch: Option<String>,
+    /// It is the one Cerberus installed.
+    pub managed: bool,
+    pub cores: Vec<CoreView>,
+    /// The RetroAchievements user RetroArch is logged in as.
+    pub ra_user: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoreView {
+    pub console: String,
+    pub core: String,
+    /// The consoles it plays, as players say them.
+    pub consoles: String,
+    pub installed: bool,
+}
+
 /// A game file found in the ROM folders.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RomView {

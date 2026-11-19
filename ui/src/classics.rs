@@ -60,6 +60,42 @@ pub fn console_of(rom: &RomView) -> &'static str {
     }
 }
 
+/// Consoles RetroArch plays in Cerberus (cores in Configurações › Emulação).
+const EMULATED: &[&str] = &["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg"];
+
+/// The console RetroArch would play this copy of a game on, if it plays it at all.
+pub fn emulated_console(path: &str) -> Option<&'static str> {
+    let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new() };
+    let console = console_of(&rom);
+    EMULATED.contains(&console).then_some(console)
+}
+
+/// A cartridge's console from its file type.
+fn system_of(path: &str) -> &'static str {
+    let ext = path.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "z64" | "n64" | "v64" => "n64",
+        "nes" | "fds" | "unf" => "nes",
+        "sfc" | "smc" => "snes",
+        "gb" => "gb",
+        "gbc" => "gbc",
+        "gba" => "gba",
+        "md" | "gen" | "smd" => "genesis",
+        "sms" => "sms",
+        "gg" => "gg",
+        _ => "",
+    }
+}
+
+/// Starts the original game in RetroArch.
+pub fn play_original(library: Library, path: String, console: String) {
+    leptos::task::spawn_local(async move {
+        if library.report(crate::api::play_classic(path, console).await).is_some() {
+            library.toast("Abrindo no RetroArch...");
+        }
+    });
+}
+
 pub fn console_name(console: &str) -> &'static str {
     match console {
         "nes" => "NES",
@@ -150,7 +186,7 @@ fn box_art(rom: &RomView, console: &str) -> Vec<String> {
 pub fn ClassicsGrid(needle: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let roms = LocalResource::new(move || async move { crate::api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
-    move || {
+    let grid = move || {
         let Some(list) = roms.get() else {
             return view! { <p class="muted" role="status">"Procurando seus clássicos…"</p> }.into_any();
         };
@@ -175,15 +211,21 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 let recomp = recomps.iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str())).cloned();
                 let title = display_name(&rom);
                 let (hover, alt) = (title.clone(), title.clone());
+                let emulated = EMULATED.contains(&console);
                 let sub = match &recomp {
+                    Some(e) if emulated => format!("{} · recomp ou RetroArch", console_name(console)),
                     Some(e) => format!("{} · tem recomp: {}", console_name(console), e.name),
+                    None if emulated => format!("{} · RetroArch", console_name(console)),
                     None => console_name(console).to_string(),
                 };
                 let badge = recomp.as_ref().map(|_| view! { <span class="chip">"Tem recomp"</span> });
                 let open = recomp.map(|e| e.id);
+                let (path, console_id) = (rom.path.clone(), console.to_string());
+                // A classic with a recomp opens the recomp's page, which offers both ways to play.
                 let on_open = move |_| match &open {
                     Some(id) => library.go(Route::Game(format!("recomp:{id}"))),
-                    None => library.toast("Emulação chega em breve: aí o Cerberus vai abrir esse jogo direto, com conquistas do RetroAchievements."),
+                    None if emulated => play_original(library, path.clone(), console_id.clone()),
+                    None => library.toast("Esse console ainda não tem emulação no Cerberus. Por enquanto: NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive."),
                 };
                 view! {
                     <div class="tile">
@@ -206,7 +248,8 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
             </section>
         }
         .into_any()
-    }
+    };
+    view! { {grid} }
 }
 
 #[cfg(test)]

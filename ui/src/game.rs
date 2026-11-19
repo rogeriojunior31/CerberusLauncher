@@ -187,8 +187,20 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
                 }
             });
             let (label, icon) = if running { ("Jogando", Icon::Play) } else { crate::launch_action(&game) };
+            let original = game
+                .game_copy
+                .clone()
+                .filter(|_| matches!(game.source, Source::Recomp { .. }))
+                .and_then(|copy| crate::classics::emulated_console(&copy).map(|c| (copy, c.to_string())))
+                .map(|(copy, console)| view! {
+                    <button type="button" class="btn big" title="Abrir a sua cópia original no RetroArch"
+                        on:click=move |_| crate::classics::play_original(library, copy.clone(), console.clone())>
+                        "Original no RetroArch"
+                    </button>
+                });
             return view! {
                 {update_button}
+                {original}
                 <button type="button" class="btn main big play" disabled=running on:click=move |_| play_game(library, game.clone())>
                     <Svg icon size=20 />{label}
                 </button>

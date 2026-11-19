@@ -19,6 +19,7 @@ mod game_settings;
 mod art_custom;
 mod looks;
 mod retroachievements;
+mod emulation;
 mod xdvdfs;
 
 use std::fs;
@@ -407,6 +408,91 @@ fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, Strin
     chosen.start_in_tv = start_in_tv;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
+}
+
+fn retroarch_choice(app: &AppHandle) -> (PathBuf, Option<PathBuf>) {
+    let data = app.state::<DataDir>().0.clone();
+    let picked = settings::load(&data).retroarch;
+    (data, picked)
+}
+
+#[tauri::command]
+fn emulation_status(app: AppHandle) -> cerberus_shared::EmulationView {
+    let (data, picked) = retroarch_choice(&app);
+    emulation::status(&data, picked.as_deref())
+}
+
+/// Installs RetroArch from libretro's site; progress arrives as `emu-progress` events.
+#[tauri::command]
+async fn install_retroarch(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::EmulationView, String> {
+    let (data, _) = retroarch_choice(&app);
+    let report = {
+        let app = app.clone();
+        move |done: u64, total: u64| {
+            let _ = app.emit("emu-progress", (done, total));
+        }
+    };
+    let result = emulation::install(&http, &data, report).await;
+    trail::note(&app, "emulation", "Instalar RetroArch", &result.as_ref().map(|p| p.display().to_string()).map_err(Clone::clone));
+    result?;
+    // Cerberus's own copy wins over a pick that no longer exists.
+    let mut chosen = settings::load(&data);
+    chosen.retroarch = None;
+    settings::save(&data, &chosen)?;
+    Ok(emulation::status(&data, None))
+}
+
+/// Uses a RetroArch the player already has.
+#[tauri::command]
+async fn pick_retroarch(app: AppHandle) -> Result<cerberus_shared::EmulationView, String> {
+    let dialog = app.dialog().file().set_title("Escolha o retroarch.exe").add_filter("RetroArch", &["exe"]);
+    let (data, picked) = retroarch_choice(&app);
+    let Some(exe) = pick_one(dialog).await? else {
+        return Ok(emulation::status(&data, picked.as_deref()));
+    };
+    let name = exe.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if name != "retroarch.exe" {
+        return Err("Escolha o programa retroarch.exe.".into());
+    }
+    let mut chosen = settings::load(&data);
+    chosen.retroarch = Some(exe.clone());
+    settings::save(&data, &chosen)?;
+    Ok(emulation::status(&data, Some(&exe)))
+}
+
+#[tauri::command]
+async fn install_core(app: AppHandle, http: State<'_, reqwest::Client>, core: String) -> Result<cerberus_shared::EmulationView, String> {
+    let (data, picked) = retroarch_choice(&app);
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale ou escolha o RetroArch primeiro.")?;
+    emulation::install_core(&http, &exe, &core).await?;
+    Ok(emulation::status(&data, picked.as_deref()))
+}
+
+/// Starts a classic from the ROM folders in RetroArch.
+#[tauri::command]
+fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
+    let (data, picked) = retroarch_choice(&app);
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale o RetroArch em Configurações › Emulação para jogar os clássicos.")?;
+    let rom = PathBuf::from(&path);
+    // Only files from the player's own ROM folders are started.
+    let known = app.state::<RomIndex>().get().iter().any(|r| r.path == rom);
+    if !known {
+        return Err("Esse arquivo não está nas suas pastas de ROMs.".into());
+    }
+    let result = emulation::launch(&exe, &rom, &console);
+    let id = format!("classic:{path}");
+    trail::note(&app, &id, "Jogar clássico", &result.as_ref().map(|_| "Aberto no RetroArch".to_string()).map_err(Clone::clone));
+    result.map(|_| ())
+}
+
+/// Logs RetroArch in to RetroAchievements with the linked account.
+#[tauri::command]
+async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Client>, password: String) -> Result<cerberus_shared::EmulationView, String> {
+    let (data, picked) = retroarch_choice(&app);
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale ou escolha o RetroArch primeiro.")?;
+    let user = settings::load(&data).ra_user.ok_or("Conecte sua conta em Configurações › RetroAchievements primeiro.")?;
+    emulation::link_retroachievements(&http, &exe, &user, &password).await?;
+    Ok(emulation::status(&data, picked.as_deref()))
 }
 
 /// The page the desktop window opens on.
@@ -1333,6 +1419,12 @@ fn main() {
             finish_setup,
             set_start_in_tv,
             set_start_page,
+            emulation_status,
+            install_retroarch,
+            pick_retroarch,
+            install_core,
+            play_classic,
+            link_retroarch_achievements,
             rerun_setup,
             ra_connect,
             ra_profile,

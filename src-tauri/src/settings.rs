@@ -38,6 +38,9 @@ pub struct Settings {
     pub ra_user: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
+    /// A RetroArch the player picked, instead of Cerberus's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retroarch: Option<PathBuf>,
 }
 
 fn yes() -> bool {

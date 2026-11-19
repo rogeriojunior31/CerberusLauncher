@@ -151,6 +151,15 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] RetroAchievements: conectar com usuário e chave da Web API (fica só no PC), perfil, pontos e os jogos
       jogados recentemente com o progresso de conquistas. Próximo: emulação (RetroArch primeiro) com login
       automático nos emuladores e conquistas na hora, como o Hydra faz.
+- [x] Emulação pelo RetroArch: o Cerberus instala o RetroArch oficial do libretro numa pasta própria (ou usa
+      o do jogador) e baixa um núcleo por console (NES, SNES, N64, Game Boy/Color, GBA, Mega Drive/Master
+      System/Game Gear). Clássicos dessas consoles abrem direto da aba Clássicos. Um clássico que também tem
+      recomp abre a página do recomp, com "Jogar" e "Original no RetroArch" lado a lado. Conferido no app:
+      RetroArch 1.22.2 instalado, núcleo de N64 baixado e Mario Kart 64 aberto pela página do jogo.
+- [x] RetroAchievements no RetroArch: a senha é trocada por um código de acesso no site e só o código vai para
+      o retroarch.cfg (com cópia de segurança). Ainda não testado com uma conta real.
+- [ ] Próximo: conquistas aparecendo no Cerberus na hora (lendo o log do RetroArch, como o Hydra), tempo de
+      jogo dos clássicos, PS1/PS2/PSP/GameCube (DuckStation, PCSX2, PPSSPP, Dolphin) e BIOS.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
