@@ -272,16 +272,47 @@ fn header_fits(game: &str, rom: &RomFile) -> bool {
 
 /// Could this file be a game of the console `origin`?
 fn fits(rom: &RomFile, origin: &str) -> bool {
+    if rom.system.is_empty() {
+        return origin.is_empty() || origin == "other" || origin == "arcade" || DISC_CONSOLES.contains(&origin);
+    }
+    console_fits(&rom.system, origin)
+}
+
+/// A cartridge of `system` can be a game of `origin`.
+pub fn console_fits(system: &str, origin: &str) -> bool {
     if origin.is_empty() || origin == "other" || origin == "arcade" {
         return true;
     }
-    if rom.system.is_empty() {
-        return DISC_CONSOLES.contains(&origin);
+    let game_boy = matches!((system, origin), ("gb", "gbc") | ("gbc", "gb"));
+    let switch = system == "switch" && origin == "switch2";
+    system == origin || game_boy || switch
+}
+
+/// The console a cartridge file is for, by its extension; `None` for disc
+/// images and unknown files, which could be many consoles.
+pub fn cartridge_of(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    if N64.contains(&ext.as_str()) {
+        return Some("n64");
     }
-    let same = rom.system == origin;
-    let game_boy = matches!((rom.system.as_str(), origin), ("gb", "gbc") | ("gbc", "gb"));
-    let switch = rom.system == "switch" && origin == "switch2";
-    same || game_boy || switch
+    cartridge_system(&ext)
+}
+
+/// A console's name as players say it.
+pub fn console_name(system: &str) -> &str {
+    match system {
+        "nes" => "NES",
+        "snes" => "Super Nintendo",
+        "n64" => "Nintendo 64",
+        "gb" => "Game Boy",
+        "gbc" => "Game Boy Color",
+        "gba" => "Game Boy Advance",
+        "ds" => "Nintendo DS",
+        "3ds" => "Nintendo 3DS",
+        "genesis" => "Mega Drive",
+        "switch" => "Nintendo Switch",
+        other => other,
+    }
 }
 
 /// For each recomp, the player's copy of its game, if they have one. A US copy

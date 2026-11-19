@@ -225,11 +225,20 @@ pub struct LaunchPlan {
 /// and for Play itself, so a button never offers what Play would refuse.
 /// `found` is the player's copy from the ROM folders, if the scan saw one.
 pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
-    let handoff = match &game.source {
-        Source::Recomp { recomp_id, .. } => find(recomp_id).and_then(|e| e.handoff),
+    let entry = match &game.source {
+        Source::Recomp { recomp_id, .. } => find(recomp_id),
         _ => None,
     };
-    next_step_with(game, handoff.as_ref(), found)
+    let handoff = entry.as_ref().and_then(|e| e.handoff.clone());
+    let step = next_step_with(game, handoff.as_ref(), found);
+    // A folder copy the recomp reads named parts from: they must be in its folder.
+    if let (NextStep::Play, Some(entry), Some(CopyHandoff::Folder { folder, file_name: None, .. })) = (&step, &entry, &handoff) {
+        let dir = Path::new(&game.install_dir).join(folder);
+        if !entry.copy_contains.is_empty() && !entry.copy_contains.iter().all(|name| holds(&dir, name)) {
+            return NextStep::ChooseCopy { found: found.cloned() };
+        }
+    }
+    step
 }
 
 fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&String>) -> NextStep {
@@ -338,6 +347,9 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
             return Err(problem);
         }
     }
+    if let Some(entry) = &entry {
+        copy_fits(entry, copy)?;
+    }
     let accepts_folder = entry.as_ref().is_some_and(|e| e.accepts_folder);
     match entry.and_then(|e| e.handoff) {
         Some(CopyHandoff::Folder { folder, file_name, extract }) => {
@@ -348,6 +360,41 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
     }
     let path = copy.to_string_lossy().into_owned();
     library.update(game_id, |game| game.game_copy = Some(path))
+}
+
+/// Whether a copy the player picked can be this recomp's game: a cartridge of
+/// the right console, a folder when only a folder will do, and a folder that
+/// holds what the recomp reads from it.
+fn copy_fits(entry: &CatalogEntry, copy: &Path) -> Result<(), String> {
+    let wants = if entry.copy_contains.is_empty() { String::new() } else { format!(" (com {})", entry.copy_contains.join(" e ")) };
+    if copy.is_dir() {
+        let missing: Vec<&String> = entry.copy_contains.iter().filter(|name| !holds(copy, name)).collect();
+        if !missing.is_empty() {
+            let names: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
+            return Err(format!("Essa pasta não tem {}. Escolha a pasta do jogo{wants}.", names.join(" nem ")));
+        }
+        return Ok(());
+    }
+    if let Some(system) = crate::roms::cartridge_of(copy) {
+        if !crate::roms::console_fits(system, &entry.origin) {
+            return Err(format!(
+                "Esse arquivo é de {}, mas {} é de {}. Escolha a sua cópia de {}.",
+                crate::roms::console_name(system),
+                entry.name,
+                entry.console,
+                entry.game
+            ));
+        }
+    }
+    if entry.copy_accepts == "folder" {
+        return Err(format!("{} precisa da pasta com os arquivos do jogo{wants}, não de um arquivo.", entry.name));
+    }
+    Ok(())
+}
+
+/// The folder has an entry of that name, in any letter case.
+fn holds(dir: &Path, name: &str) -> bool {
+    fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
 fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, extract: bool, accepts_folder: bool, copy: &Path) -> Result<(), String> {
@@ -776,6 +823,32 @@ mod tests {
         assert_eq!(next_step_with(&game, Some(&named), None), NextStep::Play);
         game.game_copy = None;
         assert_eq!(next_step_with(&game, Some(&named), None), NextStep::Play, "set up by hand, outside Cerberus");
+    }
+
+    #[test]
+    fn a_copy_of_another_console_or_a_file_for_a_folder_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mhgu = CatalogEntry {
+            id: "mhgurecomp".into(),
+            name: "MHGU Recomp".into(),
+            game: "Monster Hunter Generations Ultimate".into(),
+            console: "Nintendo Switch".into(),
+            origin: "switch".into(),
+            copy_accepts: "folder".into(),
+            copy_contains: vec!["exefs".into(), "romfs".into()],
+            ..Default::default()
+        };
+        let three_ds = dir.path().join("Monster Hunter Generations (USA).3ds");
+        fs::write(&three_ds, b"rom").unwrap();
+        assert!(copy_fits(&mhgu, &three_ds).unwrap_err().contains("é de Nintendo 3DS"));
+        let nsp = dir.path().join("MHGU.nsp");
+        fs::write(&nsp, b"rom").unwrap();
+        assert!(copy_fits(&mhgu, &nsp).unwrap_err().contains("precisa da pasta"));
+        let dump = dir.path().join("dump");
+        fs::create_dir_all(dump.join("ExeFS")).unwrap();
+        assert!(copy_fits(&mhgu, &dump).unwrap_err().contains("não tem romfs"));
+        fs::create_dir_all(dump.join("romfs")).unwrap();
+        assert!(copy_fits(&mhgu, &dump).is_ok());
     }
 
     #[test]

@@ -96,6 +96,10 @@ pub struct CatalogEntry {
     /// The game's own settings the launcher can change.
     #[serde(skip)]
     pub settings: crate::game_settings::Offer,
+    /// What the player's copy must be: "file", "folder", "folder or iso"...
+    pub copy_accepts: String,
+    /// Names a folder copy must hold ("exefs", "romfs").
+    pub copy_contains: Vec<String>,
     /// What the player should know before the first start ("pick your ROM in its menu").
     pub player_note: String,
     /// "local", "online" or "both"; empty for single player.
@@ -400,6 +404,8 @@ struct Boot {
     n64: Option<crate::roms::N64Wanted>,
     accepts_folder: bool,
     settings: crate::game_settings::Offer,
+    copy_accepts: String,
+    copy_contains: Vec<String>,
     player_note: String,
     multiplayer: String,
 }
@@ -420,6 +426,12 @@ fn boot_of(boot: Option<Value>) -> Boot {
         n64: files.and_then(n64_wanted),
         accepts_folder: files.and_then(|f| f.get("accepts")).and_then(Value::as_str).is_some_and(|a| a.contains("folder")),
         settings: crate::game_settings::offer_of(value.get("settings")),
+        copy_accepts: files.and_then(|f| f.get("accepts")).and_then(Value::as_str).unwrap_or_default().to_lowercase(),
+        copy_contains: files
+            .and_then(|f| f.get("contains"))
+            .and_then(Value::as_array)
+            .map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+            .unwrap_or_default(),
         player_note: value.get("player_note").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
         multiplayer: value.get("multiplayer").and_then(Value::as_str).unwrap_or_default().to_string(),
     }
@@ -481,7 +493,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
 
     let mut list = Vec::new();
     for app in catalog.apps {
-        let Boot { kind, start, handoff, n64, accepts_folder, settings, player_note, multiplayer } = boot_of(app.boot);
+        let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
             continue;
         }
@@ -537,6 +549,8 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             n64,
             accepts_folder,
             settings,
+            copy_accepts,
+            copy_contains,
             player_note,
             multiplayer,
             saves: Vec::new(),
