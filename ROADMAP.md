@@ -266,8 +266,8 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 
 ### 4.3 Base de jogos e arte (estilo Hydra)
 
-- [ ] Arte da comunidade pelo SteamGridDB (chave gratuita do usuário em Configurações; o gerador
-      pode usar uma chave de CI para preencher capas/fundos do catálogo).
+- [x] Arte da comunidade pelo SteamGridDB com a chave gratuita do jogador (Configurações › Arte dos jogos e
+      "Personalizar arte" na página do jogo). Falta: o gerador do catálogo usar uma chave de CI.
 - [ ] Base de jogos de console do LaunchBox Games Database (`Metadata.zip`): nomes alternativos,
       plataformas e imagens, para reconhecer melhor as ROMs. Confirmar os termos de uso antes.
 - [ ] Busca com índice local (SQLite com busca de texto) se a base passar de algumas dezenas de
