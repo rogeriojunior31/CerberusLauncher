@@ -186,6 +186,19 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                     on:click=move |_| apply(Box::pin(api::rerun_setup()), "Na próxima vez que o Cerberus abrir, a configuração inicial aparece.")>"Mostrar de novo"</button> })}
         </section>
         <section class="card set">
+            <h3>"Ao ligar o PC"</h3>
+            {row("Abrir com o Windows", "O Cerberus abre sozinho quando você entra no Windows, pronto para os avisos de atualização.",
+                switch(s.autostart, "Abrir com o Windows", busy, move || {
+                    let on = !s.autostart;
+                    apply(Box::pin(api::set_autostart(on)), if on { "O Cerberus vai abrir com o Windows." } else { "O Cerberus não abre mais com o Windows." })
+                }))}
+            {row("Começar escondido na bandeja", "Ao abrir com o Windows, fica perto do relógio sem mostrar a janela. Abrir pelo atalho mostra a janela normalmente.",
+                switch(s.start_hidden, "Começar escondido na bandeja", busy, move || {
+                    let on = !s.start_hidden;
+                    apply(Box::pin(api::set_start_hidden(on)), if on { "Ao abrir com o Windows, o Cerberus fica na bandeja." } else { "Ao abrir com o Windows, a janela aparece." })
+                }))}
+        </section>
+        <section class="card set">
             <h3>"Ao fechar a janela"</h3>
             {row("Continuar na bandeja", "O Cerberus fica perto do relógio do Windows, pronto para abrir. Para sair de vez, clique com o botão direito no ícone dele e escolha Sair.",
                 switch(s.close_to_tray, "Continuar na bandeja", busy, move || {

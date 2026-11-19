@@ -307,7 +307,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Avisos do Windows para conquistas e jogos prontos quando a janela não está em foco.
 - [x] Jogo que fecha com erro: código de saída explicado (DLL faltando, Visual C++ antigo, travamento),
       log do jogo apontado, no histórico e como aviso.
-- [ ] Opções de inicialização (abrir com o Windows, abrir minimizado).
+- [x] Opções de inicialização: abrir com o Windows e começar escondido na bandeja (só quando o Windows abre).
 - [ ] Tempo de jogo dos jogos da Steam e da Epic (vigiar os processos deles).
 - [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
 - [ ] Atalhos na área de trabalho e "Adicionar à Steam".

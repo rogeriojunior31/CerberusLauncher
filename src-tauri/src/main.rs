@@ -103,6 +103,11 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
         close_to_tray: chosen.close_to_tray,
+        autostart: {
+            use tauri_plugin_autostart::ManagerExt;
+            app.autolaunch().is_enabled().unwrap_or(false)
+        },
+        start_hidden: chosen.start_hidden,
         ra_user: chosen.ra_user.clone(),
         roms: {
             let played = emulation::played(&data.0);
@@ -574,6 +579,26 @@ fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> 
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
     chosen.start_page = page;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Opens Cerberus with Windows, or stops it.
+#[tauri::command]
+fn set_autostart(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    let result = if on { manager.enable() } else { manager.disable() };
+    result.map_err(|e| format!("O Windows não deixou mudar a inicialização: {e}"))?;
+    Ok(settings_view(&app))
+}
+
+/// Whether Cerberus, opened with Windows, starts in the tray.
+#[tauri::command]
+fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.start_hidden = on;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
 }
@@ -1447,6 +1472,8 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show(app)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        // Started by Windows, Cerberus is told so, to start in the tray when asked to.
+        .plugin(tauri_plugin_autostart::Builder::new().arg("--autostart").app_name("Cerberus Launcher").build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
@@ -1461,6 +1488,11 @@ fn main() {
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
             background::tray(app.handle())?;
+            if chosen.start_hidden && std::env::args().any(|a| a == "--autostart") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             // An installer that finished while Cerberus was closed.
             let recovering = app.handle().clone();
             std::thread::spawn(move || setup_runner::recover(&recovering));
@@ -1564,6 +1596,8 @@ fn main() {
             play_classic,
             set_site_catalog,
             set_close_to_tray,
+            set_autostart,
+            set_start_hidden,
             recent_activity,
             open_rom_folder,
             set_favorite,

@@ -44,6 +44,9 @@ pub struct Settings {
     /// Closing the window keeps Cerberus in the notification area (tray).
     #[serde(default)]
     pub close_to_tray: bool,
+    /// Opened with Windows, Cerberus starts in the tray instead of showing its window.
+    #[serde(default)]
+    pub start_hidden: bool,
     /// A RetroArch the player picked, instead of Cerberus's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch: Option<PathBuf>,

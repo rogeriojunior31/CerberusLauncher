@@ -317,6 +317,12 @@ pub struct SettingsView {
     /// Closing the window keeps Cerberus in the tray.
     #[serde(default)]
     pub close_to_tray: bool,
+    /// Cerberus opens with Windows.
+    #[serde(default)]
+    pub autostart: bool,
+    /// Opened with Windows, it starts in the tray.
+    #[serde(default)]
+    pub start_hidden: bool,
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,
