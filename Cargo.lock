@@ -579,6 +579,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "cerberus-shared",
+ "crc32fast",
  "dunce",
  "flate2",
  "fs2",

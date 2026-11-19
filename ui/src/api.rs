@@ -84,6 +84,18 @@ pub async fn create_shortcut(id: &str) -> Result<String, String> {
     call("create_shortcut", &Id { id }).await
 }
 
+pub async fn add_to_steam(id: &str) -> Result<String, String> {
+    call("add_to_steam", &Id { id }).await
+}
+
+pub async fn remove_from_steam(id: &str) -> Result<(), String> {
+    call("remove_from_steam", &Id { id }).await
+}
+
+pub async fn in_steam(id: &str) -> Result<bool, String> {
+    call("in_steam", &Id { id }).await
+}
+
 pub fn on_playtime_updated(mut handler: impl FnMut() + 'static) {
     on_event("playtime-updated", move |_: String| handler());
 }

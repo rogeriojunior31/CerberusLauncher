@@ -310,8 +310,16 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Opções de inicialização: abrir com o Windows e começar escondido na bandeja (só quando o Windows abre).
 - [x] Tempo de jogo dos jogos da Steam e da Epic: o Cerberus vigia os programas abertos (mesmo na bandeja). Falta conferir com uma partida real.
 - [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
-- [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play). Falta: "Adicionar à Steam".
-- [x] Configurações › Seu PC: Visual C++ 2015-2022 x64 (versão, em dia ou antigo) e instalar pelo link da Microsoft. Falta: DirectX.
+- [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play).
+- [x] Adicionar à Steam (Gerenciar): jogo de fora na biblioteca da Steam, com capa e fundo, abrindo pelo Cerberus;
+      com a Steam fechada, backup do shortcuts.vdf, e "Tirar da Steam" desfaz. Conferido no app com o SpaghettiKart.
+- [x] Configurações › Seu PC: Visual C++ 2015-2022 x64 (versão, em dia ou antigo) e DirectX antigo (D3DX, XInput 1.3,
+      XAudio 2.7), instalados pelos links da Microsoft.
+- [x] Jogo que fecha com 0xC0000139: diz qual DLL é antiga (cópia na pasta do jogo, Visual C++ ou Vulkan do driver).
+- [x] Mods do GameBanana para Ship of Harkinian, Starship, SpaghettiKart e Ghostship (pacotes .otr/.o2r).
+      Conferido no app: instalar e remover um mod do SpaghettiKart. Falta: Unleashed e Marathon (mod.ini e ModsDB.ini).
+- [x] Recomps no GitLab e em servidores Forgejo (11 do catálogo principal e os 3 da lista apps_min do site:
+      Hookshot, Longshot, FE3H Recomp) e ids renomeados (replaced) do catálogo do site.
 - [x] Pausar e continuar download de recomp (o arquivo parcial fica guardado; cancelar apaga), na página do jogo e no Big Picture.
 - [x] Reparar instalação (baixa a versão de novo por cima, com backup dos saves) e mover o jogo para outra pasta ou disco (Gerenciar).
 - [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.

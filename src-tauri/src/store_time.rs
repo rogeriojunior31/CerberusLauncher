@@ -82,7 +82,7 @@ fn running(programs: &[String], games: &[(String, String)]) -> HashSet<String> {
 }
 
 #[cfg(windows)]
-fn running_programs() -> Vec<String> {
+pub fn running_programs() -> Vec<String> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::CloseHandle;
@@ -112,7 +112,7 @@ fn running_programs() -> Vec<String> {
 }
 
 #[cfg(not(windows))]
-fn running_programs() -> Vec<String> {
+pub fn running_programs() -> Vec<String> {
     Vec::new()
 }
 

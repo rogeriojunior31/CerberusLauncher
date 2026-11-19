@@ -645,6 +645,44 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    // Steam: only games it doesn't have already.
+    let steam = game.as_ref().filter(|g| !matches!(g.source, Source::Steam { .. })).map(|g| {
+        let id = StoredValue::new(g.id.clone());
+        let added = RwSignal::new(false);
+        let working = RwSignal::new(false);
+        spawn_local(async move {
+            added.set(api::in_steam(&id.get_value()).await.unwrap_or(false));
+        });
+        let on_click = move |_| {
+            working.set(true);
+            spawn_local(async move {
+                let id = id.get_value();
+                if added.get_untracked() {
+                    if library.report(api::remove_from_steam(&id).await).is_some() {
+                        added.set(false);
+                        library.toast("Tirado da Steam.");
+                    }
+                } else if let Some(done) = library.report(api::add_to_steam(&id).await) {
+                    added.set(true);
+                    library.toast(done);
+                }
+                working.set(false);
+            });
+        };
+        view! {
+            <button type="button" class="row-btn" disabled=move || working.get() on:click=on_click>
+                <Svg icon=Icon::Gamepad />
+                <span>
+                    <b>{move || if added.get() { "Tirar da Steam" } else { "Adicionar à Steam" }}</b>
+                    <small>{move || if added.get() {
+                        "Está na biblioteca da Steam como jogo de fora; tirar não apaga nada do jogo"
+                    } else {
+                        "Aparece na biblioteca da Steam, com a capa, e abre pelo Cerberus (Big Picture e Steam Deck). Feche a Steam antes"
+                    }}</small>
+                </span>
+            </button>
+        }
+    });
     let customize = game.clone().map(|g| {
         view! {
             <button type="button" class="row-btn" on:click=move |_| library.customizing.set(Some(g.clone()))>
@@ -755,7 +793,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <p class="muted small">"Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele."</p>
         </div>
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{relocate}{shortcut}{customize}{edit}{project}{repair}{remove}</div> }
+    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{relocate}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
 }
 
 #[component]

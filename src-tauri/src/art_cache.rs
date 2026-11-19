@@ -38,6 +38,11 @@ impl ArtCache {
         self.dir.join(&name[..32])
     }
 
+    /// The copy on disk of an online picture, when there is one.
+    pub fn copy_of(&self, url: &str) -> Option<PathBuf> {
+        Some(self.file_for(url)).filter(|f| f.is_file())
+    }
+
     /// Replaces an online address with its copy on disk when there is one;
     /// otherwise notes the address in `missing`.
     fn swap(&self, value: &mut Option<String>, missing: &mut Vec<String>) {

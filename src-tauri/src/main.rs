@@ -21,6 +21,7 @@ mod store_time;
 mod shortcut;
 mod runtimes;
 mod steam;
+mod steam_shortcuts;
 mod steam_store;
 mod trail;
 mod game_settings;
@@ -1502,6 +1503,94 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
     Ok(link.display().to_string())
 }
 
+/// The game for a Steam shortcut: only games Steam doesn't already have.
+fn game_for_steam(library: &LocalLibrary, id: &str) -> Result<Game, String> {
+    let game = match library.get(id)? {
+        Some(game) => game,
+        None => epic::installed_games().into_iter().find(|g| g.id == id).ok_or("Esse jogo não está mais na biblioteca.")?,
+    };
+    if matches!(game.source, Source::Steam { .. }) {
+        return Err("Esse jogo já é da Steam.".into());
+    }
+    Ok(game)
+}
+
+/// Steam rewrites its list of games when it closes, undoing any change made meanwhile.
+fn steam_closed() -> Result<PathBuf, String> {
+    let steam = steam::root().ok_or("A Steam não está instalada neste PC.")?;
+    let running = store_time::running_programs().iter().any(|p| Path::new(p).file_name().is_some_and(|n| n.eq_ignore_ascii_case("steam.exe")));
+    if running {
+        return Err("Feche a Steam primeiro (Steam › Sair): ela regrava a lista de jogos quando fecha e desfaria a mudança.".into());
+    }
+    Ok(steam)
+}
+
+/// A picture's bytes: the file on disk, the cached copy, or the online address.
+async fn art_bytes(http: &reqwest::Client, art: &ArtCache, path: Option<&str>, url: Option<&str>) -> Option<Vec<u8>> {
+    let local = path.filter(|p| !p.starts_with("http")).map(PathBuf::from).or_else(|| url.and_then(|u| art.copy_of(u)));
+    if let Some(file) = local.filter(|f| f.is_file()) {
+        return std::fs::read(file).ok();
+    }
+    let url = url.filter(|u| u.starts_with("https://"))?;
+    let reply = http.get(url).timeout(std::time::Duration::from_secs(30)).send().await.ok()?;
+    if !reply.status().is_success() {
+        return None;
+    }
+    reply.bytes().await.ok().map(|b| b.to_vec())
+}
+
+/// Puts the game in the Steam library as a non-Steam game, with its art.
+#[tauri::command]
+async fn add_to_steam(app: AppHandle, http: State<'_, reqwest::Client>, id: String) -> Result<String, String> {
+    let game = game_for_steam(&app.state::<LocalLibrary>(), &id)?;
+    let steam = steam_closed()?;
+    let configs = steam_shortcuts::config_dirs(&steam);
+    if configs.is_empty() {
+        return Err("Entre na Steam uma vez antes: ela ainda não tem uma conta neste PC.".into());
+    }
+    let icon = match &game.source {
+        Source::Recomp { exe, .. } | Source::Local { exe } => Some(PathBuf::from(exe)),
+        _ => None,
+    };
+    let launcher = std::env::current_exe().map_err(|e| e.to_string())?;
+    let shortcut = steam_shortcuts::Shortcut { name: game.name.clone(), launcher, game_id: game.id.clone(), icon };
+    let art = app.state::<Arc<ArtCache>>().inner().clone();
+    let cover = art_bytes(&http, &art, game.cover_path.as_deref(), game.cover_url.as_deref()).await;
+    let hero = art_bytes(&http, &art, game.hero_path.as_deref(), game.hero_url.as_deref()).await;
+    for config in &configs {
+        let mut list = steam_shortcuts::load(config)?;
+        steam_shortcuts::add(&mut list, &shortcut);
+        steam_shortcuts::save(config, &list)?;
+        steam_shortcuts::place_art(config, shortcut.app_id(), cover.as_deref(), hero.as_deref());
+    }
+    trail::note(&app, &game.id, "Steam", &Ok("Adicionado à Steam".to_string()));
+    Ok(format!("{} está na Steam. Ele aparece na biblioteca quando a Steam abrir.", game.name))
+}
+
+#[tauri::command]
+fn remove_from_steam(app: AppHandle, id: String) -> Result<(), String> {
+    let steam = steam_closed()?;
+    for config in steam_shortcuts::config_dirs(&steam) {
+        let mut list = steam_shortcuts::load(&config)?;
+        let gone = steam_shortcuts::remove(&mut list, &id);
+        if !gone.is_empty() {
+            steam_shortcuts::save(&config, &list)?;
+            for app_id in gone {
+                steam_shortcuts::remove_art(&config, app_id);
+            }
+        }
+    }
+    trail::note(&app, &id, "Steam", &Ok("Tirado da Steam".to_string()));
+    Ok(())
+}
+
+/// Whether Cerberus put this game in Steam.
+#[tauri::command]
+fn in_steam(id: String) -> bool {
+    let Some(steam) = steam::root() else { return false };
+    steam_shortcuts::config_dirs(&steam).iter().any(|config| steam_shortcuts::load(config).is_ok_and(|list| steam_shortcuts::contains(&list, &id)))
+}
+
 fn pc_now() -> cerberus_shared::PcStatus {
     let vc_version = runtimes::vc_version();
     let vc_ok = vc_version.as_deref().is_some_and(runtimes::recent_enough);
@@ -1760,6 +1849,9 @@ fn main() {
             pc_status,
             install_vc,
             install_dx,
+            add_to_steam,
+            remove_from_steam,
+            in_steam,
             set_favorite,
             import_bios,
             link_retroarch_achievements,
