@@ -16,6 +16,7 @@ mod background;
 mod favorites;
 mod notify;
 mod crash;
+mod store_time;
 mod steam;
 mod steam_store;
 mod trail;
@@ -776,6 +777,7 @@ async fn list_games(
     // The player's own pictures win over every other art.
     let custom = app.state::<art_custom::CustomArt>();
     games.iter_mut().for_each(|game| custom.apply(game));
+    store_time::apply(&app.state::<DataDir>().0, &mut games);
     let favorite = favorites::load(&app.state::<DataDir>().0);
     games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
     art.fetch_later(http.inner().clone(), missing);
@@ -1488,6 +1490,7 @@ fn main() {
             app.manage(recomp::Installing::default());
             app.manage(sessions::Sessions::default());
             background::tray(app.handle())?;
+            store_time::watch(app.handle().clone());
             if chosen.start_hidden && std::env::args().any(|a| a == "--autostart") {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();

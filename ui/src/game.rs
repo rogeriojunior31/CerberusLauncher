@@ -243,7 +243,8 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
 fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     let mut stats: Vec<(&'static str, String)> = Vec::new();
     if let Some(g) = &game {
-        if g.is_tracked() {
+        // Steam and Epic games count too, once Cerberus has seen them played.
+        if g.is_tracked() || g.last_played.is_some() {
             let played = if g.last_played.is_none() && g.playtime_secs == 0 { "Nunca jogado".to_string() } else { format::playtime(g.playtime_secs) };
             stats.push(("Tempo de jogo", played));
             if let Some(seconds) = g.last_session_secs {
@@ -287,7 +288,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
         .collect_view();
     let untracked = game.as_ref().is_some_and(|g| !g.is_tracked()).then(|| {
-        view! { <p class="muted small">"Tempo de jogo só é contado para jogos que o Cerberus abre sozinho."</p> }
+        view! { <p class="muted small">"O tempo dos jogos da Steam e da Epic é contado enquanto o Cerberus está aberto, mesmo escondido na bandeja."</p> }
     });
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
