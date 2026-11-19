@@ -55,7 +55,7 @@ pub fn game_ended(app: &AppHandle) {
     }
 }
 
-fn show(app: &AppHandle) {
+pub fn show(app: &AppHandle) {
     HIDDEN_FOR_GAME.store(false, Ordering::SeqCst);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();

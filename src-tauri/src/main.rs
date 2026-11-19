@@ -1436,6 +1436,9 @@ fn short_hash(text: &str) -> String {
 
 fn main() {
     tauri::Builder::default()
+        // One Cerberus at a time: two would write the same library and settings.
+        // Opening it again brings the running one forward, even from the tray.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show(app)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
