@@ -107,7 +107,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
                         <span>{if on_tv {
                             "Tela cheia, feita para controle. O Cerberus abre assim toda vez."
                         } else {
-                            "Numa janela, com mouse e teclado. A Tela grande fica a um clique."
+                            "Numa janela, com mouse e teclado. O Big Picture Mode fica a um clique."
                         }}</span>
                     </button>
                 }

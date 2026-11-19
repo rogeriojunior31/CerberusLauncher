@@ -90,7 +90,7 @@ fn scroll_to(key: &str) {
     let Ok(Some(element)) = document.query_selector(&format!("[data-tvf='{key}']")) else { return };
     let options = web_sys::ScrollIntoViewOptions::new();
     options.set_behavior(web_sys::ScrollBehavior::Smooth);
-    options.set_block(web_sys::ScrollLogicalPosition::Center);
+    options.set_block(web_sys::ScrollLogicalPosition::Nearest);
     options.set_inline(web_sys::ScrollLogicalPosition::Center);
     if let Ok(element) = element.dyn_into::<web_sys::Element>() {
         element.scroll_into_view_with_scroll_into_view_options(&options);

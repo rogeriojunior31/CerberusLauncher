@@ -86,8 +86,17 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     }
     let action = primary_action(game.clone(), entry.clone());
     let tab_button = move |which: Tab, label: &'static str| {
+        let icon = match which {
+            Tab::Overview => Icon::Info,
+            Tab::Saves => Icon::Saves,
+            Tab::Settings => Icon::Settings,
+            Tab::Mods => Icon::Puzzle,
+            Tab::Manage => Icon::Edit,
+        };
         view! {
-            <button type="button" class="tab" class:on=move || tab.get() == which on:click=move |_| tab.set(which)>{label}</button>
+            <button type="button" class="tab with-icon" class:on=move || tab.get() == which on:click=move |_| tab.set(which)>
+                <Svg icon size=16 />{label}
+            </button>
         }
     };
     let tabs = view! {

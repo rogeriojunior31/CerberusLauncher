@@ -41,7 +41,7 @@ pub fn Sidebar() -> impl IntoView {
                     <Svg icon=Icon::Plus />
                     <span>"Adicionar jogo"</span>
                 </button>
-                {item(Route::BigPicture, Icon::Tv, "Tela grande")}
+                {item(Route::BigPicture, Icon::Tv, "Big Picture Mode")}
                 {item(Route::Settings, Icon::Settings, "Configurações")}
             </div>
         </aside>

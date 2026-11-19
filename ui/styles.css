@@ -899,7 +899,7 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .home.scrolled .tv-hero { opacity: 0.25; }
 .tv-kicker { font-size: calc(18 * var(--u)); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
 .tv-hero h1, .tv-game-main h1 { font-size: calc(76 * var(--u)); line-height: 1.02; margin: 0; max-width: calc(1100 * var(--u)); text-shadow: 0 calc(6 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.6); }
-.tv-logo { max-width: calc(620 * var(--u)); max-height: calc(200 * var(--u)); object-fit: contain; object-position: left center; filter: drop-shadow(0 calc(8 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.7)); }
+.tv-logo { max-width: calc(560 * var(--u)); max-height: calc(150 * var(--u)); object-fit: contain; object-position: left center; filter: drop-shadow(0 calc(8 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.7)); }
 .tv-based { margin: 0; color: rgba(255, 255, 255, 0.75); font-size: calc(24 * var(--u)); }
 .tv-hero-actions { display: flex; gap: calc(30 * var(--u)); margin-top: calc(8 * var(--u)); font-weight: 700; }
 .tv-hero-actions span { display: flex; align-items: center; gap: calc(10 * var(--u)); }
@@ -1008,3 +1008,11 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .og-facts div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .og-facts dt { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
 .og-facts dd { margin: 0; font-weight: 600; }
+
+/* Ícones nas abas */
+.tab.with-icon { display: inline-flex; align-items: center; gap: 8px; }
+.tab.with-icon svg { opacity: 0.75; }
+.tab.with-icon.on svg { opacity: 1; }
+.tv-tab { display: inline-flex; align-items: center; gap: calc(10 * var(--u)); }
+.tv-tab svg { width: calc(24 * var(--u)); height: calc(24 * var(--u)); opacity: 0.7; }
+.tv-tab.on svg { opacity: 1; }

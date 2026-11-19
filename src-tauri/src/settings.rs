@@ -24,7 +24,7 @@ pub struct Settings {
     /// the setup existed counts as done: that player already set things up.
     #[serde(default = "yes")]
     pub setup_done: bool,
-    /// Opens in the TV screen (Tela grande) instead of the desktop window.
+    /// Opens in the TV screen (Big Picture Mode) instead of the desktop window.
     #[serde(default)]
     pub start_in_tv: bool,
     /// The player's own SteamGridDB API key (free, from their account there).

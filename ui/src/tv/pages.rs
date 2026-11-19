@@ -644,9 +644,9 @@ pub fn Settings() -> impl IntoView {
         <div class="tv-page">
             <h1 class="tv-title">"Configurações"</h1>
             <div class="tv-list">
-                {row(0, "Abrir o Cerberus na Tela grande", "Toda vez que o Cerberus abrir, em tela cheia para o controle.", on_off(start_in_tv))}
+                {row(0, "Abrir o Cerberus no Big Picture Mode", "Toda vez que o Cerberus abrir, em tela cheia para o controle.", on_off(start_in_tv))}
                 {row(1, "Sons de navegação", "Um toque curto ao mover, escolher e voltar.", on_off(sounds))}
-                {row(2, "Sair da Tela grande", "Volta para a janela normal. Segurar o botão Menu também sai.", Box::new(|| "Sair".into()))}
+                {row(2, "Sair do Big Picture Mode", "Volta para a janela normal. Segurar o botão Menu também sai.", Box::new(|| "Sair".into()))}
                 {row(3, "Fechar o Cerberus", "Fecha o launcher.", Box::new(|| "Fechar".into()))}
             </div>
             <p class="tv-note">{move || format!("Controle: {}", match tv.pad.get() { super::PadKind::Xbox => "Xbox (ou compatível)", super::PadKind::PlayStation => "PlayStation", super::PadKind::Nintendo => "Nintendo" })}</p>

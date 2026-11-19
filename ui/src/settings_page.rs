@@ -78,7 +78,7 @@ pub fn SettingsPage() -> impl IntoView {
                 <h3>"Como você joga"</h3>
                 <div class="set-row">
                     <div>
-                        <b>"Abrir na Tela grande"</b>
+                        <b>"Abrir no Big Picture Mode"</b>
                         <small>"Tela cheia e feita para controle, toda vez que o Cerberus abrir."</small>
                     </div>
                     <button type="button" class="chip-btn" class:on=s.start_in_tv aria-pressed=s.start_in_tv.to_string()

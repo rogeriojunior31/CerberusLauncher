@@ -96,7 +96,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       gravado sem mudar nenhuma das outras 189 chaves, e mantido pelo jogo depois de abrir e fechar.
 - [x] Configuração guiada na primeira abertura: como joga (mesa ou TV), pastas de ROMs com os
       jogos que já têm recomp, pasta de instalação com espaço livre e saves na nuvem. Quem escolhe
-      TV abre direto na Tela grande (também em Configurações). Instalações existentes não veem a tela.
+      TV abre direto na Big Picture Mode (também em Configurações). Instalações existentes não veem a tela.
 - [x] Trazer recomps instalados sem o Cerberus: "Trazer seus recomps" no Descobrir procura numa
       pasta pelo nome do programa que o catálogo dá (607 recomps o informam) e "Já tenho instalado"
       na página de cada recomp. O jogo fica marcado como externo: o Cerberus abre, conta tempo e faz
@@ -131,7 +131,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       ferramentas (N64Recomp, bibliotecas, lojas, outros launchers) e 2 que não são para Windows.
 - [x] O gerador escolhia arquivos auxiliares no lugar do jogo (editor, "Studio", tradução). Agora os
       evita e prefere a versão portátil, com testes, sem trocar jogos que são eles mesmos um mod.
-- [x] Tela grande refeita: abas (Início, Biblioteca, Descobrir, Downloads, Configurações) com LB/RB;
+- [x] Big Picture Mode refeita: abas (Início, Biblioteca, Descobrir, Downloads, Configurações) com LB/RB;
       Início com destaque do jogo em foco e fileiras; grade na Biblioteca e no Descobrir; página do jogo
       com botão principal que segue o estado (jogar, instalar, atualizar, progresso que cancela); painel de
       opções no X; teclado na tela para busca; Downloads com progresso e atualizações; B volta ao item de
@@ -199,7 +199,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 
 ## Onda 3: experiência (feita)
 
-- [x] Modo tela grande (Big Picture) com controle e teclado.
+- [x] Modo Big Picture Mode (Big Picture) com controle e teclado.
 - [x] Mods do Thunderstore: comunidades conhecidas e as `*-recompiled` achadas pelo nome;
       instala dependências; só os arquivos que o jogo carrega.
 - [x] Opções de inicialização por jogo.

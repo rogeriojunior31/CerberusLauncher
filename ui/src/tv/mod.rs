@@ -1,4 +1,4 @@
-//! Tela grande: the launcher full screen, for a TV and a controller.
+//! Big Picture Mode: the launcher full screen, for a TV and a controller.
 //!
 //! Five sections in tabs along the top (LB/RB): Início, Biblioteca, Descobrir,
 //! Downloads and Configurações. A game opens its own page; B goes back to the
@@ -20,6 +20,7 @@ use std::time::Duration;
 use leptos::prelude::*;
 
 use crate::art::Backdrop;
+use crate::icons::{Icon, Svg};
 use crate::{Library, Route, api};
 pub use focus::Focus;
 pub use input::{Btn, PadKind};
@@ -34,12 +35,12 @@ pub enum Tab {
     Settings,
 }
 
-const TABS: [(Tab, &str); 5] = [
-    (Tab::Home, "Início"),
-    (Tab::Library, "Biblioteca"),
-    (Tab::Discover, "Descobrir"),
-    (Tab::Downloads, "Downloads"),
-    (Tab::Settings, "Configurações"),
+const TABS: [(Tab, &str, Icon); 5] = [
+    (Tab::Home, "Início", Icon::Home),
+    (Tab::Library, "Biblioteca", Icon::Library),
+    (Tab::Discover, "Descobrir", Icon::Discover),
+    (Tab::Downloads, "Downloads", Icon::Download),
+    (Tab::Settings, "Configurações", Icon::Settings),
 ];
 
 #[derive(Clone, PartialEq, Debug)]
@@ -254,7 +255,7 @@ pub fn TvMode() -> impl IntoView {
         match btn {
             Btn::Lb | Btn::Rb => {
                 let current = match tv.view.get_untracked() {
-                    View::Tab(t) => TABS.iter().position(|(x, _)| *x == t).unwrap_or(0),
+                    View::Tab(t) => TABS.iter().position(|(x, _, _)| *x == t).unwrap_or(0),
                     View::Game(_) => 0,
                 };
                 let next = if btn == Btn::Rb { (current + 1) % TABS.len() } else { (current + TABS.len() - 1) % TABS.len() };
@@ -299,7 +300,7 @@ pub fn TvMode() -> impl IntoView {
             View::Tab(now) => {
                 let items = TABS
                     .iter()
-                    .map(|(tab, label)| {
+                    .map(|(tab, label, icon)| {
                         let on = *tab == now;
                         let badge = (*tab == Tab::Downloads).then(|| {
                             move || {
@@ -307,7 +308,7 @@ pub fn TvMode() -> impl IntoView {
                                 (n > 0).then(|| view! { <i class="tv-badge">{n}</i> })
                             }
                         });
-                        view! { <span class="tv-tab" class:on=on>{*label}{badge}</span> }
+                        view! { <span class="tv-tab" class:on=on><Svg icon=*icon size=22 />{*label}{badge}</span> }
                     })
                     .collect_view();
                 view! {

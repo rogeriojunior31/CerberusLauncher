@@ -49,7 +49,7 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
 
     let (title, choices): (String, Vec<Choice>) = match &sheet {
         Sheet::Leave => (
-            "Sair da Tela grande?".into(),
+            "Sair do Big Picture Mode?".into(),
             vec![
                 choice("Voltar para a janela normal", move || library.go(Route::Home)),
                 danger("Fechar o Cerberus", || api::window_action("close")),

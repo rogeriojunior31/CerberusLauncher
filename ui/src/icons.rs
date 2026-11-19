@@ -28,6 +28,10 @@ pub enum Icon {
     Clock,
     Settings,
     Tv,
+    Info,
+    Puzzle,
+    Trophy,
+    Gamepad,
 }
 
 impl Icon {
@@ -56,6 +60,10 @@ impl Icon {
             Icon::Clock => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
             Icon::Settings => "M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4",
             Icon::Tv => "M3.5 5h17v12h-17zM8.5 20.5h7M10.5 8.5l4 2.5-4 2.5z",
+            Icon::Info => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.01",
+            Icon::Puzzle => "M10 4h4v2.5a1.5 1.5 0 1 0 3 0V4h3v6h-2.5a1.5 1.5 0 1 0 0 3H20v7h-6v-2.5a1.5 1.5 0 1 0-3 0V20H4v-6h2.5a1.5 1.5 0 1 0 0-3H4V4h6z",
+            Icon::Trophy => "M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5v1.5A3.5 3.5 0 0 0 8 11M16 6h3.5v1.5A3.5 3.5 0 0 1 16 11M12 13v4M8.5 20h7M10 17h4v3h-4z",
+            Icon::Gamepad => "M7 8h10a4 4 0 0 1 4 4v1.5a3.5 3.5 0 0 1-6.3 2.1L13.5 14h-3l-1.2 1.6A3.5 3.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM8 10.5v3M6.5 12h3M15.5 11.5v.01M17.5 13v.01",
         }
     }
 }
