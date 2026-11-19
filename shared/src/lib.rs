@@ -305,6 +305,53 @@ pub struct SettingsView {
     /// The player's own SteamGridDB key, for picking art.
     #[serde(default)]
     pub steamgriddb_key: Option<String>,
+    /// "home", "library" or "discover".
+    #[serde(default)]
+    pub start_page: String,
+    /// The linked RetroAchievements username; the key never comes back to the window.
+    #[serde(default)]
+    pub ra_user: Option<String>,
+    /// Files found in the ROM folders, for the Clássicos view.
+    #[serde(default)]
+    pub roms: Vec<RomView>,
+}
+
+/// A game file found in the ROM folders.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RomView {
+    pub path: String,
+    pub title: String,
+    /// "n64", "3ds", "ps2"...; empty for a disc image of an unknown console.
+    pub system: String,
+    pub region: String,
+}
+
+/// A linked RetroAchievements account, as the settings and the library show it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaProfile {
+    pub user: String,
+    pub picture: Option<String>,
+    /// Hardcore points.
+    pub points: u64,
+    pub softcore_points: u64,
+    /// Points weighted by rarity.
+    pub true_points: u64,
+    pub member_since: String,
+    pub playing_now: String,
+    pub url: String,
+    pub games: Vec<RaGame>,
+}
+
+/// A game the player played lately, with their progress.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaGame {
+    pub id: u64,
+    pub title: String,
+    pub console: String,
+    pub icon: Option<String>,
+    pub achieved: u64,
+    pub total: u64,
+    pub last_played: String,
 }
 
 /// A catalog source the player added.

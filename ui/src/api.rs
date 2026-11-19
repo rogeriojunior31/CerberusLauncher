@@ -336,6 +336,49 @@ struct OnArg {
     on: bool,
 }
 
+#[derive(Serialize)]
+struct PageArg {
+    page: String,
+}
+
+/// The page the desktop window opens on: "home", "library" or "discover".
+pub async fn set_start_page(page: String) -> Result<SettingsView, String> {
+    call("set_start_page", &PageArg { page }).await
+}
+
+/// Shows the first-run setup again next time.
+pub async fn rerun_setup() -> Result<SettingsView, String> {
+    call("rerun_setup", &()).await
+}
+
+#[derive(Serialize)]
+struct RaArgs {
+    user: String,
+    key: String,
+}
+
+pub async fn ra_connect(user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
+    call("ra_connect", &RaArgs { user, key }).await
+}
+
+pub async fn ra_profile() -> Result<Option<cerberus_shared::RaProfile>, String> {
+    call("ra_profile", &()).await
+}
+
+pub async fn ra_disconnect() -> Result<SettingsView, String> {
+    call("ra_disconnect", &()).await
+}
+
+#[derive(Serialize)]
+struct KeysArg {
+    keys: bool,
+}
+
+/// Opens the player's RetroAchievements profile, or (`keys`) the page with their API key.
+pub async fn ra_open(keys: bool) -> Result<(), String> {
+    call("ra_open", &KeysArg { keys }).await
+}
+
 /// Whether Cerberus opens in the TV screen.
 pub async fn set_start_in_tv(on: bool) -> Result<SettingsView, String> {
     call("set_start_in_tv", &OnArg { on }).await

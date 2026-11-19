@@ -143,6 +143,14 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       gêneros, modos, plataformas, nota, pelo IGDB) e "Jogos parecidos" (tags, gênero, série, console).
 - [x] Descobrir lista por "Recomps" ou por "Jogos" (nome do jogo original), escolha lembrada.
 - [x] MHGU Recomp e Budokai Tenkaichi 4 Tag Team no catálogo próprio (117 jogos).
+- [x] Configurações refeitas com menu lateral em grupos (App, Jogos, Clássicos, Contas, Sistema), chaves
+      de liga/desliga e opções novas: página inicial, rever a configuração inicial, menos animações, sons
+      e "Abrir agora" do Big Picture Mode.
+- [x] Biblioteca em abas Todos / Recomps / PC / Clássicos. Clássicos mostra as ROMs das pastas, com capa
+      do libretro e o selo "Tem recomp" (abre o recomp).
+- [x] RetroAchievements: conectar com usuário e chave da Web API (fica só no PC), perfil, pontos e os jogos
+      jogados recentemente com o progresso de conquistas. Próximo: emulação (RetroArch primeiro) com login
+      automático nos emuladores e conquistas na hora, como o Hydra faz.
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.

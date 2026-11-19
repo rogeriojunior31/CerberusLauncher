@@ -30,6 +30,14 @@ pub struct Settings {
     /// The player's own SteamGridDB API key (free, from their account there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steamgriddb_key: Option<String>,
+    /// The page the desktop window opens on: "home", "library" or "discover".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub start_page: String,
+    /// The player's RetroAchievements account: username and their own Web API key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ra_user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ra_key: Option<String>,
 }
 
 fn yes() -> bool {

@@ -1,24 +1,104 @@
-//! Settings: where recomps install, the app's storage, and about.
+//! Configurações: a menu of sections on the left, grouped (App, Jogos,
+//! Clássicos, Contas, Sistema), and the chosen section on the right as cards
+//! of rows: a title, a line about it, and its control.
 
-use cerberus_shared::{SettingsView, SourceView};
+use cerberus_shared::{RaProfile, SettingsView, SourceView};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::icons::{Icon, Svg};
-use crate::{Library, api, format};
+use crate::{Library, Route, api, format};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Section {
+    General,
+    Appearance,
+    BigPicture,
+    Library,
+    Install,
+    Saves,
+    Art,
+    Catalog,
+    Emulation,
+    Retro,
+    Storage,
+    About,
+}
+
+const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
+    ("App", &[(Section::General, "Geral", Icon::Settings), (Section::Appearance, "Aparência", Icon::Edit), (Section::BigPicture, "Big Picture Mode", Icon::Tv)]),
+    (
+        "Jogos",
+        &[
+            (Section::Library, "Biblioteca e ROMs", Icon::Library),
+            (Section::Install, "Instalação", Icon::Download),
+            (Section::Saves, "Saves e nuvem", Icon::Saves),
+            (Section::Art, "Arte dos jogos", Icon::Edit),
+            (Section::Catalog, "Catálogo e fontes", Icon::Discover),
+        ],
+    ),
+    ("Clássicos", &[(Section::Emulation, "Emulação", Icon::Gamepad)]),
+    ("Contas", &[(Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    ("Sistema", &[(Section::Storage, "Armazenamento", Icon::Folder), (Section::About, "Sobre", Icon::Info)]),
+];
+
+type Task = std::pin::Pin<Box<dyn std::future::Future<Output = Result<SettingsView, String>>>>;
+
+/// A switch for an on/off setting.
+fn switch(on: bool, label: &'static str, busy: RwSignal<bool>, toggle: impl Fn() + 'static) -> impl IntoView {
+    view! {
+        <button type="button" class="switch" class:on=on role="switch" aria-checked=on.to_string() aria-label=label
+            disabled=move || busy.get() on:click=move |_| toggle()>
+            <i></i>
+        </button>
+    }
+}
+
+fn row(title: impl IntoView, about: impl IntoView, control: impl IntoView) -> impl IntoView {
+    view! {
+        <div class="set-row">
+            <div><b>{title}</b><small>{about}</small></div>
+            <div class="row">{control}</div>
+        </div>
+    }
+}
+
+const CALM_KEY: &str = "cerberus.calm";
+
+/// Fewer animations: remembered per PC, applied to the whole window.
+pub fn calm_saved() -> bool {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(CALM_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+pub fn apply_calm(on: bool) {
+    if let Some(root) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.document_element()) {
+        let _ = if on { root.class_list().add_1("calm") } else { root.class_list().remove_1("calm") };
+    }
+}
+
+fn save_calm(on: bool) {
+    if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = s.set_item(CALM_KEY, if on { "1" } else { "0" });
+    }
+    apply_calm(on);
+}
 
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let library = expect_context::<Library>();
     let view_state: RwSignal<Option<SettingsView>> = RwSignal::new(None);
     let busy = RwSignal::new(false);
+    let section = RwSignal::new(Section::General);
 
     spawn_local(async move {
         view_state.set(library.report(api::get_settings().await));
     });
 
     // Runs one change; the page shows the settings as they are after it.
-    let apply = move |task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<SettingsView, String>>>>, done: &'static str| {
+    let apply = move |task: Task, done: &'static str| {
         busy.set(true);
         spawn_local(async move {
             if let Some(next) = library.report(task.await) {
@@ -31,185 +111,361 @@ pub fn SettingsPage() -> impl IntoView {
         });
     };
 
+    let menu = MENU
+        .iter()
+        .map(|(group, items)| {
+            let links = items
+                .iter()
+                .map(|(which, label, icon)| {
+                    let which = *which;
+                    view! {
+                        <button type="button" class="set-link" class:on=move || section.get() == which on:click=move |_| section.set(which)>
+                            <Svg icon=*icon size=18 />{*label}
+                        </button>
+                    }
+                })
+                .collect_view();
+            view! { <div class="set-group-label">{*group}</div>{links} }
+        })
+        .collect_view();
+
     let body = move || {
         let Some(s) = view_state.get() else {
             return view! { <p class="muted">"Carregando..."</p> }.into_any();
         };
-        let reset = (!s.recomps_dir_is_default).then(|| {
-            view! {
-                <button type="button" class="btn sm" disabled=move || busy.get()
-                    on:click=move |_| apply(Box::pin(api::reset_recomps_dir()), "Novos recomps vão para a pasta padrão.")>
-                    "Usar a padrão"
-                </button>
+        match section.get() {
+            Section::General => general(s, busy, apply).into_any(),
+            Section::Appearance => appearance().into_any(),
+            Section::BigPicture => big_picture(s, busy, apply).into_any(),
+            Section::Library => roms(s, busy, apply).into_any(),
+            Section::Install => install(s, busy, apply).into_any(),
+            Section::Saves => saves(s, busy, apply).into_any(),
+            Section::Art => view! { <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) /> {art_cache(s, busy, apply)} }.into_any(),
+            Section::Catalog => view! {
+                {catalog(s.clone(), busy, apply)}
+                <Sources sources=s.sources.clone() busy refresh=move |url| apply(Box::pin(api::refresh_source(url)), "")
+                    apply_source=move |url: String, add: bool| {
+                        if add { apply(Box::pin(api::add_source(url)), "Fonte adicionada.") } else { apply(Box::pin(api::remove_source(url)), "Fonte removida.") }
+                    } />
             }
-        });
-        let rom_rows = s
-            .rom_dirs
-            .iter()
-            .cloned()
-            .map(|dir| {
-                let target = dir.clone();
-                view! {
-                    <div class="set-row sub">
-                        <small class="path">{dir}</small>
-                        <button type="button" class="btn sm" disabled=move || busy.get()
-                            on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), "Pasta removida.")>
-                            "Remover"
-                        </button>
-                    </div>
-                }
-            })
-            .collect_view();
-        let rom_summary = if s.rom_dirs.is_empty() {
-            "Aponte as pastas onde você guarda ROMs e imagens de disco. O Cerberus mostra quais desses jogos têm recomp. Nada sai do seu PC.".to_string()
-        } else {
-            format!("{} arquivos de jogo encontrados · {} recomps para jogos que você tem.", s.roms_found, s.roms_matched)
-        };
-        let scan = (!s.rom_dirs.is_empty()).then(|| {
-            view! {
-                <button type="button" class="btn sm" disabled=move || busy.get()
-                    on:click=move |_| apply(Box::pin(api::scan_roms()), "Pastas verificadas de novo.")>
-                    "Procurar de novo"
-                </button>
-            }
-        });
-        view! {
-            <section class="card set">
-                <h3>"Como você joga"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>"Abrir no Big Picture Mode"</b>
-                        <small>"Tela cheia e feita para controle, toda vez que o Cerberus abrir."</small>
-                    </div>
-                    <button type="button" class="chip-btn" class:on=s.start_in_tv aria-pressed=s.start_in_tv.to_string()
-                        disabled=move || busy.get()
-                        on:click=move |_| apply(Box::pin(api::set_start_in_tv(!s.start_in_tv)), "")>
-                        {if s.start_in_tv { "Ligado" } else { "Desligado" }}
-                    </button>
-                </div>
-            </section>
-            <section class="card set">
-                <h3>"Suas ROMs"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>"Pastas de ROMs e jogos"</b>
-                        <small>{rom_summary}</small>
-                    </div>
-                    <div class="row">
-                        {scan}
-                        <button type="button" class="btn sm main" disabled=move || busy.get()
-                            on:click=move |_| apply(Box::pin(api::add_rom_dir()), "")>
-                            <Svg icon=Icon::Plus size=16 />"Adicionar pasta"
-                        </button>
-                    </div>
-                </div>
-                {rom_rows}
-            </section>
-            <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) />
-            <section class="card set">
-                <h3>"Saves na nuvem"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>{if s.cloud_dir.is_some() { "Ligado" } else { "Desligado" }}</b>
-                        {s.cloud_dir.clone().map(|d| view! { <small class="path">{d}</small> })}
-                        <small>"Escolha uma pasta sincronizada. Ao abrir um jogo, o Cerberus guarda o progresso local antes de trazer saves mais novos de outro PC."</small>
-                        {(s.pending_uploads > 0).then(|| view! {
-                            <small role="status">{format!("Envios pendentes na última verificação: {}. O Cerberus tenta de novo a cada minuto.", s.pending_uploads)}</small>
-                        })}
-                    </div>
-                    <div class="row">
-                        {s.cloud_dir.is_some().then(|| view! {
-                            <button type="button" class="btn sm" disabled=move || busy.get()
-                                on:click=move |_| apply(Box::pin(api::retry_save_uploads()), "Envios verificados.")>"Verificar envios"</button>
-                            <button type="button" class="btn sm" disabled=move || busy.get()
-                                on:click=move |_| apply(Box::pin(api::set_cloud_dir(true)), "Saves na nuvem desligados.")>"Desligar"</button>
-                        })}
-                        <button type="button" class="btn sm main" disabled=move || busy.get()
-                            on:click=move |_| apply(Box::pin(api::set_cloud_dir(false)), "")>
-                            <Svg icon=Icon::Folder size=16 />"Escolher pasta"
-                        </button>
-                    </div>
-                </div>
-            </section>
-            <Sources sources=s.sources.clone() busy refresh=move |url| apply(Box::pin(api::refresh_source(url)), "")
-                apply_source=move |url: String, add: bool| {
-                if add { apply(Box::pin(api::add_source(url)), "Fonte adicionada.") }
-                else { apply(Box::pin(api::remove_source(url)), "Fonte removida.") }
-            } />
-            <section class="card set">
-                <h3>"Catálogo de recomps"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>{format!("{} recomps", s.catalog_count)}</b>
-                        <small>{format!("Lista de {}, atualizada sozinha a cada 6 horas. Cada recomp é baixado do GitHub do próprio desenvolvedor.", s.catalog_source)}</small>
-                    </div>
-                    <button type="button" class="btn sm" disabled=move || busy.get()
-                        on:click=move |_| apply(Box::pin(api::refresh_catalog()), "Catálogo atualizado.")>
-                        "Atualizar agora"
-                    </button>
-                </div>
-            </section>
-            <section class="card set">
-                <h3>"Instalação"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>"Pasta dos recomps"</b>
-                        <small class="path">{s.recomps_dir.clone()}</small>
-                        {s.install_free_bytes.map(|free| view! { <small>{format!("Espaço livre para instalar: {:.1} GiB", free as f64 / 1073741824.0)}</small> })}
-                        <small>"Jogos já instalados continuam onde estão; só as próximas instalações vão para a nova pasta."</small>
-                    </div>
-                    <div class="row">
-                        {reset}
-                        <button type="button" class="btn sm" disabled=move || busy.get()
-                            on:click=move |_| apply(Box::pin(api::pick_recomps_dir()), "")>
-                            <Svg icon=Icon::Folder size=16 />"Escolher pasta"
-                        </button>
-                    </div>
-                </div>
-            </section>
-            <section class="card set">
-                <h3>"Armazenamento"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>"Dados do Cerberus"</b>
-                        <small class="path">{s.data_dir.clone()}</small>
-                        <small>"Biblioteca, backups de saves e caches."</small>
-                        {s.download_free_bytes.map(|free| view! { <small>{format!("Espaço livre para downloads: {:.1} GiB", free as f64 / 1073741824.0)}</small> })}
-                    </div>
-                    <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_data_dir().await); })>
-                        "Abrir pasta"
-                    </button>
-                </div>
-                <div class="set-row">
-                    <div>
-                        <b>"Imagens guardadas"</b>
-                        <small>{format!("{} de capas e fundos guardados para abrir rápido e funcionar offline.", format::megabytes(s.art_cache_bytes))}</small>
-                    </div>
-                    <button type="button" class="btn sm" disabled=move || busy.get()
-                        on:click=move |_| apply(Box::pin(api::clear_art_cache()), "Imagens apagadas. Elas voltam conforme as páginas precisarem.")>
-                        "Limpar"
-                    </button>
-                </div>
-            </section>
-            <section class="card set">
-                <h3>"Sobre"</h3>
-                <div class="set-row">
-                    <div>
-                        <b>{format!("Cerberus Launcher {}", s.version)}</b>
-                        <small>"Código aberto, licença MIT. Os recomps vêm das releases dos desenvolvedores."</small>
-                    </div>
-                    <img class="about-logo" src="brand/cerberus-launcher-pixel.svg" alt="Logo do Cerberus Launcher" />
-                </div>
-            </section>
+            .into_any(),
+            Section::Emulation => emulation(s).into_any(),
+            Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() /> }.into_any(),
+            Section::Storage => storage(s, busy, apply).into_any(),
+            Section::About => about(s, busy, apply).into_any(),
         }
-        .into_any()
     };
 
     view! {
         <div class="page">
             <header class="page-h"><div><h1>"Configurações"</h1></div></header>
-            <div class="settings">{body}</div>
+            <div class="set-layout">
+                <nav class="set-nav" aria-label="Seções">{menu}</nav>
+                <div class="settings">{body}</div>
+            </div>
         </div>
+    }
+}
+
+fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let page = if s.start_page.is_empty() { "home".to_string() } else { s.start_page.clone() };
+    let choice = move |id: &'static str, label: &'static str| {
+        let on = page == id;
+        view! {
+            <button type="button" class="seg" class:on=on role="radio" aria-checked=on.to_string() disabled=move || busy.get()
+                on:click=move |_| apply(Box::pin(api::set_start_page(id.to_string())), "")>{label}</button>
+        }
+    };
+    view! {
+        <section class="card set">
+            <h3>"Ao abrir"</h3>
+            {row("Página inicial", "Onde a janela abre. Quem joga no Big Picture Mode abre direto nele.",
+                view! { <div class="segs" role="radiogroup">{choice("home", "Início")}{choice("library", "Biblioteca")}{choice("discover", "Descobrir")}</div> })}
+            {row("Configuração inicial", "As telas de boas-vindas da primeira vez, para rever pastas, instalação e nuvem.",
+                view! { <button type="button" class="btn sm" disabled=move || busy.get()
+                    on:click=move |_| apply(Box::pin(api::rerun_setup()), "Na próxima vez que o Cerberus abrir, a configuração inicial aparece.")>"Mostrar de novo"</button> })}
+        </section>
+    }
+}
+
+fn appearance() -> impl IntoView {
+    let calm = RwSignal::new(calm_saved());
+    let busy = RwSignal::new(false);
+    view! {
+        <section class="card set">
+            <h3>"Aparência"</h3>
+            {move || row("Menos animações", "Sem transições nem movimento, para PCs mais simples ou para quem prefere assim.",
+                switch(calm.get(), "Menos animações", busy, move || { let on = !calm.get_untracked(); save_calm(on); calm.set(on); }))}
+        </section>
+    }
+}
+
+fn big_picture(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let sounds = RwSignal::new(crate::tv::sound_enabled());
+    let local = RwSignal::new(false);
+    let on = s.start_in_tv;
+    view! {
+        <section class="card set">
+            <div class="card-h">
+                <h3>"Big Picture Mode"</h3>
+                <button type="button" class="btn sm main" on:click=move |_| library.go(Route::BigPicture)><Svg icon=Icon::Tv size=16 />"Abrir agora"</button>
+            </div>
+            {row("Abrir no Big Picture Mode", "Tela cheia e feita para controle, toda vez que o Cerberus abrir.",
+                switch(on, "Abrir no Big Picture Mode", busy, move || apply(Box::pin(api::set_start_in_tv(!on)), "")))}
+            {move || row("Sons de navegação", "Um toque curto ao mover, escolher e voltar.",
+                switch(sounds.get(), "Sons de navegação", local, move || { let v = !sounds.get_untracked(); crate::tv::set_sound_enabled(v); sounds.set(v); }))}
+            {row("Entrar e sair pelo controle", "Segure o botão Menu por um segundo, ou aperte F11 no teclado.", ())}
+        </section>
+    }
+}
+
+fn roms(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let rom_rows = s
+        .rom_dirs
+        .iter()
+        .cloned()
+        .map(|dir| {
+            let target = dir.clone();
+            view! {
+                <div class="set-row sub">
+                    <small class="path">{dir}</small>
+                    <button type="button" class="btn sm" disabled=move || busy.get()
+                        on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), "Pasta removida.")>"Remover"</button>
+                </div>
+            }
+        })
+        .collect_view();
+    let summary = if s.rom_dirs.is_empty() {
+        "Aponte as pastas onde você guarda ROMs e imagens de disco. O Cerberus mostra quais desses jogos têm recomp. Nada sai do seu PC.".to_string()
+    } else {
+        format!("{} arquivos de jogo encontrados · {} recomps para jogos que você tem.", s.roms_found, s.roms_matched)
+    };
+    let scan = (!s.rom_dirs.is_empty()).then(|| {
+        view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::scan_roms()), "Pastas verificadas de novo.")>"Procurar de novo"</button> }
+    });
+    view! {
+        <section class="card set">
+            <h3>"Suas ROMs e jogos"</h3>
+            {row("Pastas de ROMs e jogos", summary, view! {
+                {scan}
+                <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::add_rom_dir()), "")>
+                    <Svg icon=Icon::Plus size=16 />"Adicionar pasta"
+                </button>
+            })}
+            {rom_rows}
+        </section>
+    }
+}
+
+fn install(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let reset = (!s.recomps_dir_is_default).then(|| {
+        view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::reset_recomps_dir()), "Novos recomps vão para a pasta padrão.")>"Usar a padrão"</button> }
+    });
+    let free = s.install_free_bytes.map(|free| format!(" Espaço livre: {:.1} GiB.", free as f64 / 1073741824.0)).unwrap_or_default();
+    view! {
+        <section class="card set">
+            <h3>"Instalação"</h3>
+            {row("Pasta dos recomps", view! { <span class="path">{s.recomps_dir.clone()}</span><br/>{format!("Jogos já instalados continuam onde estão; só as próximas instalações vão para a nova pasta.{free}")} }, view! {
+                {reset}
+                <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::pick_recomps_dir()), "")>
+                    <Svg icon=Icon::Folder size=16 />"Escolher pasta"
+                </button>
+            })}
+        </section>
+    }
+}
+
+fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let pending = (s.pending_uploads > 0).then(|| format!(" Envios pendentes na última verificação: {}. O Cerberus tenta de novo a cada minuto.", s.pending_uploads)).unwrap_or_default();
+    let on = s.cloud_dir.is_some();
+    view! {
+        <section class="card set">
+            <h3>"Saves na nuvem"</h3>
+            {row(if on { "Ligado" } else { "Desligado" }, view! {
+                {s.cloud_dir.clone().map(|d| view! { <span class="path">{d}</span><br/> })}
+                {format!("Escolha uma pasta que o OneDrive, Google Drive ou Dropbox sincroniza. Ao abrir um jogo, o Cerberus guarda o progresso local antes de trazer saves mais novos de outro PC.{pending}")}
+            }, view! {
+                {on.then(|| view! {
+                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::retry_save_uploads()), "Envios verificados.")>"Verificar envios"</button>
+                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::set_cloud_dir(true)), "Saves na nuvem desligados.")>"Desligar"</button>
+                })}
+                <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::set_cloud_dir(false)), "")>
+                    <Svg icon=Icon::Folder size=16 />"Escolher pasta"
+                </button>
+            })}
+            {row("Backups neste PC", "Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada jogo.", ())}
+        </section>
+    }
+}
+
+fn art_cache(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    view! {
+        <section class="card set">
+            <h3>"Imagens guardadas"</h3>
+            {row("Capas e fundos", format!("{} guardados para abrir rápido e funcionar offline.", format::megabytes(s.art_cache_bytes)),
+                view! { <button type="button" class="btn sm" disabled=move || busy.get()
+                    on:click=move |_| apply(Box::pin(api::clear_art_cache()), "Imagens apagadas. Elas voltam conforme as páginas precisarem.")>"Limpar"</button> })}
+        </section>
+    }
+}
+
+fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    view! {
+        <section class="card set">
+            <h3>"Catálogo de recomps"</h3>
+            {row(format!("{} recomps", s.catalog_count), format!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado do GitHub do próprio desenvolvedor.", s.catalog_source),
+                view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), "Catálogo atualizado.")>"Atualizar agora"</button> })}
+        </section>
+    }
+}
+
+fn emulation(s: SettingsView) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let count = s.roms.len();
+    view! {
+        <section class="card set">
+            <h3>"Emulação"</h3>
+            <p class="muted small">"O próximo passo do Cerberus: jogar os clássicos que ainda não têm recomp, por emuladores, com conquistas do RetroAchievements. Por enquanto, os seus clássicos aparecem na aba Clássicos da Biblioteca."</p>
+            {row("Seus clássicos", format!("{count} jogos encontrados nas pastas de ROMs."),
+                view! { <button type="button" class="btn sm main" on:click=move |_| library.go(Route::Library)>"Ver na Biblioteca"</button> })}
+            {row("Emuladores", "RetroArch (NES, SNES, N64, Game Boy, GBA), PCSX2, DuckStation, PPSSPP, Dolphin: em breve, com detecção e BIOS.", view! { <span class="pill soon">"Em breve"</span> })}
+        </section>
+    }
+}
+
+fn storage(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let free = s.download_free_bytes.map(|free| format!(" Espaço livre para downloads: {:.1} GiB.", free as f64 / 1073741824.0)).unwrap_or_default();
+    view! {
+        <section class="card set">
+            <h3>"Armazenamento"</h3>
+            {row("Dados do Cerberus", view! { <span class="path">{s.data_dir.clone()}</span><br/>{format!("Biblioteca, backups de saves e caches.{free}")} },
+                view! { <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_data_dir().await); })>"Abrir pasta"</button> })}
+        </section>
+        {art_cache(s, busy, apply)}
+    }
+}
+
+fn about(s: SettingsView, _busy: RwSignal<bool>, _apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let library = expect_context::<Library>();
+    view! {
+        <section class="card set">
+            <h3>"Sobre"</h3>
+            <div class="set-row">
+                <div>
+                    <b>{format!("Cerberus Launcher {}", s.version)}</b>
+                    <small>"Código aberto, licença MIT. Os recomps vêm das releases dos próprios desenvolvedores, e o Cerberus nunca baixa arquivos de jogo."</small>
+                </div>
+                <img class="about-logo" src="brand/cerberus-launcher-pixel.svg" alt="Logo do Cerberus Launcher" />
+            </div>
+            {row("Pedir um recomp", "Sugira um projeto para o catálogo, pelo GitHub do Cerberus.",
+                view! { <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })><Svg icon=Icon::External size=16 />"Abrir"</button> })}
+        </section>
+    }
+}
+
+/// Linking a RetroAchievements account and showing its progress.
+#[component]
+fn RetroAchievements(linked: Option<String>) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let profile = RwSignal::new(None::<RaProfile>);
+    let loading = RwSignal::new(linked.is_some());
+    let user = RwSignal::new(String::new());
+    let key = RwSignal::new(String::new());
+    let busy = RwSignal::new(false);
+    if linked.is_some() {
+        spawn_local(async move {
+            let got = library.report(api::ra_profile().await).flatten();
+            loading.set(false);
+            profile.set(got);
+        });
+    }
+    let connect = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        busy.set(true);
+        spawn_local(async move {
+            let got = library.report(api::ra_connect(user.get_untracked(), key.get_untracked()).await);
+            busy.set(false);
+            if let Some(p) = got {
+                library.toast(format!("Conectado ao RetroAchievements como {}.", p.user));
+                key.set(String::new());
+                profile.set(Some(p));
+            }
+        });
+    };
+    let disconnect = move |_| {
+        spawn_local(async move {
+            if library.report(api::ra_disconnect().await).is_some() {
+                profile.set(None);
+                library.toast("Conta do RetroAchievements desconectada deste PC.");
+            }
+        });
+    };
+    let open = move |keys: bool| spawn_local(async move { library.report(api::ra_open(keys).await); });
+
+    move || {
+        if loading.get() {
+            return view! { <section class="card set"><h3>"RetroAchievements"</h3><p class="muted">"Lendo sua conta..."</p></section> }.into_any();
+        }
+        match profile.get() {
+            Some(p) => {
+                let games = p
+                    .games
+                    .iter()
+                    .map(|g| {
+                        let percent = if g.total > 0 { g.achieved * 100 / g.total } else { 0 };
+                        view! {
+                            <div class="ra-game">
+                                {g.icon.clone().map(|i| view! { <img src=i alt="" /> })}
+                                <div class="ra-game-text">
+                                    <b>{g.title.clone()}</b>
+                                    <small>{format!("{} · {} de {} conquistas", g.console, g.achieved, g.total)}</small>
+                                    <div class="ra-bar"><i style=format!("width:{percent}%")></i></div>
+                                </div>
+                            </div>
+                        }
+                    })
+                    .collect_view();
+                let now = (!p.playing_now.is_empty()).then(|| view! { <small>{format!("Agora: {}", p.playing_now)}</small> });
+                view! {
+                    <section class="card set">
+                        <h3>"RetroAchievements"</h3>
+                        <div class="ra-head">
+                            {p.picture.clone().map(|src| view! { <img class="ra-avatar" src=src alt="" /> })}
+                            <div class="ra-who">
+                                <b>{p.user.clone()}</b>
+                                <small>{format!("{} pontos hardcore · {} softcore · {} pontos reais", format::count(p.points), format::count(p.softcore_points), format::count(p.true_points))}</small>
+                                {now}
+                            </div>
+                            <div class="row">
+                                <button type="button" class="btn sm" on:click=move |_| open(false)><Svg icon=Icon::External size=16 />"Ver perfil"</button>
+                                <button type="button" class="btn sm" on:click=disconnect>"Desconectar"</button>
+                            </div>
+                        </div>
+                        <h4 class="ra-sub">"Jogados recentemente"</h4>
+                        <div class="ra-games">{games}</div>
+                        <p class="muted small">"As conquistas aparecem quando você joga num emulador conectado à sua conta. Quando a emulação chegar ao Cerberus, ele conecta os emuladores para você."</p>
+                    </section>
+                }
+                .into_any()
+            }
+            None => view! {
+                <section class="card set">
+                    <h3>"RetroAchievements"</h3>
+                    <p class="muted small">"Conquistas para jogos clássicos, as primeiras do Cerberus. Conecte sua conta com o seu usuário e a sua chave da API (em retroachievements.org, Configurações › Chaves). A chave fica só neste PC."</p>
+                    <form class="ra-form" on:submit=connect>
+                        <input class="input" placeholder="Usuário" autocomplete="username" prop:value=move || user.get() on:input=move |e| user.set(event_target_value(&e)) />
+                        <input class="input" type="password" placeholder="Chave da Web API" prop:value=move || key.get() on:input=move |e| key.set(event_target_value(&e)) />
+                        <button type="submit" class="btn sm main" disabled=move || busy.get() || user.get().trim().is_empty() || key.get().trim().is_empty()>
+                            {move || if busy.get() { "Conectando..." } else { "Conectar" }}
+                        </button>
+                    </form>
+                    <button type="button" class="link" on:click=move |_| open(true)>"Pegar minha chave no RetroAchievements"</button>
+                </section>
+            }
+            .into_any(),
+        }
     }
 }
 

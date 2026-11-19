@@ -5,6 +5,7 @@ mod tv;
 mod discover;
 mod format;
 mod game;
+mod classics;
 mod looks;
 mod customize;
 mod adopt;
@@ -225,6 +226,7 @@ fn App() -> impl IntoView {
     });
     api::on_toast(move |text| library.toast(text));
     tv::watch_for_tv(library);
+    settings_page::apply_calm(settings_page::calm_saved());
 
     // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
     let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
@@ -236,6 +238,12 @@ fn App() -> impl IntoView {
             first_run.set(Some(settings));
         } else if settings.start_in_tv {
             library.go(Route::BigPicture);
+        } else {
+            match settings.start_page.as_str() {
+                "library" => library.go(Route::Library),
+                "discover" => library.go(Route::Discover),
+                _ => {}
+            }
         }
     });
     let setup = move || {

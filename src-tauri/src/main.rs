@@ -18,6 +18,7 @@ mod trail;
 mod game_settings;
 mod art_custom;
 mod looks;
+mod retroachievements;
 mod xdvdfs;
 
 use std::fs;
@@ -94,6 +95,14 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         setup_done: chosen.setup_done,
         start_in_tv: chosen.start_in_tv,
         steamgriddb_key: chosen.steamgriddb_key.clone(),
+        start_page: chosen.start_page.clone(),
+        ra_user: chosen.ra_user.clone(),
+        roms: app
+            .state::<RomIndex>()
+            .get()
+            .into_iter()
+            .map(|r| cerberus_shared::RomView { path: r.path.to_string_lossy().into_owned(), title: r.title, system: r.system, region: r.region })
+            .collect(),
         sources: app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(view, _)| view.clone()).collect(),
     }
 }
@@ -398,6 +407,75 @@ fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, Strin
     chosen.start_in_tv = start_in_tv;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
+}
+
+/// The page the desktop window opens on.
+#[tauri::command]
+fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> {
+    if !matches!(page.as_str(), "home" | "library" | "discover") {
+        return Err("Página inválida.".into());
+    }
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.start_page = page;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Shows the first-run setup again the next time it is asked for.
+#[tauri::command]
+fn rerun_setup(app: AppHandle) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.setup_done = false;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Links a RetroAchievements account once the site takes the username and key.
+#[tauri::command]
+async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
+    let (user, key) = (user.trim().to_string(), key.trim().to_string());
+    if user.is_empty() || key.is_empty() {
+        return Err("Preencha o usuário e a chave de API.".into());
+    }
+    let profile = retroachievements::profile(&http, &user, &key).await?;
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.ra_user = Some(profile.user.clone());
+    chosen.ra_key = Some(key);
+    settings::save(&data.0, &chosen)?;
+    Ok(profile)
+}
+
+/// The linked account's profile and recent games; `None` when none is linked.
+#[tauri::command]
+async fn ra_profile(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<Option<cerberus_shared::RaProfile>, String> {
+    let chosen = settings::load(&app.state::<DataDir>().0);
+    let (Some(user), Some(key)) = (chosen.ra_user, chosen.ra_key) else { return Ok(None) };
+    retroachievements::profile(&http, &user, &key).await.map(Some)
+}
+
+/// Forgets the RetroAchievements account on this PC.
+#[tauri::command]
+fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.ra_user = None;
+    chosen.ra_key = None;
+    settings::save(&data.0, &chosen)?;
+    Ok(settings_view(&app))
+}
+
+/// Opens RetroAchievements: the player's profile, or the page with their API key.
+#[tauri::command]
+fn ra_open(app: AppHandle, keys: bool) -> Result<(), String> {
+    let chosen = settings::load(&app.state::<DataDir>().0);
+    let url = match (keys, chosen.ra_user) {
+        (false, Some(user)) => format!("https://retroachievements.org/user/{user}"),
+        _ => "https://retroachievements.org/settings".to_string(),
+    };
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 /// Whether the app opens in the TV screen; changed in Configurações.
@@ -1254,6 +1332,12 @@ fn main() {
             get_settings,
             finish_setup,
             set_start_in_tv,
+            set_start_page,
+            rerun_setup,
+            ra_connect,
+            ra_profile,
+            ra_disconnect,
+            ra_open,
             pick_recomps_dir,
             reset_recomps_dir,
             open_data_dir,

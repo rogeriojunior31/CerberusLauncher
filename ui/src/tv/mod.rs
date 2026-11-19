@@ -25,6 +25,7 @@ use crate::{Library, Route, api};
 pub use focus::Focus;
 pub use input::{Btn, PadKind};
 pub use sound::{Sound, play};
+pub use sound::{enabled as sound_enabled, set_enabled as set_sound_enabled};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Tab {
