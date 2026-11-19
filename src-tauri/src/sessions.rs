@@ -217,7 +217,18 @@ impl GameProcess {
 
 /// A game that ended badly: why, in the history and as a notice, with its log.
 fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
-    let Some(why) = crate::crash::reason(code, played.as_secs()) else { return };
+    let Some(mut why) = crate::crash::reason(code, played.as_secs()) else { return };
+    // "A DLL is too old": find which one, when something stands out.
+    if code as u32 == crate::crash::OLD_DLL {
+        let program_dir = match &game.source {
+            Source::Recomp { exe, .. } | Source::Local { exe } => Path::new(exe).parent().map(Path::to_path_buf),
+            _ => None,
+        }
+        .unwrap_or_else(|| PathBuf::from(&game.install_dir));
+        if let Some(cause) = crate::crash::old_dll_cause(&crate::crash::old_dll_clues(&program_dir)) {
+            why = cause;
+        }
+    }
     let since = SystemTime::now() - played - Duration::from_secs(5);
     let log = crate::crash::newest_log(Path::new(&game.install_dir), since);
     let detail = match &log {

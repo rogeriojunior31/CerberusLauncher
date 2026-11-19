@@ -27,6 +27,104 @@ pub fn reason(code: i32, seconds: u64) -> Option<String> {
     Some(text)
 }
 
+/// Windows' "a DLL is too old for this program" (0xC0000139).
+pub const OLD_DLL: u32 = 0xC000_0139;
+
+/// The runtime DLLs games often carry next to their program.
+const RUNTIME_DLLS: [&str; 6] = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "concrt140.dll"];
+
+/// The oldest Vulkan loader today's recomps start with.
+const VULKAN_NEEDED: [u16; 2] = [1, 2];
+
+pub type Version = [u16; 4];
+
+fn shown(v: Version) -> String {
+    format!("{}.{}.{}.{}", v[0], v[1], v[2], v[3])
+}
+
+/// What was found on the PC when a game closed with 0xC0000139.
+#[derive(Default)]
+pub struct OldDllClues {
+    /// A runtime DLL in the game's folder older than Windows' own: name, the game's, Windows'.
+    pub bundled_older: Vec<(String, Version, Version)>,
+    /// The Visual C++ runtime's version, when it is too old for today's recomps.
+    pub vc_too_old: Option<String>,
+    /// The Vulkan loader's version, when it is older than recomps need.
+    pub vulkan_too_old: Option<Version>,
+}
+
+/// Which DLL is too old, most likely first: a copy the game brought along,
+/// then Visual C++, then the graphics driver's Vulkan. `None` when nothing
+/// stands out, and the general explanation applies.
+pub fn old_dll_cause(clues: &OldDllClues) -> Option<String> {
+    if let Some((name, theirs, windows)) = clues.bundled_older.first() {
+        return Some(format!(
+            "A pasta do jogo traz uma cópia antiga de {name} ({}), mais velha que a do Windows ({}). Apagar ou renomear essa cópia na pasta do jogo costuma resolver: o Windows usa a dele.",
+            shown(*theirs),
+            shown(*windows)
+        ));
+    }
+    if let Some(vc) = &clues.vc_too_old {
+        return Some(format!("O Visual C++ deste PC é antigo ({vc}) para este jogo. Atualize em Configurações › Seu PC."));
+    }
+    if let Some(v) = clues.vulkan_too_old {
+        return Some(format!("O Vulkan do driver de vídeo é antigo ({}). Atualize o driver da placa de vídeo pelo site da NVIDIA, AMD ou Intel.", shown(v)));
+    }
+    None
+}
+
+/// Looks at the game's folder and the PC for the clues above.
+pub fn old_dll_clues(program_dir: &Path) -> OldDllClues {
+    let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows")).join("System32");
+    let bundled_older = RUNTIME_DLLS
+        .iter()
+        .filter_map(|dll| {
+            let theirs = file_version(&program_dir.join(dll))?;
+            let windows = file_version(&system.join(dll))?;
+            (theirs < windows).then(|| ((*dll).to_string(), theirs, windows))
+        })
+        .collect();
+    let vc_too_old = crate::runtimes::vc_version().filter(|v| !crate::runtimes::recent_enough(v));
+    let vulkan_too_old = file_version(&system.join("vulkan-1.dll")).filter(|v| v[..2] < VULKAN_NEEDED[..]);
+    OldDllClues { bundled_older, vc_too_old, vulkan_too_old }
+}
+
+/// A program file's version, as Windows shows it in the file's properties.
+#[cfg(windows)]
+pub fn file_version(path: &Path) -> Option<Version> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VS_FIXEDFILEINFO, VerQueryValueW};
+    if !path.is_file() {
+        return None;
+    }
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: every pointer handed over is valid for the call; the buffer is
+    // the size Windows asked for, and the fixed info is checked to fit in it.
+    unsafe {
+        let size = GetFileVersionInfoSizeW(wide.as_ptr(), std::ptr::null_mut());
+        if size == 0 {
+            return None;
+        }
+        let mut data = vec![0u8; size as usize];
+        if GetFileVersionInfoW(wide.as_ptr(), 0, size, data.as_mut_ptr().cast()) == 0 {
+            return None;
+        }
+        let mut info: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut len = 0u32;
+        let root = [u16::from(b'\\'), 0];
+        if VerQueryValueW(data.as_ptr().cast(), root.as_ptr(), &mut info, &mut len) == 0 || info.is_null() || (len as usize) < size_of::<VS_FIXEDFILEINFO>() {
+            return None;
+        }
+        let fixed = std::ptr::read_unaligned(info.cast::<VS_FIXEDFILEINFO>());
+        Some([(fixed.dwFileVersionMS >> 16) as u16, fixed.dwFileVersionMS as u16, (fixed.dwFileVersionLS >> 16) as u16, fixed.dwFileVersionLS as u16])
+    }
+}
+
+#[cfg(not(windows))]
+pub fn file_version(_path: &Path) -> Option<Version> {
+    None
+}
+
 /// The newest log file the game wrote during the session, near its program.
 pub fn newest_log(dir: &Path, since: SystemTime) -> Option<PathBuf> {
     let mut best: Option<(SystemTime, PathBuf)> = None;
@@ -66,6 +164,27 @@ mod tests {
         // A plain code counts only right after opening.
         assert!(reason(1, 10).is_some());
         assert_eq!(reason(1, 600), None);
+    }
+
+    #[test]
+    fn names_the_old_dll_most_likely_to_blame() {
+        assert_eq!(old_dll_cause(&OldDllClues::default()), None);
+        let mut clues = OldDllClues { vc_too_old: Some("14.29".into()), vulkan_too_old: Some([1, 1, 0, 0]), ..Default::default() };
+        assert!(old_dll_cause(&clues).unwrap().contains("Visual C++"));
+        clues.bundled_older.push(("msvcp140.dll".into(), [14, 16, 0, 0], [14, 44, 0, 0]));
+        let why = old_dll_cause(&clues).unwrap();
+        assert!(why.contains("msvcp140.dll") && why.contains("14.16.0.0"), "{why}");
+        clues = OldDllClues { vulkan_too_old: Some([1, 1, 70, 0]), ..Default::default() };
+        assert!(old_dll_cause(&clues).unwrap().contains("driver"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reads_a_program_files_version() {
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+        let v = file_version(&system.join("kernel32.dll")).expect("kernel32 has a version");
+        assert!(v[0] >= 6, "{v:?}");
+        assert_eq!(file_version(&system.join("no-such-file.dll")), None);
     }
 
     #[test]

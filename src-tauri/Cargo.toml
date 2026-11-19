@@ -33,4 +33,4 @@ fs2 = "0.4"
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 windows = { version = "0.62", features = ["Win32_UI_Shell", "Win32_System_Com"] }
-windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_System_JobObjects", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
