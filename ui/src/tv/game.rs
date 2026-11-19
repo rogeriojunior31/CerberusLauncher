@@ -166,8 +166,10 @@ pub fn GamePage(id: String) -> impl IntoView {
                     Act::Cancel(rid) => progress_of(library, rid),
                     _ => None,
                 };
+                let clicked = act.clone();
                 view! {
-                    <span class="tv-action" class:main=main class:on=move || focus.is(0, c) data-tvf=focus.key(0, c)>
+                    <span class="tv-action" class:main=main class:on=move || focus.is(0, c) data-tvf=focus.key(0, c)
+                        on:mouseenter=move |_| focus.set(0, c) on:click=move |_| run(clicked.clone())>
                         {progress.map(|p| view! { <i class="tv-action-fill" style=format!("width:{p}%")></i> })}
                         <b>{text}</b>
                     </span>

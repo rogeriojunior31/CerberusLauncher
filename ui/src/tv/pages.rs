@@ -103,8 +103,18 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
         let percent = rid.as_deref().and_then(|r| progress_of(library, r))?;
         Some(view! { <div class="tv-bar"><i style=format!("width:{percent}%")></i></div> })
     };
+    // With a mouse: a click opens the game's page, as Y does.
+    let tv = expect_context::<Tv>();
+    let clicked = item.clone();
+    let on_click = move |_| {
+        play(Sound::Select);
+        match &clicked {
+            Item::Classic(r, c) => open_classic(library, tv, r, c),
+            other => tv.open(View::Game(other.id())),
+        }
+    };
     view! {
-        <div class="tv-tile" class:on=on data-tvf=key>
+        <div class="tv-tile" class:on=on data-tvf=key on:click=on_click>
             <div class="tv-cover">
                 <Poster sources=item.covers() title=item.name() />
                 {move || badge().map(|b| view! { <span class="tv-tag">{b}</span> })}

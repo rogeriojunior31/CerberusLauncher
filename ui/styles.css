@@ -1120,3 +1120,5 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 
 /* Mouse nos painéis da TV */
 .tv-choice { cursor: pointer; }
+.tv-tile, .tv-tab { cursor: pointer; }
+.tv-action, .tv-back { cursor: pointer; }

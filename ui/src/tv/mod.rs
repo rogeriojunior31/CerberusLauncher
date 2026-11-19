@@ -295,7 +295,7 @@ pub fn TvMode() -> impl IntoView {
         let current = tv.view.get();
         match current {
             View::Game(_) => view! {
-                <div class="tv-back">{move || glyph(Btn::B, tv.pad.get())}<span>"Voltar"</span></div>
+                <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>"Voltar"</span></div>
             }
             .into_any(),
             View::Tab(now) => {
@@ -309,7 +309,8 @@ pub fn TvMode() -> impl IntoView {
                                 (n > 0).then(|| view! { <i class="tv-badge">{n}</i> })
                             }
                         });
-                        view! { <span class="tv-tab" class:on=on><Svg icon=*icon size=22 />{*label}{badge}</span> }
+                        let target = *tab;
+                        view! { <span class="tv-tab" class:on=on on:click=move |_| tv.tab(target)><Svg icon=*icon size=22 />{*label}{badge}</span> }
                     })
                     .collect_view();
                 view! {

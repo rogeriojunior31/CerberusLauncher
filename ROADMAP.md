@@ -298,6 +298,9 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Botão direito numa capa (como no Hydra): menu com Jogar (ou o próximo passo), Página do jogo,
       Favoritar/Tirar dos favoritos e Abrir pasta do jogo. Fica dentro da janela e fecha com clique fora ou Esc.
 
+- [x] Big Picture Mode com mouse: abas, capas (abrem a página), botões da página do jogo, "Voltar" e
+      painéis respondem a clique. Sair sempre desfaz a tela cheia, mesmo saindo no meio de um clique.
+
 ### 4.4 Transição
 
 - [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada
