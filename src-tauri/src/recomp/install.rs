@@ -301,7 +301,7 @@ fn installer_in(dir: &Path) -> Option<PathBuf> {
     programs.into_iter().next()
 }
 
-fn unzip(file: &Path, to: &Path) -> Result<(), String> {
+pub(super) fn unzip(file: &Path, to: &Path) -> Result<(), String> {
     let broken = |e: zip::result::ZipError| format!("O arquivo baixado está corrompido: {e}");
     let reader = fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(reader).map_err(broken)?;

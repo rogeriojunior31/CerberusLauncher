@@ -41,6 +41,11 @@ pub async fn download_file(
     install::download(client, asset, dir, cancel, report).await
 }
 
+/// Unpacks a .zip archive into a folder.
+pub fn extract_zip(archive: &Path, to: &Path) -> Result<(), String> {
+    install::unzip(archive, to)
+}
+
 /// Unpacks a .7z archive into a folder.
 pub fn extract_7z(archive: &Path, to: &Path) -> Result<(), String> {
     install::un7z(archive, to)

@@ -7,6 +7,7 @@ mod disk;
 mod iso9660;
 mod library;
 mod mods;
+mod gamebanana;
 mod recomp;
 mod sessions;
 mod roms;
@@ -1016,13 +1017,24 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
     setup.await.map_err(|e| e.to_string())?.map(Some)
 }
 
+/// Where a recomp's mods come from.
+enum ModHost {
+    Thunderstore(mods::ModSource),
+    /// The game's id on GameBanana.
+    GameBanana(u64),
+}
+
 /// The mod source and mods folder of an installed recomp; `None` when it has no mods.
-async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(mods::ModSource, PathBuf, PathBuf)>, String> {
+async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(ModHost, PathBuf, PathBuf)>, String> {
     let library = app.state::<LocalLibrary>();
     let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
     let Source::Recomp { recomp_id, exe, .. } = &game.source else {
         return Ok(None);
     };
+    let record = app.state::<DataDir>().0.join("mods").join(format!("{recomp_id}.json"));
+    if let Some(game_id) = gamebanana::game_for(recomp_id) {
+        return Ok(Some((ModHost::GameBanana(game_id), gamebanana::mods_dir(Path::new(exe)), record)));
+    }
     let name = recomp::find(recomp_id).map(|e| e.name).unwrap_or_else(|| game.name.clone());
     let http = app.state::<reqwest::Client>().inner().clone();
     let cache = app.state::<DataDir>().cache().join("mods");
@@ -1031,27 +1043,56 @@ async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(mods::ModSource,
         return Ok(None);
     };
     let folder = mods::mods_dir(Path::new(&game.install_dir), &source.data);
-    let record = app.state::<DataDir>().0.join("mods").join(format!("{recomp_id}.json"));
-    Ok(Some((source, folder, record)))
+    Ok(Some((ModHost::Thunderstore(source), folder, record)))
 }
 
 #[tauri::command]
 async fn list_mods(app: AppHandle, http: State<'_, reqwest::Client>, id: String) -> Result<Option<cerberus_shared::ModList>, String> {
-    let Some((source, folder, record)) = mod_setup(&app, &id).await? else {
+    let Some((host, folder, record)) = mod_setup(&app, &id).await? else {
         return Ok(None);
     };
     let cache = app.state::<DataDir>().cache().join("mods");
-    let packages = mods::packages(&http, &cache, &source.community).await?;
     let installed = mods::load_installed(&record);
-    let items = packages.iter().map(|p| mods::item(p, &installed)).collect();
-    Ok(Some(cerberus_shared::ModList { community: source.community, folder: folder.to_string_lossy().into_owned(), items }))
+    let folder = folder.to_string_lossy().into_owned();
+    Ok(Some(match host {
+        ModHost::Thunderstore(source) => {
+            let packages = mods::packages(&http, &cache, &source.community).await?;
+            let items = packages.iter().map(|p| mods::item(p, &installed)).collect();
+            cerberus_shared::ModList { from: format!("thunderstore.io/c/{}", source.community), community: source.community, folder, items }
+        }
+        ModHost::GameBanana(game) => {
+            let listed = gamebanana::list(&http, &cache, game).await?;
+            let items = listed.iter().map(|m| gamebanana::item(m, &installed)).collect();
+            cerberus_shared::ModList { from: "gamebanana.com".into(), community: String::new(), folder, items }
+        }
+    }))
 }
 
 /// Installs (or updates) a mod and the mods it needs.
 #[tauri::command]
 async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: String, full_name: String) -> Result<(), String> {
-    let (source, folder, record) = mod_setup(&app, &id).await?.ok_or("Esse jogo não tem mods.")?;
+    let (host, folder, record) = mod_setup(&app, &id).await?.ok_or("Esse jogo não tem mods.")?;
     let cache = app.state::<DataDir>().cache().join("mods");
+    let source = match host {
+        ModHost::Thunderstore(source) => source,
+        ModHost::GameBanana(game) => {
+            let mod_id = gamebanana::id_of(&full_name).ok_or("Mod desconhecido.")?;
+            let listed = gamebanana::list(&http, &cache, game).await?;
+            let version = listed.iter().find(|m| m.id == mod_id).map(|m| m.version.clone()).unwrap_or_default();
+            let file = gamebanana::file_of(&http, mod_id).await?;
+            let archive = gamebanana::download(&http, &file, &app.state::<DataDir>().0.join("downloads").join("mods")).await?;
+            let mods_folder = folder.clone();
+            let placed = tauri::async_runtime::spawn_blocking(move || gamebanana::place_packs(&archive, &mods_folder)).await.map_err(|e| e.to_string())??;
+            let mut installed = mods::load_installed(&record);
+            // Packs the new version no longer has go; the ones it has were just replaced.
+            if let Some((_, old)) = installed.0.get(&full_name) {
+                let gone: Vec<String> = old.iter().filter(|f| !placed.contains(f)).cloned().collect();
+                mods::remove_files(&folder, &gone);
+            }
+            installed.0.insert(full_name, (version, placed));
+            return mods::save_installed(&record, &installed);
+        }
+    };
     let packages = mods::packages(&http, &cache, &source.community).await?;
     let mut installed = mods::load_installed(&record);
     // The mod and what it needs, each once; a mod depending on itself in a loop ends here.

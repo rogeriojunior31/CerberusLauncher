@@ -262,11 +262,17 @@ pub struct ModItem {
     pub downloads: u64,
     /// The version installed, if it is.
     pub installed: Option<String>,
+    /// Likes on GameBanana, which doesn't tell downloads in its list.
+    #[serde(default)]
+    pub likes: u64,
 }
 
 /// A game's mods: where they come from, and the list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModList {
+    /// Where the mods come from, for the player: "thunderstore.io/c/..." or "gamebanana.com".
+    #[serde(default)]
+    pub from: String,
     pub community: String,
     pub folder: String,
     pub items: Vec<ModItem>,

@@ -467,6 +467,22 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
     }
 }
 
+/// "por Autor · v1.2 · 3 mil downloads"; GameBanana tells likes instead, and
+/// its "version" can be the date of the last update (only digits): left out.
+fn mod_facts(m: &cerberus_shared::ModItem) -> String {
+    let mut facts = vec![format!("por {}", m.owner)];
+    let a_date = !m.version.is_empty() && m.version.chars().all(|c| c.is_ascii_digit());
+    if !m.version.is_empty() && !a_date {
+        facts.push(format!("v{}", m.version.trim_start_matches(['v', 'V'])));
+    }
+    if m.downloads > 0 {
+        facts.push(format!("{} downloads", format::count(m.downloads)));
+    } else if m.likes > 0 {
+        facts.push(format!("{} curtidas", format::count(m.likes)));
+    }
+    facts.join(" · ")
+}
+
 #[component]
 fn Mods(game_id: String) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -494,9 +510,9 @@ fn Mods(game_id: String) -> impl IntoView {
     };
 
     let rows = move || match list.get() {
-        None => view! { <p class="muted">"Carregando os mods do Thunderstore..."</p> }.into_any(),
+        None => view! { <p class="muted">"Carregando os mods..."</p> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
-        Some(Ok(None)) => view! { <p class="muted">"Esse jogo não tem mods no Thunderstore."</p> }.into_any(),
+        Some(Ok(None)) => view! { <p class="muted">"Esse jogo não tem mods no Thunderstore nem no GameBanana."</p> }.into_any(),
         Some(Ok(Some(mods))) => {
             let needle = search.get().to_lowercase();
             let shown: Vec<_> = mods
@@ -534,7 +550,7 @@ fn Mods(game_id: String) -> impl IntoView {
                             <img src=m.icon.clone() alt="" loading="lazy" />
                             <div>
                                 <b>{m.name.clone()}</b>
-                                <span class="muted small">{format!("por {} · v{} · {} downloads", m.owner, m.version, format::count(m.downloads))}</span>
+                                <span class="muted small">{mod_facts(&m)}</span>
                                 <span class="small">{m.description.clone()}</span>
                             </div>
                             <div class="row">{action}</div>
@@ -543,7 +559,7 @@ fn Mods(game_id: String) -> impl IntoView {
                 })
                 .collect_view();
             view! {
-                <p class="muted small">{format!("Da comunidade thunderstore.io/c/{} · instalados em {}", mods.community, mods.folder)}</p>
+                <p class="muted small">{format!("De {} · instalados em {}", mods.from, mods.folder)}</p>
                 <ul class="mods">{items}</ul>
             }
             .into_any()
