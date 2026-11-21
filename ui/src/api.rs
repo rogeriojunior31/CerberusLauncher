@@ -48,6 +48,27 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// A picture was taken of a game; the game's id.
+pub fn on_screenshot(handler: impl FnMut(String) + 'static) {
+    on_event("screenshot-taken", handler);
+}
+
+pub async fn list_screenshots(id: &str) -> Result<Vec<cerberus_shared::Screenshot>, String> {
+    call("list_screenshots", &Id { id }).await
+}
+
+pub async fn open_screenshot(path: &str) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        path: &'a str,
+    }
+    call("open_screenshot", &Arg { path }).await
+}
+
+pub async fn open_screenshots_folder(id: &str) -> Result<(), String> {
+    call("open_screenshots_folder", &Id { id }).await
+}
+
 pub fn on_install_progress(handler: impl FnMut(InstallProgress) + 'static) {
     on_event("recomp-progress", handler);
 }

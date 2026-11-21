@@ -21,6 +21,7 @@ enum Tab {
     Overview,
     Saves,
     Mods,
+    Photos,
     Settings,
     Manage,
 }
@@ -88,6 +89,8 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     // Every game Cerberus starts gets the tab: picture filters, and the catalog's settings when it has some.
     let has_settings = game.as_ref().is_some_and(|g| g.is_tracked());
     let manageable = game.is_some() || entry.is_some();
+    // F12 takes pictures of the games Cerberus opens itself.
+    let photos = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. } | Source::Local { .. }));
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
         || tab.get_untracked() == Tab::Settings && !has_settings
@@ -102,6 +105,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             Tab::Saves => Icon::Saves,
             Tab::Settings => Icon::Settings,
             Tab::Mods => Icon::Puzzle,
+            Tab::Photos => Icon::Photo,
             Tab::Manage => Icon::Edit,
         };
         view! {
@@ -116,6 +120,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             {has_saves.then(|| tab_button(Tab::Saves, "Saves"))}
             {has_settings.then(|| tab_button(Tab::Settings, "Ajustes"))}
             {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
+            {photos.then(|| tab_button(Tab::Photos, "Fotos"))}
             {manageable.then(|| tab_button(Tab::Manage, "Gerenciar"))}
         </nav>
     };
@@ -130,6 +135,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         },
         Tab::Mods => match &body_game {
             Some(g) => view! { <Mods game_id=g.id.clone() /> }.into_any(),
+            None => ().into_any(),
+        },
+        Tab::Photos => match &body_game {
+            Some(g) => view! { <Photos game_id=g.id.clone() /> }.into_any(),
             None => ().into_any(),
         },
         Tab::Settings => match &body_game {
@@ -854,6 +863,60 @@ fn LaunchOptions(game: Game) -> impl IntoView {
 
 /// The launcher's recent steps for this game, kept across restarts, with the
 /// last failure up top so its cause can still be read after the notice is gone.
+/// The pictures taken of the game with F12, newest first.
+#[component]
+fn Photos(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let shots = LocalResource::new(move || async move { api::list_screenshots(&id.get_value()).await });
+    api::on_screenshot(move |taken: String| {
+        if taken == id.get_value() {
+            shots.refetch();
+        }
+    });
+    let open_folder = move |_| {
+        spawn_local(async move {
+            library.report(api::open_screenshots_folder(&id.get_value()).await);
+        });
+    };
+    view! {
+        <section class="card">
+            <div class="card-h">
+                <h3>"Fotos"</h3>
+                <button type="button" class="btn sm" on:click=open_folder><Svg icon=Icon::Folder size=16 />"Abrir pasta"</button>
+            </div>
+            <p class="muted small">"Com o jogo aberto pelo Cerberus e na frente, aperte F12: a foto é só da janela do jogo e aparece aqui. Jogos em tela cheia exclusiva podem sair pretos; use janela sem bordas."</p>
+            {move || match shots.get() {
+                None => view! { <p class="muted">"Carregando..."</p> }.into_any(),
+                Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
+                Some(Ok(list)) if list.is_empty() => view! {
+                    <div class="empty small">
+                        <Svg icon=Icon::Photo size=28 />
+                        <p class="muted">"Nenhuma foto ainda."</p>
+                    </div>
+                }.into_any(),
+                Some(Ok(list)) => view! {
+                    <div class="shots">
+                        {list.into_iter().map(|shot| {
+                            let path = shot.path.clone();
+                            let when = format::ago(shot.taken);
+                            view! {
+                                <button type="button" class="shot" title=format!("Abrir · {when}") on:click=move |_| {
+                                    let path = path.clone();
+                                    spawn_local(async move { library.report(api::open_screenshot(&path).await); });
+                                }>
+                                    <img src=api::convert_file_src(&shot.path) alt=format!("Foto de {when}") loading="lazy" />
+                                    <small>{when.clone()}</small>
+                                </button>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any(),
+            }}
+        </section>
+    }
+}
+
 #[component]
 pub fn History(id: String) -> impl IntoView {
     let library = expect_context::<Library>();

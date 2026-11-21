@@ -332,6 +332,9 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Clássicos com vários discos: "(Disc 1)", "(Disc 2)"... da mesma pasta viram um jogo só (ou a lista .m3u do
       próprio jogador); PlayStation e GameCube abrem por uma lista .m3u na pasta do Cerberus, com troca de disco
       no menu do RetroArch. Conferido no app com discos de teste (o RetroArch com um jogo real ainda falta).
+- [x] Fotos do jogo: F12 com um jogo aberto pelo Cerberus na frente tira foto só da janela dele (o F12 continua
+      chegando ao jogo e à Steam); aba Fotos na página do jogo, com abrir a foto e a pasta. Conferido no app com o
+      SpaghettiKart. Falta: menu por cima do jogo (Ctrl+F12) e jogos em tela cheia exclusiva (saem pretos).
 - [ ] Discord "Jogando...".
 
 ### 4.4 Transição

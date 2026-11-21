@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod screenshots;
 mod monitors;
 mod collections;
 mod notify;
@@ -1712,6 +1713,28 @@ fn game_trail(trail: State<'_, trail::Trail>, id: String) -> Vec<cerberus_shared
     trail.for_game(&id, 30)
 }
 
+/// The pictures taken of a game, newest first.
+#[tauri::command]
+fn list_screenshots(app: AppHandle, id: String) -> Vec<cerberus_shared::Screenshot> {
+    screenshots::list(&app.state::<DataDir>().0, &id)
+}
+
+/// Opens one picture in the PC's image viewer; only pictures Cerberus took.
+#[tauri::command]
+fn open_screenshot(app: AppHandle, path: String) -> Result<(), String> {
+    if !screenshots::is_ours(&app.state::<DataDir>().0, Path::new(&path)) {
+        return Err("Essa foto não é do Cerberus.".into());
+    }
+    app.opener().open_path(path, None::<&str>).map_err(|e| format!("Não foi possível abrir a foto: {e}"))
+}
+
+#[tauri::command]
+fn open_screenshots_folder(app: AppHandle, id: String) -> Result<(), String> {
+    let dir = screenshots::dir_of(&app.state::<DataDir>().0, &id);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
+}
+
 #[tauri::command]
 fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<(), String> {
     let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
@@ -1808,6 +1831,7 @@ fn main() {
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
             background::tray(app.handle())?;
             store_time::watch(app.handle().clone());
+            screenshots::watch(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 monitors::place(&window, chosen.monitor.as_deref());
             }
@@ -1867,6 +1891,10 @@ fn main() {
             app.asset_protocol_scope().allow_directory(&art, true)?;
             app.manage(Arc::new(ArtCache::new(art)));
 
+            let shots = screenshots::root(&data_dir);
+            fs::create_dir_all(&shots)?;
+            app.asset_protocol_scope().allow_directory(&shots, true)?;
+
             let steam_covers = steam::root().map(|root| steam::cover_cache_dir(&root));
             if let Some(Ok(steam_covers)) = steam_covers.map(dunce::canonicalize) {
                 app.asset_protocol_scope().allow_directory(steam_covers, true)?;
@@ -1921,6 +1949,9 @@ fn main() {
             play_classic,
             set_site_catalog,
             set_close_to_tray,
+            list_screenshots,
+            open_screenshot,
+            open_screenshots_folder,
             list_monitors,
             set_monitor,
             to_chosen_monitor,

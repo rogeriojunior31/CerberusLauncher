@@ -346,6 +346,14 @@ pub struct SettingsView {
     pub monitor: Option<String>,
 }
 
+/// A picture taken of a game (F12 while it runs).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Screenshot {
+    pub path: String,
+    /// When, in Unix seconds.
+    pub taken: u64,
+}
+
 /// A monitor plugged in.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MonitorView {
