@@ -1,5 +1,5 @@
 //! The menu a right click on a game's cover opens, as in Hydra: play, its
-//! page, favorite, and its folder, without opening the page first.
+//! page, favorite, collections, hiding, and its folder, without opening the page first.
 
 use cerberus_shared::Game;
 use leptos::prelude::*;
@@ -12,7 +12,7 @@ use crate::{Library, Route, api};
 pub struct GameMenu(pub RwSignal<Option<(Game, i32, i32)>>);
 
 const WIDTH: i32 = 230;
-const HEIGHT: i32 = 250;
+const HEIGHT: i32 = 420;
 
 impl GameMenu {
     /// Opens the menu at the pointer, kept inside the window.
@@ -35,6 +35,62 @@ fn window_size() -> (i32, i32) {
     (size(window.inner_width()), size(window.inner_height()))
 }
 
+/// The collections in the menu: each one checked when the game is in it, and a new one.
+#[component]
+fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let menu = expect_context::<GameMenu>();
+    let names = LocalResource::new(api::list_collections);
+    let id = StoredValue::new(id);
+    let in_shelves = StoredValue::new(in_shelves);
+    let typing = RwSignal::new(false);
+    let typed = RwSignal::new(String::new());
+    // A box made after the page loads doesn't take `autofocus`: focused here.
+    let name_box = NodeRef::<leptos::html::Input>::new();
+    Effect::new(move |_| {
+        if let Some(input) = name_box.get() {
+            let _ = input.focus();
+        }
+    });
+    let put = move |name: String, on: bool| {
+        // Read before closing: the menu takes its values with it.
+        let id = id.get_value();
+        menu.close();
+        leptos::task::spawn_local(async move {
+            if library.report(api::set_in_collection(&name, &id, on).await).is_some() {
+                library.games.refetch();
+                library.toast(if on { format!("Adicionado à coleção {name}.") } else { format!("Tirado da coleção {name}.") });
+            }
+        });
+    };
+    view! {
+        <span class="ctx-h">"Coleções"</span>
+        {move || names.get().and_then(Result::ok).unwrap_or_default().into_iter().map(|name| {
+            let on = in_shelves.with_value(|s| s.contains(&name));
+            let label = name.clone();
+            view! {
+                <button type="button" role="menuitemcheckbox" aria-checked=on.to_string() on:click=move |_| put(name.clone(), !on)>
+                    <Svg icon=if on { Icon::Check } else { Icon::Shelf } size=16 />{label}
+                </button>
+            }
+        }).collect_view()}
+        {move || if typing.get() {
+            view! {
+                <form class="ctx-form" on:submit=move |e| { e.prevent_default(); put(typed.get_untracked(), true); }>
+                    <input class="input" type="text" maxlength="40" placeholder="Nome da coleção" aria-label="Nome da nova coleção" node_ref=name_box
+                        prop:value=move || typed.get() on:input=move |e| typed.set(event_target_value(&e)) />
+                </form>
+            }.into_any()
+        } else {
+            view! {
+                <button type="button" role="menuitem" on:click=move |_| typing.set(true)>
+                    <Svg icon=Icon::Plus size=16 />"Nova coleção…"
+                </button>
+            }.into_any()
+        }}
+    }
+}
+
 #[component]
 pub fn GameMenuLayer() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -48,6 +104,10 @@ pub fn GameMenuLayer() -> impl IntoView {
         let page_id = game.id.clone();
         let folder_id = game.id.clone();
         let play = game.clone();
+        let hidden = game.hidden;
+        let hide_id = game.id.clone();
+        let in_shelves = game.collections.clone();
+        let shelf_id = game.id.clone();
         Some(view! {
             <div class="ctx-catch" on:click=move |_| menu.close() on:contextmenu=move |e| { e.prevent_default(); menu.close(); }></div>
             <div class="ctx" role="menu" style:left=format!("{x}px") style:top=format!("{y}px")
@@ -63,6 +123,19 @@ pub fn GameMenuLayer() -> impl IntoView {
                     <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
                     {if on { "Tirar dos favoritos" } else { "Adicionar aos favoritos" }}
                 </button>
+                <button type="button" role="menuitem" on:click=move |_| {
+                    menu.close();
+                    let id = hide_id.clone();
+                    leptos::task::spawn_local(async move {
+                        if library.report(api::set_hidden(&id, !hidden).await).is_some() {
+                            library.games.refetch();
+                            library.toast(if hidden { "O jogo voltou para a biblioteca." } else { "Jogo oculto. Ele fica na aba Ocultos da biblioteca." });
+                        }
+                    });
+                }>
+                    <Svg icon=Icon::EyeOff size=16 />{if hidden { "Mostrar na biblioteca" } else { "Ocultar da biblioteca" }}
+                </button>
+                <Shelves id=shelf_id in_shelves />
                 {
                     let id = game.id.clone();
                     view! {

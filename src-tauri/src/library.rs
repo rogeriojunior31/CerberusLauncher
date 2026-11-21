@@ -124,6 +124,8 @@ pub fn game_from_exe(exe: &Path) -> Game {
         logo_path: None,
         look: None,
         favorite: false,
+        hidden: false,
+        collections: Vec::new(),
     }
 }
 

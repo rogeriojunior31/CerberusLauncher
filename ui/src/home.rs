@@ -88,7 +88,7 @@ pub fn Home() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
 
-        let mut recent: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some() || g.is_tracked()).collect();
+        let mut recent: Vec<&Game> = games.iter().filter(|g| !g.hidden && (g.last_played.is_some() || g.is_tracked())).collect();
         recent.sort_by_key(|g| std::cmp::Reverse(g.last_played));
         let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|g| game_tile(g, library)).collect();
 

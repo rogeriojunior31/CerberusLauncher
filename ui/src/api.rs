@@ -337,6 +337,51 @@ pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result
 
 /// What the launcher did for a game lately, newest first.
 /// Marks or unmarks a game as a favorite.
+pub async fn set_hidden(id: &str, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        on: bool,
+    }
+    call("set_hidden", &Arg { id, on }).await
+}
+
+pub async fn list_collections() -> Result<Vec<String>, String> {
+    call("list_collections", &()).await
+}
+
+#[derive(serde::Serialize)]
+struct Name<'a> {
+    name: &'a str,
+}
+
+pub async fn create_collection(name: &str) -> Result<String, String> {
+    call("create_collection", &Name { name }).await
+}
+
+pub async fn set_in_collection(name: &str, id: &str, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        name: &'a str,
+        id: &'a str,
+        on: bool,
+    }
+    call("set_in_collection", &Arg { name, id, on }).await
+}
+
+pub async fn rename_collection(old: &str, name: &str) -> Result<String, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        old: &'a str,
+        name: &'a str,
+    }
+    call("rename_collection", &Arg { old, name }).await
+}
+
+pub async fn delete_collection(name: &str) -> Result<(), String> {
+    call("delete_collection", &Name { name }).await
+}
+
 pub async fn set_favorite(id: String, on: bool) -> Result<(), String> {
     #[derive(serde::Serialize)]
     struct Arg {

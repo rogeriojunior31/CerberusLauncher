@@ -107,6 +107,8 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         logo_path: None,
         look: None,
         favorite: false,
+        hidden: false,
+        collections: Vec::new(),
     }
 }
 

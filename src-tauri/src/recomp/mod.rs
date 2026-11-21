@@ -806,6 +806,8 @@ fn register(
         logo_path: None,
         look: None,
         favorite: false,
+        hidden: false,
+        collections: Vec::new(),
     };
     apply_art(&mut game);
     library.add(game.clone())?;

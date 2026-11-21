@@ -114,6 +114,8 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         logo_path: None,
         look: None,
         favorite: false,
+        hidden: false,
+        collections: Vec::new(),
     })
 }
 

@@ -325,7 +325,9 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Pausar e continuar download de recomp (o arquivo parcial fica guardado; cancelar apaga), na página do jogo e no Big Picture.
 - [x] Reparar instalação (baixa a versão de novo por cima, com backup dos saves) e mover o jogo para outra pasta ou disco (Gerenciar).
 - [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.
-- [ ] Discord "Jogando...", coleções e jogos ocultos, multi-disco nos clássicos.
+- [x] Coleções e jogos ocultos: aba Coleções (criar, renomear, apagar) e Ocultos na biblioteca, pelo botão direito
+      na capa; ocultos saem do Início, do menu lateral e do Big Picture (collections.json). Conferido no app.
+- [ ] Discord "Jogando...", multi-disco nos clássicos.
 
 ### 4.4 Transição
 

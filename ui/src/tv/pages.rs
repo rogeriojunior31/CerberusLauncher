@@ -125,8 +125,9 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
     }
 }
 
+/// Hidden games stay out of Big Picture.
 fn library_games(library: Library) -> Vec<Game> {
-    library.games.get().and_then(Result::ok).unwrap_or_default()
+    library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden).collect()
 }
 
 /// The player's classics RetroArch plays, the ones played lately first.

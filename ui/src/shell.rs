@@ -42,7 +42,7 @@ pub fn Sidebar() -> impl IntoView {
                 {item(Route::News, Icon::Bell, "Novidades")}
             </nav>
             {move || {
-                let mut favorites: Vec<cerberus_shared::Game> = library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.favorite).collect();
+                let mut favorites: Vec<cerberus_shared::Game> = library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.favorite && !g.hidden).collect();
                 favorites.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
                 (!favorites.is_empty()).then(|| {
                     let rows = favorites.into_iter().take(8).map(|g| {

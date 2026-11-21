@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod collections;
 mod notify;
 mod crash;
 mod store_time;
@@ -785,6 +786,7 @@ async fn list_games(
     store_time::apply(&app.state::<DataDir>().0, &mut games);
     let favorite = favorites::load(&app.state::<DataDir>().0);
     games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
+    collections::apply(&app.state::<DataDir>().0, &mut games);
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
 }
@@ -1472,6 +1474,39 @@ fn set_favorite(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     favorites::set(&app.state::<DataDir>().0, &id, on)
 }
 
+/// Hides a game from the library, or shows it again.
+#[tauri::command]
+fn set_hidden(app: AppHandle, id: String, on: bool) -> Result<(), String> {
+    collections::set_hidden(&app.state::<DataDir>().0, &id, on)
+}
+
+/// The player's collections, in the order they were made.
+#[tauri::command]
+fn list_collections(app: AppHandle) -> Vec<String> {
+    collections::names(&app.state::<DataDir>().0)
+}
+
+#[tauri::command]
+fn create_collection(app: AppHandle, name: String) -> Result<String, String> {
+    collections::create(&app.state::<DataDir>().0, &name)
+}
+
+/// Puts a game in a collection (made when new) or takes it out.
+#[tauri::command]
+fn set_in_collection(app: AppHandle, name: String, id: String, on: bool) -> Result<(), String> {
+    collections::set_in(&app.state::<DataDir>().0, &name, &id, on)
+}
+
+#[tauri::command]
+fn rename_collection(app: AppHandle, old: String, name: String) -> Result<String, String> {
+    collections::rename(&app.state::<DataDir>().0, &old, &name)
+}
+
+#[tauri::command]
+fn delete_collection(app: AppHandle, name: String) -> Result<(), String> {
+    collections::delete(&app.state::<DataDir>().0, &name)
+}
+
 /// Opens the folder holding a classic; only files from the player's ROM folders.
 #[tauri::command]
 fn open_rom_folder(app: AppHandle, path: String) -> Result<(), String> {
@@ -1866,6 +1901,12 @@ fn main() {
             remove_from_steam,
             in_steam,
             set_favorite,
+            set_hidden,
+            list_collections,
+            create_collection,
+            set_in_collection,
+            rename_collection,
+            delete_collection,
             import_bios,
             link_retroarch_achievements,
             rerun_setup,

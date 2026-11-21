@@ -62,6 +62,12 @@ pub struct Game {
     /// The player marked it as a favorite (kept in favorites.json, not here).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub favorite: bool,
+    /// The player hid it from the library (kept in collections.json, not here).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    /// The player's collections it is in (kept in collections.json, not here).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collections: Vec<String>,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
