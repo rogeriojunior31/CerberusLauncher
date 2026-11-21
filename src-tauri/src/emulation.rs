@@ -338,6 +338,29 @@ async fn install_system_files(http: &reqwest::Client, exe: &Path, pack: &str) ->
     Ok(())
 }
 
+/// Consoles whose RetroArch core reads an .m3u list of discs and swaps them
+/// from its menu (Disc Control).
+const DISC_LISTS: &[&str] = &["ps1", "gc"];
+
+/// What RetroArch opens for a game on several discs: an .m3u of them, written
+/// in Cerberus's own folder (never beside the player's files); the first disc
+/// for a console whose core can't swap discs; the file itself otherwise.
+pub fn disc_list(data: &Path, rom: &Path, discs: &[PathBuf], console: &str) -> Result<PathBuf, String> {
+    let own_list = rom.extension().is_some_and(|e| e.eq_ignore_ascii_case("m3u"));
+    if discs.len() < 2 || own_list {
+        return Ok(rom.to_path_buf());
+    }
+    if !DISC_LISTS.contains(&console) {
+        return Ok(discs[0].clone());
+    }
+    let dir = data.join("emulators").join("playlists");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let list = dir.join(format!("{:08x}.m3u", crc32fast::hash(rom.to_string_lossy().as_bytes())));
+    let text: String = discs.iter().map(|d| format!("{}\n", d.display())).collect();
+    fs::write(&list, text).map_err(|e| format!("Não foi possível preparar a lista de discos: {e}"))?;
+    Ok(list)
+}
+
 /// Starts a classic in RetroArch with its console's core. With `log`, RetroArch
 /// writes what happens (achievements unlocked among it) to that file.
 pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Result<std::process::Child, String> {
@@ -439,6 +462,20 @@ pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn several_discs_open_from_a_list_in_cerberus_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let discs = vec![PathBuf::from(r"D:\ps1\FF7 (Disc 1).chd"), PathBuf::from(r"D:\ps1\FF7 (Disc 2).chd")];
+        let list = disc_list(&data, &discs[0], &discs, "ps1").unwrap();
+        assert!(list.starts_with(data.join("emulators").join("playlists")));
+        assert_eq!(fs::read_to_string(&list).unwrap(), "D:\\ps1\\FF7 (Disc 1).chd\nD:\\ps1\\FF7 (Disc 2).chd\n");
+        assert_eq!(disc_list(&data, &discs[0], &discs, "ps2").unwrap(), discs[0], "a core that can't swap: disc 1");
+        let own = PathBuf::from(r"D:\ps1\FF7.m3u");
+        assert_eq!(disc_list(&data, &own, &discs, "ps1").unwrap(), own, "the player's own list as it is");
+        assert_eq!(disc_list(&data, &discs[0], &[], "ps1").unwrap(), discs[0]);
+    }
 
     #[test]
     fn bios_files_go_where_each_core_looks_for_them() {

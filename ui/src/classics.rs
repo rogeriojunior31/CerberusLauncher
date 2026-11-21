@@ -71,7 +71,7 @@ pub fn is_emulated(console: &str) -> bool {
 
 /// The console RetroArch would play this copy of a game on, if it plays it at all.
 pub fn emulated_console(path: &str) -> Option<&'static str> {
-    let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new(), playtime_secs: 0, last_played: None };
+    let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new(), playtime_secs: 0, last_played: None, discs: Vec::new() };
     let console = console_of(&rom);
     EMULATED.contains(&console).then_some(console)
 }
@@ -266,7 +266,7 @@ mod tests {
     use super::*;
 
     fn rom(path: &str, system: &str) -> RomView {
-        RomView { path: path.into(), title: String::new(), system: system.into(), region: String::new(), playtime_secs: 0, last_played: None }
+        RomView { path: path.into(), title: String::new(), system: system.into(), region: String::new(), playtime_secs: 0, last_played: None, discs: Vec::new() }
     }
 
     #[test]
@@ -323,6 +323,8 @@ pub fn ClassicPage(path: String) -> impl IntoView {
             ("Região", if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
         ]
         .into_iter()
+        .chain((rom.discs.len() > 1).then(|| ("Discos", rom.discs.len().to_string())))
+        .into_iter()
         .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
         .collect_view();
         let history_id = format!("classic:{}", rom.path);
@@ -344,11 +346,25 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     <div class="stats">{stats}</div>
                     <section class="card classic-file">
                         <div class="card-h">
-                            <h3>"Arquivo do jogo"</h3>
+                            <h3>{if rom.discs.len() > 1 { "Arquivos do jogo" } else { "Arquivo do jogo" }}</h3>
                             <button type="button" class="btn sm" on:click=open_folder>"Abrir pasta"</button>
                         </div>
-                        <span class="path">{rom.path.clone()}</span>
-                        <p class="muted small">"O RetroArch abre esse arquivo como está; o Cerberus nunca o altera."</p>
+                        {if rom.discs.len() > 1 {
+                            let swap = if matches!(console, "ps1" | "gc") {
+                                "O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos."
+                            } else {
+                                "O RetroArch abre o disco 1; esse console ainda não troca de disco pelo Cerberus. O Cerberus nunca altera esses arquivos."
+                            };
+                            view! {
+                                <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol>
+                                <p class="muted small">{swap}</p>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <span class="path">{rom.path.clone()}</span>
+                                <p class="muted small">"O RetroArch abre esse arquivo como está; o Cerberus nunca o altera."</p>
+                            }.into_any()
+                        }}
                     </section>
                     <crate::game::History id=history_id />
                 </div>

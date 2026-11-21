@@ -133,6 +133,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
                         region: r.region,
                         playtime_secs: time.seconds,
                         last_played: (time.last > 0).then_some(time.last),
+                        discs: r.discs.iter().map(|d| d.to_string_lossy().into_owned()).collect(),
                     }
                 })
                 .collect()
@@ -526,12 +527,11 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale o RetroArch em Configurações › Emulação para jogar os clássicos.")?;
     let rom = PathBuf::from(&path);
     // Only files from the player's own ROM folders are started.
-    let known = app.state::<RomIndex>().get().iter().any(|r| r.path == rom);
-    if !known {
+    let Some(known) = app.state::<RomIndex>().get().into_iter().find(|r| r.path == rom) else {
         return Err("Esse arquivo não está nas suas pastas de ROMs.".into());
-    }
+    };
     let log = data.join("emulators").join("retroarch-session.log");
-    let result = emulation::launch(&exe, &rom, &console, Some(&log));
+    let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| emulation::launch(&exe, &opened, &console, Some(&log)));
     let id = format!("classic:{path}");
     trail::note(&app, &id, "Jogar clássico", &result.as_ref().map(|_| "Aberto no RetroArch".to_string()).map_err(Clone::clone));
     let mut child = result?;

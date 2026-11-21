@@ -329,7 +329,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       na capa; ocultos saem do Início, do menu lateral e do Big Picture (collections.json). Conferido no app.
 - [x] Monitor onde o Cerberus e o Big Picture abrem (Configurações › Geral, só com mais de um monitor ligado).
       Conferido no app com um monitor (a escolha salva e o Big Picture em tela cheia); falta ver com dois monitores.
-- [ ] Discord "Jogando...", multi-disco nos clássicos.
+- [x] Clássicos com vários discos: "(Disc 1)", "(Disc 2)"... da mesma pasta viram um jogo só (ou a lista .m3u do
+      próprio jogador); PlayStation e GameCube abrem por uma lista .m3u na pasta do Cerberus, com troca de disco
+      no menu do RetroArch. Conferido no app com discos de teste (o RetroArch com um jogo real ainda falta).
+- [ ] Discord "Jogando...".
 
 ### 4.4 Transição
 

@@ -395,6 +395,9 @@ pub struct RomView {
     pub playtime_secs: u64,
     #[serde(default)]
     pub last_played: Option<u64>,
+    /// A game on several discs: each disc's file, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discs: Vec<String>,
 }
 
 /// A linked RetroAchievements account, as the settings and the library show it.
