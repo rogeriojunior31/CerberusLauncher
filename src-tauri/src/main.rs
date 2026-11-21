@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod disc_image;
 mod screenshots;
 mod monitors;
 mod collections;

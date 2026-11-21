@@ -10,6 +10,7 @@
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use crate::disc_image::Disc;
 use std::path::{Component, Path};
 
 const SECTOR: u64 = 2048;
@@ -22,7 +23,7 @@ const DIRECTORY: u8 = 0x10;
 const MAX_DEPTH: usize = 32;
 
 /// Where the game partition starts in this image, if it is an Xbox disc at all.
-fn partition(file: &mut File) -> Option<u64> {
+fn partition(file: &mut dyn Disc) -> Option<u64> {
     for start in PARTITIONS {
         let mut magic = [0u8; 20];
         let at = start + 32 * SECTOR;
@@ -37,7 +38,7 @@ fn partition(file: &mut File) -> Option<u64> {
 }
 
 pub fn is_xbox_disc(path: &Path) -> bool {
-    File::open(path).ok().as_mut().and_then(partition).is_some()
+    crate::disc_image::open(path).ok().as_mut().and_then(|f| partition(&mut **f)).is_some()
 }
 
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
@@ -50,8 +51,8 @@ fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
 
 /// Unpacks every file of the disc image into `to`. Returns how many were written.
 pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
-    let mut file = File::open(image).map_err(|e| e.to_string())?;
-    let start = partition(&mut file).ok_or("Esse arquivo não é uma imagem de disco de Xbox ou Xbox 360.")?;
+    let mut file = crate::disc_image::open(image).map_err(|e| e.to_string())?;
+    let start = partition(&mut *file).ok_or("Esse arquivo não é uma imagem de disco de Xbox ou Xbox 360.")?;
     let mut header = [0u8; 28];
     file.seek(SeekFrom::Start(start + 32 * SECTOR)).map_err(|e| e.to_string())?;
     file.read_exact(&mut header).map_err(|e| e.to_string())?;
@@ -60,12 +61,12 @@ pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
     fs::create_dir_all(to).map_err(|e| e.to_string())?;
     let mut written = 0;
     let mut seen = HashSet::new();
-    walk(&mut file, start, root_sector, root_size, to, 0, &mut seen, &mut written).map_err(|e| format!("Não foi possível ler a imagem de disco: {e}"))?;
+    walk(&mut *file, start, root_sector, root_size, to, 0, &mut seen, &mut written).map_err(|e| format!("Não foi possível ler a imagem de disco: {e}"))?;
     Ok(written)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn walk(file: &mut File, start: u64, sector: u64, size: u64, to: &Path, depth: usize, seen: &mut HashSet<u64>, written: &mut usize) -> io::Result<()> {
+fn walk(file: &mut dyn Disc, start: u64, sector: u64, size: u64, to: &Path, depth: usize, seen: &mut HashSet<u64>, written: &mut usize) -> io::Result<()> {
     let bad = |what: &str| io::Error::new(io::ErrorKind::InvalidData, what.to_string());
     // A directory read twice means the image points in a circle.
     if depth > MAX_DEPTH || size == 0 || size > 64 * 1024 * 1024 || !seen.insert(sector) {
@@ -117,7 +118,7 @@ fn walk(file: &mut File, start: u64, sector: u64, size: u64, to: &Path, depth: u
     Ok(())
 }
 
-fn copy_out(file: &mut File, at: u64, size: u64, target: &Path) -> io::Result<()> {
+fn copy_out(file: &mut dyn Disc, at: u64, size: u64, target: &Path) -> io::Result<()> {
     file.seek(SeekFrom::Start(at))?;
     let mut out = File::create(target)?;
     let mut left = size;

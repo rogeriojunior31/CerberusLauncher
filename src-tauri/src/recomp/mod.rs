@@ -462,6 +462,14 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
     if !plain_name {
         return Err("O catálogo pede um caminho inesperado; nada foi copiado.".into());
     }
+    // A CHD or CSO where the recomp reads an ISO: unpacked into one.
+    let wants_iso = Path::new(&name)
+        .extension()
+        .is_none_or(|e| ["iso", "chd", "cso"].iter().any(|x| e.eq_ignore_ascii_case(x)));
+    if wants_iso && crate::disc_image::kind_of(copy) != crate::disc_image::Kind::Plain {
+        crate::disc_image::write_iso(copy, &dir.join(Path::new(&name).with_extension("iso")))?;
+        return Ok(());
+    }
     fs::copy(copy, dir.join(&name)).map_err(|e| format!("Não foi possível copiar sua cópia do jogo: {e}"))?;
     Ok(())
 }

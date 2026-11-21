@@ -8,7 +8,8 @@
 
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, SeekFrom, Write};
+use crate::disc_image::Disc;
 use std::path::{Component, Path};
 
 const SECTOR: u64 = 2048;
@@ -19,7 +20,7 @@ fn u32_le(bytes: &[u8], at: usize) -> Option<u32> {
 }
 
 /// The root directory's first sector and size, if this is an ISO 9660 image.
-fn root(file: &mut File) -> Option<(u64, u64)> {
+fn root(file: &mut dyn Disc) -> Option<(u64, u64)> {
     let mut descriptor = [0u8; 2048];
     file.seek(SeekFrom::Start(16 * SECTOR)).ok()?;
     file.read_exact(&mut descriptor).ok()?;
@@ -32,21 +33,21 @@ fn root(file: &mut File) -> Option<(u64, u64)> {
 }
 
 pub fn is_iso9660(path: &Path) -> bool {
-    File::open(path).ok().as_mut().and_then(root).is_some()
+    crate::disc_image::open(path).ok().as_mut().and_then(|f| root(&mut **f)).is_some()
 }
 
 /// Unpacks every file of the image into `to`. Returns how many were written.
 pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
-    let mut file = File::open(image).map_err(|e| e.to_string())?;
-    let (sector, size) = root(&mut file).ok_or("Esse arquivo não é uma imagem de disco ISO.")?;
+    let mut file = crate::disc_image::open(image).map_err(|e| e.to_string())?;
+    let (sector, size) = root(&mut *file).ok_or("Esse arquivo não é uma imagem de disco ISO.")?;
     fs::create_dir_all(to).map_err(|e| e.to_string())?;
     let mut written = 0;
     let mut seen = HashSet::new();
-    walk(&mut file, sector, size, to, 0, &mut seen, &mut written).map_err(|e| format!("Não foi possível ler a imagem de disco: {e}"))?;
+    walk(&mut *file, sector, size, to, 0, &mut seen, &mut written).map_err(|e| format!("Não foi possível ler a imagem de disco: {e}"))?;
     Ok(written)
 }
 
-fn walk(file: &mut File, sector: u64, size: u64, to: &Path, depth: usize, seen: &mut HashSet<u64>, written: &mut usize) -> io::Result<()> {
+fn walk(file: &mut dyn Disc, sector: u64, size: u64, to: &Path, depth: usize, seen: &mut HashSet<u64>, written: &mut usize) -> io::Result<()> {
     let bad = |what: &str| io::Error::new(io::ErrorKind::InvalidData, what.to_string());
     if depth > MAX_DEPTH || size > 64 * 1024 * 1024 || !seen.insert(sector) {
         return Err(bad("estrutura de pastas inválida"));
@@ -93,7 +94,7 @@ fn walk(file: &mut File, sector: u64, size: u64, to: &Path, depth: usize, seen: 
     Ok(())
 }
 
-fn copy_out(file: &mut File, at: u64, size: u64, target: &Path) -> io::Result<()> {
+fn copy_out(file: &mut dyn Disc, at: u64, size: u64, target: &Path) -> io::Result<()> {
     file.seek(SeekFrom::Start(at))?;
     let mut out = File::create(target)?;
     let mut left = size;
@@ -163,6 +164,25 @@ mod tests {
         assert_eq!(extract(&iso, &out).unwrap(), 2);
         assert_eq!(fs::read(out.join("SYSTEM.CNF")).unwrap(), b"BOOT2");
         assert_eq!(fs::read(out.join("DATA/LEVEL1.BIN")).unwrap(), b"LVL1");
+    }
+
+    #[test]
+    fn extracts_from_a_cso_and_a_chd_too() {
+        let dir = temp("packed");
+        let iso = dir.join("game.iso");
+        tiny_image(&iso, false);
+        let plain = fs::read(&iso).unwrap();
+        let cso = dir.join("game.cso");
+        fs::write(&cso, crate::disc_image::tests::cso(&plain)).unwrap();
+        let chd = dir.join("game.chd");
+        crate::disc_image::tests::write_chd(&chd, chd::write::ChdWriteOptions::dvd(), &plain, None);
+        for packed in [cso, chd] {
+            assert!(is_iso9660(&packed));
+            let out = dir.join(format!("out-{}", packed.extension().unwrap().to_string_lossy()));
+            assert_eq!(extract(&packed, &out).unwrap(), 2);
+            assert_eq!(fs::read(out.join("DATA/LEVEL1.BIN")).unwrap(), b"LVL1");
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

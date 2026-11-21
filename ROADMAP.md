@@ -324,7 +324,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       Hookshot, Longshot, FE3H Recomp) e ids renomeados (replaced) do catálogo do site.
 - [x] Pausar e continuar download de recomp (o arquivo parcial fica guardado; cancelar apaga), na página do jogo e no Big Picture.
 - [x] Reparar instalação (baixa a versão de novo por cima, com backup dos saves) e mover o jogo para outra pasta ou disco (Gerenciar).
-- [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.
+- [x] Imagens de disco compactadas na preparação dos recomps: CHD (de DVD e de CD, pela primeira faixa) e CSO
+      são lidos como ISO, sem programa de fora (crate chd, BSD-3): os arquivos saem direto deles, ou viram .iso
+      quando o recomp quer a imagem. Testado com imagens geradas; falta um CHD real do chdman. RVZ, ZSO (LZ4) e
+      CHD "filho" ainda não.
 - [x] Coleções e jogos ocultos: aba Coleções (criar, renomear, apagar) e Ocultos na biblioteca, pelo botão direito
       na capa; ocultos saem do Início, do menu lateral e do Big Picture (collections.json). Conferido no app.
 - [x] Monitor onde o Cerberus e o Big Picture abrem (Configurações › Geral, só com mais de um monitor ligado).
