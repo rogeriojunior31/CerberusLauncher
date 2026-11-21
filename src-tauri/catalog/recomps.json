@@ -42,7 +42,7 @@
       }
     },
     "size_text": "28 MB",
-    "stars": 7733
+    "stars": 7744
   },
   {
     "id": "starfox64recomp",
@@ -133,7 +133,7 @@
       }
     },
     "size_text": "23 MB",
-    "stars": 639
+    "stars": 640
   },
   {
     "id": "banjorecomp",
@@ -178,7 +178,7 @@
       }
     },
     "size_text": "18 MB",
-    "stars": 2146
+    "stars": 2148
   },
   {
     "id": "goemon64recomp",
@@ -223,7 +223,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 340
+    "stars": 341
   },
   {
     "id": "shipwright",
@@ -268,7 +268,7 @@
       }
     },
     "size_text": "70 MB",
-    "stars": 6102
+    "stars": 6127
   },
   {
     "id": "2ship2harkinian",
@@ -311,7 +311,7 @@
       }
     },
     "size_text": "43 MB",
-    "stars": 2490
+    "stars": 2503
   },
   {
     "id": "starship",
@@ -411,6 +411,6 @@
     },
     "files": {},
     "size_text": "51 MB",
-    "stars": 5393
+    "stars": 5399
   }
 ]
