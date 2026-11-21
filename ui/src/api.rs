@@ -58,6 +58,24 @@ pub fn on_show_game(handler: impl FnMut(String) + 'static) {
     on_event("show-game", handler);
 }
 
+pub async fn dlss_list(id: &str) -> Result<Vec<cerberus_shared::DlssFile>, String> {
+    call("dlss_list", &Id { id }).await
+}
+
+#[derive(serde::Serialize)]
+struct DlssArg<'a> {
+    id: &'a str,
+    path: &'a str,
+}
+
+pub async fn dlss_swap(id: &str, path: &str) -> Result<Option<String>, String> {
+    call("dlss_swap", &DlssArg { id, path }).await
+}
+
+pub async fn dlss_restore(id: &str, path: &str) -> Result<(), String> {
+    call("dlss_restore", &DlssArg { id, path }).await
+}
+
 pub async fn overlay_state() -> Result<cerberus_shared::OverlayView, String> {
     call("overlay_state", &()).await
 }

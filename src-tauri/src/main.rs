@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod dlss;
 mod overlay;
 mod disc_image;
 mod screenshots;
@@ -1584,6 +1585,56 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
     Ok(link.display().to_string())
 }
 
+/// Any game in the library, Steam's and Epic's included.
+fn any_game(library: &LocalLibrary, id: &str) -> Result<Game, String> {
+    if let Some(game) = library.get(id)? {
+        return Ok(game);
+    }
+    let mut found = steam::installed_games();
+    found.extend(epic::installed_games());
+    found.into_iter().find(|g| g.id == id).ok_or_else(|| "Esse jogo não está mais na biblioteca.".to_string())
+}
+
+/// The folder a game's DLSS files are looked for in; none for recomps (they don't carry DLSS).
+fn dlss_dir(game: &Game) -> Option<PathBuf> {
+    if matches!(game.source, Source::Recomp { .. }) || game.install_dir.len() <= 3 {
+        return None;
+    }
+    let dir = PathBuf::from(&game.install_dir);
+    dir.is_dir().then_some(dir)
+}
+
+#[tauri::command]
+async fn dlss_list(app: AppHandle, id: String) -> Result<Vec<cerberus_shared::DlssFile>, String> {
+    let data = app.state::<DataDir>().0.clone();
+    let game = any_game(&app.state::<LocalLibrary>(), &id)?;
+    let Some(dir) = dlss_dir(&game) else { return Ok(Vec::new()) };
+    tauri::async_runtime::spawn_blocking(move || dlss::list(&data, &id, &dir)).await.map_err(|e| e.to_string())
+}
+
+/// Puts a DLSS file the player picks in place of the game's; `None` when cancelled.
+#[tauri::command]
+async fn dlss_swap(app: AppHandle, id: String, path: String) -> Result<Option<String>, String> {
+    let game = any_game(&app.state::<LocalLibrary>(), &id)?;
+    let dir = dlss_dir(&game).ok_or("Esse jogo não tem DLSS.")?;
+    let name = Path::new(&path).file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let dialog = app.dialog().file().set_title(format!("Escolha o {name} da versão que quer usar")).add_filter("DLSS", &["dll"]);
+    let Some(picked) = pick_one(dialog).await? else { return Ok(None) };
+    let data = app.state::<DataDir>().0.clone();
+    let result = dlss::swap(&data, &id, &dir, &path, &picked);
+    trail::note(&app, &id, "Trocar DLSS", &result.as_ref().map(|v| format!("{name} agora na versão {v}")).map_err(|e| e.clone()));
+    result.map(Some)
+}
+
+#[tauri::command]
+fn dlss_restore(app: AppHandle, id: String, path: String) -> Result<(), String> {
+    let game = any_game(&app.state::<LocalLibrary>(), &id)?;
+    let dir = dlss_dir(&game).ok_or("Esse jogo não tem DLSS.")?;
+    let result = dlss::restore(&app.state::<DataDir>().0, &id, &dir, &path);
+    trail::note(&app, &id, "DLSS original de volta", &result.as_ref().map(|_| path.clone()).map_err(|e| e.clone()));
+    result
+}
+
 /// The game for a Steam shortcut: only games Steam doesn't already have.
 fn game_for_steam(library: &LocalLibrary, id: &str) -> Result<Game, String> {
     let game = match library.get(id)? {
@@ -1953,6 +2004,9 @@ fn main() {
             set_site_catalog,
             set_close_to_tray,
             list_screenshots,
+            dlss_list,
+            dlss_swap,
+            dlss_restore,
             overlay::overlay_state,
             overlay::overlay_close,
             overlay::overlay_screenshot,

@@ -589,6 +589,62 @@ fn Mods(game_id: String) -> impl IntoView {
     }
 }
 
+/// The game's DLSS files and their versions; each can be swapped for a DLL of
+/// the same name the player has, and put back. Shown only when the game has DLSS.
+#[component]
+fn Dlss(id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(id);
+    let files = LocalResource::new(move || async move { api::dlss_list(&id.get_value()).await });
+    let busy = RwSignal::new(false);
+    let act = move |path: String, restore: bool| {
+        busy.set(true);
+        spawn_local(async move {
+            let game = id.get_value();
+            if restore {
+                if library.report(api::dlss_restore(&game, &path).await).is_some() {
+                    library.toast("O DLSS original do jogo voltou.");
+                }
+            } else if let Some(Some(version)) = library.report(api::dlss_swap(&game, &path).await) {
+                library.toast(format!("DLSS trocado: agora na versão {version}."));
+            }
+            busy.set(false);
+            files.refetch();
+        });
+    };
+    move || {
+        let list = files.get().and_then(Result::ok).unwrap_or_default();
+        (!list.is_empty()).then(|| view! {
+            <div class="card">
+                <h3>"DLSS"</h3>
+                <p class="muted small">"Troque pela versão de outro jogo ou baixada por você (o Cerberus não baixa nada). O arquivo do jogo fica guardado. Em jogo online com anti-cheat, prefira não trocar. Uma atualização do jogo pode trazer o arquivo dele de volta."</p>
+                <div class="dlss-list">
+                    {list.into_iter().map(|f| {
+                        let swap_path = f.path.clone();
+                        let back_path = f.path.clone();
+                        let swapped = f.original.clone();
+                        view! {
+                            <div class="dlss-row">
+                                <span>
+                                    <b>{f.label.clone()}</b>
+                                    <small>{format!("Versão {}", f.version)}{swapped.clone().map(|o| format!(" · a do jogo era {o}"))}</small>
+                                    <small class="path">{f.path.clone()}</small>
+                                </span>
+                                <div class="dlss-btns">
+                                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| act(swap_path.clone(), false)>"Trocar versão…"</button>
+                                    {swapped.map(|_| view! {
+                                        <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| act(back_path.clone(), true)>"Voltar à original"</button>
+                                    })}
+                                </div>
+                            </div>
+                        }
+                    }).collect_view()}
+                </div>
+            </div>
+        })
+    }
+}
+
 #[component]
 fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -795,6 +851,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
         _ => None,
     });
     let history = game.as_ref().filter(|g| g.is_tracked()).map(|g| view! { <History id=g.id.clone() /> });
+    let dlss = game.as_ref().filter(|g| !matches!(g.source, Source::Recomp { .. })).map(|g| view! { <Dlss id=g.id.clone() /> });
     let link = game.as_ref().filter(|g| matches!(g.source, Source::Local { .. })).map(|g| view! { <LinkToCatalog id=g.id.clone() /> });
     let outside = game.as_ref().filter(|g| g.external).map(|_| view! {
         <div class="card">
@@ -802,7 +859,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <p class="muted small">"Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele."</p>
         </div>
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{history}{folder}{relocate}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
+    view! { <div class="manage">{outside}{link}{program}{options}{dlss}{history}{folder}{relocate}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
 }
 
 #[component]

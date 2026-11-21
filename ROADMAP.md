@@ -343,6 +343,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       X da janela). Esc ou Ctrl+F12 devolve o jogo. Conferido no app com o SpaghettiKart. Só em janela ou sem
       bordas; tela cheia exclusiva não deixa nada por cima. Controle: View+Menu juntos abrem e fecham (XInput),
       direcional move, A aperta, B volta. Navegação conferida pelo teclado; falta testar com um controle ligado.
+- [x] DLSS (Gerenciar): mostra as DLLs do DLSS do jogo (Super Resolution, Frame Generation, Ray Reconstruction)
+      com a versão; "Trocar versão…" usa uma DLL de mesmo nome que o jogador já tem (o Cerberus não baixa nada),
+      guarda a do jogo e "Voltar à original" desfaz. Testado com DLLs do Windows no lugar; a tela conferida com
+      um jogo falso. Falta: um jogo real com DLSS.
 - [ ] Discord "Jogando...".
 
 ### 4.4 Transição

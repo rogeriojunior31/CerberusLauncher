@@ -346,6 +346,18 @@ pub struct SettingsView {
     pub monitor: Option<String>,
 }
 
+/// A DLSS file inside a game's folder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DlssFile {
+    /// From the game's folder, as given back to swap it.
+    pub path: String,
+    /// "DLSS Super Resolution", "DLSS Frame Generation"...
+    pub label: String,
+    pub version: String,
+    /// The game's own version, kept by Cerberus, when another was put in place.
+    pub original: Option<String>,
+}
+
 /// What the menu over a game (Ctrl+F12) shows.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OverlayView {
