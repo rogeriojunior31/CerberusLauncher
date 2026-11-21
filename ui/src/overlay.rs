@@ -2,7 +2,7 @@
 //! game's. Esc or Ctrl+F12 gives the game back.
 
 use cerberus_shared::OverlayView;
-use leptos::ev::KeyboardEvent;
+use wasm_bindgen::JsCast;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -19,6 +19,22 @@ pub fn is_overlay() -> bool {
 fn clock() -> String {
     let now = js_sys::Date::new_0();
     format!("{:02}:{:02}", now.get_hours(), now.get_minutes())
+}
+
+/// Moves the keyboard to the next (or previous) button of the menu.
+fn move_focus(step: i32) {
+    let Ok(found) = document().query_selector_all(".gm button:not([disabled])") else { return };
+    let buttons: Vec<web_sys::HtmlElement> = (0..found.length()).filter_map(|i| found.item(i)?.dyn_into().ok()).collect();
+    if buttons.is_empty() {
+        return;
+    }
+    let active = document().active_element();
+    let at = buttons.iter().position(|b| active.as_ref().is_some_and(|a| a == b.as_ref() as &web_sys::Element));
+    let next = match at {
+        Some(i) => (i as i32 + step).clamp(0, buttons.len() as i32 - 1) as usize,
+        None => 0,
+    };
+    let _ = buttons[next].focus();
 }
 
 #[component]
@@ -78,17 +94,34 @@ pub fn OverlayMenu() -> impl IntoView {
             busy.set(false);
         });
     };
-    let keys = window_event_listener(leptos::ev::keydown, move |e: KeyboardEvent| {
-        if e.key() == "Escape" {
-            e.prevent_default();
-            if quitting.get_untracked() {
-                quitting.set(false);
-            } else {
-                back();
+    // Controller and keyboard: directions move between the buttons, A (Enter)
+    // presses, B (Esc) steps back. Menu isn't used: it may still be held from
+    // the View+Menu that opened this.
+    let pad_kind = RwSignal::new(crate::tv::input::PadKind::default());
+    crate::tv::input::listen(
+        move |btn| {
+            use crate::tv::input::Btn;
+            match btn {
+                Btn::B => {
+                    if quitting.get_untracked() {
+                        quitting.set(false);
+                    } else {
+                        back();
+                    }
+                }
+                Btn::A => {
+                    let focused = document().active_element().and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok());
+                    if let Some(el) = focused {
+                        el.click();
+                    }
+                }
+                Btn::Left | Btn::Up => move_focus(-1),
+                Btn::Right | Btn::Down => move_focus(1),
+                _ => {}
             }
-        }
-    });
-    on_cleanup(move || keys.remove());
+        },
+        pad_kind,
+    );
 
     view! {
         <div class="gm">
@@ -156,7 +189,7 @@ pub fn OverlayMenu() -> impl IntoView {
                                 </div>
                             })}
                         </div>
-                        <p class="gm-hint">"Esc ou Ctrl+F12 volta ao jogo · F12 tira foto sem abrir o menu"</p>
+                        <p class="gm-hint">"Esc, B ou Ctrl+F12 volta ao jogo · View+Menu no controle abre e fecha · F12 tira foto sem abrir o menu"</p>
                     }.into_any()
                 }
             }}

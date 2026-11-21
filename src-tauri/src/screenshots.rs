@@ -118,10 +118,12 @@ fn take(app: &AppHandle) {
 }
 
 /// Watches F12 while a game Cerberus opened runs: one picture per press, and
-/// Ctrl+F12 opens or closes the menu over the game.
+/// Ctrl+F12 (or View+Menu together on a controller) opens or closes the menu over the game.
 pub fn watch(app: AppHandle) {
     std::thread::spawn(move || {
         let mut was_down = false;
+        let mut pads = win::Pads::default();
+        let mut combo_was = false;
         loop {
             let playing = !app.state::<crate::sessions::Sessions>().running().is_empty();
             if !playing {
@@ -129,6 +131,12 @@ pub fn watch(app: AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 continue;
             }
+            let combo = pads.combo();
+            if combo && !combo_was {
+                let menu = app.clone();
+                let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
+            }
+            combo_was = combo;
             let down = win::f12_down();
             if down && !was_down {
                 if win::ctrl_down() {
@@ -260,6 +268,37 @@ pub(crate) mod win {
         unsafe { (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0 }
     }
 
+    /// The Xbox-style controllers (XInput). Asking a missing one is slow, so
+    /// those are asked again only every two seconds or so.
+    #[derive(Default)]
+    pub struct Pads {
+        missing_until: [u32; 4],
+        tick: u32,
+    }
+
+    impl Pads {
+        /// Whether View (Back) and Menu (Start) are held together on any controller.
+        pub fn combo(&mut self) -> bool {
+            use windows_sys::Win32::UI::Input::XboxController::{XINPUT_GAMEPAD_BACK, XINPUT_GAMEPAD_START, XINPUT_STATE, XInputGetState};
+            self.tick = self.tick.wrapping_add(1);
+            let both = (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START) as u16;
+            let mut held = false;
+            for pad in 0..4u32 {
+                if self.missing_until[pad as usize] > self.tick {
+                    continue;
+                }
+                let mut state: XINPUT_STATE = unsafe { std::mem::zeroed() };
+                // SAFETY: the state is a plain struct XInput fills.
+                if unsafe { XInputGetState(pad, &mut state) } != 0 {
+                    self.missing_until[pad as usize] = self.tick + 50;
+                    continue;
+                }
+                held |= state.Gamepad.wButtons & both == both;
+            }
+            held
+        }
+    }
+
     /// Where the window's inside is on screen: x, y, width, height in pixels.
     pub fn client_rect(window: HWND) -> Option<(i32, i32, i32, i32)> {
         // SAFETY: plain Win32 queries on a window handle Windows gave us.
@@ -308,6 +347,13 @@ pub(crate) mod win {
     pub type Window = ();
     pub fn ctrl_down() -> bool {
         false
+    }
+    #[derive(Default)]
+    pub struct Pads;
+    impl Pads {
+        pub fn combo(&mut self) -> bool {
+            false
+        }
     }
     pub fn client_rect(_: ()) -> Option<(i32, i32, i32, i32)> {
         None

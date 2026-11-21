@@ -8,7 +8,7 @@
 
 mod focus;
 mod game;
-mod input;
+pub(crate) mod input;
 mod pages;
 mod sheets;
 mod sound;

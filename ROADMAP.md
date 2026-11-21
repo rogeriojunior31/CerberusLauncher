@@ -341,7 +341,8 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [x] Menu por cima do jogo (Ctrl+F12): janela transparente do Cerberus sobre a do jogo, com tempo da partida e
       total, tirar foto (o menu sai da frente), abrir a página no Cerberus e fechar o jogo (com confirmação, pelo
       X da janela). Esc ou Ctrl+F12 devolve o jogo. Conferido no app com o SpaghettiKart. Só em janela ou sem
-      bordas; tela cheia exclusiva não deixa nada por cima. Falta: controle (botão para abrir e navegar).
+      bordas; tela cheia exclusiva não deixa nada por cima. Controle: View+Menu juntos abrem e fecham (XInput),
+      direcional move, A aperta, B volta. Navegação conferida pelo teclado; falta testar com um controle ligado.
 - [ ] Discord "Jogando...".
 
 ### 4.4 Transição
