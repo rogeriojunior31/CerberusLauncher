@@ -48,6 +48,11 @@ impl Sessions {
         self.lock().contains_key(id)
     }
 
+    /// How long the game has been played this time, in seconds.
+    pub fn playing_for(&self, id: &str) -> Option<u64> {
+        self.lock().get(id)?.as_ref().map(|round| round.started.elapsed().as_secs())
+    }
+
     fn reserve(&self, game: &Game) -> Result<(), String> {
         let mut active = self.lock();
         if active.contains_key(&game.id) { return Err(format!("{} já está aberto.", game.name)); }
@@ -301,6 +306,7 @@ pub fn release(app: &AppHandle, id: &str) {
         crate::looks::take_back(&data, id);
     }
     app.state::<Sessions>().lock().remove(id);
+    crate::overlay::game_closed(app, id);
     notify(app, id, false);
     crate::background::game_ended(app);
 }

@@ -84,33 +84,41 @@ fn save_png(file: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<(), Str
     writer.finish().map_err(|e| e.to_string())
 }
 
-/// F12 pressed: the picture of the game in front, if it's one Cerberus opened.
-fn take(app: &AppHandle) {
-    let Some((window, pid)) = win::foreground() else { return };
+/// The window in front and its game, when it's a game Cerberus opened.
+pub fn game_in_front(app: &AppHandle) -> Option<(win::Window, Game)> {
+    let (window, pid) = win::foreground()?;
     if pid == std::process::id() {
-        return;
+        return None;
     }
-    let Some(program) = win::program_of(pid) else { return };
+    let program = win::program_of(pid)?;
     let library = app.state::<crate::library::LocalLibrary>();
     let running: Vec<Game> = app.state::<crate::sessions::Sessions>().running().iter().filter_map(|id| library.get(id).ok().flatten()).collect();
-    let Some(game) = owner(&running, &program) else { return };
-    let Some((width, height, pixels)) = win::grab(window) else {
-        crate::notify::tell(app, "Não foi possível tirar a foto", "o jogo está minimizado ou em tela cheia exclusiva");
-        return;
-    };
+    let game = owner(&running, &program)?.clone();
+    Some((window, game))
+}
+
+/// A picture of the game's window, saved and announced.
+pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), String> {
+    let (width, height, pixels) = win::grab(window).ok_or("O jogo está minimizado ou em tela cheia exclusiva; a foto não saiu.")?;
     let data = &app.state::<crate::DataDir>().0;
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or_default();
     let file = dir_of(data, &game.id).join(format!("{now}.png"));
-    match save_png(&file, width, height, &pixels) {
-        Ok(()) => {
-            let _ = app.emit(EVENT, game.id.clone());
-            crate::notify::tell(app, "Foto salva", &format!("{} › Fotos", game.name));
-        }
-        Err(e) => crate::notify::tell(app, "Não foi possível salvar a foto", &e),
+    save_png(&file, width, height, &pixels).map_err(|e| format!("Não foi possível salvar a foto: {e}"))?;
+    let _ = app.emit(EVENT, game.id.clone());
+    Ok(())
+}
+
+/// F12 pressed: the picture of the game in front, if it's one Cerberus opened.
+fn take(app: &AppHandle) {
+    let Some((window, game)) = game_in_front(app) else { return };
+    match shoot(app, window, &game) {
+        Ok(()) => crate::notify::tell(app, "Foto salva", &format!("{} › Fotos", game.name)),
+        Err(e) => crate::notify::tell(app, "Não foi possível tirar a foto", &e),
     }
 }
 
-/// Watches F12 while a game Cerberus opened runs: one picture per press.
+/// Watches F12 while a game Cerberus opened runs: one picture per press, and
+/// Ctrl+F12 opens or closes the menu over the game.
 pub fn watch(app: AppHandle) {
     std::thread::spawn(move || {
         let mut was_down = false;
@@ -123,7 +131,14 @@ pub fn watch(app: AppHandle) {
             }
             let down = win::f12_down();
             if down && !was_down {
-                take(&app);
+                if win::ctrl_down() {
+                    let app = app.clone();
+                    // Windows are made on the app's own thread.
+                    let handle = app.clone();
+                    let _ = handle.run_on_main_thread(move || crate::overlay::toggle(&app));
+                } else {
+                    take(&app);
+                }
             }
             was_down = down;
             std::thread::sleep(std::time::Duration::from_millis(40));
@@ -132,8 +147,10 @@ pub fn watch(app: AppHandle) {
 }
 
 #[cfg(windows)]
-mod win {
+pub(crate) mod win {
     use std::path::PathBuf;
+
+    pub type Window = HWND;
 
     use windows_sys::Win32::Foundation::{CloseHandle, HWND, POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
@@ -141,8 +158,11 @@ mod win {
         DeleteObject, GetDC, GetDIBits, ReleaseDC, SRCCOPY, SelectObject,
     };
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_F12};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, GetForegroundWindow, GetWindowThreadProcessId, IsIconic};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_F12};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        AllowSetForegroundWindow, ASFW_ANY, GetClientRect, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow, PostMessageW, SetForegroundWindow,
+        WM_CLOSE,
+    };
 
     /// The window in front and its process.
     pub fn foreground() -> Option<(HWND, u32)> {
@@ -234,11 +254,66 @@ mod win {
         // SAFETY: reads the key's state; no memory is passed.
         unsafe { (GetAsyncKeyState(VK_F12 as i32) as u16 & 0x8000) != 0 }
     }
+
+    pub fn ctrl_down() -> bool {
+        // SAFETY: as above.
+        unsafe { (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0 }
+    }
+
+    /// Where the window's inside is on screen: x, y, width, height in pixels.
+    pub fn client_rect(window: HWND) -> Option<(i32, i32, i32, i32)> {
+        // SAFETY: plain Win32 queries on a window handle Windows gave us.
+        unsafe {
+            if IsIconic(window) != 0 {
+                return None;
+            }
+            let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if GetClientRect(window, &mut rect) == 0 {
+                return None;
+            }
+            let mut corner = POINT { x: 0, y: 0 };
+            ClientToScreen(window, &mut corner);
+            let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+            (width > 0 && height > 0).then_some((corner.x, corner.y, width, height))
+        }
+    }
+
+    /// Puts a window in front and gives it the keyboard, if it still exists.
+    pub fn bring_to_front(window: isize) {
+        let window = window as HWND;
+        // SAFETY: IsWindow checks the handle before it's used.
+        unsafe {
+            if !window.is_null() && IsWindow(window) != 0 {
+                AllowSetForegroundWindow(ASFW_ANY);
+                SetForegroundWindow(window);
+            }
+        }
+    }
+
+    /// Asks a window to close, as its X button would.
+    pub fn ask_to_close(window: isize) {
+        let window = window as HWND;
+        // SAFETY: IsWindow checks the handle; posting doesn't wait on the game.
+        unsafe {
+            if IsWindow(window) != 0 {
+                PostMessageW(window, WM_CLOSE, 0, 0);
+            }
+        }
+    }
 }
 
 #[cfg(not(windows))]
-mod win {
+pub(crate) mod win {
     use std::path::PathBuf;
+    pub type Window = ();
+    pub fn ctrl_down() -> bool {
+        false
+    }
+    pub fn client_rect(_: ()) -> Option<(i32, i32, i32, i32)> {
+        None
+    }
+    pub fn bring_to_front(_: isize) {}
+    pub fn ask_to_close(_: isize) {}
     pub fn foreground() -> Option<((), u32)> {
         None
     }

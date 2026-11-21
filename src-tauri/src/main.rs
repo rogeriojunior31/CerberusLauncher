@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod overlay;
 mod disc_image;
 mod screenshots;
 mod monitors;
@@ -1832,6 +1833,7 @@ fn main() {
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
             background::tray(app.handle())?;
             store_time::watch(app.handle().clone());
+            app.manage(overlay::Overlay::default());
             screenshots::watch(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 monitors::place(&window, chosen.monitor.as_deref());
@@ -1951,6 +1953,11 @@ fn main() {
             set_site_catalog,
             set_close_to_tray,
             list_screenshots,
+            overlay::overlay_state,
+            overlay::overlay_close,
+            overlay::overlay_screenshot,
+            overlay::overlay_quit_game,
+            overlay::overlay_open_launcher,
             open_screenshot,
             open_screenshots_folder,
             list_monitors,

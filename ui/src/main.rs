@@ -21,6 +21,7 @@ mod tiles;
 mod news;
 mod game_menu;
 mod versions;
+mod overlay;
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -33,6 +34,10 @@ use art::{Poster, cover_sources};
 
 fn main() {
     console_error_panic_hook::set_once();
+    if overlay::is_overlay() {
+        leptos::mount::mount_to_body(overlay::OverlayMenu);
+        return;
+    }
     leptos::mount::mount_to_body(App);
 }
 
@@ -309,6 +314,7 @@ fn App() -> impl IntoView {
         }
     });
     api::on_play_request(move |id| wanted.set(Some(id)));
+    api::on_show_game(move |id: String| library.go(Route::Game(id)));
     Effect::new(move |_| {
         let Some(id) = wanted.get() else { return };
         let Some(Ok(games)) = library.games.get() else { return };

@@ -346,6 +346,16 @@ pub struct SettingsView {
     pub monitor: Option<String>,
 }
 
+/// What the menu over a game (Ctrl+F12) shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OverlayView {
+    pub game: Game,
+    /// How long it's been played this time.
+    pub session_secs: u64,
+    /// The latest pictures of it, newest first.
+    pub shots: Vec<Screenshot>,
+}
+
 /// A picture taken of a game (F12 while it runs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Screenshot {

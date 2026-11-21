@@ -48,6 +48,36 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// The menu over a game was opened again (its window is kept between uses).
+pub fn on_overlay_opened(mut handler: impl FnMut() + 'static) {
+    on_event("overlay-opened", move |_: ()| handler());
+}
+
+/// The menu over a game asked for the game's page in the launcher.
+pub fn on_show_game(handler: impl FnMut(String) + 'static) {
+    on_event("show-game", handler);
+}
+
+pub async fn overlay_state() -> Result<cerberus_shared::OverlayView, String> {
+    call("overlay_state", &()).await
+}
+
+pub async fn overlay_close() -> Result<(), String> {
+    call("overlay_close", &()).await
+}
+
+pub async fn overlay_screenshot() -> Result<(), String> {
+    call("overlay_screenshot", &()).await
+}
+
+pub async fn overlay_quit_game() -> Result<(), String> {
+    call("overlay_quit_game", &()).await
+}
+
+pub async fn overlay_open_launcher() -> Result<(), String> {
+    call("overlay_open_launcher", &()).await
+}
+
 /// A picture was taken of a game; the game's id.
 pub fn on_screenshot(handler: impl FnMut(String) + 'static) {
     on_event("screenshot-taken", handler);
