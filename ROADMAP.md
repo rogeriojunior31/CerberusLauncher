@@ -327,6 +327,8 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 - [ ] Converter imagens de disco compactadas (CHD, RVZ, CSO...) no Easy Setup.
 - [x] Coleções e jogos ocultos: aba Coleções (criar, renomear, apagar) e Ocultos na biblioteca, pelo botão direito
       na capa; ocultos saem do Início, do menu lateral e do Big Picture (collections.json). Conferido no app.
+- [x] Monitor onde o Cerberus e o Big Picture abrem (Configurações › Geral, só com mais de um monitor ligado).
+      Conferido no app com um monitor (a escolha salva e o Big Picture em tela cheia); falta ver com dois monitores.
 - [ ] Discord "Jogando...", multi-disco nos clássicos.
 
 ### 4.4 Transição

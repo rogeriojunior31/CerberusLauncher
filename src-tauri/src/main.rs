@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod monitors;
 mod collections;
 mod notify;
 mod crash;
@@ -115,6 +116,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
             app.autolaunch().is_enabled().unwrap_or(false)
         },
         start_hidden: chosen.start_hidden,
+        monitor: chosen.monitor.clone(),
         ra_user: chosen.ra_user.clone(),
         roms: {
             let played = emulation::played(&data.0);
@@ -608,6 +610,34 @@ fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     chosen.start_hidden = on;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
+}
+
+/// The monitors plugged in.
+#[tauri::command]
+fn list_monitors(app: AppHandle) -> Vec<cerberus_shared::MonitorView> {
+    app.get_webview_window("main").map(|w| monitors::list(&w)).unwrap_or_default()
+}
+
+/// Picks the monitor Cerberus opens on (none: where Windows puts it) and moves there now.
+#[tauri::command]
+fn set_monitor(app: AppHandle, name: Option<String>) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.monitor = name.filter(|n| !n.is_empty());
+    settings::save(&data.0, &chosen)?;
+    if let Some(window) = app.get_webview_window("main") {
+        monitors::place(&window, chosen.monitor.as_deref());
+    }
+    Ok(settings_view(&app))
+}
+
+/// Before Big Picture fills the screen: the chosen monitor's.
+#[tauri::command]
+fn to_chosen_monitor(app: AppHandle) {
+    let chosen = settings::load(&app.state::<DataDir>().0);
+    if let Some(window) = app.get_webview_window("main") {
+        monitors::place(&window, chosen.monitor.as_deref());
+    }
 }
 
 /// Whether closing the window keeps Cerberus in the tray.
@@ -1778,6 +1808,9 @@ fn main() {
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
             background::tray(app.handle())?;
             store_time::watch(app.handle().clone());
+            if let Some(window) = app.get_webview_window("main") {
+                monitors::place(&window, chosen.monitor.as_deref());
+            }
             if chosen.start_hidden && std::env::args().any(|a| a == "--autostart") {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
@@ -1888,6 +1921,9 @@ fn main() {
             play_classic,
             set_site_catalog,
             set_close_to_tray,
+            list_monitors,
+            set_monitor,
+            to_chosen_monitor,
             set_autostart,
             set_start_hidden,
             recent_activity,

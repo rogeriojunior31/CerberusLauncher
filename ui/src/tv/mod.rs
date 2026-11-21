@@ -220,8 +220,18 @@ pub fn TvMode() -> impl IntoView {
         positions: StoredValue::new(HashMap::new()),
     };
     provide_context(tv);
-    api::window_toggle("setFullscreen", true);
-    on_cleanup(|| api::window_toggle("setFullscreen", false));
+    // On the monitor the player picked, then full screen; leaving before that is done stays windowed.
+    let here = StoredValue::new(true);
+    leptos::task::spawn_local(async move {
+        let _ = api::to_chosen_monitor().await;
+        if here.try_get_value().unwrap_or(false) {
+            api::window_toggle("setFullscreen", true);
+        }
+    });
+    on_cleanup(move || {
+        here.try_set_value(false);
+        api::window_toggle("setFullscreen", false);
+    });
 
     let leave = move || library.go(Route::Home);
     let dispatch = move |btn: Btn| {

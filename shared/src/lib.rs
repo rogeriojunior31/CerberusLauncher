@@ -341,6 +341,19 @@ pub struct SettingsView {
     /// Files found in the ROM folders, for the Clássicos view.
     #[serde(default)]
     pub roms: Vec<RomView>,
+    /// The monitor Cerberus opens on; none: where Windows puts it.
+    #[serde(default)]
+    pub monitor: Option<String>,
+}
+
+/// A monitor plugged in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MonitorView {
+    /// Windows' name for it, kept in the settings.
+    pub name: String,
+    /// "Monitor 2 · 2560×1440 (principal)".
+    pub label: String,
+    pub primary: bool,
 }
 
 /// Emulation as Configurações shows it.

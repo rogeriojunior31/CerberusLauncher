@@ -183,6 +183,7 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             <h3>"Ao abrir"</h3>
             {row("Página inicial", "Onde a janela abre. Quem joga no Big Picture Mode abre direto nele.",
                 view! { <div class="segs" role="radiogroup">{choice("home", "Início")}{choice("library", "Biblioteca")}{choice("discover", "Descobrir")}</div> })}
+            <MonitorRow chosen=s.monitor.clone() />
             {row("Configuração inicial", "As telas de boas-vindas da primeira vez, para rever pastas, instalação e nuvem.",
                 view! { <button type="button" class="btn sm" disabled=move || busy.get()
                     on:click=move |_| apply(Box::pin(api::rerun_setup()), "Na próxima vez que o Cerberus abrir, a configuração inicial aparece.")>"Mostrar de novo"</button> })}
@@ -209,6 +210,40 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                 }))}
             <p class="muted small">"Com um jogo aberto, fechar a janela sempre deixa o Cerberus na bandeja, para contar o tempo de jogo e guardar os saves no fim da partida. Ele fecha sozinho quando o jogo terminar."</p>
         </section>
+    }
+}
+
+/// Which monitor Cerberus and Big Picture open on; only with more than one plugged in.
+#[component]
+fn MonitorRow(chosen: Option<String>) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let monitors = LocalResource::new(api::list_monitors);
+    move || {
+        let list = monitors.get().and_then(Result::ok).unwrap_or_default();
+        let unplugged = chosen.as_ref().is_some_and(|c| !list.iter().any(|m| &m.name == c));
+        if list.len() < 2 && !unplugged {
+            return None;
+        }
+        let chosen = chosen.clone();
+        let options = list.into_iter().map(|m| {
+            let on = chosen.as_deref() == Some(m.name.as_str());
+            view! { <option value=m.name.clone() selected=on>{m.label}</option> }
+        }).collect_view();
+        let gone = unplugged.then(|| view! { <option value=chosen.clone().unwrap_or_default() selected=true>"O escolhido (desligado agora)"</option> });
+        Some(row("Monitor", "Onde a janela do Cerberus e o Big Picture Mode abrem.",
+            view! {
+                <select class="select" aria-label="Monitor"
+                    on:change=move |e| {
+                        let name = event_target_value(&e);
+                        leptos::task::spawn_local(async move {
+                            library.report(api::set_monitor((!name.is_empty()).then_some(name)).await);
+                        });
+                    }>
+                    <option value="" selected=chosen.is_none()>"Onde o Windows abrir"</option>
+                    {options}
+                    {gone}
+                </select>
+            }))
     }
 }
 

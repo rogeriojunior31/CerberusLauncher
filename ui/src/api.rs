@@ -474,6 +474,22 @@ pub async fn set_start_hidden(on: bool) -> Result<SettingsView, String> {
     call("set_start_hidden", &Arg { on }).await
 }
 
+pub async fn list_monitors() -> Result<Vec<cerberus_shared::MonitorView>, String> {
+    call("list_monitors", &()).await
+}
+
+pub async fn set_monitor(name: Option<String>) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        name: Option<String>,
+    }
+    call("set_monitor", &Arg { name }).await
+}
+
+pub async fn to_chosen_monitor() -> Result<(), String> {
+    call("to_chosen_monitor", &()).await
+}
+
 pub async fn set_close_to_tray(on: bool) -> Result<SettingsView, String> {
     #[derive(serde::Serialize)]
     struct Arg {
