@@ -467,7 +467,7 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
 }
 
 /// Copies a folder's files and folders under `to`, keeping their layout.
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+pub(crate) fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::create_dir_all(to)?;
     for entry in fs::read_dir(from)? {
         let entry = entry?;

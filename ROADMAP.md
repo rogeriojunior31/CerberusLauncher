@@ -317,7 +317,9 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       XAudio 2.7), instalados pelos links da Microsoft.
 - [x] Jogo que fecha com 0xC0000139: diz qual DLL é antiga (cópia na pasta do jogo, Visual C++ ou Vulkan do driver).
 - [x] Mods do GameBanana para Ship of Harkinian, Starship, SpaghettiKart e Ghostship (pacotes .otr/.o2r).
-      Conferido no app: instalar e remover um mod do SpaghettiKart. Falta: Unleashed e Marathon (mod.ini e ModsDB.ini).
+      Conferido no app: instalar e remover um mod do SpaghettiKart.
+- [x] Mods do GameBanana para Unleashed e Marathon Recompiled: pasta com mod.ini ligada no ModsDB.ini que o
+      cpkredir.ini aponta (a lista do Hedge Mod Manager é mantida, com backup). Conferido com um mod real numa pasta temporária.
 - [x] Recomps no GitLab e em servidores Forgejo (11 do catálogo principal e os 3 da lista apps_min do site:
       Hookshot, Longshot, FE3H Recomp) e ids renomeados (replaced) do catálogo do site.
 - [x] Pausar e continuar download de recomp (o arquivo parcial fica guardado; cancelar apaga), na página do jogo e no Big Picture.

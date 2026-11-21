@@ -8,6 +8,7 @@ mod iso9660;
 mod library;
 mod mods;
 mod gamebanana;
+mod hedge;
 mod recomp;
 mod sessions;
 mod roms;
@@ -1021,8 +1022,8 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
 /// Where a recomp's mods come from.
 enum ModHost {
     Thunderstore(mods::ModSource),
-    /// The game's id on GameBanana.
-    GameBanana(u64),
+    /// The game's id on GameBanana, and how the game reads mods.
+    GameBanana(u64, gamebanana::Kind),
 }
 
 /// The mod source and mods folder of an installed recomp; `None` when it has no mods.
@@ -1033,8 +1034,8 @@ async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(ModHost, PathBuf
         return Ok(None);
     };
     let record = app.state::<DataDir>().0.join("mods").join(format!("{recomp_id}.json"));
-    if let Some(game_id) = gamebanana::game_for(recomp_id) {
-        return Ok(Some((ModHost::GameBanana(game_id), gamebanana::mods_dir(Path::new(exe)), record)));
+    if let Some((game_id, kind)) = gamebanana::game_for(recomp_id) {
+        return Ok(Some((ModHost::GameBanana(game_id, kind), gamebanana::mods_dir(Path::new(exe)), record)));
     }
     let name = recomp::find(recomp_id).map(|e| e.name).unwrap_or_else(|| game.name.clone());
     let http = app.state::<reqwest::Client>().inner().clone();
@@ -1061,7 +1062,7 @@ async fn list_mods(app: AppHandle, http: State<'_, reqwest::Client>, id: String)
             let items = packages.iter().map(|p| mods::item(p, &installed)).collect();
             cerberus_shared::ModList { from: format!("thunderstore.io/c/{}", source.community), community: source.community, folder, items }
         }
-        ModHost::GameBanana(game) => {
+        ModHost::GameBanana(game, _) => {
             let listed = gamebanana::list(&http, &cache, game).await?;
             let items = listed.iter().map(|m| gamebanana::item(m, &installed)).collect();
             cerberus_shared::ModList { from: "gamebanana.com".into(), community: String::new(), folder, items }
@@ -1076,17 +1077,26 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
     let cache = app.state::<DataDir>().cache().join("mods");
     let source = match host {
         ModHost::Thunderstore(source) => source,
-        ModHost::GameBanana(game) => {
+        ModHost::GameBanana(game, kind) => {
             let mod_id = gamebanana::id_of(&full_name).ok_or("Mod desconhecido.")?;
             let listed = gamebanana::list(&http, &cache, game).await?;
-            let version = listed.iter().find(|m| m.id == mod_id).map(|m| m.version.clone()).unwrap_or_default();
+            let found = listed.iter().find(|m| m.id == mod_id);
+            let version = found.map(|m| m.version.clone()).unwrap_or_default();
+            let name = found.map(|m| m.name.clone()).unwrap_or_default();
             let file = gamebanana::file_of(&http, mod_id).await?;
             let archive = gamebanana::download(&http, &file, &app.state::<DataDir>().0.join("downloads").join("mods")).await?;
             let mods_folder = folder.clone();
-            let placed = tauri::async_runtime::spawn_blocking(move || gamebanana::place_packs(&archive, &mods_folder)).await.map_err(|e| e.to_string())??;
             let mut installed = mods::load_installed(&record);
+            let old = installed.0.get(&full_name).map(|(_, files)| files.clone()).unwrap_or_default();
+            let old_files = old.clone();
+            let placed = tauri::async_runtime::spawn_blocking(move || match kind {
+                gamebanana::Kind::Packs => gamebanana::place_packs(&archive, &mods_folder),
+                gamebanana::Kind::Hedge(user) => hedge::place(&archive, &mods_folder, user, mod_id, &name, &old_files),
+            })
+            .await
+            .map_err(|e| e.to_string())??;
             // Packs the new version no longer has go; the ones it has were just replaced.
-            if let Some((_, old)) = installed.0.get(&full_name) {
+            if kind == gamebanana::Kind::Packs {
                 let gone: Vec<String> = old.iter().filter(|f| !placed.contains(f)).cloned().collect();
                 mods::remove_files(&folder, &gone);
             }
@@ -1125,10 +1135,13 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
 
 #[tauri::command]
 async fn remove_mod(app: AppHandle, id: String, full_name: String) -> Result<(), String> {
-    let (_, folder, record) = mod_setup(&app, &id).await?.ok_or("Esse jogo não tem mods.")?;
+    let (host, folder, record) = mod_setup(&app, &id).await?.ok_or("Esse jogo não tem mods.")?;
     let mut installed = mods::load_installed(&record);
     if let Some((_, files)) = installed.0.remove(&full_name) {
-        mods::remove_files(&folder, &files);
+        match (host, gamebanana::id_of(&full_name)) {
+            (ModHost::GameBanana(_, gamebanana::Kind::Hedge(user)), Some(mod_id)) => hedge::remove(&folder, user, mod_id, &files)?,
+            _ => mods::remove_files(&folder, &files),
+        }
         mods::save_installed(&record, &installed)?;
     }
     Ok(())

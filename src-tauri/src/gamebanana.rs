@@ -1,7 +1,9 @@
 //! Mods from GameBanana (gamebanana.com), whose API is public and needs no
 //! account, for the ports that read packs from a `mods` folder beside their
 //! program: the Harbour Masters family (Ship of Harkinian, Starship,
-//! SpaghettiKart, Ghostship), which load `.otr` and `.o2r` files by themselves.
+//! SpaghettiKart, Ghostship), which load `.otr` and `.o2r` files by themselves;
+//! and Unleashed and Marathon Recompiled, whose mods are folders with a
+//! `mod.ini` that their mod loader turns on from a list (see `hedge`).
 //!
 //! A mod on GameBanana can offer several files; the newest one that passed
 //! GameBanana's virus scan and comes as a .zip or .7z is the one installed.
@@ -26,12 +28,28 @@ const MAX_FILE_BYTES: u64 = 4 << 30;
 /// The most downloaded mods, in pages of 50.
 const PAGES: u32 = 3;
 
-/// Recomps with a GameBanana game page whose mods are packs in `mods`.
-const GAMES: &[(&str, u64)] = &[("shipwright", 16121), ("starship", 21612), ("spaghettikart", 22970), ("ghostship", 24131)];
+/// How a game reads its mods.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Kind {
+    /// .otr/.o2r packs in `mods`.
+    Packs,
+    /// Folders with a mod.ini, listed in ModsDB.ini; the game's user folder's name.
+    Hedge(&'static str),
+}
+
+/// Recomps with a GameBanana game page whose mods install from here.
+const GAMES: &[(&str, u64, Kind)] = &[
+    ("shipwright", 16121, Kind::Packs),
+    ("starship", 21612, Kind::Packs),
+    ("spaghettikart", 22970, Kind::Packs),
+    ("ghostship", 24131, Kind::Packs),
+    ("unleashedrecomp", 21975, Kind::Hedge("UnleashedRecomp")),
+    ("marathonrecomp", 23176, Kind::Hedge("MarathonRecomp")),
+];
 
 /// The recomp's game on GameBanana, when its mods install from here.
-pub fn game_for(recomp_id: &str) -> Option<u64> {
-    GAMES.iter().find(|(id, _)| *id == recomp_id).map(|(_, game)| *game)
+pub fn game_for(recomp_id: &str) -> Option<(u64, Kind)> {
+    GAMES.iter().find(|(id, ..)| *id == recomp_id).map(|(_, game, kind)| (*game, *kind))
 }
 
 /// The packs go beside the program, in `mods`.
@@ -308,7 +326,8 @@ mod tests {
 
     #[test]
     fn knows_the_harbour_masters_ports() {
-        assert_eq!(game_for("shipwright"), Some(16121));
+        assert_eq!(game_for("shipwright"), Some((16121, Kind::Packs)));
+        assert_eq!(game_for("unleashedrecomp"), Some((21975, Kind::Hedge("UnleashedRecomp"))));
         assert_eq!(game_for("zelda64recomp"), None);
         assert_eq!(mods_dir(Path::new(r"C:\Games\soh\soh.exe")), Path::new(r"C:\Games\soh\mods"));
         assert_eq!(id_of(&key(477979)), Some(477979));
