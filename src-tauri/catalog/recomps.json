@@ -42,7 +42,7 @@
       }
     },
     "size_text": "28 MB",
-    "stars": 7744
+    "stars": 7752
   },
   {
     "id": "starfox64recomp",
@@ -87,7 +87,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 409
+    "stars": 410
   },
   {
     "id": "mariokart64recomp",
@@ -133,7 +133,7 @@
       }
     },
     "size_text": "23 MB",
-    "stars": 640
+    "stars": 641
   },
   {
     "id": "banjorecomp",
@@ -178,7 +178,7 @@
       }
     },
     "size_text": "18 MB",
-    "stars": 2148
+    "stars": 2151
   },
   {
     "id": "goemon64recomp",
@@ -268,7 +268,7 @@
       }
     },
     "size_text": "70 MB",
-    "stars": 6127
+    "stars": 6148
   },
   {
     "id": "2ship2harkinian",
@@ -311,7 +311,7 @@
       }
     },
     "size_text": "43 MB",
-    "stars": 2503
+    "stars": 2512
   },
   {
     "id": "starship",
@@ -339,7 +339,7 @@
     },
     "files": {},
     "size_text": "5 MB",
-    "stars": 2151
+    "stars": 2153
   },
   {
     "id": "spaghettikart",
@@ -382,7 +382,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 2504
+    "stars": 2508
   },
   {
     "id": "unleashedrecomp",
@@ -411,6 +411,6 @@
     },
     "files": {},
     "size_text": "51 MB",
-    "stars": 5399
+    "stars": 5407
   }
 ]

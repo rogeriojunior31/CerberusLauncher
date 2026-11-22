@@ -29,7 +29,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 8431
+    "stars": 8436
   },
   {
     "id": "totk-pc-recomp",
@@ -46,8 +46,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.4.1",
-    "released": "2026-11-15",
+    "tag": "v0.5.0",
+    "released": "2026-11-22",
     "systems": [
       "windows",
       "linux"
@@ -58,16 +58,16 @@
     },
     "files": {
       "windows": {
-        "name": "TotK-Setup-0.4.1-windows.zip",
-        "sha256": "5b1ebd4285167e80ec0a7ee2a5c0ec85540cbeea8c83234067a76f83f7a33ee8"
+        "name": "TotK-Setup-0.5.0-windows.zip",
+        "sha256": "201b08348ffb72c70570eba8f92f67d31bc611b5aff4b0de09756259e0c95a7d"
       },
       "linux": {
-        "name": "TotK-Setup-0.4.1-x86_64-pgo.AppImage",
-        "sha256": "cb91aa7d5c90a42be4de896cc2f995220d1d40bca9b8ca96088a161654a8d1f6"
+        "name": "TotK-Setup-0.5.0-x86_64-pgo.AppImage",
+        "sha256": "32c44b622350c2049e65010496ff60266ece55b54e9c7a82f32a578f664a1051"
       }
     },
-    "size_text": "159 MB",
-    "stars": 7830
+    "size_text": "161 MB",
+    "stars": 8008
   },
   {
     "id": "gen1recomp",
@@ -111,7 +111,7 @@
       }
     },
     "size_text": "38 MB",
-    "stars": 4192
+    "stars": 4202
   },
   {
     "id": "s2arm",
@@ -128,8 +128,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.6.1",
-    "released": "2026-11-20",
+    "tag": "v0.6.8",
+    "released": "2026-11-22",
     "systems": [
       "windows"
     ],
@@ -139,11 +139,11 @@
     "files": {
       "windows": {
         "name": "S2Arm-windows-x64.zip",
-        "sha256": "f927a3483461eefc7989f404d79d04ad826824387de3a702869ad84ad8aad669"
+        "sha256": "d8a990964082afda3da5f5f7b837513f46a705bfc95f1dac641c55652b2ecf99"
       }
     },
-    "size_text": "208 MB",
-    "stars": 3726
+    "size_text": "222 MB",
+    "stars": 3814
   },
   {
     "id": "skate3recomp",
@@ -187,7 +187,7 @@
       }
     },
     "size_text": "29 MB",
-    "stars": 1840
+    "stars": 1841
   },
   {
     "id": "mkw-recomp",
@@ -204,8 +204,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.1.16",
-    "released": "2026-11-20",
+    "tag": "v0.1.17",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -216,16 +216,16 @@
     },
     "files": {
       "windows": {
-        "name": "mkw-recomp-0.1.16-windows-x64-noavx2.zip",
-        "sha256": "9d40f159d1d2fb8ae0623465ef0f6851ef5ab67d7d580be82968568288293f9c"
+        "name": "mkw-recomp-0.1.17-windows-x64-noavx2.zip",
+        "sha256": "9dfbdaff20607973e4176e7f6265ff1495b342b228a6adbd266c0879c50bc3c3"
       },
       "linux": {
-        "name": "mkw-recomp-0.1.16-x86_64.AppImage",
-        "sha256": "dea2ccb590b0d1a14fd726e387869f67e961c10128012a2314a336c094118866"
+        "name": "mkw-recomp-0.1.17-x86_64.AppImage",
+        "sha256": "4d7e0d900d4ffb6ee5312ef40e862a39062beb5a2a59ef1195cc0f49aec1214a"
       }
     },
-    "size_text": "211 MB",
-    "stars": 1584
+    "size_text": "212 MB",
+    "stars": 1668
   },
   {
     "id": "dkb-pc-recomp",
@@ -263,7 +263,7 @@
       }
     },
     "size_text": "125 MB",
-    "stars": 1253
+    "stars": 1316
   },
   {
     "id": "ocarina-recomp",
@@ -295,7 +295,39 @@
       }
     },
     "size_text": "111 MB",
-    "stars": 1238
+    "stars": 1251
+  },
+  {
+    "id": "xbox2windows",
+    "title": "xbox2windows",
+    "name": "Xbox2Windows",
+    "repo": "R0Y00/Xbox2Windows",
+    "about": "GTA VI static recompilation research for x64 Windows. Source-built EXEs run on Windows, and two translated pixel shaders match reference outputs on hardware and WARP. Full-game startup is unverified.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "gpu-check-v0.1.0",
+    "released": "2026-11-20",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "Xbox2Windows-GpuCheck-win-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Xbox2Windows-GpuCheck-win-x64.zip",
+        "sha256": "cc489a34bb0d3b8af8bb4e3ce0bc9d09cfa100183da204b69784e1ac9fb9c8b9"
+      }
+    },
+    "size_text": "1 MB",
+    "stars": 1250
   },
   {
     "id": "symphonyrecomp",
@@ -339,7 +371,7 @@
       }
     },
     "size_text": "61 MB",
-    "stars": 1153
+    "stars": 1159
   },
   {
     "id": "pinyon-shift",
@@ -383,7 +415,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 1079
+    "stars": 1090
   },
   {
     "id": "driveclub-recomp",
@@ -421,7 +453,7 @@
       }
     },
     "size_text": "160 MB",
-    "stars": 1059
+    "stars": 1066
   },
   {
     "id": "lostodysseyrecomp",
@@ -459,7 +491,7 @@
       }
     },
     "size_text": "148 MB",
-    "stars": 1015
+    "stars": 1033
   },
   {
     "id": "marathonrecomp",
@@ -491,6 +523,44 @@
       }
     },
     "size_text": "37 MB",
+    "stars": 978
+  },
+  {
+    "id": "recompia",
+    "title": "recompia",
+    "name": "Recompia",
+    "repo": "Dittobyte/Recompia",
+    "about": "A cozy life-simulation and sandbox builder with fantastical creatures (Switch 2), recompiled to run natively on Windows, Linux and macOS. Multiplayer, all events, modding, enhancements and more. Discord: https://discord.recompia.com",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.16.0",
+    "released": "2026-11-20",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "PokopiaRecomp-*-win64.zip",
+      "linux": "PokopiaRecomp-*-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "PokopiaRecomp-0.16.0-win64.zip",
+        "sha256": "9510b419cb03d4283a62ef01e481e0fd3a8b1d4dabfab9aaba8b9ef7e2a18b1e"
+      },
+      "linux": {
+        "name": "PokopiaRecomp-0.16.0-linux-x64.tar.gz",
+        "sha256": "f32cc659d5534b5788a3b0231463812549e3097e9c959b2136a79fc66570c708"
+      }
+    },
+    "size_text": "185 MB",
     "stars": 970
   },
   {
@@ -529,45 +599,7 @@
       }
     },
     "size_text": "154 MB",
-    "stars": 954
-  },
-  {
-    "id": "recompia",
-    "title": "recompia",
-    "name": "Recompia",
-    "repo": "Dittobyte/Recompia",
-    "about": "A cozy life-simulation and sandbox builder with fantastical creatures (Switch 2), recompiled to run natively on Windows, Linux and macOS. Multiplayer, all events, modding, enhancements and more. Discord: https://discord.recompia.com",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.16.0",
-    "released": "2026-11-20",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "PokopiaRecomp-*-win64.zip",
-      "linux": "PokopiaRecomp-*-linux-x64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "PokopiaRecomp-0.16.0-win64.zip",
-        "sha256": "9510b419cb03d4283a62ef01e481e0fd3a8b1d4dabfab9aaba8b9ef7e2a18b1e"
-      },
-      "linux": {
-        "name": "PokopiaRecomp-0.16.0-linux-x64.tar.gz",
-        "sha256": "f32cc659d5534b5788a3b0231463812549e3097e9c959b2136a79fc66570c708"
-      }
-    },
-    "size_text": "185 MB",
-    "stars": 935
+    "stars": 962
   },
   {
     "id": "hells-gate-recomp",
@@ -599,7 +631,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 931
+    "stars": 939
   },
   {
     "id": "gta-vcs-recomp",
@@ -637,7 +669,7 @@
       }
     },
     "size_text": "81 MB",
-    "stars": 729
+    "stars": 748
   },
   {
     "id": "ps3recomp",
@@ -654,8 +686,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.19.0",
-    "released": "2026-11-06",
+    "tag": "v0.20.0",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -666,16 +698,16 @@
     },
     "files": {
       "windows": {
-        "name": "ps3recomp-v0.19.0-win-x64.zip",
-        "sha256": "37418029743f83c0d98e15d210b3c0c7a38ff63b2a995f3aaf156fc9882bbf4d"
+        "name": "ps3recomp-v0.20.0-win-x64.zip",
+        "sha256": "143cb6b9fa88c5a0b31a1e097ddbaed68c1607d3d1bf8ce1ca211e1a67260246"
       },
       "linux": {
-        "name": "ps3recomp-v0.19.0-linux-x64.zip",
-        "sha256": "901e5894f155ee503e210e309bd2efed72c1beb24c491726234ac1516a4a89aa"
+        "name": "ps3recomp-v0.20.0-linux-x64.zip",
+        "sha256": "03e7fce9155d3bb9dde0e7bda06a7d10e2d28b85ed4707a28a4fde1a14f47258"
       }
     },
-    "size_text": "3 MB",
-    "stars": 726
+    "size_text": "6 MB",
+    "stars": 732
   },
   {
     "id": "fable-2-recomp",
@@ -707,7 +739,7 @@
       }
     },
     "size_text": "102 MB",
-    "stars": 704
+    "stars": 713
   },
   {
     "id": "b2recomp",
@@ -739,7 +771,7 @@
       }
     },
     "size_text": "101 MB",
-    "stars": 635
+    "stars": 642
   },
   {
     "id": "yakumo",
@@ -777,7 +809,7 @@
       }
     },
     "size_text": "211 MB",
-    "stars": 623
+    "stars": 626
   },
   {
     "id": "donkey-kong-64-recompiled",
@@ -815,7 +847,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 596
+    "stars": 595
   },
   {
     "id": "ico-pc",
@@ -832,8 +864,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.11.12",
-    "released": "2026-11-19",
+    "tag": "v0.11.14",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -844,16 +876,54 @@
     },
     "files": {
       "windows": {
-        "name": "ico-pc-v0.11.12-win-portable.zip",
-        "sha256": "68de048a494b242a109538094360fef6e2d353268ad5e5e9ed476dbb3c6c8dfc"
+        "name": "ico-pc-v0.11.14-win-portable.zip",
+        "sha256": "797eb1b7c5562237421fbd00e480bf6cc9513c3ff191d3217228b0487103631e"
       },
       "linux": {
-        "name": "ico-pc-v0.11.12-linux-x86_64.AppImage",
-        "sha256": "ddce9e9b021cb048ccd7d5fb94c3fc32b1af0fb1bb900ca8d2832243c7a8cfd7"
+        "name": "ico-pc-v0.11.14-linux-x86_64.AppImage",
+        "sha256": "5263e73afdfc0427259938f325a3c69d2966b5da4290797b8eae6fc8387f29f0"
       }
     },
     "size_text": "33 MB",
-    "stars": 563
+    "stars": 572
+  },
+  {
+    "id": "super-odyssey-pc-recomp",
+    "title": "super-odyssey-pc-recomp",
+    "name": "super odyssey pc recomp",
+    "repo": "Simon3Sarkis/super-odyssey-pc-recomp",
+    "about": "A native Windows PC port of Super Mario Odyssey by static recompilation. Bring your own game: no game files included.",
+    "license": "NOASSERTION",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.8.0",
+    "released": "2026-11-22",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Super.Odyssey.PC.Recomp-*-windows.zip",
+      "linux": "Super.Odyssey.PC.Recomp-*-linux-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "Super.Odyssey.PC.Recomp-0.8.0-windows.zip",
+        "sha256": "c6aaa8296bea0be0db487d6f48b6ee4547f2b9e15fee6993a40f59eb1e9b1897"
+      },
+      "linux": {
+        "name": "Super.Odyssey.PC.Recomp-0.8.0-linux-x86_64.AppImage",
+        "sha256": "a9e592454cebcb4f9349570dad58036d3259bf3bcfb37991dbeeb204ad5c97e2"
+      }
+    },
+    "size_text": "221 MB",
+    "stars": 548
   },
   {
     "id": "cogbox",
@@ -870,8 +940,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "0.6.5",
-    "released": "2026-11-18",
+    "tag": "0.6.7",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -880,12 +950,12 @@
     },
     "files": {
       "windows": {
-        "name": "COGBox-0.6.5.7z",
-        "sha256": "fe9b091f76efe24ad8e49d9db2438c2e7da49207e52f063f86da48d14607170d"
+        "name": "COGBox-0.6.7.7z",
+        "sha256": "721ad5557cec7ba2a6cbecfd03ad5612594ff0b36730b7605f2083ebf2a2c173"
       }
     },
-    "size_text": "159 MB",
-    "stars": 538
+    "size_text": "125 MB",
+    "stars": 547
   },
   {
     "id": "edgeoftimerecomp",
@@ -923,7 +993,7 @@
       }
     },
     "size_text": "184 MB",
-    "stars": 523
+    "stars": 522
   },
   {
     "id": "forzahorizon1-reimagined",
@@ -961,7 +1031,7 @@
       }
     },
     "size_text": "149 MB",
-    "stars": 478
+    "stars": 486
   },
   {
     "id": "gen2recomped",
@@ -1005,7 +1075,45 @@
       }
     },
     "size_text": "71 MB",
-    "stars": 473
+    "stars": 476
+  },
+  {
+    "id": "metroid-dread-recomp",
+    "title": "metroid-dread-recomp",
+    "name": "Metroid Dread Recomp",
+    "repo": "yozander2009-stack/Metroid-Dread-Recomp",
+    "about": "Static recompilation of Metroid Dread (Switch, 2.1.0) for Windows, Linux and Steam Deck. Bring your own dump: no game files, keys or dumping tools included.",
+    "license": "Apache-2.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.5.10",
+    "released": "2026-11-19",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "MetroidDread-PC-*-Windows-x64.zip",
+      "linux": "Metroid_Dread-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "MetroidDread-PC-v0.5.10-Windows-x64.zip",
+        "sha256": "c0466a4c80f6fc8335407e9c30e9872e95b668ac010a089f251adf7d283a5cb5"
+      },
+      "linux": {
+        "name": "Metroid_Dread-x86_64.AppImage",
+        "sha256": "5666edbffdc87d7a1f8651d2179321a6931f1d893874a3f8edc8eace930383b1"
+      }
+    },
+    "size_text": "146 MB",
+    "stars": 469
   },
   {
     "id": "gb-recompiled",
@@ -1046,44 +1154,6 @@
     "stars": 463
   },
   {
-    "id": "metroid-dread-recomp",
-    "title": "metroid-dread-recomp",
-    "name": "Metroid Dread Recomp",
-    "repo": "yozander2009-stack/Metroid-Dread-Recomp",
-    "about": "Metroid Dread recomp ",
-    "license": "Apache-2.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.5.10",
-    "released": "2026-11-19",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "MetroidDread-PC-*-Windows-x64.zip",
-      "linux": "Metroid_Dread-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "MetroidDread-PC-v0.5.10-Windows-x64.zip",
-        "sha256": "c0466a4c80f6fc8335407e9c30e9872e95b668ac010a089f251adf7d283a5cb5"
-      },
-      "linux": {
-        "name": "Metroid_Dread-x86_64.AppImage",
-        "sha256": "5666edbffdc87d7a1f8651d2179321a6931f1d893874a3f8edc8eace930383b1"
-      }
-    },
-    "size_text": "146 MB",
-    "stars": 458
-  },
-  {
     "id": "project-midas",
     "title": "project-midas",
     "name": "Project Midas",
@@ -1119,7 +1189,7 @@
       }
     },
     "size_text": "7 MB",
-    "stars": 446
+    "stars": 449
   },
   {
     "id": "thesimpsonsgamerecomp",
@@ -1195,45 +1265,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 439
-  },
-  {
-    "id": "super-odyssey-pc-recomp",
-    "title": "super-odyssey-pc-recomp",
-    "name": "super odyssey pc recomp",
-    "repo": "Simon3Sarkis/super-odyssey-pc-recomp",
-    "about": "A native Windows PC port of Super Mario Odyssey by static recompilation. Bring your own game: no game files included.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.5.1",
-    "released": "2026-11-20",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "Super.Odyssey.PC.Recomp-*-windows.zip",
-      "linux": "Super.Odyssey.PC.Recomp-*-linux-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "Super.Odyssey.PC.Recomp-0.5.1-windows.zip",
-        "sha256": "8f1e85ee752fd9138b0bd63ae93752c770b5efe87009103b6b325a8a1f82781d"
-      },
-      "linux": {
-        "name": "Super.Odyssey.PC.Recomp-0.5.1-linux-x86_64.AppImage",
-        "sha256": "8448d9d008e7147a0cc138b74034003369087ad2a1a46f68369b3821ad3c39c9"
-      }
-    },
-    "size_text": "221 MB",
-    "stars": 430
+    "stars": 440
   },
   {
     "id": "shadowrecomp",
@@ -1271,7 +1303,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 421
+    "stars": 438
   },
   {
     "id": "recompstore",
@@ -1303,7 +1335,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 404
+    "stars": 412
   },
   {
     "id": "botw-native",
@@ -1335,7 +1367,7 @@
       }
     },
     "size_text": "142 MB",
-    "stars": 394
+    "stars": 403
   },
   {
     "id": "downpourrecomp",
@@ -1367,7 +1399,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 378
+    "stars": 379
   },
   {
     "id": "ngbrecomp",
@@ -1384,8 +1416,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.9.76",
-    "released": "2026-11-20",
+    "tag": "v0.9.81",
+    "released": "2026-11-22",
     "systems": [
       "windows",
       "linux"
@@ -1397,15 +1429,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaidenBlack-windows-x64.zip",
-        "sha256": "ab4c753ee9cef86e4f7d03f1a7db47b7567028af86ab238c3fa38e8d88a4b8f0"
+        "sha256": "bf541f6faff673c5b7f61233cd4c282eb44b971a656839668f96f5aa5b39b452"
       },
       "linux": {
         "name": "NinjaGaidenBlack-x86_64.AppImage",
-        "sha256": "952a4482fe0b18394ccba1e9312608a3654c50c1c22c6abbf3d76ca16f9fab0b"
+        "sha256": "b554717405899f841afdf50271a855ad235f8311a11b2cbf66abc06074f5079d"
       }
     },
     "size_text": "20 MB",
-    "stars": 363
+    "stars": 370
   },
   {
     "id": "luigis-mansion-recompiled",
@@ -1443,7 +1475,7 @@
       }
     },
     "size_text": "85 MB",
-    "stars": 360
+    "stars": 365
   },
   {
     "id": "cbfd-recompiled",
@@ -1487,39 +1519,7 @@
       }
     },
     "size_text": "22 MB",
-    "stars": 347
-  },
-  {
-    "id": "weeping-of-the-empire",
-    "title": "weeping-of-the-empire",
-    "name": "weeping of the empire",
-    "repo": "daniel-madrid-07/weeping-of-the-empire",
-    "about": "Zelda: Tears of the Kingdom (TotK) 1.0.0 recompiled to native Windows and Vulkan. Frame cap up to 240, DLSS option, mouse and keyboard. Open source, mostly written by AI agents. You build it from your own dump; no game files included. Measured on one PC so far.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.1.10.1",
-    "released": "2026-11-08",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "Weeping-of-the-Empire-Setup-*.exe"
-    },
-    "files": {
-      "windows": {
-        "name": "Weeping-of-the-Empire-Setup-v0.1.10.1.exe",
-        "sha256": "ded84d0857527c192a2fb363a918255757d4748c90dd34e75ea8a13ab134e552"
-      }
-    },
-    "size_text": "1 MB",
-    "stars": 341
+    "stars": 348
   },
   {
     "id": "goldeneye-pc-port",
@@ -1557,7 +1557,39 @@
       }
     },
     "size_text": "17 MB",
-    "stars": 338
+    "stars": 344
+  },
+  {
+    "id": "weeping-of-the-empire",
+    "title": "weeping-of-the-empire",
+    "name": "weeping of the empire",
+    "repo": "daniel-madrid-07/weeping-of-the-empire",
+    "about": "Zelda: Tears of the Kingdom (TotK) 1.0.0 recompiled to native Windows and Vulkan. Frame cap up to 240, DLSS option, mouse and keyboard. Open source, mostly written by AI agents. You build it from your own dump; no game files included. Measured on one PC so far.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.1.10.1",
+    "released": "2026-11-08",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "Weeping-of-the-Empire-Setup-*.exe"
+    },
+    "files": {
+      "windows": {
+        "name": "Weeping-of-the-Empire-Setup-v0.1.10.1.exe",
+        "sha256": "ded84d0857527c192a2fb363a918255757d4748c90dd34e75ea8a13ab134e552"
+      }
+    },
+    "size_text": "1 MB",
+    "stars": 342
   },
   {
     "id": "yu-gi-oh-forbidden-memories-recompiled",
@@ -1595,7 +1627,7 @@
       }
     },
     "size_text": "15 MB",
-    "stars": 327
+    "stars": 329
   },
   {
     "id": "letsgo-recomp",
@@ -1612,8 +1644,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.7.7",
-    "released": "2026-11-18",
+    "tag": "v0.7.8",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -1622,12 +1654,50 @@
     },
     "files": {
       "windows": {
-        "name": "LetsGoRecomp-0.7.7-windows.zip",
-        "sha256": "c18e6955a7ba34d1abc077003382ada71cad546c2deb2d820f0cc298262a3b02"
+        "name": "LetsGoRecomp-0.7.8-windows.zip",
+        "sha256": "1ec3395689822e1f6c089c14fb3bac25879e18c785d6ee05843cadc5a3085a09"
       }
     },
     "size_text": "88 MB",
-    "stars": 317
+    "stars": 323
+  },
+  {
+    "id": "ng2recomp",
+    "title": "ng2recomp",
+    "name": "ng2recomp",
+    "repo": "gamboozino/ng2recomp",
+    "about": "Ninja Gaiden II (Xbox 360, 2008) statically recompiled into native Linux and Windows builds, drawn by its own Vulkan renderer. A steady 60 fps, up to 8x render scale, widescreen and ultrawide, keyboard and mouse, mods, Steam Deck ready. Bring your own copy of the game.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.7.2",
+    "released": "2026-11-22",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "NinjaGaiden2-windows-x64.zip",
+      "linux": "NinjaGaiden2-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "NinjaGaiden2-windows-x64.zip",
+        "sha256": "e50a124aeb17796d6f2f0060ff812cd407e79ffa97cb7146813d58debc4af8b3"
+      },
+      "linux": {
+        "name": "NinjaGaiden2-x86_64.AppImage",
+        "sha256": "2dd047ae8d674cc0be202a302c9c66f9d84e472d9de9457f1ebaefed0c04fc88"
+      }
+    },
+    "size_text": "157 MB",
+    "stars": 319
   },
   {
     "id": "condemned2recomp",
@@ -1659,45 +1729,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 313
-  },
-  {
-    "id": "ng2recomp",
-    "title": "ng2recomp",
-    "name": "ng2recomp",
-    "repo": "gamboozino/ng2recomp",
-    "about": "Ninja Gaiden II (Xbox 360, 2008) statically recompiled into native Linux and Windows builds, drawn by its own Vulkan renderer. A steady 60 fps, up to 8x render scale, widescreen and ultrawide, keyboard and mouse, mods, Steam Deck ready. Bring your own copy of the game.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.6.13",
-    "released": "2026-11-20",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "NinjaGaiden2-windows-x64.zip",
-      "linux": "NinjaGaiden2-x86_64-127test.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "NinjaGaiden2-windows-x64.zip",
-        "sha256": "9871d0b8c39279fc7dff76d3b36e86a157ea507e52093d6aeb53ed72ecd4b046"
-      },
-      "linux": {
-        "name": "NinjaGaiden2-x86_64-127test.AppImage",
-        "sha256": "08605e539baf4931d61dbd85a6d63f5b37787fad5da46b86e84ea64d1e203a3d"
-      }
-    },
-    "size_text": "157 MB",
-    "stars": 301
+    "stars": 316
   },
   {
     "id": "king-kong-recompiled",
@@ -1735,7 +1767,7 @@
       }
     },
     "size_text": "402 MB",
-    "stars": 295
+    "stars": 296
   },
   {
     "id": "nfsu2recomp",
@@ -1767,7 +1799,7 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 287
+    "stars": 296
   },
   {
     "id": "megaman64recompiled",
@@ -1811,7 +1843,45 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 286
+    "stars": 287
+  },
+  {
+    "id": "infamous2-port",
+    "title": "infamous2-port",
+    "name": "infamous2 port",
+    "repo": "SamiEnazi/infamous2-port",
+    "about": "inFAMOUS 2 (PS3) as a native PC program for Windows and Linux: Setup recompiles YOUR copy on your PC (static recompilation, Vulkan). No game files included.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.6.3",
+    "released": "2026-11-18",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Infamous2-engine-win-x64.zip",
+      "linux": "inFAMOUS2-port-*-Linux-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Infamous2-engine-win-x64.zip",
+        "sha256": "59e102981e9bf52b039ac353a35a6febdaf4dc6f9b2cea0ee896703514a601bc"
+      },
+      "linux": {
+        "name": "inFAMOUS2-port-v0.6.3-Linux-x64.zip",
+        "sha256": "caafcd38cca59dcef8672ede9c7812ffde1e6ca50f2e0fa117dea9872e434056"
+      }
+    },
+    "size_text": "4 MB",
+    "stars": 284
   },
   {
     "id": "defjamffny-recomp",
@@ -1828,8 +1898,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.2.0",
-    "released": "2026-11-19",
+    "tag": "v1.2.1",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -1840,16 +1910,48 @@
     },
     "files": {
       "windows": {
-        "name": "DefJamRecompiled-1.2.0-windows-x64.exe",
-        "sha256": "5e8742e0080551007c7f23f55de8e4eaeb23df78d5018aaaa48d13c6ea1d772f"
+        "name": "DefJamRecompiled-1.2.1-windows-x64.exe",
+        "sha256": "a312dfe9f7ea26960dc419738e5c3fa2d598ff69066ede18e8e414fd7680662a"
       },
       "linux": {
-        "name": "DefJamRecompiled-1.2.0-linux-x86_64.AppImage",
-        "sha256": "02b46bd4476355144a56627a173f2d02c9cee6284796e4112d798fa14be8fcaa"
+        "name": "DefJamRecompiled-1.2.1-linux-x86_64.AppImage",
+        "sha256": "4e864c91fbaa47f3a89c275dbc671659ac759c08338f1eb49ef3e158852cae2d"
       }
     },
     "size_text": "64 MB",
-    "stars": 274
+    "stars": 281
+  },
+  {
+    "id": "bo2-mac",
+    "title": "bo2-mac",
+    "name": "bo2 mac",
+    "repo": "adrbn/bo2-mac",
+    "about": "Call of Duty: Black Ops II statically recompiled from 32-bit x86 Windows to native ARM64 macOS: Remill → LLVM IR, a hand-written Win32 runtime, Direct3D 11 drawn by Metal. No Wine, no game files.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.2.2",
+    "released": "2026-11-20",
+    "systems": [
+      "macos"
+    ],
+    "assets": {
+      "macos": "bo2-mac.zip"
+    },
+    "files": {
+      "macos": {
+        "name": "bo2-mac.zip",
+        "sha256": "762397257db78552e3fe2baf97e07b720e04013c51f10d29740db13473d2fe91"
+      }
+    },
+    "size_text": "107 MB",
+    "stars": 278
   },
   {
     "id": "doaxvb-re",
@@ -1893,39 +1995,7 @@
       }
     },
     "size_text": "105 MB",
-    "stars": 274
-  },
-  {
-    "id": "bo2-mac",
-    "title": "bo2-mac",
-    "name": "bo2 mac",
-    "repo": "adrbn/bo2-mac",
-    "about": "Call of Duty: Black Ops II statically recompiled from 32-bit x86 Windows to native ARM64 macOS: Remill → LLVM IR, a hand-written Win32 runtime, Direct3D 11 drawn by Metal. No Wine, no game files.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.2.2",
-    "released": "2026-11-20",
-    "systems": [
-      "macos"
-    ],
-    "assets": {
-      "macos": "bo2-mac.zip"
-    },
-    "files": {
-      "macos": {
-        "name": "bo2-mac.zip",
-        "sha256": "762397257db78552e3fe2baf97e07b720e04013c51f10d29740db13473d2fe91"
-      }
-    },
-    "size_text": "107 MB",
-    "stars": 274
+    "stars": 277
   },
   {
     "id": "switchwakerhd",
@@ -1969,7 +2039,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 273
+    "stars": 276
   },
   {
     "id": "gow-native-pc",
@@ -2007,45 +2077,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 269
-  },
-  {
-    "id": "infamous2-port",
-    "title": "infamous2-port",
-    "name": "infamous2 port",
-    "repo": "SamiEnazi/infamous2-port",
-    "about": "inFAMOUS 2 (PS3) as a native PC program for Windows and Linux: Setup recompiles YOUR copy on your PC (static recompilation, Vulkan). No game files included.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.6.3",
-    "released": "2026-11-18",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "Infamous2-engine-win-x64.zip",
-      "linux": "inFAMOUS2-port-*-Linux-x64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "Infamous2-engine-win-x64.zip",
-        "sha256": "59e102981e9bf52b039ac353a35a6febdaf4dc6f9b2cea0ee896703514a601bc"
-      },
-      "linux": {
-        "name": "inFAMOUS2-port-v0.6.3-Linux-x64.zip",
-        "sha256": "caafcd38cca59dcef8672ede9c7812ffde1e6ca50f2e0fa117dea9872e434056"
-      }
-    },
-    "size_text": "4 MB",
-    "stars": 266
+    "stars": 276
   },
   {
     "id": "nfsmw-recompiled",
@@ -2077,7 +2109,45 @@
       }
     },
     "size_text": "55 MB",
-    "stars": 247
+    "stars": 251
+  },
+  {
+    "id": "mk8-online",
+    "title": "mk8-online",
+    "name": "MK8 online",
+    "repo": "Vnnc1/MK8-online",
+    "about": "Experimental static recompilation of Mario Kart 8 Deluxe 4.0.1 for Windows x64 and Linux amd64. Native Vulkan runtime, Mii creator, online play via Nextendo and Steam rooms. Bring your own game files and keys: no ROMs, assets or keys included.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.5.0",
+    "released": "2026-11-21",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "MK8-online-*-portable.zip",
+      "linux": "MK8-online-*-linux-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "MK8-online-0.5.0-portable.zip",
+        "sha256": "75f1405000f624b707ea11616d1a238bb5f3a6a61e8fa050565fb647c315fa9b"
+      },
+      "linux": {
+        "name": "MK8-online-0.5.0-linux-x86_64.AppImage",
+        "sha256": "6fb3fb4d1ce941629e1f964449c724c0f3ec90b90d44300437af700bddc73ad0"
+      }
+    },
+    "size_text": "48 MB",
+    "stars": 251
   },
   {
     "id": "khdays-port",
@@ -2109,7 +2179,7 @@
       }
     },
     "size_text": "5 MB",
-    "stars": 246
+    "stars": 248
   },
   {
     "id": "brawlrecompiled",
@@ -2147,7 +2217,7 @@
       }
     },
     "size_text": "193 MB",
-    "stars": 240
+    "stars": 241
   },
   {
     "id": "downhill-revived",
@@ -2164,8 +2234,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.8.10",
-    "released": "2026-11-17",
+    "tag": "v0.8.11",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux",
@@ -2178,20 +2248,58 @@
     },
     "files": {
       "windows": {
-        "name": "DownhillRevived-0.8.10-win.zip",
-        "sha256": "23c018353edc96505f1f4ca7f1f46df6a893dc88bb7e0f027fb80e61e390807d"
+        "name": "DownhillRevived-0.8.11-win.zip",
+        "sha256": "a44f4ab7c57714dc3816eafce4878dfcb7a8eb627ad69e514942a45f3d590bf8"
       },
       "linux": {
-        "name": "DownhillRevived-0.8.10-linux-experimental.zip",
-        "sha256": "a8e5e401de52f0a5746788677c67e4532ed2f1c281547b4feb53a970c5c96d30"
+        "name": "DownhillRevived-0.8.11-linux-experimental.zip",
+        "sha256": "efc57355e8ab9dc6d14a2900925c27b58faf0503a905f9ec3fb28a75143cb326"
       },
       "macos": {
-        "name": "DownhillRevived-0.8.10-mac-experimental.zip",
-        "sha256": "e7dfbafbb363be12fef6df6b3f47b81150cf74ec7ea09bf06e0a6a55c0961fd0"
+        "name": "DownhillRevived-0.8.11-mac-experimental.zip",
+        "sha256": "a59049835de1756d0b3b67f2b4111c254078a8d7a5ea96f1c9c440df7f154e32"
       }
     },
     "size_text": "24 MB",
-    "stars": 233
+    "stars": 240
+  },
+  {
+    "id": "redalert2-recomp",
+    "title": "redalert2-recomp",
+    "name": "redalert2 recomp",
+    "repo": "sp00nznet/redalert2-recomp",
+    "about": "Static recompilation of Command & Conquer: Red Alert 2 / Yuri's Revenge (Westwood, 2000-01) to native C, with the remaster the engine never got: a D3D11 presenter, 720p to 4K, HD voxel units. Built on pcrecomp.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.1.4",
+    "released": "2026-11-21",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "RA2-Recomp-Installer-windows-x64.exe",
+      "linux": "RA2-Recomp-Installer-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "RA2-Recomp-Installer-windows-x64.exe",
+        "sha256": "54c49f3d721b32409ce4a3402e393b79d15ef931dccd06ada10c78dc44fe7e99"
+      },
+      "linux": {
+        "name": "RA2-Recomp-Installer-linux-x64.tar.gz",
+        "sha256": "cb2294f4d6d0212e7481a63f260641f27ce81cbd45bbaf8d2b56bf7534cf6be5"
+      }
+    },
+    "size_text": "19 MB",
+    "stars": 236
   },
   {
     "id": "perfect-dark-dabs-mod",
@@ -2229,45 +2337,7 @@
       }
     },
     "size_text": "10 MB",
-    "stars": 233
-  },
-  {
-    "id": "redalert2-recomp",
-    "title": "redalert2-recomp",
-    "name": "redalert2 recomp",
-    "repo": "sp00nznet/redalert2-recomp",
-    "about": "Static recompilation of Command & Conquer: Red Alert 2 / Yuri's Revenge (Westwood, 2000-01) to native C, with the remaster the engine never got: a D3D11 presenter, 720p to 4K, HD voxel units. Built on pcrecomp.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.1.3",
-    "released": "2026-10-27",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "RA2-Recomp-Installer-windows-x64.exe",
-      "linux": "RA2-Recomp-Installer-linux-x64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "RA2-Recomp-Installer-windows-x64.exe",
-        "sha256": "9a9e92aed8eb2f1bbdf965a69f89dddf80a68e469cb918c9bb2560143010249e"
-      },
-      "linux": {
-        "name": "RA2-Recomp-Installer-linux-x64.tar.gz",
-        "sha256": "dfa901f9063c0f188064a395534892213c87942346f0a2059a1fb6b56143e487"
-      }
-    },
-    "size_text": "19 MB",
-    "stars": 229
+    "stars": 234
   },
   {
     "id": "ps2-native-recomp",
@@ -2299,7 +2369,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 225
+    "stars": 229
   },
   {
     "id": "athelas",
@@ -2316,8 +2386,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "1.9.0",
-    "released": "2026-11-18",
+    "tag": "1.9.1",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -2326,12 +2396,12 @@
     },
     "files": {
       "windows": {
-        "name": "Athelas-1.9.0.7z",
-        "sha256": "ff300052d0e0051dce86fa825357b73166082a8980ef0ed9eee02df38a399106"
+        "name": "Athelas-1.9.1.7z",
+        "sha256": "f67a13f318d0cf10f2715719568837536ec5dfcd525e292e3151aaf759cdcd6d"
       }
     },
-    "size_text": "133 MB",
-    "stars": 223
+    "size_text": "131 MB",
+    "stars": 227
   },
   {
     "id": "gow-psp-recomp",
@@ -2363,7 +2433,7 @@
       }
     },
     "size_text": "49 MB",
-    "stars": 215
+    "stars": 225
   },
   {
     "id": "eternaldarknessrecomp",
@@ -2407,7 +2477,7 @@
       }
     },
     "size_text": "45 MB",
-    "stars": 215
+    "stars": 218
   },
   {
     "id": "mw2-recompiled",
@@ -2445,7 +2515,7 @@
       }
     },
     "size_text": "19 MB",
-    "stars": 211
+    "stars": 214
   },
   {
     "id": "mercenaries-recompiled",
@@ -2477,7 +2547,7 @@
       }
     },
     "size_text": "26 MB",
-    "stars": 204
+    "stars": 209
   },
   {
     "id": "cps2recomp",
@@ -2494,8 +2564,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.6.0-beta.2",
-    "released": "2026-11-17",
+    "tag": "v1.6.0-beta.5",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux",
@@ -2509,19 +2579,19 @@
     "files": {
       "windows": {
         "name": "CPS2Recomp-windows-x64.zip",
-        "sha256": "ac6d2f7bcf22916989546f6f1d4bb96a47276f11baed91eadcb728b340f5a7a5"
+        "sha256": "885a45d0f10027bedc1df90d359310384ddd79c424110d5f59f70092865bc995"
       },
       "linux": {
         "name": "CPS2Recomp-linux-x86_64.tar.gz",
-        "sha256": "ad818cf89c58bb7453f267524fa3c49ea5ce83418778385fb633452f8aa526e4"
+        "sha256": "ae0267689935e7a223b4dfd57c0a5f189eee2f8b82a31e9981bf96823c0a3223"
       },
       "macos": {
         "name": "CPS2Recomp-macOS.zip",
-        "sha256": "6878e4d79874abe525d883b5589ef137f0c5ed316e02afb6481ce727415bbe07"
+        "sha256": "9fd2761cb87ab802a3ca8038a57d6bcda5ec25de6ac1b72fa732fd93c463d613"
       }
     },
-    "size_text": "142 MB",
-    "stars": 204
+    "size_text": "158 MB",
+    "stars": 209
   },
   {
     "id": "conkerbfdreloaded",
@@ -2559,7 +2629,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 194
+    "stars": 197
   },
   {
     "id": "gears-of-war-2-pc-port",
@@ -2600,6 +2670,38 @@
     "stars": 192
   },
   {
+    "id": "wwe-svr2011-pc",
+    "title": "wwe-svr2011-pc",
+    "name": "wwe svr2011 pc",
+    "repo": "KaikoClanworth1/wwe-svr2011-pc",
+    "about": "Unofficial native PC port of WWE SmackDown vs. Raw 2011 (Xbox 360). Bring your own disc.",
+    "license": "NOASSERTION",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v2.2.6",
+    "released": "2026-11-20",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "SvR2011-Mods-*.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "SvR2011-Mods-v2.2.6.zip",
+        "sha256": "3f0190546f13f0f14bce7c94ca5d8496905824c5c22d05ad6d8012ac90c319e7"
+      }
+    },
+    "size_text": "353 MB",
+    "stars": 191
+  },
+  {
     "id": "armyoftworecompilation",
     "title": "armyoftworecompilation",
     "name": "ArmyOfTwoRecompilation",
@@ -2614,8 +2716,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.5.0",
-    "released": "2026-11-09",
+    "tag": "v1.6.0",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -2624,11 +2726,11 @@
     },
     "files": {
       "windows": {
-        "name": "ArmyOfTwo-v1.5.0.zip",
-        "sha256": "90bae4ab4ea63a06b05be53445dbaa385833d2c14ae0f466093e20bb94cb4f9e"
+        "name": "ArmyOfTwo-v1.6.0.zip",
+        "sha256": "4017235a18b35455391bac2bba175322ed3bff6382e9229816871e1d09523bf2"
       }
     },
-    "size_text": "35 MB",
+    "size_text": "36 MB",
     "stars": 190
   },
   {
@@ -2662,38 +2764,6 @@
     },
     "size_text": "45 MB",
     "stars": 189
-  },
-  {
-    "id": "wwe-svr2011-pc",
-    "title": "wwe-svr2011-pc",
-    "name": "wwe svr2011 pc",
-    "repo": "KaikoClanworth1/wwe-svr2011-pc",
-    "about": "Unofficial native PC port of WWE SmackDown vs. Raw 2011 (Xbox 360). Bring your own disc.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v2.2.6",
-    "released": "2026-11-20",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "SvR2011-Mods-*.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "SvR2011-Mods-v2.2.6.zip",
-        "sha256": "3f0190546f13f0f14bce7c94ca5d8496905824c5c22d05ad6d8012ac90c319e7"
-      }
-    },
-    "size_text": "353 MB",
-    "stars": 188
   },
   {
     "id": "conker-recomped-and-reloaded",
@@ -2731,14 +2801,14 @@
       }
     },
     "size_text": "133 MB",
-    "stars": 182
+    "stars": 185
   },
   {
-    "id": "ratchet-tod-recomp",
-    "title": "ratchet-tod-recomp",
-    "name": "ratchet tod recomp",
-    "repo": "Re-TeRo17/ratchet-tod-recomp",
-    "about": "Ratchet & Clank: Tools of Destruction native PC port (PS3 static recompilation) – 4K, 60 fps, DualSense, Windows",
+    "id": "ascension-r",
+    "title": "ascension-r",
+    "name": "Ascension R",
+    "repo": "rigaz29/Ascension-R",
+    "about": "God of War: Ascension PC port: an unofficial, native Windows port of the PS3 game by static recompilation, no emulator. No game files included: you build it from your own copy.",
     "license": "NOASSERTION",
     "game": "",
     "console": "",
@@ -2748,22 +2818,22 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.3.0",
-    "released": "2026-11-16",
+    "tag": "v0.2.0",
+    "released": "2026-11-19",
     "systems": [
       "windows"
     ],
     "assets": {
-      "windows": "tod-recomp-*-win64.zip"
+      "windows": "Ascension-R-*-kit-win64.zip"
     },
     "files": {
       "windows": {
-        "name": "tod-recomp-1.3.0-win64.zip",
-        "sha256": "f016d2e018a13aea8fb753fc9263179057742b46334c2e8af8e2fce8c88e2b64"
+        "name": "Ascension-R-0.2.0-kit-win64.zip",
+        "sha256": "6fc06e70bfc2866f9f40e6019d4c6e2380c502e4b2839492b29fd6cf7acf528e"
       }
     },
-    "size_text": "72 MB",
-    "stars": 178
+    "size_text": "148 MB",
+    "stars": 184
   },
   {
     "id": "decomp-buddy",
@@ -2807,39 +2877,7 @@
       }
     },
     "size_text": "119 MB",
-    "stars": 175
-  },
-  {
-    "id": "ascension-r",
-    "title": "ascension-r",
-    "name": "Ascension R",
-    "repo": "rigaz29/Ascension-R",
-    "about": "God of War: Ascension PC port: an unofficial, native Windows port of the PS3 game by static recompilation, no emulator. No game files included: you build it from your own copy.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.2.0",
-    "released": "2026-11-19",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "Ascension-R-*-kit-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "Ascension-R-0.2.0-kit-win64.zip",
-        "sha256": "6fc06e70bfc2866f9f40e6019d4c6e2380c502e4b2839492b29fd6cf7acf528e"
-      }
-    },
-    "size_text": "148 MB",
-    "stars": 172
+    "stars": 183
   },
   {
     "id": "snap64recomp",
@@ -2927,7 +2965,83 @@
       }
     },
     "size_text": "81 MB",
+    "stars": 134
+  },
+  {
+    "id": "crackdown-xbox360-recompiled",
+    "title": "crackdown-xbox360-recompiled",
+    "name": "crackdown xbox360 recompiled",
+    "repo": "saulob/crackdown-xbox360-recompiled",
+    "about": "Crackdown native PC port via static recompilation, with high frame rates, 4K rendering, ultrawide support, offline achievements, language selection, TRG launcher, and experimental Linux/Steam Deck support",
+    "license": "GPL-2.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.6.2",
+    "released": "2026-10-25",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Crackdown-*-windows-x64.zip",
+      "linux": "CrackdownRecompiled-*-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "Crackdown-v0.6.2-windows-x64.zip",
+        "sha256": "fa1a6f9a46a3d9ea213a9898b86f11fcc35c855ddf6e42322e81ded15550b421"
+      },
+      "linux": {
+        "name": "CrackdownRecompiled-v0.6.2-x86_64.AppImage",
+        "sha256": "e5468433e2c8fce57e68202b606f68148c7c84eb76b3c51254139b5e84245400"
+      }
+    },
+    "size_text": "42 MB",
     "stars": 133
+  },
+  {
+    "id": "free-riders-recompiled",
+    "title": "free-riders-recompiled",
+    "name": "Free Riders Recompiled",
+    "repo": "YuutaTsubasa/Free-Riders-Recompiled",
+    "about": "Unofficial static recompilation of Sonic Free Riders for Windows, Linux and Android, with controller/keyboard support, custom VRM avatars, and Kinect v1, Kinect v2 (experimental) and webcam motion controls on Windows.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.10.74",
+    "released": "2026-11-21",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "FreeRidersRecompiled-*-windows-x64.zip",
+      "linux": "FreeRidersRecompiled-*-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "FreeRidersRecompiled-0.10.74-windows-x64.zip",
+        "sha256": "47bf4cd2d26afdbe7dfdfca8d567eacadc06391c4c3ae7870d0f2ca6a11c61a5"
+      },
+      "linux": {
+        "name": "FreeRidersRecompiled-0.10.74-linux-x64.tar.gz",
+        "sha256": "98402655cc611f9e14c7195e0dfafa487ca1555a689fcc0f2ac8e6b3c352f8d1"
+      }
+    },
+    "size_text": "67 MB",
+    "stars": 131
   },
   {
     "id": "dbz-burst-limit-recompiled",
@@ -2968,82 +3082,6 @@
     "stars": 130
   },
   {
-    "id": "crackdown-xbox360-recompiled",
-    "title": "crackdown-xbox360-recompiled",
-    "name": "crackdown xbox360 recompiled",
-    "repo": "saulob/crackdown-xbox360-recompiled",
-    "about": "Crackdown native PC port via static recompilation, with high frame rates, 4K rendering, ultrawide support, offline achievements, language selection, TRG launcher, and experimental Linux/Steam Deck support",
-    "license": "GPL-2.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.6.2",
-    "released": "2026-10-25",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "Crackdown-*-windows-x64.zip",
-      "linux": "CrackdownRecompiled-*-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "Crackdown-v0.6.2-windows-x64.zip",
-        "sha256": "fa1a6f9a46a3d9ea213a9898b86f11fcc35c855ddf6e42322e81ded15550b421"
-      },
-      "linux": {
-        "name": "CrackdownRecompiled-v0.6.2-x86_64.AppImage",
-        "sha256": "e5468433e2c8fce57e68202b606f68148c7c84eb76b3c51254139b5e84245400"
-      }
-    },
-    "size_text": "42 MB",
-    "stars": 130
-  },
-  {
-    "id": "free-riders-recompiled",
-    "title": "free-riders-recompiled",
-    "name": "Free Riders Recompiled",
-    "repo": "YuutaTsubasa/Free-Riders-Recompiled",
-    "about": "Unofficial static recompilation of Sonic Free Riders for Windows, Linux and Android, with controller/keyboard support, custom VRM avatars, and Kinect v1, Kinect v2 (experimental) and webcam motion controls on Windows.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.10.70",
-    "released": "2026-11-20",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "FreeRidersRecompiled-*-windows-x64.zip",
-      "linux": "FreeRidersRecompiled-*-linux-x64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "FreeRidersRecompiled-0.10.70-windows-x64.zip",
-        "sha256": "e25fa109485dffb33efa272e081feacd6a3e49e8c8531e40e6b9a91c5777ae89"
-      },
-      "linux": {
-        "name": "FreeRidersRecompiled-0.10.70-linux-x64.tar.gz",
-        "sha256": "383eec6a618a0b1e4053fe9e4488197fc199b81232d0bb7a5bdfa95f28c58ed3"
-      }
-    },
-    "size_text": "67 MB",
-    "stars": 129
-  },
-  {
     "id": "hercules-recompiled",
     "title": "hercules-recompiled",
     "name": "hercules recompiled",
@@ -3079,7 +3117,7 @@
       }
     },
     "size_text": "117 MB",
-    "stars": 128
+    "stars": 129
   },
   {
     "id": "earthworm-jim-hd-recompiled",
@@ -3117,7 +3155,7 @@
       }
     },
     "size_text": "31 MB",
-    "stars": 125
+    "stars": 126
   },
   {
     "id": "ssf2t-hd-remix-recompiled",
@@ -3155,7 +3193,7 @@
       }
     },
     "size_text": "35 MB",
-    "stars": 116
+    "stars": 117
   },
   {
     "id": "marvel-ultimate-alliance-bundle-recompiled",
@@ -3193,7 +3231,7 @@
       }
     },
     "size_text": "85 MB",
-    "stars": 114
+    "stars": 113
   },
   {
     "id": "roadrash64recompiled",
@@ -3310,6 +3348,76 @@
     "stars": 104
   },
   {
+    "id": "crashwoc-nuworld",
+    "title": "crashwoc-nuworld",
+    "name": "crashwoc nuworld",
+    "repo": "denzi-gh/crashwoc-nuworld",
+    "about": "Native PC port of Crash Bandicoot: The Wrath of Cortex, built on its decompilation",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.10.0",
+    "released": "2026-11-20",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "CrashWOC-NuWorld-*-windows-x64.zip",
+      "linux": "CrashWOC-NuWorld-*-linux-x86_64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "CrashWOC-NuWorld-v0.10.0-windows-x64.zip",
+        "sha256": "f4bb6d9fe5bb664d3fcd771e50eca02af91e0f9349cfa81ce997db6d7f893d25"
+      },
+      "linux": {
+        "name": "CrashWOC-NuWorld-v0.10.0-linux-x86_64.tar.gz",
+        "sha256": "ba44f8d9f2e726b0e91ba85f6201723a0bd467b5af5a9221bb98194b81c324ac"
+      }
+    },
+    "size_text": "6 MB",
+    "stars": 95
+  },
+  {
+    "id": "rayman3-hd-recompiled",
+    "title": "rayman3-hd-recompiled",
+    "name": "rayman3 hd recompiled",
+    "repo": "MysteriousAeon/rayman3-hd-recompiled",
+    "about": "A native Windows port of Rayman 3 HD (Xbox 360) using static recompilation, with HD+ enhancements and Turkish localization.",
+    "license": "NOASSERTION",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v1.3.0",
+    "released": "2026-11-22",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "rayman3hd-turkish-1.0.1.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "rayman3hd-turkish-1.0.1.zip",
+        "sha256": "348b1ea7584fd2f0cc6cd9cb1cdcfaa7e4ab5378b5c6a7f3c97cc278f7789f97"
+      }
+    },
+    "size_text": "1 MB",
+    "stars": 94
+  },
+  {
     "id": "nfs-recompiled",
     "title": "nfs-recompiled",
     "name": "nfs recompiled",
@@ -3342,12 +3450,12 @@
     "stars": 93
   },
   {
-    "id": "rayman3-hd-recompiled",
-    "title": "rayman3-hd-recompiled",
-    "name": "rayman3 hd recompiled",
-    "repo": "MysteriousAeon/rayman3-hd-recompiled",
-    "about": "A native Windows port of Rayman 3 HD (Xbox 360) using static recompilation, with HD+ enhancements and Turkish localization.",
-    "license": "NOASSERTION",
+    "id": "hard-corps-uprising-recompiled",
+    "title": "hard-corps-uprising-recompiled",
+    "name": "hard corps uprising recompiled",
+    "repo": "saulob/hard-corps-uprising-recompiled",
+    "about": "Hard Corps: Uprising native PC port via static recompilation, the Xbox 360 XBLA Contra spin-off, with TRG launcher",
+    "license": "GPL-2.0",
     "game": "",
     "console": "",
     "origin": "",
@@ -3356,60 +3464,28 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.2.0",
-    "released": "2026-11-17",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "rayman3hd-turkish-1.0.1.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "rayman3hd-turkish-1.0.1.zip",
-        "sha256": "348b1ea7584fd2f0cc6cd9cb1cdcfaa7e4ab5378b5c6a7f3c97cc278f7789f97"
-      }
-    },
-    "size_text": "1 MB",
-    "stars": 93
-  },
-  {
-    "id": "crashwoc-nuworld",
-    "title": "crashwoc-nuworld",
-    "name": "crashwoc nuworld",
-    "repo": "denzi-gh/crashwoc-nuworld",
-    "about": "Native PC port of Crash Bandicoot: The Wrath of Cortex, built on its decompilation",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.9.1",
-    "released": "2026-11-18",
+    "tag": "v0.7.1",
+    "released": "2026-10-25",
     "systems": [
       "windows",
       "linux"
     ],
     "assets": {
-      "windows": "CrashWOC-NuWorld-*-windows-x64.zip",
-      "linux": "CrashWOC-NuWorld-*-linux-x86_64.tar.gz"
+      "windows": "HardCorpsUprising-*-windows-x64.zip",
+      "linux": "HardCorpsUprisingRecompiled-*-x86_64.AppImage"
     },
     "files": {
       "windows": {
-        "name": "CrashWOC-NuWorld-v0.9.1-windows-x64.zip",
-        "sha256": "8c2a363c35aef7ad750140ebfb705bd89fb06ec88142dfbe963ad421317822b1"
+        "name": "HardCorpsUprising-v0.7.1-windows-x64.zip",
+        "sha256": "197e5e2b9f75525f39e5db32a6d6294097b7b280e65cea804e899462129c4710"
       },
       "linux": {
-        "name": "CrashWOC-NuWorld-v0.9.1-linux-x86_64.tar.gz",
-        "sha256": "88e914c8b2ed82664fc667da61bbe0564c365f9a8681dfe01ae7de008ff27f4b"
+        "name": "HardCorpsUprisingRecompiled-v0.7.1-x86_64.AppImage",
+        "sha256": "98842755d58e1e313fbc012b51dc8752fa9f45aac27ec13a2e39266f6e406112"
       }
     },
-    "size_text": "6 MB",
-    "stars": 92
+    "size_text": "20 MB",
+    "stars": 83
   },
   {
     "id": "ds-kart-recompiled",
@@ -3453,44 +3529,6 @@
       }
     },
     "size_text": "51 MB",
-    "stars": 82
-  },
-  {
-    "id": "hard-corps-uprising-recompiled",
-    "title": "hard-corps-uprising-recompiled",
-    "name": "hard corps uprising recompiled",
-    "repo": "saulob/hard-corps-uprising-recompiled",
-    "about": "Hard Corps: Uprising native PC port via static recompilation, the Xbox 360 XBLA Contra spin-off, with TRG launcher",
-    "license": "GPL-2.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.7.1",
-    "released": "2026-10-25",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "HardCorpsUprising-*-windows-x64.zip",
-      "linux": "HardCorpsUprisingRecompiled-*-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "HardCorpsUprising-v0.7.1-windows-x64.zip",
-        "sha256": "197e5e2b9f75525f39e5db32a6d6294097b7b280e65cea804e899462129c4710"
-      },
-      "linux": {
-        "name": "HardCorpsUprisingRecompiled-v0.7.1-x86_64.AppImage",
-        "sha256": "98842755d58e1e313fbc012b51dc8752fa9f45aac27ec13a2e39266f6e406112"
-      }
-    },
-    "size_text": "20 MB",
     "stars": 81
   },
   {
@@ -3529,7 +3567,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 80
+    "stars": 81
   },
   {
     "id": "geometry-wars-retro-evolved-2-recompiled",
@@ -3570,6 +3608,70 @@
     "stars": 78
   },
   {
+    "id": "zoe-recompiled",
+    "title": "zoe-recompiled",
+    "name": "ZOE Recompiled",
+    "repo": "Yaz-Myst/ZOE-Recompiled",
+    "about": "Zone of the Enders - Static Recompilation Project for PC",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v1.1.0",
+    "released": "2026-11-14",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "ZOE-Recompiled-*-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "ZOE-Recompiled-v1.1.0-win64.zip",
+        "sha256": "81147ddf761ef3449816b4e53f461427a5cdebd5bf0211993ac79d1a090dcaa1"
+      }
+    },
+    "size_text": "42 MB",
+    "stars": 76
+  },
+  {
+    "id": "redline-recompiled",
+    "title": "redline-recompiled",
+    "name": "redline recompiled",
+    "repo": "DivxPlays/redline-recompiled",
+    "about": "A PC port of Forza Motorsport (Xbox, 2005) by static recompilation: up to 144 fps, 4x resolution, ultrawide, DLSS and FSR. Bring your own disc. Early version: performance may be unstable; expect bugs and crashes. MADE WITH THE HELP OF AI.",
+    "license": "NOASSERTION",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.3.0-alpha",
+    "released": "2026-11-13",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "RedlineRecompiled-0.3.0.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "RedlineRecompiled-0.3.0.zip",
+        "sha256": "07a77502deb9167b58fb4e0519f5a340c90751303bfb37a25d726170ec135bd2"
+      }
+    },
+    "size_text": "6 MB",
+    "stars": 76
+  },
+  {
     "id": "chaotixrecompiled",
     "title": "chaotixrecompiled",
     "name": "ChaotixRecompiled",
@@ -3608,43 +3710,11 @@
     "stars": 75
   },
   {
-    "id": "redline-recompiled",
-    "title": "redline-recompiled",
-    "name": "redline recompiled",
-    "repo": "DivxPlays/redline-recompiled",
-    "about": "A PC port of Forza Motorsport (Xbox, 2005) by static recompilation: up to 144 fps, 4x resolution, ultrawide, DLSS and FSR. Bring your own disc. Early version: performance may be unstable; expect bugs and crashes. MADE WITH THE HELP OF AI.",
-    "license": "NOASSERTION",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.3.0-alpha",
-    "released": "2026-11-13",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "RedlineRecompiled-0.3.0.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "RedlineRecompiled-0.3.0.zip",
-        "sha256": "07a77502deb9167b58fb4e0519f5a340c90751303bfb37a25d726170ec135bd2"
-      }
-    },
-    "size_text": "6 MB",
-    "stars": 75
-  },
-  {
-    "id": "zoe-recompiled",
-    "title": "zoe-recompiled",
-    "name": "ZOE Recompiled",
-    "repo": "Yaz-Myst/ZOE-Recompiled",
-    "about": "Zone of the Enders - Static Recompilation Project for PC",
+    "id": "gta-stories-recompiled",
+    "title": "gta-stories-recompiled",
+    "name": "gta stories recompiled",
+    "repo": "batinium/gta-stories-recompiled",
+    "about": "GTA Liberty City Stories and Vice City Stories recompiled for PC (Windows, Mac) and Android, joined into one world, with a mod loader. Unofficial fan project: bring your own discs.",
     "license": "GPL-3.0",
     "game": "",
     "console": "",
@@ -3654,22 +3724,22 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.1.0",
-    "released": "2026-11-14",
+    "tag": "v0.3.2",
+    "released": "2026-11-22",
     "systems": [
       "windows"
     ],
     "assets": {
-      "windows": "ZOE-Recompiled-*-win64.zip"
+      "windows": "GTA-Stories-Recompiled-*-windows.zip"
     },
     "files": {
       "windows": {
-        "name": "ZOE-Recompiled-v1.1.0-win64.zip",
-        "sha256": "81147ddf761ef3449816b4e53f461427a5cdebd5bf0211993ac79d1a090dcaa1"
+        "name": "GTA-Stories-Recompiled-0.3.2-windows.zip",
+        "sha256": "fccbaa7a6e0ef9c61adf94e78240504e1a4b3565c104ff90e8d3ad1c4e525760"
       }
     },
-    "size_text": "42 MB",
-    "stars": 73
+    "size_text": "97 MB",
+    "stars": 69
   },
   {
     "id": "vandalhearts-pcport",
@@ -3707,7 +3777,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 65
+    "stars": 66
   },
   {
     "id": "project8recomp",
@@ -3745,6 +3815,38 @@
       }
     },
     "size_text": "21 MB",
+    "stars": 60
+  },
+  {
+    "id": "gow-betrayal-remastered",
+    "title": "gow-betrayal-remastered",
+    "name": "gow betrayal remastered",
+    "repo": "samioan/gow-betrayal-remastered",
+    "about": "God of War: Betrayal, remastered for Windows. A native PC port of the 2007 J2ME phone game with widescreen, high frame rates and gamepad support. Bring your own .jar.",
+    "license": "",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "gow-v1.0.1",
+    "released": "2026-11-12",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "GodOfWarBetrayalRemastered-*-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "GodOfWarBetrayalRemastered-gow-v1.0.1-win64.zip",
+        "sha256": "fc4996b04e0dce2f566dd4ce26c93a2166484194c8b9542cf272aa8996f73de7"
+      }
+    },
+    "size_text": "4 MB",
     "stars": 59
   },
   {
@@ -3786,38 +3888,6 @@
     "stars": 58
   },
   {
-    "id": "gow-betrayal-remastered",
-    "title": "gow-betrayal-remastered",
-    "name": "gow betrayal remastered",
-    "repo": "samioan/gow-betrayal-remastered",
-    "about": "God of War: Betrayal, remastered for Windows. A native PC port of the 2007 J2ME phone game with widescreen, high frame rates and gamepad support. Bring your own .jar.",
-    "license": "",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "gow-v1.0.1",
-    "released": "2026-11-12",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "GodOfWarBetrayalRemastered-*-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "GodOfWarBetrayalRemastered-gow-v1.0.1-win64.zip",
-        "sha256": "fc4996b04e0dce2f566dd4ce26c93a2166484194c8b9542cf272aa8996f73de7"
-      }
-    },
-    "size_text": "4 MB",
-    "stars": 55
-  },
-  {
     "id": "shadow-of-rome-recompiled",
     "title": "shadow-of-rome-recompiled",
     "name": "shadow of rome recompiled",
@@ -3847,7 +3917,45 @@
       }
     },
     "size_text": "56 MB",
-    "stars": 54
+    "stars": 56
+  },
+  {
+    "id": "aerogauge-recomp",
+    "title": "aerogauge-recomp",
+    "name": "aerogauge recomp",
+    "repo": "alondero/aerogauge-recomp",
+    "about": "A static recompilation of AeroGauge for the Nintendo N64",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.7.1",
+    "released": "2026-11-18",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "aerogauge-recomp-windows-x64.zip",
+      "linux": "aerogauge-recomp-linux-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "aerogauge-recomp-windows-x64.zip",
+        "sha256": "5eca15cb16067d7575393945b84ecea341b8b76c7a4e09ca80af1ab3030ae595"
+      },
+      "linux": {
+        "name": "aerogauge-recomp-linux-x64.zip",
+        "sha256": "ccecc90fdef82d16a3c73dd26e10bb353492d35bbd4dcdaacfd7b6d09ee406f3"
+      }
+    },
+    "size_text": "27 MB",
+    "stars": 50
   },
   {
     "id": "strider-2-recompiled",
@@ -3894,11 +4002,11 @@
     "stars": 49
   },
   {
-    "id": "aerogauge-recomp",
-    "title": "aerogauge-recomp",
-    "name": "aerogauge recomp",
-    "repo": "alondero/aerogauge-recomp",
-    "about": "A static recompilation of AeroGauge for the Nintendo N64",
+    "id": "thps2x-recompiled",
+    "title": "thps2x-recompiled",
+    "name": "THPS2X Recompiled",
+    "repo": "almost-drowned-rat/THPS2X-Recompiled",
+    "about": "Static recompilation of Tony Hawk's Pro Skater 2X (Xbox, USA) to native PC code with a Vulkan renderer",
     "license": "GPL-3.0",
     "game": "",
     "console": "",
@@ -3908,27 +4016,21 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.7.1",
+    "tag": "v1.2.8",
     "released": "2026-11-18",
     "systems": [
-      "windows",
-      "linux"
+      "windows"
     ],
     "assets": {
-      "windows": "aerogauge-recomp-windows-x64.zip",
-      "linux": "aerogauge-recomp-linux-x64.zip"
+      "windows": "THPS2X-Recompiled-*-win64.zip"
     },
     "files": {
       "windows": {
-        "name": "aerogauge-recomp-windows-x64.zip",
-        "sha256": "5eca15cb16067d7575393945b84ecea341b8b76c7a4e09ca80af1ab3030ae595"
-      },
-      "linux": {
-        "name": "aerogauge-recomp-linux-x64.zip",
-        "sha256": "ccecc90fdef82d16a3c73dd26e10bb353492d35bbd4dcdaacfd7b6d09ee406f3"
+        "name": "THPS2X-Recompiled-v1.2.8-win64.zip",
+        "sha256": "5b32be599cc374dacd355e659e15f42d629db4534396d6619c409ffaa56d59b2"
       }
     },
-    "size_text": "27 MB",
+    "size_text": "205 MB",
     "stars": 49
   },
   {
@@ -3970,12 +4072,12 @@
     "stars": 47
   },
   {
-    "id": "thps2x-recompiled",
-    "title": "thps2x-recompiled",
-    "name": "THPS2X Recompiled",
-    "repo": "almost-drowned-rat/THPS2X-Recompiled",
-    "about": "Static recompilation of Tony Hawk's Pro Skater 2X (Xbox, USA) to native PC code with a Vulkan renderer",
-    "license": "GPL-3.0",
+    "id": "concrete-jungle-pc",
+    "title": "concrete-jungle-pc",
+    "name": "Concrete Jungle PC",
+    "repo": "Adolini1715/Concrete-Jungle-PC",
+    "about": "Native PC port of Predator: Concrete Jungle (Xbox, 2005) by static recompilation. Build it from your own disc with Install.bat. No game data included.",
+    "license": "NOASSERTION",
     "game": "",
     "console": "",
     "origin": "",
@@ -3984,21 +4086,21 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.2.8",
+    "tag": "v0.2.1",
     "released": "2026-11-18",
     "systems": [
       "windows"
     ],
     "assets": {
-      "windows": "THPS2X-Recompiled-*-win64.zip"
+      "windows": "Concrete-Jungle-PC-*.zip"
     },
     "files": {
       "windows": {
-        "name": "THPS2X-Recompiled-v1.2.8-win64.zip",
-        "sha256": "5b32be599cc374dacd355e659e15f42d629db4534396d6619c409ffaa56d59b2"
+        "name": "Concrete-Jungle-PC-v0.2.1.zip",
+        "sha256": "13057bc7ba46630ffe9da72c42cb94344d013ad989d75e216a4cafed0f893114"
       }
     },
-    "size_text": "205 MB",
+    "size_text": "22 MB",
     "stars": 46
   },
   {
@@ -4006,7 +4108,7 @@
     "title": "live-and-recompiled",
     "name": "live and recompiled",
     "repo": "giacomozama/live-and-recompiled",
-    "about": "An unofficial native PC port of the OG Xbox Conker: Live & Reloaded.",
+    "about": "An unofficial Conker: Live & Reloaded native recompilation and enhancement project.",
     "license": "GPL-3.0",
     "game": "",
     "console": "",
@@ -4040,11 +4142,11 @@
     "stars": 44
   },
   {
-    "id": "concrete-jungle-pc",
-    "title": "concrete-jungle-pc",
-    "name": "Concrete Jungle PC",
-    "repo": "Adolini1715/Concrete-Jungle-PC",
-    "about": "Native PC port of Predator: Concrete Jungle (Xbox, 2005) by static recompilation. Build it from your own disc with Install.bat. No game data included.",
+    "id": "opentm2",
+    "title": "opentm2",
+    "name": "OpenTM2",
+    "repo": "Tokatta007/OpenTM2",
+    "about": "A PC port of Twisted Metal 2 (PlayStation, 1996)",
     "license": "NOASSERTION",
     "game": "",
     "console": "",
@@ -4054,60 +4156,22 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.2.1",
-    "released": "2026-11-18",
+    "tag": "v1.0.6",
+    "released": "2026-11-22",
     "systems": [
       "windows"
     ],
     "assets": {
-      "windows": "Concrete-Jungle-PC-*.zip"
+      "windows": "OpenTM2-*-Windows-x64.zip"
     },
     "files": {
       "windows": {
-        "name": "Concrete-Jungle-PC-v0.2.1.zip",
-        "sha256": "13057bc7ba46630ffe9da72c42cb94344d013ad989d75e216a4cafed0f893114"
+        "name": "OpenTM2-v1.0.6-Windows-x64.zip",
+        "sha256": "89df318697e5b599d7f6e469df6730a0bbaac9fef702e2f52430cc7005f242d5"
       }
     },
-    "size_text": "22 MB",
-    "stars": 43
-  },
-  {
-    "id": "jetforcegemini-recompiled",
-    "title": "jetforcegemini-recompiled",
-    "name": "JetForceGemini Recompiled",
-    "repo": "VibinToast/JetForceGemini-Recompiled",
-    "about": "Jet Force Gemini on the N64 ported to PC & Steam Deck. Supports Mouse & Keyboard, 60+ FPS and HD texture support. 100% Playable.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v1.3.2",
-    "released": "2026-10-30",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "JFG-*-windows-x64-portable.zip",
-      "linux": "JFG-*-linux-x86_64-portable.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "JFG-1.3.2-windows-x64-portable.zip",
-        "sha256": "745b88efe2816b613ddccfe0ed2c1628345aee70aea2827413b59483422af0ee"
-      },
-      "linux": {
-        "name": "JFG-1.3.2-linux-x86_64-portable.tar.gz",
-        "sha256": "37f0cc5e00a7432a914a453d42fb4582178500510b20f6ec5f57bc308119301d"
-      }
-    },
-    "size_text": "27 MB",
-    "stars": 42
+    "size_text": "18 MB",
+    "stars": 37
   },
   {
     "id": "dw2003recomp",
@@ -4148,12 +4212,12 @@
     "stars": 33
   },
   {
-    "id": "gd-melee-workspace",
-    "title": "gd-melee-workspace",
-    "name": "gd melee workspace",
-    "repo": "GurekamDhillon/gd-melee-workspace",
-    "about": "GD's Melee: native PC port of Melee with rollback netplay, m-ex mods, Lua, the Geno fighter engine and LAB. Releases, launcher, tooling and fighter-port research. No game data.",
-    "license": "GPL-2.0",
+    "id": "midtown-madness-3-recomp",
+    "title": "midtown-madness-3-recomp",
+    "name": "midtown madness 3 recomp",
+    "repo": "MattSG/midtown-madness-3-recomp",
+    "about": "Native PC port of Midtown Madness 3 (Xbox) via static recompilation. Windows x64 playable, Linux x64 in testing. Bring your own disc. Experimental, AI-assisted.",
+    "license": "GPL-3.0",
     "game": "",
     "console": "",
     "origin": "",
@@ -4162,22 +4226,22 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.3.0",
-    "released": "2026-10-15",
+    "tag": "v2026.11.21.27.1",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
     "assets": {
-      "windows": "GDMelee-*-win64.zip"
+      "windows": "mm3-builder-windows.exe"
     },
     "files": {
       "windows": {
-        "name": "GDMelee-0.3.0-win64.zip",
-        "sha256": "3e6c41bf555bd3e5ceb7bbb2d53a5a86572a3de359757e47dbc9c5f1b48db13c"
+        "name": "mm3-builder-windows.exe",
+        "sha256": "38377507c162867ff2ccf2458fdf7fc1eeacd22d6e92d8a7027a3a381e4d72a4"
       }
     },
-    "size_text": "33 MB",
-    "stars": 29
+    "size_text": "12 MB",
+    "stars": 31
   },
   {
     "id": "akilauncher",
