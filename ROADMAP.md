@@ -378,7 +378,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 **Fontes de dados (validadas neste PC em 23/11/2026):**
 
-- [ ] **Steam pelo cache local do próprio cliente, sem chave nem perfil público.**
+- [x] **Steam pelo cache local do próprio cliente, sem chave nem perfil público.**
       - `Steam\appcache\stats\UserGameStatsSchema_<appid>.bin` traz o catálogo de cada jogo: nome e descrição em
         vários idiomas (inclusive `brazilian`), ícone, ícone cinza e se a conquista é secreta.
       - `UserGameStats_<conta>_<appid>.bin` traz o que foi desbloqueado, com a data.
@@ -387,14 +387,14 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - Ícone: `https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/<appid>/<hash>.jpg`.
       - O Hydra não lê esses arquivos: seria diferencial nosso.
       - Limite: o cache cobre os jogos que a Steam deste PC já sincronizou.
-- [ ] **Tempo de jogo e última vez da Steam pelo `userdata\<conta>\config\localconfig.vdf`** (`Playtime`, `LastPlayed`;
+- [x] **Tempo de jogo e última vez da Steam pelo `userdata\<conta>\config\localconfig.vdf`** (`Playtime`, `LastPlayed`;
       259 jogos aqui). Hoje o Cerberus só conta o tempo enquanto está aberto; isso traz o histórico todo da Steam.
-- [ ] **Raridade das conquistas da Steam** (% de jogadores que desbloquearam) pelo endpoint público
+- [x] **Raridade das conquistas da Steam** (% de jogadores que desbloquearam) pelo endpoint público
       `ISteamUserStats/GetGlobalAchievementPercentagesForApp` (sem chave). *A validar.*
-- [ ] **Steam sem cache (opcional):** chave da Web API e SteamID do jogador (`GetPlayerAchievements`, `GetSchemaForGame`);
+- [x] **Steam sem cache (opcional, em Configurações › Contas › Steam):** chave da Web API e SteamID do jogador (`GetPlayerAchievements`, `GetSchemaForGame`);
       exige perfil com detalhes de jogo públicos. *A validar.* (O Hydra usa um token tirado da sessão logada da loja
       e lê páginas da Comunidade; não vamos por esse caminho.)
-- [ ] **RetroAchievements pela Web API oficial**, com a chave que o jogador já conecta:
+- [x] **RetroAchievements pela Web API oficial**, com a chave que o jogador já conecta:
       - `API_GetGameInfoAndUserProgress` dá as conquistas do jogo com pontos, emblema e data, separando normal e hardcore.
       - `API_GetUserCompletionProgress` dá todos os jogos com o progresso de cada um, para o hub.
       - Falta descobrir o id do jogo no RA para cada clássico (pelo hash da ROM ou pela linha do log do RetroArch). *A validar.*
@@ -412,14 +412,14 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 **Telas:**
 
-- [ ] **Hub:** totais de todas as plataformas (desbloqueadas, % concluído, jogos 100%, pontos do RA) e **últimas
+- [x] **Hub:** totais de todas as plataformas (desbloqueadas, % concluído, jogos 100%, pontos do RA) e **últimas
       conquistas de todos os jogos** numa linha do tempo.
-- [ ] **Hub, lista de jogos:**
+- [x] **Hub, lista de jogos:**
       - Filtros por plataforma (Steam, Epic, RetroAchievements, Recomps).
       - Filtros por estado: em andamento, concluídos, não começados.
       - Ordem: recentes, % concluído, A a Z, mais raros.
       - Busca por nome.
-- [ ] **Aba Conquistas do jogo:**
+- [x] **Página de conquistas do jogo** (falta a aba na página do jogo da Biblioteca):
       - Resumo X/Y com barra, e um troféu quando chega a 100%.
       - Busca e filtro Todas / Desbloqueadas / Bloqueadas.
       - Ordem: mais comuns, mais raras, recentes.
@@ -508,6 +508,58 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 - [ ] Sistema de plugins e ferramentas para desenvolvedores de recomps (validar manifesto, pasta de build local).
 - [ ] Emuladores fora do RetroArch (RPCS3, shadPS4, DuckStation, PCSX2, PPSSPP), com os troféus e conquistas deles.
 - [ ] Importar a biblioteca do LaunchBox.
+
+### 5.7 Do Playnite (MIT; levantamento de 23/11/2026)
+
+O Playnite é MIT: dá para usar ideias e até código, com crédito. As integrações com as lojas (Steam, Epic, GOG...)
+ficam em outro repositório, o JosefNemec/PlayniteExtensions, que ainda não está aqui. Conquistas não existem no
+núcleo dele (vêm da extensão de terceiros SuccessStory).
+
+**Biblioteca e lojas**
+
+- [ ] **Jogos da Steam não instalados na Biblioteca**, a partir do `GetOwnedGames` que o hub já usa, com
+      "Instalar pela Steam" (`steam://install/<appid>`). A Epic fica para quando tivermos o login da Epic.
+- [ ] Importar o tempo de jogo das lojas com uma escolha do jogador: sempre, só para jogos novos ou nunca. A
+      "última vez jogado" da loja só substitui a nossa se for mais nova, para não perder partidas offline ou sem DRM.
+- [ ] Achar jogos instalados fora das lojas pelo registro do Windows (chaves Uninstall) e apps da Microsoft Store/Xbox.
+- [ ] Fechar a Steam ou a Epic sozinho depois da partida, se o jogador quiser e nada mais dela estiver rodando.
+- [ ] Ordenar pelo nome sem os artigos ("The", "A") e com números romanos e algarismos em ordem certa.
+
+**Organização**
+
+- [ ] **Situação do jogo** escolhida pelo jogador: Não jogado, Jogando, Zerado, Completo, Abandonado, Em pausa,
+      Quero jogar. Vira "Jogado" sozinho na primeira partida e se integra ao hub de conquistas.
+- [ ] Nota pessoal (0 a 100) e anotações por jogo.
+- [ ] **Filtros salvos** (com ordem e agrupamento) e atalho para eles no Big Picture Mode.
+- [ ] Agrupar a biblioteca por plataforma, ano, faixa de tempo de jogo (menos de 1 h, 1 a 10 h...) e última vez jogado
+      (hoje, esta semana, este mês...).
+- [ ] **Página de estatísticas:** tempo total e médio, mais jogados, quantos por situação e por loja, espaço instalado.
+- [ ] **"Jogar algo aleatório"**, sorteando dentro do filtro atual, com "sortear outro".
+
+**Partidas**
+
+- [ ] Medir a partida por pasta (qualquer programa dentro da pasta do jogo) além do processo, e não contar o tempo
+      em que o PC dormiu ou hibernou.
+- [ ] Ações antes e depois de jogar, globais ou por jogo (ex.: trocar a resolução, fechar um programa), com a de antes
+      podendo cancelar a partida.
+- [ ] Ligar o HDR do Windows só durante o jogo e devolver ao fim.
+- [ ] Link `cerberus://` para abrir um jogo ou a página dele de fora do app (atalhos, Stream Deck, navegador).
+
+**Clássicos e emuladores**
+
+- [ ] Reconhecer ROMs pelo CRC (bases No-Intro/Redump do libretro-database) em vez de só pelo nome, com região pelos
+      códigos do nome do arquivo e jogos de vários arquivos juntos pelo `.cue`/`.m3u`.
+- [ ] Emuladores fora do RetroArch descritos em arquivos (perfis por plataforma, argumentos, programa a procurar),
+      como as 96 definições do Playnite.
+
+**Big Picture Mode e segurança dos dados**
+
+- [ ] Menu de energia (desligar, suspender, bloquear), bateria e relógio, música de fundo e abrir as lojas pelo Big Picture.
+- [ ] **Backup da biblioteca:** um zip com configurações, biblioteca e artes, com backups automáticos em rodízio e
+      restauração.
+
+**Para estudar:** clonar o PlayniteExtensions e ler as integrações da Steam e da Epic (contas, jogos possuídos,
+tempo de jogo, instalar e desinstalar pelas lojas) antes de fazer a parte da Epic.
 
 ### Fora de vez
 
