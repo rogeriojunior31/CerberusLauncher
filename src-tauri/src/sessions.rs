@@ -34,6 +34,8 @@ struct Round {
 
 enum Observation {
     Started(Instant),
+    /// The game's exit code, reported just before `Closed` when it is known.
+    Exited(i32),
     Closed(Duration),
 }
 
@@ -44,6 +46,11 @@ impl Sessions {
 
     pub fn is_running(&self, id: &str) -> bool {
         self.lock().contains_key(id)
+    }
+
+    /// How long the game has been played this time, in seconds.
+    pub fn playing_for(&self, id: &str) -> Option<u64> {
+        self.lock().get(id)?.as_ref().map(|round| round.started.elapsed().as_secs())
     }
 
     fn reserve(&self, game: &Game) -> Result<(), String> {
@@ -101,7 +108,21 @@ pub fn tracking_mode(game: &Game) -> Option<String> {
 pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let sessions = app.state::<Sessions>();
     sessions.reserve(game)?;
-    // An installer release runs its setup on the first Play instead of a session.
+    // An installer release runs its setup on the first Play instead of a session,
+    // unless an earlier run already installed the game.
+    let found;
+    let (game, exe) = match game.setup_pending.then(|| crate::setup_runner::already_installed(app, game)).flatten() {
+        Some(g) => {
+            found = g;
+            let program = match &found.source {
+                Source::Recomp { exe, .. } | Source::Local { exe } => PathBuf::from(exe),
+                _ => exe.to_path_buf(),
+            };
+            (&found, program)
+        }
+        None => (game, exe.to_path_buf()),
+    };
+    let exe = exe.as_path();
     if game.setup_pending {
         notify(app, &game.id, true);
         let result = crate::setup_runner::run(app, game, exe);
@@ -129,6 +150,20 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let plan = recomp::launch_plan(game);
     let mut command = Command::new(exe);
     command.current_dir(dir).args(plan.args).envs(plan.env);
+    // The picture filter: ReShade beside the game until it closes. A look that
+    // can't go on never stops the game from starting.
+    if let Some(look) = &game.look {
+        let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        match crate::looks::prepare(&data, &game.id, exe, look) {
+            Ok(prepared) => {
+                command.envs(prepared.env);
+            }
+            Err(error) => {
+                crate::trail::note(app, &game.id, "Filtro", &Err(error.clone()));
+                let _ = app.emit("toast", format!("Filtro desligado nesta partida: {error}"));
+            }
+        }
+    }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
         sessions.lock().remove(&game.id);
         let message = format!("Não foi possível abrir {}: {e}", exe.display());
@@ -140,11 +175,18 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let app = app.clone();
     let game = game.clone();
     std::thread::spawn(move || {
+        let mut exit_code = None;
         let result = child.observe(|event| match event {
             Observation::Started(started) => {
                 app.state::<Sessions>().lock().insert(game.id.clone(), Some(Round { started, credited: 0 }));
             }
-            Observation::Closed(duration) => record(&app, &game, duration.as_secs()),
+            Observation::Exited(code) => exit_code = Some(code),
+            Observation::Closed(duration) => {
+                record(&app, &game, duration.as_secs());
+                if let Some(code) = exit_code.take() {
+                    report_crash(&app, &game, code, duration);
+                }
+            }
         });
         if let Err(e) = result {
             let message = format!("Não foi possível acompanhar a sessão de {}: {e}", game.name);
@@ -169,10 +211,37 @@ fn spawn_game(mut command: Command, _selected: Option<&Path>) -> std::io::Result
 impl GameProcess {
     fn observe(mut self, mut report: impl FnMut(Observation)) -> std::io::Result<()> {
         report(Observation::Started(self.1));
-        self.0.wait()?;
+        let status = self.0.wait()?;
+        if let Some(code) = status.code() {
+            report(Observation::Exited(code));
+        }
         report(Observation::Closed(self.1.elapsed()));
         Ok(())
     }
+}
+
+/// A game that ended badly: why, in the history and as a notice, with its log.
+fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
+    let Some(mut why) = crate::crash::reason(code, played.as_secs()) else { return };
+    // "A DLL is too old": find which one, when something stands out.
+    if code as u32 == crate::crash::OLD_DLL {
+        let program_dir = match &game.source {
+            Source::Recomp { exe, .. } | Source::Local { exe } => Path::new(exe).parent().map(Path::to_path_buf),
+            _ => None,
+        }
+        .unwrap_or_else(|| PathBuf::from(&game.install_dir));
+        if let Some(cause) = crate::crash::old_dll_cause(&crate::crash::old_dll_clues(&program_dir)) {
+            why = cause;
+        }
+    }
+    let since = SystemTime::now() - played - Duration::from_secs(5);
+    let log = crate::crash::newest_log(Path::new(&game.install_dir), since);
+    let detail = match &log {
+        Some(path) => format!("{why} Log do jogo: {}", path.display()),
+        None => why.clone(),
+    };
+    crate::trail::note(app, &game.id, "O jogo fechou com erro", &Err(detail));
+    crate::notify::tell(app, &format!("{} fechou com erro", game.name), &why);
 }
 
 fn record(app: &AppHandle, game: &Game, seconds: u64) {
@@ -233,8 +302,13 @@ pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shar
 }
 
 pub fn release(app: &AppHandle, id: &str) {
+    if let Ok(data) = app.path().app_data_dir() {
+        crate::looks::take_back(&data, id);
+    }
     app.state::<Sessions>().lock().remove(id);
+    crate::overlay::game_closed(app, id);
     notify(app, id, false);
+    crate::background::game_ended(app);
 }
 
 fn notify(app: &AppHandle, game_id: &str, running: bool) {
@@ -309,6 +383,24 @@ mod tests {
     use std::os::windows::process::CommandExt;
     use std::process::Stdio;
     use std::time::Instant;
+
+    #[test]
+    fn a_game_that_crashes_reports_its_windows_exit_code() {
+        // cmd ends with the "missing DLL" status a broken game would.
+        let mut game = Command::new("cmd.exe");
+        game.args(["/c", "exit", "-1073741515"]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let process = spawn_game(game, None).unwrap();
+        let mut seen = Vec::new();
+        process
+            .observe(|event| match event {
+                Observation::Exited(code) => seen.push(format!("exit {code:#X}")),
+                Observation::Closed(_) => seen.push("closed".into()),
+                Observation::Started(_) => {}
+            })
+            .unwrap();
+        assert_eq!(seen, ["exit 0xC0000135", "closed"]);
+        assert!(crate::crash::reason(0xC000_0135_u32 as i32, 1).unwrap().contains("DLL"));
+    }
 
     #[test]
     fn session_waits_for_game_after_launcher_exits() {

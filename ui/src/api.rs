@@ -48,6 +48,75 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// The menu over a game was opened again (its window is kept between uses).
+pub fn on_overlay_opened(mut handler: impl FnMut() + 'static) {
+    on_event("overlay-opened", move |_: ()| handler());
+}
+
+/// The menu over a game asked for the game's page in the launcher.
+pub fn on_show_game(handler: impl FnMut(String) + 'static) {
+    on_event("show-game", handler);
+}
+
+pub async fn dlss_list(id: &str) -> Result<Vec<cerberus_shared::DlssFile>, String> {
+    call("dlss_list", &Id { id }).await
+}
+
+#[derive(serde::Serialize)]
+struct DlssArg<'a> {
+    id: &'a str,
+    path: &'a str,
+}
+
+pub async fn dlss_swap(id: &str, path: &str) -> Result<Option<String>, String> {
+    call("dlss_swap", &DlssArg { id, path }).await
+}
+
+pub async fn dlss_restore(id: &str, path: &str) -> Result<(), String> {
+    call("dlss_restore", &DlssArg { id, path }).await
+}
+
+pub async fn overlay_state() -> Result<cerberus_shared::OverlayView, String> {
+    call("overlay_state", &()).await
+}
+
+pub async fn overlay_close() -> Result<(), String> {
+    call("overlay_close", &()).await
+}
+
+pub async fn overlay_screenshot() -> Result<(), String> {
+    call("overlay_screenshot", &()).await
+}
+
+pub async fn overlay_quit_game() -> Result<(), String> {
+    call("overlay_quit_game", &()).await
+}
+
+pub async fn overlay_open_launcher() -> Result<(), String> {
+    call("overlay_open_launcher", &()).await
+}
+
+/// A picture was taken of a game; the game's id.
+pub fn on_screenshot(handler: impl FnMut(String) + 'static) {
+    on_event("screenshot-taken", handler);
+}
+
+pub async fn list_screenshots(id: &str) -> Result<Vec<cerberus_shared::Screenshot>, String> {
+    call("list_screenshots", &Id { id }).await
+}
+
+pub async fn open_screenshot(path: &str) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        path: &'a str,
+    }
+    call("open_screenshot", &Arg { path }).await
+}
+
+pub async fn open_screenshots_folder(id: &str) -> Result<(), String> {
+    call("open_screenshots_folder", &Id { id }).await
+}
+
 pub fn on_install_progress(handler: impl FnMut(InstallProgress) + 'static) {
     on_event("recomp-progress", handler);
 }
@@ -55,6 +124,45 @@ pub fn on_install_progress(handler: impl FnMut(InstallProgress) + 'static) {
 /// A game the launcher started opened or closed.
 pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
+}
+
+pub async fn pc_status() -> Result<cerberus_shared::PcStatus, String> {
+    call("pc_status", &()).await
+}
+
+pub async fn install_vc() -> Result<cerberus_shared::PcStatus, String> {
+    call("install_vc", &()).await
+}
+
+pub async fn install_dx() -> Result<cerberus_shared::PcStatus, String> {
+    call("install_dx", &()).await
+}
+
+/// A desktop shortcut asked the running Cerberus to play a game.
+pub fn on_play_request(handler: impl FnMut(String) + 'static) {
+    on_event("play-request", handler);
+}
+
+/// The game a shortcut asked for when Cerberus started, if any.
+pub async fn take_play_request() -> Option<String> {
+    call::<(), Option<String>>("take_play_request", &()).await.ok().flatten()
+}
+
+/// Puts a shortcut that plays this game on the desktop; where it went.
+pub async fn create_shortcut(id: &str) -> Result<String, String> {
+    call("create_shortcut", &Id { id }).await
+}
+
+pub async fn add_to_steam(id: &str) -> Result<String, String> {
+    call("add_to_steam", &Id { id }).await
+}
+
+pub async fn remove_from_steam(id: &str) -> Result<(), String> {
+    call("remove_from_steam", &Id { id }).await
+}
+
+pub async fn in_steam(id: &str) -> Result<bool, String> {
+    call("in_steam", &Id { id }).await
 }
 
 pub fn on_playtime_updated(mut handler: impl FnMut() + 'static) {
@@ -142,6 +250,15 @@ pub async fn open_recomp_request() -> Result<(), String> {
 
 pub async fn cancel_install(id: &str) -> Result<(), String> {
     call("cancel_install", &Id { id }).await
+}
+
+/// Moves a recomp to a folder the player picks; `None` when they cancel.
+pub async fn move_game(id: &str) -> Result<Option<Game>, String> {
+    call("move_game", &Id { id }).await
+}
+
+pub async fn pause_install(id: &str) -> Result<(), String> {
+    call("pause_install", &Id { id }).await
 }
 
 pub async fn running_games() -> Result<Vec<String>, String> {
@@ -248,6 +365,22 @@ pub async fn art_save(id: &str, kind: &str, data: Option<String>) -> Result<(), 
     call("art_save", &ArtSaveArgs { id, kind, data }).await
 }
 
+/// Whether a game can take a picture filter, and the one it has.
+pub async fn look_status(id: &str) -> Result<cerberus_shared::LookStatus, String> {
+    call("look_status", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct LookArgs<'a> {
+    id: &'a str,
+    look: Option<cerberus_shared::Look>,
+}
+
+/// Picks a game's picture filter, or (`None`) turns it off.
+pub async fn set_look(id: &str, look: Option<cerberus_shared::Look>) -> Result<cerberus_shared::LookStatus, String> {
+    call("set_look", &LookArgs { id, look }).await
+}
+
 /// The game's own settings; `None` when the catalog offers none.
 pub async fn game_settings(id: &str) -> Result<Option<cerberus_shared::GameSettings>, String> {
     call("game_settings", &Id { id }).await
@@ -272,6 +405,74 @@ pub async fn set_setting_number(id: &str, setting: String, value: f64) -> Result
 }
 
 /// What the launcher did for a game lately, newest first.
+/// Marks or unmarks a game as a favorite.
+pub async fn set_hidden(id: &str, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        on: bool,
+    }
+    call("set_hidden", &Arg { id, on }).await
+}
+
+pub async fn list_collections() -> Result<Vec<String>, String> {
+    call("list_collections", &()).await
+}
+
+#[derive(serde::Serialize)]
+struct Name<'a> {
+    name: &'a str,
+}
+
+pub async fn create_collection(name: &str) -> Result<String, String> {
+    call("create_collection", &Name { name }).await
+}
+
+pub async fn set_in_collection(name: &str, id: &str, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        name: &'a str,
+        id: &'a str,
+        on: bool,
+    }
+    call("set_in_collection", &Arg { name, id, on }).await
+}
+
+pub async fn rename_collection(old: &str, name: &str) -> Result<String, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        old: &'a str,
+        name: &'a str,
+    }
+    call("rename_collection", &Arg { old, name }).await
+}
+
+pub async fn delete_collection(name: &str) -> Result<(), String> {
+    call("delete_collection", &Name { name }).await
+}
+
+pub async fn set_favorite(id: String, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        id: String,
+        on: bool,
+    }
+    call("set_favorite", &Arg { id, on }).await
+}
+
+/// Shows a classic's file in its folder.
+pub async fn open_rom_folder(path: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        path: String,
+    }
+    call("open_rom_folder", &Arg { path }).await
+}
+
+pub async fn recent_activity() -> Result<Vec<cerberus_shared::TrailEntry>, String> {
+    call("recent_activity", &()).await
+}
+
 pub async fn game_trail(id: &str) -> Result<Vec<cerberus_shared::TrailEntry>, String> {
     call("game_trail", &Id { id }).await
 }
@@ -318,6 +519,149 @@ pub async fn finish_setup(start_in_tv: bool) -> Result<SettingsView, String> {
 #[derive(Serialize)]
 struct OnArg {
     on: bool,
+}
+
+#[derive(Serialize)]
+struct PageArg {
+    page: String,
+}
+
+/// The page the desktop window opens on: "home", "library" or "discover".
+pub async fn set_autostart(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_autostart", &Arg { on }).await
+}
+
+pub async fn set_start_hidden(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_start_hidden", &Arg { on }).await
+}
+
+pub async fn list_monitors() -> Result<Vec<cerberus_shared::MonitorView>, String> {
+    call("list_monitors", &()).await
+}
+
+pub async fn set_monitor(name: Option<String>) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        name: Option<String>,
+    }
+    call("set_monitor", &Arg { name }).await
+}
+
+pub async fn to_chosen_monitor() -> Result<(), String> {
+    call("to_chosen_monitor", &()).await
+}
+
+pub async fn set_close_to_tray(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_close_to_tray", &Arg { on }).await
+}
+
+pub async fn set_site_catalog(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_site_catalog", &Arg { on }).await
+}
+
+pub async fn set_start_page(page: String) -> Result<SettingsView, String> {
+    call("set_start_page", &PageArg { page }).await
+}
+
+/// Shows the first-run setup again next time.
+pub async fn rerun_setup() -> Result<SettingsView, String> {
+    call("rerun_setup", &()).await
+}
+
+#[derive(Serialize)]
+struct RaArgs {
+    user: String,
+    key: String,
+}
+
+pub async fn ra_connect(user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
+    call("ra_connect", &RaArgs { user, key }).await
+}
+
+pub async fn ra_profile() -> Result<Option<cerberus_shared::RaProfile>, String> {
+    call("ra_profile", &()).await
+}
+
+pub async fn ra_disconnect() -> Result<SettingsView, String> {
+    call("ra_disconnect", &()).await
+}
+
+#[derive(Serialize)]
+struct KeysArg {
+    keys: bool,
+}
+
+/// Opens the player's RetroAchievements profile, or (`keys`) the page with their API key.
+pub async fn ra_open(keys: bool) -> Result<(), String> {
+    call("ra_open", &KeysArg { keys }).await
+}
+
+pub async fn emulation_status() -> Result<cerberus_shared::EmulationView, String> {
+    call("emulation_status", &()).await
+}
+
+/// Installs RetroArch; progress comes through `on_emu_progress`.
+pub async fn install_retroarch() -> Result<cerberus_shared::EmulationView, String> {
+    call("install_retroarch", &()).await
+}
+
+pub fn on_emu_progress(handler: impl FnMut((u64, u64)) + 'static) {
+    on_event("emu-progress", handler);
+}
+
+pub async fn pick_retroarch() -> Result<cerberus_shared::EmulationView, String> {
+    call("pick_retroarch", &()).await
+}
+
+#[derive(Serialize)]
+struct CoreArg {
+    core: String,
+}
+
+pub async fn install_core(core: String) -> Result<cerberus_shared::EmulationView, String> {
+    call("install_core", &CoreArg { core }).await
+}
+
+#[derive(Serialize)]
+struct ClassicArgs {
+    path: String,
+    console: String,
+}
+
+/// Copies the player's BIOS files from a folder they pick; what was added, said for the player.
+pub async fn import_bios() -> Result<(cerberus_shared::EmulationView, String), String> {
+    call("import_bios", &()).await
+}
+
+/// Starts a classic from the ROM folders in RetroArch.
+pub async fn play_classic(path: String, console: String) -> Result<(), String> {
+    call("play_classic", &ClassicArgs { path, console }).await
+}
+
+#[derive(Serialize)]
+struct PasswordArg {
+    password: String,
+}
+
+/// Logs RetroArch in to RetroAchievements; the password is traded for a token and not kept.
+pub async fn link_retroarch_achievements(password: String) -> Result<cerberus_shared::EmulationView, String> {
+    call("link_retroarch_achievements", &PasswordArg { password }).await
 }
 
 /// Whether Cerberus opens in the TV screen.

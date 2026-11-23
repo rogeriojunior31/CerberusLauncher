@@ -37,9 +37,19 @@ pub struct CatalogEntry {
     /// The console's short id (`n64`, `x360`...).
     pub origin: String,
     pub repo: String,
+    /// Where the project lives: empty for GitHub, `gitlab` or `forgejo`.
+    pub host: String,
     pub icon: Option<String>,
     pub cover: Option<String>,
     pub hero: Option<String>,
+    /// The game's logo, a see-through picture shown in place of its name.
+    pub logo: Option<String>,
+    pub genre: String,
+    #[serde(skip)]
+    pub original: Option<cerberus_shared::OriginalGame>,
+    pub first_release: String,
+    pub releases: u64,
+    pub players: u64,
     pub about: String,
     pub adds: String,
     pub needs: String,
@@ -88,6 +98,10 @@ pub struct CatalogEntry {
     /// The game's own settings the launcher can change.
     #[serde(skip)]
     pub settings: crate::game_settings::Offer,
+    /// What the player's copy must be: "file", "folder", "folder or iso"...
+    pub copy_accepts: String,
+    /// Names a folder copy must hold ("exefs", "romfs").
+    pub copy_contains: Vec<String>,
     /// What the player should know before the first start ("pick your ROM in its menu").
     pub player_note: String,
     /// "local", "online" or "both"; empty for single player.
@@ -97,6 +111,11 @@ pub struct CatalogEntry {
 impl CatalogEntry {
     pub fn is(&self, id: &str) -> bool {
         self.id == id || self.aliases.iter().any(|alias| alias == id)
+    }
+
+    /// The project's server, or `None` when the catalog's repo doesn't read as one.
+    pub fn forge(&self) -> Option<super::forge::Forge<'_>> {
+        super::forge::of(&self.host, &self.repo)
     }
 }
 
@@ -117,6 +136,18 @@ static STORE: RwLock<Option<Arc<Vec<CatalogEntry>>>> = RwLock::new(None);
 static BASE: RwLock<Option<Vec<CatalogEntry>>> = RwLock::new(None);
 /// The games of each source the player added.
 static EXTRAS: RwLock<Vec<Vec<CatalogEntry>>> = RwLock::new(Vec::new());
+/// The site's list is used (the player can turn it off in Configurações).
+static SITE_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Uses recomplauncher.com's list, or only Cerberus's own and the player's sources.
+pub fn use_site(on: bool) {
+    SITE_ON.store(on, std::sync::atomic::Ordering::Relaxed);
+    rebuild();
+}
+
+pub fn site_on() -> bool {
+    SITE_ON.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// The catalog in use: the site's list once read, else the bundled one, plus the player's sources.
 pub fn all() -> Arc<Vec<CatalogEntry>> {
@@ -140,7 +171,7 @@ pub fn set_extras(sources: Vec<Vec<CatalogEntry>>) {
 
 /// The main list first; a source's game that's already listed (same id or repo) is left out.
 fn rebuild() {
-    let base = BASE.read().unwrap_or_else(|p| p.into_inner()).clone();
+    let base = if site_on() { BASE.read().unwrap_or_else(|p| p.into_inner()).clone() } else { None };
     let mut list = base.unwrap_or_else(bundled);
     for source in EXTRAS.read().unwrap_or_else(|p| p.into_inner()).iter() {
         for game in source {
@@ -162,10 +193,21 @@ static OWN: RwLock<Option<Vec<CatalogEntry>>> = RwLock::new(None);
 
 /// Our own list: the repository's newest copy when there is one, else the one built in.
 pub fn bundled() -> Vec<CatalogEntry> {
-    if let Some(list) = OWN.read().unwrap_or_else(|p| p.into_inner()).clone() {
-        return list;
+    let published = OWN.read().unwrap_or_else(|p| p.into_inner()).clone().unwrap_or_default();
+    with_published(built_in(), published)
+}
+
+/// The built-in list with the published copy's entries in place of the same
+/// recomps, and its new ones added. A published copy older than this build
+/// never takes recomps away.
+fn with_published(mut list: Vec<CatalogEntry>, published: Vec<CatalogEntry>) -> Vec<CatalogEntry> {
+    for entry in published {
+        match list.iter_mut().find(|e| e.id == entry.id) {
+            Some(slot) => *slot = entry,
+            None => list.push(entry),
+        }
     }
-    built_in()
+    list
 }
 
 fn built_in() -> Vec<CatalogEntry> {
@@ -230,6 +272,10 @@ pub fn load_copy(cache_dir: &Path) {
 /// switches to it. Errors leave the current list in place.
 pub async fn refresh(client: &Client, cache_dir: &Path, force: bool) -> Result<(), String> {
     refresh_own(client, cache_dir, force).await;
+    if !site_on() {
+        rebuild();
+        return Ok(());
+    }
     let file = copy_file(cache_dir);
     let age = fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|t| SystemTime::now().duration_since(t).ok());
     if !force && age.is_some_and(|a| a < FRESH_FOR) {
@@ -266,6 +312,26 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
         if theirs.saves.is_empty() {
             theirs.saves = mine.saves;
         }
+        // How the copy is handed over: theirs when they say, ours otherwise.
+        if theirs.handoff.is_none() {
+            theirs.handoff = mine.handoff;
+            theirs.accepts_folder |= mine.accepts_folder;
+        }
+        if theirs.copy_accepts.is_empty() {
+            theirs.copy_accepts = mine.copy_accepts;
+        }
+        if theirs.copy_contains.is_empty() {
+            theirs.copy_contains = mine.copy_contains;
+        }
+        // Ours, in Portuguese, when it says more than the usual "your copy of".
+        let generic = format!("Sua cópia de {} ({}).", mine.game, mine.console);
+        if !mine.needs.is_empty() && mine.needs != generic {
+            theirs.needs = mine.needs;
+        }
+        // Our note is written in Portuguese, for our players.
+        if !mine.player_note.is_empty() {
+            theirs.player_note = mine.player_note;
+        }
         if theirs.id != mine.id {
             theirs.aliases.push(mine.id);
         }
@@ -278,10 +344,23 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
 #[derive(Deserialize)]
 struct RlCatalog {
     apps: Vec<RlApp>,
+    /// More apps, kept apart for launchers new enough to install them (their
+    /// projects are on GitLab or Forgejo servers, not GitHub).
+    #[serde(default)]
+    apps_min: Vec<RlAppsFor>,
+    /// Old id -> new id, for recomps that were renamed.
+    #[serde(default)]
+    replaced: Value,
     #[serde(default)]
     origins: Vec<RlOrigin>,
     #[serde(default)]
     titles: Vec<RlTitle>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct RlAppsFor {
+    apps: Vec<RlApp>,
 }
 
 #[derive(Deserialize)]
@@ -307,6 +386,7 @@ struct RlApp {
     game: Option<String>,
     origin: Option<String>,
     repo: String,
+    host: Option<String>,
     tag: Option<String>,
     version: Option<String>,
     size: Option<String>,
@@ -321,6 +401,19 @@ struct RlApp {
     icon: Option<String>,
     cover: Option<String>,
     hero: Option<String>,
+    #[serde(default)]
+    logo: Option<String>,
+    #[serde(default)]
+    genre: Option<String>,
+    /// The original game's facts (IGDB), read loosely.
+    #[serde(default)]
+    about: Value,
+    #[serde(default)]
+    first: Option<String>,
+    #[serde(default)]
+    releases: Value,
+    #[serde(default)]
+    players: Value,
     title: Option<String>,
     // The site's list isn't strict about shapes: an empty map can come as `[]`,
     // and missing parts as `null`. These are read loosely, so one odd entry
@@ -335,6 +428,24 @@ struct RlApp {
     soon: Option<bool>,
     /// An object, or the same object written as a JSON string.
     boot: Option<Value>,
+}
+
+/// The original game's facts, when the catalog has an object with some.
+fn original_of(value: &Value) -> Option<cerberus_shared::OriginalGame> {
+    let text = |k: &str| value.get(k).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    let list = |k: &str| value.get(k).and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let facts = cerberus_shared::OriginalGame {
+        released: text("released"),
+        developer: text("developer"),
+        publisher: text("publisher"),
+        series: text("series"),
+        genres: list("genres"),
+        modes: list("modes"),
+        platforms: list("platforms"),
+        rating: value.get("rating").and_then(Value::as_f64),
+        summary: text("summary"),
+    };
+    (!facts.summary.is_empty() || !facts.developer.is_empty() || !facts.genres.is_empty()).then_some(facts)
 }
 
 /// A map when it is one; anything else (`[]`, `null`) is an empty map.
@@ -361,8 +472,16 @@ struct Boot {
     n64: Option<crate::roms::N64Wanted>,
     accepts_folder: bool,
     settings: crate::game_settings::Offer,
+    copy_accepts: String,
+    copy_contains: Vec<String>,
     player_note: String,
     multiplayer: String,
+}
+
+/// The Windows release is a lone setup program ("srb2kart-v16-Installer.exe").
+fn windows_installer(entry: &CatalogEntry) -> bool {
+    let name = entry.files.get("windows").map(|f| f.name.as_str()).or(entry.assets.get("windows").map(String::as_str)).unwrap_or_default();
+    super::assets::looks_like_installer(name)
 }
 
 /// How the release ships, which program starts the game, and how that program
@@ -381,6 +500,12 @@ fn boot_of(boot: Option<Value>) -> Boot {
         n64: files.and_then(n64_wanted),
         accepts_folder: files.and_then(|f| f.get("accepts")).and_then(Value::as_str).is_some_and(|a| a.contains("folder")),
         settings: crate::game_settings::offer_of(value.get("settings")),
+        copy_accepts: files.and_then(|f| f.get("accepts")).and_then(Value::as_str).unwrap_or_default().to_lowercase(),
+        copy_contains: files
+            .and_then(|f| f.get("contains"))
+            .and_then(Value::as_array)
+            .map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+            .unwrap_or_default(),
         player_note: value.get("player_note").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
         multiplayer: value.get("multiplayer").and_then(Value::as_str).unwrap_or_default().to_string(),
     }
@@ -440,15 +565,18 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
         }
     }
 
-    let mut list = Vec::new();
-    for app in catalog.apps {
-        let Boot { kind, start, handoff, n64, accepts_folder, settings, player_note, multiplayer } = boot_of(app.boot);
+    let renamed: HashMap<String, String> = map_of(catalog.replaced);
+    let mut list: Vec<CatalogEntry> = Vec::new();
+    let more = catalog.apps_min.into_iter().flat_map(|group| group.apps);
+    for app in catalog.apps.into_iter().chain(more) {
+        let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
             continue;
         }
         // The id names the install folder, so only plain names are taken.
         let plain_id = !app.id.is_empty() && app.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if !plain_id {
+        // Listed twice (the same app in both lists): the first one counts.
+        if !plain_id || list.iter().any(|e| e.id == app.id) {
             continue;
         }
         let origin = app.origin.unwrap_or_default();
@@ -465,9 +593,16 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             name: app.name,
             game: app.game.unwrap_or_default(),
             repo: app.repo,
+            host: app.host.unwrap_or_default(),
             icon: some(app.icon),
             cover: some(app.cover),
             hero: some(app.hero),
+            logo: some(app.logo),
+            genre: app.genre.unwrap_or_default(),
+            original: original_of(&app.about),
+            first_release: app.first.unwrap_or_default(),
+            releases: app.releases.as_u64().unwrap_or(0),
+            players: app.players.as_u64().unwrap_or(0),
             about: app.blurb.unwrap_or_default(),
             adds: app.adds.unwrap_or_default(),
             needs: super::translate::needs(&app.needs.unwrap_or_default()),
@@ -492,12 +627,19 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             n64,
             accepts_folder,
             settings,
+            copy_accepts,
+            copy_contains,
             player_note,
             multiplayer,
             saves: Vec::new(),
-            aliases: Vec::new(),
+            // Games installed under an old name still find their recomp.
+            aliases: renamed.iter().filter(|(_, new)| **new == app.id).map(|(old, _)| old.clone()).collect(),
             id: app.id,
         });
+        // The site doesn't always say a release is an installer; its file name does.
+        if let Some(entry) = list.last_mut().filter(|e| e.kind == "portable" && windows_installer(e)) {
+            entry.kind = "installer".into();
+        }
     }
     if list.is_empty() {
         return Err("O catálogo veio vazio.".into());
@@ -523,6 +665,31 @@ pub fn bytes_of(size_text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mhgu_takes_only_the_extracted_folders_even_without_the_site() {
+        let own = built_in();
+        let mhgu = own.iter().find(|e| e.id == "mhgurecomp").expect("MHGU in our catalog");
+        assert_eq!(mhgu.copy_accepts, "folder");
+        assert_eq!(mhgu.copy_contains, ["exefs", "romfs"]);
+        assert!(matches!(&mhgu.handoff, Some(CopyHandoff::Folder { folder, .. }) if folder == "data"));
+        assert!(mhgu.player_note.contains("Ryujinx"));
+        // With the site's entry, which already has the rules, ours keeps the Portuguese note.
+        let theirs = CatalogEntry { id: "mhgurecomp".into(), copy_accepts: "folder".into(), player_note: "Put the game's exefs".into(), ..Default::default() };
+        let merged = merge(vec![theirs], own);
+        let mhgu = merged.iter().find(|e| e.id == "mhgurecomp").unwrap();
+        assert!(mhgu.player_note.contains("Ryujinx"));
+        assert_eq!(mhgu.copy_contains, ["exefs", "romfs"]);
+    }
+
+    #[test]
+    fn an_older_published_list_updates_entries_but_never_drops_any() {
+        let entry = |id: &str, name: &str| CatalogEntry { id: id.into(), name: name.into(), ..Default::default() };
+        let merged = with_published(vec![entry("a", "A"), entry("b", "B")], vec![entry("a", "A novo"), entry("c", "C")]);
+        let names: Vec<&str> = merged.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["A novo", "B", "C"]);
+        assert!(bundled().len() >= built_in().len());
+    }
 
     const SAMPLE: &str = r#"{
         "apps": [
@@ -551,6 +718,20 @@ mod tests {
         assert_eq!(zelda.start.as_deref(), Some("Zelda64Recompiled.exe"));
         assert_eq!(zelda.files["windows"].name, "Zelda64Recompiled-v1.2.2-Windows.zip");
         assert_eq!(zelda.hero, None, "an empty picture is no picture");
+    }
+
+    #[test]
+    fn a_release_named_as_an_installer_is_one() {
+        let text = r#"{"apps": [
+            {"id": "kart-public", "name": "SRB2Kart", "origin": "pc", "repo": "STJr/Kart-Public",
+             "assets": {"windows": "srb2kart-v16-Installer.exe"},
+             "files": {"windows": {"name": "srb2kart-v16-Installer.exe", "sha256": "abc"}}},
+            {"id": "srb2", "name": "Sonic Robo Blast 2", "origin": "pc", "repo": "STJr/SRB2",
+             "assets": {"windows": "SRB2-v2215-Full.zip"}}
+        ]}"#;
+        let list = from_recomplauncher(text).unwrap();
+        assert_eq!(list[0].kind, "installer");
+        assert_eq!(list[1].kind, "portable");
     }
 
     #[test]
@@ -633,9 +814,40 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_apps_kept_apart_and_the_renamed_ids() {
+        let text = r#"{"apps": [{"id": "dkb-pc-recomp", "name": "DKB", "repo": "a/dkb"}],
+            "apps_min": [{"min": "0.90.0", "apps": [
+                {"id": "fe3h", "name": "FE3H", "repo": "git.onerag90.de/recomps/fe3h-recomp", "host": "forgejo"},
+                {"id": "dkb-pc-recomp", "name": "Again", "repo": "a/dkb"}]}],
+            "replaced": {"dbk-recomp": "dkb-pc-recomp"}}"#;
+        let list = from_recomplauncher(text).unwrap();
+        assert_eq!(list.len(), 2, "an app listed twice shows once");
+        let fe3h = list.iter().find(|e| e.id == "fe3h").unwrap();
+        assert_eq!(fe3h.forge().unwrap().name(), "git.onerag90.de");
+        assert!(list.iter().any(|e| e.is("dbk-recomp") && e.id == "dkb-pc-recomp"));
+    }
+
+    #[test]
     fn reads_sizes() {
         assert_eq!(bytes_of("28 MB"), 28 * 1024 * 1024);
         assert_eq!(bytes_of("1.5 GB"), (1.5 * 1024.0 * 1024.0 * 1024.0) as u64);
         assert_eq!(bytes_of(""), 0);
     }
+}
+
+#[cfg(test)]
+#[test]
+fn the_own_catalog_reads_whole_and_every_entry_downloads_directly() {
+    let list = built_in();
+    assert!(list.len() >= 72, "only {} entries", list.len());
+    for entry in &list {
+        assert!(!entry.id.is_empty() && !entry.repo.is_empty(), "{entry:?}");
+        assert!(entry.tag.is_some(), "{} has no release", entry.id);
+        let windows = entry.files.get("windows");
+        assert!(windows.is_some_and(|f| f.sha256.len() == 64) || entry.id == "starship" || entry.id == "unleashedrecomp", "{} has no checked Windows file", entry.id);
+    }
+    let mut ids: Vec<&str> = list.iter().map(|e| e.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), list.len(), "two entries share an id");
 }

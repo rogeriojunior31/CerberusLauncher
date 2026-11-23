@@ -1,141 +1,183 @@
+<div align="center">
+
+<img src="ui/brand/cerberus-launcher-pixel.svg" alt="Cerberus Launcher" width="200" />
+
 # Cerberus Launcher
 
-Launcher de jogos para PC, 100% Rust: backend em [Tauri 2](https://tauri.app) e interface em
-[Leptos](https://leptos.dev) (compilada para WebAssembly).
+**One library for your PC games, native PC recomps of console classics, and your own ROMs.**
 
-## O que faz
+[![Latest release](https://img.shields.io/github/v/release/rogeriojunior31/CerberusLauncher?label=download&color=ff5a3c)](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)
+![Built with Rust](https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri%20%2B%20Leptos-orange?logo=rust)
 
-- **Biblioteca:** encontra jogos da Steam e da Epic, e aceita qualquer `.exe` adicionado à mão
-  (nome e capa buscados na Steam automaticamente, editáveis).
-- **Descobrir:** instala e atualiza recomps (versões nativas para PC de jogos de console) direto
-  das releases no GitHub de cada desenvolvedor, conferindo o SHA-256 que o GitHub guarda de cada
-  arquivo. O Cerberus nunca baixa arquivos de jogo: cada recomp pede a sua cópia quando abre.
+**English** · [Português (Brasil)](README.pt-BR.md)
 
-Para jogos locais e recomps no Windows, abra **Gerenciar → Processo acompanhado** se quiser escolher
-qual executável marca a duração da partida. Isso serve para jogos que abrem um menu antes de iniciar.
-O Cerberus grava o tempo observado a cada 15 segundos, ao fechar a partida e ao sair normalmente.
+<img src="docs/screenshots/home.jpg" alt="Cerberus home screen" width="900" />
 
-Em **Configurações**, confira o espaço livre da pasta de downloads e da pasta de instalação.
-Os dois valores podem ser diferentes quando você instala jogos em outra unidade.
+</div>
 
-Em **Configurações → Saves na nuvem**, escolha a pasta que seu serviço sincroniza. Se ela ficar
-indisponível, o Cerberus tenta enviar os backups pendentes quando abre e a cada minuto.
-**Verificar envios** repete a tentativa na hora. Cada jogo guarda os dez backups locais mais recentes.
-Um backup cuja pasta de destino mudou aguarda até que você selecione a pasta original novamente.
+---
 
-O catálogo de recomps fica em `src-tauri/catalog/recomps.json`.
+## What is Cerberus?
 
-## Estrutura
+Cerberus is a free, open-source game launcher for Windows, written entirely in Rust. It does three jobs:
 
-- `shared/`: tipos usados pelo backend e pela UI (ex.: `Game`).
-- `src-tauri/`: backend (biblioteca, launch de jogos, acesso ao disco).
-  - `src/recomp/`: catálogo, consulta ao GitHub, escolha do arquivo e instalação.
-- `ui/`: interface em Leptos.
+- **It brings your PC games together.** Games from Steam and Epic show up on their own, and any `.exe` can be added by hand.
+- **It installs and updates recomps.** A *recomp* is a native PC version of a console game that the community rebuilt from the original code (Zelda 64: Recompiled, Ship of Harkinian, Unleashed Recompiled and many more). Cerberus downloads each one straight from its developers' official releases and hands it **your own copy** of the game.
+- **It plays your classics.** ROMs from your folders open in RetroArch, which Cerberus installs and sets up for you, with RetroAchievements.
 
-## Rodando
+> [!IMPORTANT]
+> **Cerberus never downloads game files.** Every recomp and every classic needs a copy of the game that you own.
 
-Precisa de Rust (1.100 ou superior no Windows), do target WASM, do Trunk e do Tauri CLI:
+> [!NOTE]
+> The interface is in **Brazilian Portuguese** for now. This README shows each button as it appears in the app, with the English meaning in parentheses.
+
+## Features
+
+| | |
+|---|---|
+| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library** (*Biblioteca*)<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. |
+| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover** (*Descobrir*)<br>Over 1,500 recomps and native ports. You can search by game, console or author. Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
+| <img src="docs/screenshots/game-page.jpg" alt="Game page" /> | **Game page**<br>Play time, versions, saves, game settings, mods, screenshots and management, all in one page. **Easy Setup** finds your copy in your ROM folders and delivers it the way each recomp expects. That works for a ROM, an extracted folder, an ISO, an Xbox or Xbox 360 image, a CHD or a CSO. |
+| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>A TV interface for the couch. You can use a controller, keyboard or mouse, and it opens full screen on the monitor you choose. |
+
+### And also
+
+- **Save backups:** after every session, before updates and before uninstalling. Cerberus keeps the 10 most recent backups, and can copy them to the cloud through any synced folder (OneDrive, Google Drive, Dropbox).
+- **Mods:** one-click mods from Thunderstore and GameBanana, including Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed and Marathon Recompiled.
+- **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game".
+- **Visual filters:** Sharp, Vivid, CRT and Film, applied with ReShade.
+- **Crash explanations:** when a game closes with an error, Cerberus tells you the cause and where the game's log is. The cause can be a missing DLL, an old Visual C++ runtime or a crash.
+- **DLSS:** Cerberus shows which DLSS version a game uses. You can swap it for a DLL you already have and go back to the original at any time.
+- **Steam integration:** add any game to Steam (for Steam Deck and Big Picture), or create a desktop shortcut that opens the game through Cerberus.
+- **Multi-disc classics:** games on several discs show up as one game, and you swap discs from RetroArch's menu.
+- **Windows integration:** tray icon, start with Windows, notifications, and only one copy of Cerberus running at a time.
+
+## Download and install
+
+1. Download **`Cerberus-Launcher_<version>_x64-setup.exe`** from the [latest release](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest).
+2. Run it. It installs for your user only, so it doesn't ask for administrator rights.
+3. On the last page, keep **Executar o Cerberus Launcher** (*Run Cerberus Launcher*) checked. The setup guide opens.
+
+<img src="docs/screenshots/installer.png" alt="Installer" width="380" />
+
+> [!WARNING]
+> The installer isn't code-signed yet, so Windows SmartScreen may say *"Windows protected your PC"*. Click **More info** and then **Run anyway**.
+
+**Requirements:**
+- Windows 10 or 11, 64-bit.
+- Microsoft WebView2. The installer adds it if your PC doesn't have it.
+- For classics: Cerberus installs RetroArch, and some systems need BIOS files from your own console.
+
+## Getting started
+
+The first time Cerberus opens, a short setup guide asks a few questions. You can change every answer later in **Configurações** (*Settings*).
+
+<img src="docs/screenshots/first-run.jpg" alt="First-run setup" width="700" />
+
+1. **How you play:** at a desk, or on a TV. If you pick TV, Cerberus starts straight in Big Picture Mode.
+2. **Your ROM folders:** Cerberus scans them and shows which of your games already have a recomp.
+3. **Where recomps are installed,** with the free space on each drive.
+4. **Saves in the cloud:** a folder that OneDrive, Google Drive or Dropbox keeps in sync.
+
+### Install a recomp
+
+1. Open **Descobrir** (*Discover*) and search for a game, for example *Mario Kart 64*.
+2. Click **Instalar** (*Install*). Cerberus downloads the developers' release and checks the file.
+3. On the game page, **Easy Setup** shows the copy it found in your ROM folders. If it didn't find one, pick the file yourself.
+4. Click **Jogar** (*Play*). From now on, play time, save backups and history are tracked.
+
+### Add any other game
+
+Click **Adicionar jogo** (*Add game*) and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
+
+Some games open a launcher before the game itself. For those, choose which program counts as playing under **Gerenciar → Processo acompanhado** (*Manage → Tracked process*).
+
+### Shortcuts
+
+| While playing | Keyboard | Controller |
+|---|---|---|
+| Screenshot of the game window | <kbd>F12</kbd> | — |
+| Open or close the in-game menu | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu** |
+| Move, select and go back in that menu | Arrow keys, <kbd>Enter</kbd>, <kbd>Esc</kbd> | D-pad, **A**, **B** |
+
+| In Big Picture Mode | Keyboard | Controller |
+|---|---|---|
+| Switch sections | <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | **LB** / **RB** |
+| Play, game page, options | <kbd>Enter</kbd>, <kbd>Y</kbd>, <kbd>X</kbd> | **A**, **Y**, **X** |
+| Back | <kbd>Esc</kbd> | **B** |
+| Leave Big Picture Mode | <kbd>F11</kbd> | Hold **Menu** |
+
+## Where your data lives
+
+| What | Where |
+|---|---|
+| The program | `%LOCALAPPDATA%\Cerberus Launcher` |
+| Library, settings, history, screenshots, save backups, and the recomps installed by default | `%APPDATA%\app.cerberus.launcher` |
+
+Uninstalling from Windows (**Settings → Apps**) removes the program and its shortcuts. **Your data stays**, unless you tick the box to also delete the library, save backups and downloaded recomps.
+
+## FAQ
+
+<details>
+<summary><b>Is this legal? Where do the games come from?</b></summary>
+
+Cerberus doesn't host or download any game. Recomps are open-source projects that their developers publish on GitHub, GitLab or Forgejo, and Cerberus installs those official releases. Each recomp needs data from **a copy of the game you own**. Cerberus passes it from your folders to the recomp on your own PC.
+</details>
+
+<details>
+<summary><b>The in-game menu or the screenshot doesn't work in a game.</b></summary>
+
+Both need the game to run in a window or in borderless full screen. In exclusive full screen nothing can be shown over the game, and screenshots come out black: Cerberus warns you instead of saving them. Both features also need the game to be started by Cerberus.
+</details>
+
+<details>
+<summary><b>Is swapping DLSS safe?</b></summary>
+
+Cerberus keeps the game's own DLL and can put it back at any time. A game update or a Steam file check can also bring it back. Don't swap DLSS in online games that use anti-cheat.
+</details>
+
+<details>
+<summary><b>Can I use the RetroArch I already have?</b></summary>
+
+Yes: in **Configurações → Emulação** (*Settings → Emulation*), point Cerberus to your `retroarch.exe`.
+</details>
+
+<details>
+<summary><b>A recomp I like isn't in the catalog.</b></summary>
+
+Use **Pedir um recomp** (*Request a recomp*) in Discover, or [open an issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). The catalog updates without a new version of Cerberus.
+</details>
+
+## Building from source
+
+You need Rust 1.100 or newer, the `wasm32-unknown-unknown` target, [Trunk](https://trunkrs.dev) and the [Tauri CLI](https://tauri.app):
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install trunk --locked
 cargo install tauri-cli --version "^2" --locked
+
+cargo tauri dev      # run with live reload
+cargo tauri build    # Windows installer in target/release/bundle/nsis
+cargo test --workspace
 ```
 
-Depois, na raiz do projeto:
+**[CONTRIBUTING.md](CONTRIBUTING.md)** covers the project layout, how the recomp catalog is maintained and the format of custom catalog sources.
 
-```sh
-cargo tauri dev     # desenvolvimento, com reload
-cargo tauri build   # instalador de release
-cargo test -p cerberus-launcher
-```
+## Contributing
 
-## Mantendo o catálogo
+Bug reports, recomp requests and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the [changelog](CHANGELOG.md) lists what each version changed.
 
-O catálogo próprio é `src-tauri/catalog/recomps.json`. O app busca esse arquivo deste repositório a
-cada 6 horas, então o que entra na `main` chega a todos sem nova versão do launcher.
+## Credits
 
-Quem mantém o arquivo é o `catalog-builder` (pasta `tools/`), junto com uma pessoa revisando:
+- Some behavior ideas come from [RecompLauncher](https://github.com/elripalda/RecompLauncher) and [Hydra](https://github.com/hydralauncher/hydra). Cerberus reimplements them from scratch.
+- The recomp catalog combines Cerberus's own list with the public list from [recomplauncher.com](https://recomplauncher.com). You can turn that list off in the settings.
+- Classic covers come from [libretro-thumbnails](https://github.com/libretro-thumbnails). Community art comes from [SteamGridDB](https://www.steamgriddb.com), using your own free API key.
+- Fonts: [Figtree](https://github.com/erikdkennedy/figtree) and [Archivo](https://github.com/Omnibus-Type/Archivo), under the SIL Open Font License 1.1.
+- Every recomp belongs to its developers. Please support their projects.
 
-```sh
-GITHUB_TOKEN=... cargo run -p catalog-builder -- update     # atualiza o que vem do GitHub
-GITHUB_TOKEN=... cargo run -p catalog-builder -- discover   # procura projetos novos
-```
+## License
 
-- `update` só mexe no que vem do GitHub: versão, arquivo de cada sistema com SHA-256, padrão do nome,
-  tamanho, estrelas e sistemas. O que foi escrito à mão nunca é alterado.
-- `discover` grava `src-tauri/catalog/candidates.json` e não coloca nada no catálogo sozinho.
-- A Action `Catálogo` roda os dois todo dia às 9h de Brasília (ou à mão, em Actions) e abre um Pull Request.
-
-**Para aceitar um candidato**, copie a entrada de `candidates.json` para `recomps.json` e complete:
-
-| Campo | O que pôr |
-|---|---|
-| `name`, `game`, `console`, `origin` | Nome do recomp, jogo original, console por extenso e o código curto (`n64`, `x360`...) |
-| `title` | O mesmo para versões do mesmo jogo (ex.: `majoras-mask`), para aparecerem juntas |
-| `needs` | O que o jogador precisa ter: "Sua cópia de ..." |
-| `about`, `adds` | Uma frase sobre o projeto e o que esta versão traz |
-| `cover`, `hero`, `icon` | Imagens (capa 2:3, fundo largo, ícone); links diretos e públicos |
-| `saves` | Onde ele salva, como `{local}/Nome/saves` ou `{install}/Save`; confira no código do projeto |
-
-Ferramentas, bibliotecas e projetos sem jogo jogável ficam de fora. Pedidos chegam pelo botão
-"Pedir um recomp" do app, que abre o formulário de issue deste repositório.
-
-## Fontes de catálogo
-
-Em Configurações → Fontes de catálogo dá para adicionar uma lista JSON de jogos publicados no
-GitHub pelos próprios desenvolvedores (jogos livres, homebrew, ports). Formato:
-
-```json
-{
-  "name": "Jogos livres",
-  "games": [
-    {
-      "id": "srb2",
-      "name": "Sonic Robo Blast 2",
-      "repo": "STJr/SRB2",
-      "assets": { "windows": "SRB2-*-Full.zip" },
-      "cover": "https://.../capa.png",
-      "about": "Uma frase sobre o jogo."
-    }
-  ]
-}
-```
-
-Só `id`, `name` e `repo` são obrigatórios. Cada jogo é instalado da release oficial do repositório,
-conferida pelo checksum do GitHub. Entradas com links próprios de download (`uris`, `magnet`,
-`url`, `download`) são ignoradas: o Cerberus não distribui cópias de jogos de terceiros.
-
-Listas Hydra com a chave `downloads` também podem ser adicionadas por URL HTTPS. Em
-**Configurações → Fontes de catálogo → Consultar**, procure uma publicação por título e veja
-o tamanho e a data declarados pela fonte. A consulta funciona com a última cópia local.
-O botão **Atualizar** sincroniza aquela fonte. A instalação em **Descobrir** usa o catálogo
-de projetos com releases oficiais.
-
-## Créditos
-
-Ideias de comportamento vêm de dois projetos de referência, reimplementadas aqui do zero:
-
-- [RecompLauncher](https://github.com/elripalda/RecompLauncher): como escolher o arquivo certo de
-  uma release, conferir o checksum do GitHub, desembrulhar a pasta do topo do zip e atualizar sem
-  apagar saves.
-- [Hydra](https://github.com/hydralauncher/hydra): onde a Epic guarda as instalações.
-
-A estrutura da interface (barra lateral, banner, fileiras, página do jogo com abas) segue a desses
-launchers, escrita do zero com identidade própria.
-
-Catálogo de recomps: a lista pública de [recomplauncher.com](https://recomplauncher.com)
-(`pc-catalog.json`, a mesma do RecompLauncher), lida no formato dela, guardada em disco e pedida
-de novo no máximo a cada 6 horas. Sem ela, o Cerberus usa a lista própria em
-`src-tauri/catalog/recomps.json`. Os recomps em si vêm sempre do GitHub de cada desenvolvedor.
-
-Recursos de terceiros:
-
-- Fontes [Figtree](https://github.com/erikdkennedy/figtree) e
-  [Archivo](https://github.com/Omnibus-Type/Archivo), sob a SIL Open Font License 1.1
-  (`ui/fonts/OFL-*.txt`).
-- Capas e screenshots dos jogos originais: [libretro-thumbnails](https://github.com/libretro-thumbnails).
-
-## Licença
-
-MIT. Veja [LICENSE](LICENSE).
+[MIT](LICENSE) © Cerberus Launcher contributors

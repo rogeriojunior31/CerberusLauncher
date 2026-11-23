@@ -56,6 +56,18 @@ pub struct Game {
     /// The game's logo, when the player picked one; shown in place of its name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logo_path: Option<String>,
+    /// A picture filter applied while the game runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<Look>,
+    /// The player marked it as a favorite (kept in favorites.json, not here).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub favorite: bool,
+    /// The player hid it from the library (kept in collections.json, not here).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    /// The player's collections it is in (kept in collections.json, not here).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collections: Vec<String>,
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -111,6 +123,45 @@ pub struct SettingSlider {
     pub value: f64,
     /// The value as the game writes it ("0.50", "80").
     pub text: String,
+}
+
+/// A picture filter for a game: which one (`sharp`, `vivid`, `crt`, `film`) and how strong, 0-100.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Look {
+    pub id: String,
+    pub strength: u8,
+}
+
+/// Whether a game can take a look, and the one it has.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LookStatus {
+    /// Why it can't, in words for the player; `None` when it can.
+    pub unsupported: Option<String>,
+    pub current: Option<Look>,
+}
+
+/// Facts about the original game, from the catalog (IGDB).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OriginalGame {
+    #[serde(default)]
+    pub released: String,
+    #[serde(default)]
+    pub developer: String,
+    #[serde(default)]
+    pub publisher: String,
+    #[serde(default)]
+    pub series: String,
+    #[serde(default)]
+    pub genres: Vec<String>,
+    #[serde(default)]
+    pub modes: Vec<String>,
+    #[serde(default)]
+    pub platforms: Vec<String>,
+    /// 0-100.
+    #[serde(default)]
+    pub rating: Option<f64>,
+    #[serde(default)]
+    pub summary: String,
 }
 
 /// A game on SteamGridDB.
@@ -217,11 +268,17 @@ pub struct ModItem {
     pub downloads: u64,
     /// The version installed, if it is.
     pub installed: Option<String>,
+    /// Likes on GameBanana, which doesn't tell downloads in its list.
+    #[serde(default)]
+    pub likes: u64,
 }
 
 /// A game's mods: where they come from, and the list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModList {
+    /// Where the mods come from, for the player: "thunderstore.io/c/..." or "gamebanana.com".
+    #[serde(default)]
+    pub from: String,
     pub community: String,
     pub folder: String,
     pub items: Vec<ModItem>,
@@ -263,6 +320,142 @@ pub struct SettingsView {
     /// The player's own SteamGridDB key, for picking art.
     #[serde(default)]
     pub steamgriddb_key: Option<String>,
+    /// "home", "library" or "discover".
+    #[serde(default)]
+    pub start_page: String,
+    /// recomplauncher.com's catalog is in use.
+    #[serde(default)]
+    pub site_catalog: bool,
+    /// Closing the window keeps Cerberus in the tray.
+    #[serde(default)]
+    pub close_to_tray: bool,
+    /// Cerberus opens with Windows.
+    #[serde(default)]
+    pub autostart: bool,
+    /// Opened with Windows, it starts in the tray.
+    #[serde(default)]
+    pub start_hidden: bool,
+    /// The linked RetroAchievements username; the key never comes back to the window.
+    #[serde(default)]
+    pub ra_user: Option<String>,
+    /// Files found in the ROM folders, for the Clássicos view.
+    #[serde(default)]
+    pub roms: Vec<RomView>,
+    /// The monitor Cerberus opens on; none: where Windows puts it.
+    #[serde(default)]
+    pub monitor: Option<String>,
+}
+
+/// A DLSS file inside a game's folder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DlssFile {
+    /// From the game's folder, as given back to swap it.
+    pub path: String,
+    /// "DLSS Super Resolution", "DLSS Frame Generation"...
+    pub label: String,
+    pub version: String,
+    /// The game's own version, kept by Cerberus, when another was put in place.
+    pub original: Option<String>,
+}
+
+/// What the menu over a game (Ctrl+F12) shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OverlayView {
+    pub game: Game,
+    /// How long it's been played this time.
+    pub session_secs: u64,
+    /// The latest pictures of it, newest first.
+    pub shots: Vec<Screenshot>,
+}
+
+/// A picture taken of a game (F12 while it runs).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Screenshot {
+    pub path: String,
+    /// When, in Unix seconds.
+    pub taken: u64,
+}
+
+/// A monitor plugged in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MonitorView {
+    /// Windows' name for it, kept in the settings.
+    pub name: String,
+    /// "Monitor 2 · 2560×1440 (principal)".
+    pub label: String,
+    pub primary: bool,
+}
+
+/// Emulation as Configurações shows it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct EmulationView {
+    /// The RetroArch program in use, if any.
+    pub retroarch: Option<String>,
+    /// It is the one Cerberus installed.
+    pub managed: bool,
+    pub cores: Vec<CoreView>,
+    /// The RetroAchievements user RetroArch is logged in as.
+    pub ra_user: Option<String>,
+    /// The player's BIOS files are in place.
+    #[serde(default)]
+    pub ps1_bios: bool,
+    #[serde(default)]
+    pub ps2_bios: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoreView {
+    pub console: String,
+    pub core: String,
+    /// The consoles it plays, as players say them.
+    pub consoles: String,
+    pub installed: bool,
+}
+
+/// A game file found in the ROM folders.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RomView {
+    pub path: String,
+    pub title: String,
+    /// "n64", "3ds", "ps2"...; empty for a disc image of an unknown console.
+    pub system: String,
+    pub region: String,
+    /// Seconds played through Cerberus, and when last (Unix seconds).
+    #[serde(default)]
+    pub playtime_secs: u64,
+    #[serde(default)]
+    pub last_played: Option<u64>,
+    /// A game on several discs: each disc's file, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discs: Vec<String>,
+}
+
+/// A linked RetroAchievements account, as the settings and the library show it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaProfile {
+    pub user: String,
+    pub picture: Option<String>,
+    /// Hardcore points.
+    pub points: u64,
+    pub softcore_points: u64,
+    /// Points weighted by rarity.
+    pub true_points: u64,
+    pub member_since: String,
+    pub playing_now: String,
+    pub url: String,
+    pub games: Vec<RaGame>,
+}
+
+/// A game the player played lately, with their progress.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaGame {
+    pub id: u64,
+    pub title: String,
+    pub console: String,
+    pub icon: Option<String>,
+    pub achieved: u64,
+    pub total: u64,
+    pub last_played: String,
 }
 
 /// A catalog source the player added.
@@ -288,6 +481,18 @@ pub struct SourceListing {
 pub struct SourcePage {
     pub items: Vec<SourceListing>,
     pub total: usize,
+}
+
+/// What the PC has that games need (Configurações › Seu PC).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcStatus {
+    /// The Visual C++ 2015-2022 x64 runtime's version, when installed.
+    pub vc_version: Option<String>,
+    /// Installed and recent enough for today's recomps.
+    pub vc_ok: bool,
+    /// DirectX's older parts (D3DX9, XInput 1.3...) the PC lacks.
+    #[serde(default)]
+    pub dx_missing: Vec<String>,
 }
 
 /// Sent when a game the launcher started opens or closes.
@@ -326,11 +531,31 @@ pub struct RecompEntry {
     pub game: String,
     pub console: String,
     pub repo: String,
+    /// Where the project lives, for the player: "GitHub", "GitLab" or its server's name.
+    #[serde(default)]
+    pub host: String,
     pub icon: Option<String>,
     /// Box art of the original game.
     pub cover: Option<String>,
     /// Wide art (a screenshot of the original game) for banners and the page backdrop.
     pub hero: Option<String>,
+    /// The game's logo from the catalog, shown in place of its name.
+    #[serde(default)]
+    pub logo: Option<String>,
+    /// The recomp's kind of game: "action", "racing"...
+    #[serde(default)]
+    pub genre: String,
+    /// What is known about the original game.
+    #[serde(default)]
+    pub original: Option<OriginalGame>,
+    /// When the project put out its first release, and how many it has.
+    #[serde(default)]
+    pub first_release: String,
+    #[serde(default)]
+    pub releases: u64,
+    /// PCs that played it lately, as the catalog counts them.
+    #[serde(default)]
+    pub players: u64,
     /// One or two sentences about the recomp.
     pub about: String,
     /// What this version brings, to tell it from the game's other versions.
@@ -359,6 +584,9 @@ pub struct RecompEntry {
     pub handoff: Option<CopyHandoff>,
     /// The copy can be a folder of extracted files, not just a file.
     pub accepts_folder: bool,
+    /// Only a folder of extracted files will do (a disc or cartridge file won't).
+    #[serde(default)]
+    pub only_folder: bool,
     /// How many of the game's own settings the launcher can change.
     #[serde(default)]
     pub settings_count: usize,
@@ -383,6 +611,9 @@ pub struct Release {
     pub size: u64,
 }
 
+/// The error an install ends with when the player pauses its download.
+pub const PAUSED: &str = "Download pausado.";
+
 /// Sent from the backend while a recomp installs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstallProgress {
@@ -394,6 +625,8 @@ pub struct InstallProgress {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InstallStep {
     Downloading { done: u64, total: u64 },
+    /// Stopped by the player with its bytes kept; installing again carries on.
+    Paused { done: u64, total: u64 },
     Unpacking,
     Finished,
     Failed { message: String },

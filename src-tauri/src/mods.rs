@@ -299,6 +299,7 @@ pub fn item(p: &Package, installed: &Installed) -> ModItem {
         page: p.page.clone(),
         downloads: p.downloads,
         installed: installed.0.get(&p.full_name).map(|(v, _)| v.clone()),
+        likes: 0,
     }
 }
 

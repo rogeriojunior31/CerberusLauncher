@@ -105,6 +105,10 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         setting_picks: Default::default(),
         external: false,
         logo_path: None,
+        look: None,
+        favorite: false,
+        hidden: false,
+        collections: Vec::new(),
     }
 }
 

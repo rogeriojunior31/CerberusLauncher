@@ -76,6 +76,15 @@ impl Trail {
         Ok(())
     }
 
+    /// Every game's steps, newest first, at most `limit`.
+    pub fn recent(&self, limit: usize) -> Vec<TrailEntry> {
+        let _guard = self.written.lock().unwrap_or_else(|e| e.into_inner());
+        let mut all = read_all(&self.path);
+        all.reverse();
+        all.truncate(limit);
+        all
+    }
+
     /// A game's steps, newest first, at most `limit`.
     pub fn for_game(&self, game_id: &str, limit: usize) -> Vec<TrailEntry> {
         let _guard = self.written.lock().unwrap_or_else(|e| e.into_inner());
@@ -105,6 +114,8 @@ mod tests {
         assert_eq!(a[0].step, "Partida");
         assert!(!a[1].ok);
         assert_eq!(a[1].message, "Acesso negado");
+        let all = reopened.recent(2);
+        assert_eq!((all[0].game_id.as_str(), all[1].game_id.as_str()), ("a", "b"));
     }
 
     #[test]

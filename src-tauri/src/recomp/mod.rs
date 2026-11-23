@@ -6,25 +6,50 @@ pub mod adopt;
 mod assets;
 pub mod catalog;
 pub(crate) mod cloud;
-mod github;
+mod forge;
+mod releases;
 mod install;
 pub(crate) mod saves;
 pub mod sources;
 mod translate;
 pub(crate) mod update;
+pub mod relocate;
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use cerberus_shared::{Backup, CopyHandoff, Game, InstallStep, NextStep, Release, RecompEntry, Source};
 use reqwest::Client;
 
 use crate::library::LocalLibrary;
-use assets::{Asset, Os};
+pub use assets::Asset;
+pub use install::Halt;
+use assets::Os;
 pub use catalog::{CatalogEntry, find};
+
+/// Downloads a file with resume and retries, for other parts of the launcher.
+pub async fn download_file(
+    client: &Client,
+    asset: &Asset,
+    dir: &Path,
+    cancel: &install::Halt,
+    report: impl Fn(u64, u64) + Send,
+) -> Result<PathBuf, String> {
+    install::download(client, asset, dir, cancel, report).await
+}
+
+/// Unpacks a .zip archive into a folder.
+pub fn extract_zip(archive: &Path, to: &Path) -> Result<(), String> {
+    install::unzip(archive, to)
+}
+
+/// Unpacks a .7z archive into a folder.
+pub fn extract_7z(archive: &Path, to: &Path) -> Result<(), String> {
+    install::un7z(archive, to)
+}
 
 /// This PC's system, as the catalog names it.
 fn os_key() -> &'static str {
@@ -104,8 +129,9 @@ fn staging_for(target: &Path, id: &str) -> PathBuf {
 
 /// Recomps being installed right now, with the flag that cancels each. Also stops
 /// a second click from starting a second copy.
+/// Paused downloads are kept too, so cancelling one later throws its bytes away.
 #[derive(Default)]
-pub struct Installing(Mutex<HashMap<String, Arc<AtomicBool>>>);
+pub struct Installing(Mutex<HashMap<String, Arc<install::Halt>>>, Mutex<HashMap<String, Arc<install::Halt>>>);
 
 impl Installing {
     pub fn while_idle<T>(&self, id: &str, action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
@@ -118,10 +144,20 @@ impl Installing {
     }
 
     pub fn cancel(&self, id: &str) {
-        let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
         let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
-        if let Some(flag) = busy.get(&key) {
-            flag.store(true, Ordering::Relaxed);
+        if let Some(flag) = self.0.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
+            flag.cancel();
+        }
+        if let Some(paused) = self.1.lock().unwrap_or_else(|p| p.into_inner()).remove(&key) {
+            paused.discard();
+        }
+    }
+
+    /// Stops the download but keeps its bytes for the next install.
+    pub fn pause(&self, id: &str) {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        if let Some(flag) = self.0.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
+            flag.pause();
         }
     }
 }
@@ -225,11 +261,20 @@ pub struct LaunchPlan {
 /// and for Play itself, so a button never offers what Play would refuse.
 /// `found` is the player's copy from the ROM folders, if the scan saw one.
 pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
-    let handoff = match &game.source {
-        Source::Recomp { recomp_id, .. } => find(recomp_id).and_then(|e| e.handoff),
+    let entry = match &game.source {
+        Source::Recomp { recomp_id, .. } => find(recomp_id),
         _ => None,
     };
-    next_step_with(game, handoff.as_ref(), found)
+    let handoff = entry.as_ref().and_then(|e| e.handoff.clone());
+    let step = next_step_with(game, handoff.as_ref(), found);
+    // A folder copy the recomp reads named parts from: they must be in its folder.
+    if let (NextStep::Play, Some(entry), Some(CopyHandoff::Folder { folder, file_name: None, .. })) = (&step, &entry, &handoff) {
+        let dir = Path::new(&game.install_dir).join(folder);
+        if !entry.copy_contains.is_empty() && !entry.copy_contains.iter().all(|name| holds(&dir, name)) {
+            return NextStep::ChooseCopy { found: found.cloned() };
+        }
+    }
+    step
 }
 
 fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&String>) -> NextStep {
@@ -338,6 +383,9 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
             return Err(problem);
         }
     }
+    if let Some(entry) = &entry {
+        copy_fits(entry, copy)?;
+    }
     let accepts_folder = entry.as_ref().is_some_and(|e| e.accepts_folder);
     match entry.and_then(|e| e.handoff) {
         Some(CopyHandoff::Folder { folder, file_name, extract }) => {
@@ -348,6 +396,41 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
     }
     let path = copy.to_string_lossy().into_owned();
     library.update(game_id, |game| game.game_copy = Some(path))
+}
+
+/// Whether a copy the player picked can be this recomp's game: a cartridge of
+/// the right console, a folder when only a folder will do, and a folder that
+/// holds what the recomp reads from it.
+fn copy_fits(entry: &CatalogEntry, copy: &Path) -> Result<(), String> {
+    let wants = if entry.copy_contains.is_empty() { String::new() } else { format!(" (com {})", entry.copy_contains.join(" e ")) };
+    if copy.is_dir() {
+        let missing: Vec<&String> = entry.copy_contains.iter().filter(|name| !holds(copy, name)).collect();
+        if !missing.is_empty() {
+            let names: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
+            return Err(format!("Essa pasta não tem {}. Escolha a pasta do jogo{wants}.", names.join(" nem ")));
+        }
+        return Ok(());
+    }
+    if let Some(system) = crate::roms::cartridge_of(copy) {
+        if !crate::roms::console_fits(system, &entry.origin) {
+            return Err(format!(
+                "Esse arquivo é de {}, mas {} é de {}. Escolha a sua cópia de {}.",
+                crate::roms::console_name(system),
+                entry.name,
+                entry.console,
+                entry.game
+            ));
+        }
+    }
+    if entry.copy_accepts == "folder" {
+        return Err(format!("{} precisa da pasta com os arquivos do jogo{wants}, não de um arquivo.", entry.name));
+    }
+    Ok(())
+}
+
+/// The folder has an entry of that name, in any letter case.
+fn holds(dir: &Path, name: &str) -> bool {
+    fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
 fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, extract: bool, accepts_folder: bool, copy: &Path) -> Result<(), String> {
@@ -379,12 +462,20 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
     if !plain_name {
         return Err("O catálogo pede um caminho inesperado; nada foi copiado.".into());
     }
+    // A CHD or CSO where the recomp reads an ISO: unpacked into one.
+    let wants_iso = Path::new(&name)
+        .extension()
+        .is_none_or(|e| ["iso", "chd", "cso"].iter().any(|x| e.eq_ignore_ascii_case(x)));
+    if wants_iso && crate::disc_image::kind_of(copy) != crate::disc_image::Kind::Plain {
+        crate::disc_image::write_iso(copy, &dir.join(Path::new(&name).with_extension("iso")))?;
+        return Ok(());
+    }
     fs::copy(copy, dir.join(&name)).map_err(|e| format!("Não foi possível copiar sua cópia do jogo: {e}"))?;
     Ok(())
 }
 
 /// Copies a folder's files and folders under `to`, keeping their layout.
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+pub(crate) fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::create_dir_all(to)?;
     for entry in fs::read_dir(from)? {
         let entry = entry?;
@@ -432,11 +523,13 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         }),
         _ => None,
     };
+    let host = entry.forge().map(|f| f.name()).unwrap_or_default();
     let entry = entry.clone();
     RecompEntry {
         owned_copy: owned.get(&entry.id).cloned(),
         handoff: entry.handoff.clone(),
-        accepts_folder: entry.accepts_folder,
+        accepts_folder: entry.accepts_folder || entry.copy_accepts == "folder",
+        only_folder: entry.copy_accepts == "folder",
         settings_count: entry.settings.len(),
         player_note: entry.player_note.clone(),
         multiplayer: entry.multiplayer.clone(),
@@ -445,10 +538,17 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         name: entry.name,
         game: entry.game,
         console: entry.console,
+        host,
         repo: entry.repo,
         icon: entry.icon,
         cover: entry.cover,
         hero: entry.hero,
+        logo: entry.logo,
+        genre: entry.genre,
+        original: entry.original,
+        first_release: entry.first_release,
+        releases: entry.releases,
+        players: entry.players,
         about: entry.about,
         adds: entry.adds,
         needs: entry.needs,
@@ -488,7 +588,7 @@ pub async fn install(
     report: impl Fn(InstallStep) + Send + Sync,
 ) -> Result<Game, String> {
     let entry = find(id).ok_or("Esse recomp não está no catálogo.")?;
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::new(install::Halt::default());
     {
         let mut busy = installing.0.lock().unwrap_or_else(|p| p.into_inner());
         if busy.contains_key(&entry.id) {
@@ -506,8 +606,12 @@ pub async fn install(
         }
         busy.insert(entry.id.clone(), cancel.clone());
     }
+    installing.1.lock().unwrap_or_else(|p| p.into_inner()).remove(&entry.id);
     let result = install_now(client, folders, library, &entry, &cancel, &report).await;
     installing.0.lock().unwrap_or_else(|p| p.into_inner()).remove(&entry.id);
+    if result.as_ref().is_err_and(|e| e == install::PAUSED) {
+        installing.1.lock().unwrap_or_else(|p| p.into_inner()).insert(entry.id.clone(), cancel);
+    }
     result
 }
 
@@ -516,7 +620,7 @@ async fn install_now(
     folders: &Folders,
     library: &LocalLibrary,
     entry: &CatalogEntry,
-    cancel: &AtomicBool,
+    cancel: &install::Halt,
     report: &(impl Fn(InstallStep) + Send + Sync),
 ) -> Result<Game, String> {
     let (asset, version) = choose_download(client, folders, entry).await?;
@@ -536,14 +640,23 @@ async fn install_now(
 
     // Progress is sent at most once per percent; a 70 MB file has thousands of chunks.
     let last_percent = AtomicU64::new(u64::MAX);
+    let (got, of) = (AtomicU64::new(0), AtomicU64::new(0));
     let on_bytes = |done: u64, total: u64| {
+        got.store(done, Ordering::Relaxed);
+        of.store(total, Ordering::Relaxed);
         let percent = if total == 0 { 0 } else { done * 100 / total };
         if percent != last_percent.swap(percent, Ordering::Relaxed) {
             report(InstallStep::Downloading { done, total });
         }
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
-    let file = install::download(client, &asset, &folders.downloads, cancel, on_bytes).await?;
+    let file = match install::download(client, &asset, &folders.downloads, cancel, on_bytes).await {
+        Err(e) if e == install::PAUSED => {
+            report(InstallStep::Paused { done: got.load(Ordering::Relaxed), total: of.load(Ordering::Relaxed) });
+            return Err(e);
+        }
+        other => other?,
+    };
 
     report(InstallStep::Unpacking);
     let unpack_target = target.clone();
@@ -610,27 +723,37 @@ pub fn find_game_program(dir: &Path, hints: &[&str]) -> Option<PathBuf> {
 }
 
 /// The file to download, and its version. When the catalog has the exact file
-/// with GitHub's checksum, it comes straight from the release: no question to
-/// GitHub's API, whose hourly limit is easy to reach. Otherwise the newest
+/// with its checksum, it comes straight from the release: no question to the
+/// server's API (GitHub's hourly limit is easy to reach). Otherwise the newest
 /// release is asked for and its file picked by the catalog's pattern.
 async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntry) -> Result<(Asset, String), String> {
     if let Some(problem) = problem_with(entry) {
         return Err(problem);
     }
+    let forge = entry.forge().ok_or("O endereço do projeto no catálogo não é válido.")?;
     let direct = entry.files.get(os_key()).filter(|f| !f.name.is_empty() && !f.sha256.is_empty());
-    if let (Some(tag), Some(file)) = (&entry.tag, direct) {
-        let name = file.name.replace(' ', "%20");
-        let url = format!("https://github.com/{}/releases/download/{tag}/{name}", entry.repo);
+    if let (Some(tag), Some(file)) = (&entry.tag, direct)
+        && let Some(url) = forge.release_file(tag, &file.name)
+    {
         // The size comes with the download itself.
         let asset = Asset { name: file.name.clone(), size: 0, url, sha256: Some(file.sha256.to_lowercase()) };
         return Ok((asset, tag.clone()));
     }
-    let release = github::latest(client, &folders.cache, &entry.repo, true).await?;
-    let by_pattern = entry.assets.get(os_key()).and_then(|pattern| assets::by_pattern(&release.assets, pattern));
+    let release = releases::latest(client, &folders.cache, &forge, true).await?;
+    // GitLab: the catalog's file among the release's links, which may leave out
+    // the file's extension; the catalog's name and checksum stand.
+    if let Some(file) = direct
+        && let Some(link) = release.assets.iter().find(|a| assets::same_file(&a.name, &file.name))
+    {
+        let asset = Asset { name: file.name.clone(), sha256: Some(file.sha256.to_lowercase()), ..link.clone() };
+        return Ok((asset, release.version));
+    }
+    let pattern = entry.assets.get(os_key());
+    let by_pattern = pattern.and_then(|p| assets::by_pattern(&release.assets, p).cloned().or_else(|| assets::by_bare_pattern(&release.assets, p)));
     let asset = by_pattern
-        .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()))
+        .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()).cloned())
         .ok_or("Ainda não tem uma versão para este sistema.")?;
-    Ok((asset.clone(), release.version))
+    Ok((asset, release.version))
 }
 
 /// The library's game for this recomp, under its current id or an older one.
@@ -689,6 +812,10 @@ fn register(
         setting_picks: Default::default(),
         external: false,
         logo_path: None,
+        look: None,
+        favorite: false,
+        hidden: false,
+        collections: Vec::new(),
     };
     apply_art(&mut game);
     library.add(game.clone())?;
@@ -769,6 +896,32 @@ mod tests {
         assert_eq!(next_step_with(&game, Some(&named), None), NextStep::Play);
         game.game_copy = None;
         assert_eq!(next_step_with(&game, Some(&named), None), NextStep::Play, "set up by hand, outside Cerberus");
+    }
+
+    #[test]
+    fn a_copy_of_another_console_or_a_file_for_a_folder_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mhgu = CatalogEntry {
+            id: "mhgurecomp".into(),
+            name: "MHGU Recomp".into(),
+            game: "Monster Hunter Generations Ultimate".into(),
+            console: "Nintendo Switch".into(),
+            origin: "switch".into(),
+            copy_accepts: "folder".into(),
+            copy_contains: vec!["exefs".into(), "romfs".into()],
+            ..Default::default()
+        };
+        let three_ds = dir.path().join("Monster Hunter Generations (USA).3ds");
+        fs::write(&three_ds, b"rom").unwrap();
+        assert!(copy_fits(&mhgu, &three_ds).unwrap_err().contains("é de Nintendo 3DS"));
+        let nsp = dir.path().join("MHGU.nsp");
+        fs::write(&nsp, b"rom").unwrap();
+        assert!(copy_fits(&mhgu, &nsp).unwrap_err().contains("precisa da pasta"));
+        let dump = dir.path().join("dump");
+        fs::create_dir_all(dump.join("ExeFS")).unwrap();
+        assert!(copy_fits(&mhgu, &dump).unwrap_err().contains("não tem romfs"));
+        fs::create_dir_all(dump.join("romfs")).unwrap();
+        assert!(copy_fits(&mhgu, &dump).is_ok());
     }
 
     #[test]
@@ -1028,4 +1181,24 @@ mod tests {
         let target = Path::new(r"D:\Recomps\zelda64recomp");
         assert_eq!(staging_for(target, "zelda64recomp"), Path::new(r"D:\Recomps\.staging-zelda64recomp"));
     }
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "asks GitHub, GitLab and Forgejo servers about catalog recomps downloaded on this PC"]
+fn real_downloads_resolve_on_every_server() {
+    let cache = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("app.cerberus.launcher/cache");
+    catalog::load_copy(&cache);
+    let temp = tempfile::tempdir().unwrap();
+    let folders = Folders::new(temp.path(), None);
+    let client = Client::builder().user_agent("CerberusLauncher").build().unwrap();
+    tauri::async_runtime::block_on(async {
+        for id in ["mariokart64recomp-2", "commander-genius", "fe3h-recomp-2", "longshot", "hookshot", "zelda64recomp"] {
+            let entry = find(id).unwrap_or_else(|| panic!("{id} not in the catalog"));
+            let (asset, version) = choose_download(&client, &folders, &entry).await.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let reply = client.get(&asset.url).header("Range", "bytes=0-0").send().await.unwrap();
+            println!("{id} {version} {} -> {} {}", asset.name, reply.status(), reply.url().host_str().unwrap_or_default());
+            assert!(reply.status().is_success(), "{id}: {}", reply.status());
+        }
+    });
 }

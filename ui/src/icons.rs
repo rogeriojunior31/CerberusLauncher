@@ -28,6 +28,16 @@ pub enum Icon {
     Clock,
     Settings,
     Tv,
+    Info,
+    Puzzle,
+    Trophy,
+    Gamepad,
+    Bell,
+    Heart,
+    HeartFill,
+    EyeOff,
+    Shelf,
+    Photo,
 }
 
 impl Icon {
@@ -53,17 +63,26 @@ impl Icon {
             Icon::Trash => "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
             Icon::Edit => "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
             Icon::Check => "M5 12.5l4.5 4.5L19 7.5",
+            Icon::EyeOff => "M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a16 16 0 0 1-2.6 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a8.6 8.6 0 0 0 4.4-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2",
+            Icon::Photo => "M4 7h3l1.5-2h7L17 7h3v12H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
+            Icon::Shelf => "M4 5h4v14H4zM10 5h4v14h-4zM16.5 6.2l3.8-1 3 13.3-3.8 1z",
+            Icon::Heart | Icon::HeartFill => "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
+            Icon::Bell => "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0",
             Icon::Clock => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
             Icon::Settings => "M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4",
             Icon::Tv => "M3.5 5h17v12h-17zM8.5 20.5h7M10.5 8.5l4 2.5-4 2.5z",
+            Icon::Info => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.01",
+            Icon::Puzzle => "M10 4h4v2.5a1.5 1.5 0 1 0 3 0V4h3v6h-2.5a1.5 1.5 0 1 0 0 3H20v7h-6v-2.5a1.5 1.5 0 1 0-3 0V20H4v-6h2.5a1.5 1.5 0 1 0 0-3H4V4h6z",
+            Icon::Trophy => "M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5v1.5A3.5 3.5 0 0 0 8 11M16 6h3.5v1.5A3.5 3.5 0 0 1 16 11M12 13v4M8.5 20h7M10 17h4v3h-4z",
+            Icon::Gamepad => "M7 8h10a4 4 0 0 1 4 4v1.5a3.5 3.5 0 0 1-6.3 2.1L13.5 14h-3l-1.2 1.6A3.5 3.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4zM8 10.5v3M6.5 12h3M15.5 11.5v.01M17.5 13v.01",
         }
     }
 }
 
 #[component]
 pub fn Svg(icon: Icon, #[prop(default = 20)] size: u32) -> impl IntoView {
-    // Play reads better solid; everything else is drawn as lines.
-    let filled = icon == Icon::Play;
+    // Play and a favorite's heart read better solid; everything else is drawn as lines.
+    let filled = matches!(icon, Icon::Play | Icon::HeartFill);
     view! {
         <svg
             width=size

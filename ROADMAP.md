@@ -76,7 +76,9 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       cobrem a saída antecipada do launcher e duas partidas no mesmo menu.
 - [x] Distinguir o cancelamento ou falha de um instalador externo antes de procurar o jogo instalado.
       O teste cobre os códigos de saída, inclusive cancelamento do MSI e sucesso que pede reinício.
-- [ ] Recuperar a espera por um instalador externo após reiniciar o Cerberus e testar com uma instalação anterior presente.
+- [x] Instalador externo depois de reiniciar: ao abrir, e antes de rodar o instalador de novo, o Cerberus procura
+      o jogo já instalado (ao lado do instalador ou no registro do Windows) e o deixa pronto. Testado com
+      uma pasta montada; ainda sem um instalador real interrompido.
 - [ ] Comparar a próxima partida real do ReStreet com a duração registrada após a correção.
 - [x] Restaurar o mais antigo dos dez backups mesmo quando a cópia de segurança provoca rotação.
       Se a leitura de um slot falha por corrupção do ZIP, os slots atuais são preservados. Ambos os casos têm testes em pastas temporárias.
@@ -96,7 +98,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       gravado sem mudar nenhuma das outras 189 chaves, e mantido pelo jogo depois de abrir e fechar.
 - [x] Configuração guiada na primeira abertura: como joga (mesa ou TV), pastas de ROMs com os
       jogos que já têm recomp, pasta de instalação com espaço livre e saves na nuvem. Quem escolhe
-      TV abre direto na Tela grande (também em Configurações). Instalações existentes não veem a tela.
+      TV abre direto na Big Picture Mode (também em Configurações). Instalações existentes não veem a tela.
 - [x] Trazer recomps instalados sem o Cerberus: "Trazer seus recomps" no Descobrir procura numa
       pasta pelo nome do programa que o catálogo dá (607 recomps o informam) e "Já tenho instalado"
       na página de cada recomp. O jogo fica marcado como externo: o Cerberus abre, conta tempo e faz
@@ -112,6 +114,59 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
       nenhum dos 1899 jogos do catálogo usa mais de uma entrada (`boot.inputs`); retomar quando algum usar.
 - [x] Aviso do catálogo para o jogador ("Como começar", 455 jogos) e selo de multijogador
       (local, online ou os dois, 156 jogos) na página do jogo.
+- [x] Filtros visuais (Nítido, Cores vivas, CRT, Filme) com intensidade, na aba Ajustes, para jogos
+      com Direct3D 10/11/12. Shaders próprios aplicados pelo ReShade, baixado do site oficial na primeira
+      escolha. O `dxgi.dll` fica ao lado do jogo só durante a partida, nunca substitui um que já exista e
+      é retirado no próximo início se o Cerberus fechar no meio. Conferido no SpaghettiKart (CRT e Filme),
+      com a pasta do jogo idêntica ao backup depois. Vulkan e OpenGL ficam para depois.
+- [x] Primeira curadoria dos candidatos do catálogo próprio: 62 promovidos (de 10 para 72 jogos).
+      Critério: o repositório já está no catálogo do recomplauncher.com como jogo jogável, instala por
+      arquivo (`portable`), é de console antigo e tem arquivo para Windows com SHA-256. Só fatos (jogo,
+      console, programa) vieram de lá; capas e textos não. Os 52 restantes ficaram em `candidates.json`
+      com o motivo em `review_note`.
+- [x] Os 15 projetos de consoles recentes (Switch, Switch 2, Wii U, PS3, PS4) também entraram, por
+      decisão do mantenedor: são os mais procurados agora e já estão no catálogo do site. O SHA-256
+      garante o arquivo que o autor publicou, não a confiança no autor. Catálogo próprio: 87 jogos.
+- [x] Mais 28 jogos (catálogo próprio: 115): os 22 que o site lista sem dizer como iniciar (o Cerberus
+      acha o programa sozinho), Skate 3, Zelda TOTK "Weeping of the Empire", e Yu-Gi-Oh! FM, Kingdom
+      Hearts 358/2 Days, Rayman 3 HD e Forza Horizon 1 conferidos à mão. Ficaram 9 em revisão: 7
+      ferramentas (N64Recomp, bibliotecas, lojas, outros launchers) e 2 que não são para Windows.
+- [x] O gerador escolhia arquivos auxiliares no lugar do jogo (editor, "Studio", tradução). Agora os
+      evita e prefere a versão portátil, com testes, sem trocar jogos que são eles mesmos um mod.
+- [x] Big Picture Mode refeita: abas (Início, Biblioteca, Descobrir, Downloads, Configurações) com LB/RB;
+      Início com destaque do jogo em foco e fileiras; grade na Biblioteca e no Descobrir; página do jogo
+      com botão principal que segue o estado (jogar, instalar, atualizar, progresso que cancela); painel de
+      opções no X; teclado na tela para busca; Downloads com progresso e atualizações; B volta ao item de
+      onde veio e, no Início, pergunta se quer sair; ícones de botão de Xbox, PlayStation ou Nintendo
+      conforme o controle; sons de navegação; relógio. Segurar Menu ou F11 entra e sai. Conferido no app
+      pelo teclado; o controle físico (Xbox 360 conectado) ainda precisa ser testado à mão.
+- [x] Página do jogo mais completa: logo do catálogo no lugar do nome, jogadores recentes, versões
+      lançadas, primeira versão, cartão do jogo original (resumo, desenvolvedora, publicadora, série,
+      gêneros, modos, plataformas, nota, pelo IGDB) e "Jogos parecidos" (tags, gênero, série, console).
+- [x] Descobrir lista por "Recomps" ou por "Jogos" (nome do jogo original), escolha lembrada.
+- [x] MHGU Recomp e Budokai Tenkaichi 4 Tag Team no catálogo próprio (117 jogos).
+- [x] Configurações refeitas com menu lateral em grupos (App, Jogos, Clássicos, Contas, Sistema), chaves
+      de liga/desliga e opções novas: página inicial, rever a configuração inicial, menos animações, sons
+      e "Abrir agora" do Big Picture Mode.
+- [x] Biblioteca em abas Todos / Recomps / PC / Clássicos. Clássicos mostra as ROMs das pastas, com capa
+      do libretro e o selo "Tem recomp" (abre o recomp).
+- [x] RetroAchievements: conectar com usuário e chave da Web API (fica só no PC), perfil, pontos e os jogos
+      jogados recentemente com o progresso de conquistas. Próximo: emulação (RetroArch primeiro) com login
+      automático nos emuladores e conquistas na hora, como o Hydra faz.
+- [x] Emulação pelo RetroArch: o Cerberus instala o RetroArch oficial do libretro numa pasta própria (ou usa
+      o do jogador) e baixa um núcleo por console (NES, SNES, N64, Game Boy/Color, GBA, Mega Drive/Master
+      System/Game Gear). Clássicos dessas consoles abrem direto da aba Clássicos. Um clássico que também tem
+      recomp abre a página do recomp, com "Jogar" e "Original no RetroArch" lado a lado. Conferido no app:
+      RetroArch 1.22.2 instalado, núcleo de N64 baixado e Mario Kart 64 aberto pela página do jogo.
+- [x] RetroAchievements no RetroArch: a senha é trocada por um código de acesso no site e só o código vai para
+      o retroarch.cfg (com cópia de segurança). Ainda não testado com uma conta real.
+- [x] PlayStation, PSP e GameCube/Wii pelo RetroArch (núcleos pcsx_rearmed, ppsspp e dolphin, com os arquivos de
+      sistema do PSP e do Dolphin). Crash Bandicoot original (PS1) aberto pela página do recomp.
+- [x] Tempo de jogo dos clássicos (`classics.json`), mostrado na aba Clássicos e no histórico.
+- [x] Conquistas na hora: o RetroArch escreve um log (`--log-file`) e o Cerberus mostra um aviso a cada
+      "Awarding achievement". Texto conferido dentro do programa do RetroArch; ainda sem conquista real.
+- [x] PS2 (pcsx2 com a BIOS do jogador), BIOS opcional do PS1 e fileira "Seus clássicos" no Big Picture Mode
+      (conferida em tela cheia, 1920x1080).
 - [ ] Validar a continuidade com um save real. Salvar progresso, fechar o jogo, conferir
       o backup, reabrir o Cerberus e carregar o mesmo progresso. Testar a restauração
       em uma cópia separada.
@@ -168,7 +223,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 
 ## Onda 3: experiência (feita)
 
-- [x] Modo tela grande (Big Picture) com controle e teclado.
+- [x] Modo Big Picture Mode (Big Picture) com controle e teclado.
 - [x] Mods do Thunderstore: comunidades conhecidas e as `*-recompiled` achadas pelo nome;
       instala dependências; só os arquivos que o jogo carrega.
 - [x] Opções de inicialização por jogo.
@@ -211,16 +266,97 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
 
 ### 4.3 Base de jogos e arte (estilo Hydra)
 
-- [ ] Arte da comunidade pelo SteamGridDB (chave gratuita do usuário em Configurações; o gerador
-      pode usar uma chave de CI para preencher capas/fundos do catálogo).
+- [x] Arte da comunidade pelo SteamGridDB com a chave gratuita do jogador (Configurações › Arte dos jogos e
+      "Personalizar arte" na página do jogo). Falta: o gerador do catálogo usar uma chave de CI.
 - [ ] Base de jogos de console do LaunchBox Games Database (`Metadata.zip`): nomes alternativos,
       plataformas e imagens, para reconhecer melhor as ROMs. Confirmar os termos de uso antes.
 - [ ] Busca com índice local (SQLite com busca de texto) se a base passar de algumas dezenas de
       milhares de jogos; para os recomps a busca em memória continua bastando.
 
+### 4.3b Bandeja do Windows
+
+- [x] Configurações › Geral › "Ao fechar a janela": continuar na bandeja (desligado por padrão). Com um jogo ou
+      clássico aberto, fechar a janela sempre esconde o Cerberus, para não perder tempo de jogo, backup de
+      saves e conquistas; ele fecha sozinho quando o último jogo termina. Conferido no app: Mario Kart 64 no
+      RetroArch, janela fechada, partida registrada e Cerberus fechado 1 s depois; com a opção ligada, o
+      ícone na bandeja reabre a janela.
+
+### 4.3c Novidades
+
+- [x] Página "Novidades" no menu (como as notificações do Hydra): atualizações disponíveis dos recomps instalados
+      pelo Cerberus, com "Atualizar" ali mesmo e um número no menu, e a atividade recente de todos os jogos
+      (instalações, partidas, conquistas, erros) a partir do histórico. Conferido no app com o histórico real.
+
+- [x] Página própria para cada clássico: capa, console, região, tempo de jogo, última vez, arquivo com
+      "Abrir pasta", histórico, "Jogar no RetroArch" e, quando existe, "Ver o recomp". Aberta pela aba
+      Clássicos (jogos sem recomp) e pela Atividade recente das Novidades. Conferida com o Mario Kart 64.
+
+- [x] Favoritos (como no Hydra): "Favoritar" na página do jogo, coração na capa, aba Favoritos na Biblioteca e
+      atalhos no menu lateral. Guardados em favorites.json, à parte da biblioteca, para valer também para
+      jogos da Steam e da Epic, que são lidos das lojas a cada vez.
+
+- [x] Botão direito numa capa (como no Hydra): menu com Jogar (ou o próximo passo), Página do jogo,
+      Favoritar/Tirar dos favoritos e Abrir pasta do jogo. Fica dentro da janela e fecha com clique fora ou Esc.
+
+- [x] Big Picture Mode com mouse: abas, capas (abrem a página), botões da página do jogo, "Voltar" e
+      painéis respondem a clique. Sair sempre desfaz a tela cheia, mesmo saindo no meio de um clique.
+
+### 4.3d Paridade com Hydra e RecompLauncher (levantamento de 19/11/2026)
+
+- [x] Uma instância só: abrir de novo traz a janela aberta (até da bandeja).
+- [x] Avisos do Windows para conquistas e jogos prontos quando a janela não está em foco.
+- [x] Jogo que fecha com erro: código de saída explicado (DLL faltando, Visual C++ antigo, travamento),
+      log do jogo apontado, no histórico e como aviso.
+- [x] Opções de inicialização: abrir com o Windows e começar escondido na bandeja (só quando o Windows abre).
+- [x] Tempo de jogo dos jogos da Steam e da Epic: o Cerberus vigia os programas abertos (mesmo na bandeja). Falta conferir com uma partida real.
+- [x] Instalador do Windows (0.10.0, NSIS): em português, com as imagens do Cerberus, só para o usuário (sem
+      administrador), Menu Iniciar, atalho na área de trabalho e "Executar" ao concluir (cai na configuração inicial);
+      WebView2 embutido para PCs sem ele. Desinstalar mantém os dados (a caixa para apagar diz o que apaga) e tira
+      o "Abrir com o Windows" e as chaves do instalador. Conferido: instalar, primeira abertura e desinstalar.
+      Falta: assinatura digital (o SmartScreen avisa) e publicar a release.
+- [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
+- [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play).
+- [x] Adicionar à Steam (Gerenciar): jogo de fora na biblioteca da Steam, com capa e fundo, abrindo pelo Cerberus;
+      com a Steam fechada, backup do shortcuts.vdf, e "Tirar da Steam" desfaz. Conferido no app com o SpaghettiKart.
+- [x] Configurações › Seu PC: Visual C++ 2015-2022 x64 (versão, em dia ou antigo) e DirectX antigo (D3DX, XInput 1.3,
+      XAudio 2.7), instalados pelos links da Microsoft.
+- [x] Jogo que fecha com 0xC0000139: diz qual DLL é antiga (cópia na pasta do jogo, Visual C++ ou Vulkan do driver).
+- [x] Mods do GameBanana para Ship of Harkinian, Starship, SpaghettiKart e Ghostship (pacotes .otr/.o2r).
+      Conferido no app: instalar e remover um mod do SpaghettiKart.
+- [x] Mods do GameBanana para Unleashed e Marathon Recompiled: pasta com mod.ini ligada no ModsDB.ini que o
+      cpkredir.ini aponta (a lista do Hedge Mod Manager é mantida, com backup). Conferido com um mod real numa pasta temporária.
+- [x] Recomps no GitLab e em servidores Forgejo (11 do catálogo principal e os 3 da lista apps_min do site:
+      Hookshot, Longshot, FE3H Recomp) e ids renomeados (replaced) do catálogo do site.
+- [x] Pausar e continuar download de recomp (o arquivo parcial fica guardado; cancelar apaga), na página do jogo e no Big Picture.
+- [x] Reparar instalação (baixa a versão de novo por cima, com backup dos saves) e mover o jogo para outra pasta ou disco (Gerenciar).
+- [x] Imagens de disco compactadas na preparação dos recomps: CHD (de DVD e de CD, pela primeira faixa) e CSO
+      são lidos como ISO, sem programa de fora (crate chd, BSD-3): os arquivos saem direto deles, ou viram .iso
+      quando o recomp quer a imagem. Testado com imagens geradas; falta um CHD real do chdman. RVZ, ZSO (LZ4) e
+      CHD "filho" ainda não.
+- [x] Coleções e jogos ocultos: aba Coleções (criar, renomear, apagar) e Ocultos na biblioteca, pelo botão direito
+      na capa; ocultos saem do Início, do menu lateral e do Big Picture (collections.json). Conferido no app.
+- [x] Monitor onde o Cerberus e o Big Picture abrem (Configurações › Geral, só com mais de um monitor ligado).
+      Conferido no app com um monitor (a escolha salva e o Big Picture em tela cheia); falta ver com dois monitores.
+- [x] Clássicos com vários discos: "(Disc 1)", "(Disc 2)"... da mesma pasta viram um jogo só (ou a lista .m3u do
+      próprio jogador); PlayStation e GameCube abrem por uma lista .m3u na pasta do Cerberus, com troca de disco
+      no menu do RetroArch. Conferido no app com discos de teste (o RetroArch com um jogo real ainda falta).
+- [x] Fotos do jogo: F12 com um jogo aberto pelo Cerberus na frente tira foto só da janela dele (o F12 continua
+      chegando ao jogo e à Steam); aba Fotos na página do jogo, com abrir a foto e a pasta. Conferido no app com o
+      SpaghettiKart. Falta: jogos em tela cheia exclusiva (saem pretos).
+- [x] Menu por cima do jogo (Ctrl+F12): janela transparente do Cerberus sobre a do jogo, com tempo da partida e
+      total, tirar foto (o menu sai da frente), abrir a página no Cerberus e fechar o jogo (com confirmação, pelo
+      X da janela). Esc ou Ctrl+F12 devolve o jogo. Conferido no app com o SpaghettiKart. Só em janela ou sem
+      bordas; tela cheia exclusiva não deixa nada por cima. Controle: View+Menu juntos abrem e fecham (XInput),
+      direcional move, A aperta, B volta. Navegação conferida pelo teclado; falta testar com um controle ligado.
+- [x] DLSS (Gerenciar): mostra as DLLs do DLSS do jogo (Super Resolution, Frame Generation, Ray Reconstruction)
+      com a versão; "Trocar versão…" usa uma DLL de mesmo nome que o jogador já tem (o Cerberus não baixa nada),
+      guarda a do jogo e "Voltar à original" desfaz. Testado com DLLs do Windows no lugar; a tela conferida com
+      um jogo falso. Falta: um jogo real com DLSS.
+- [ ] Discord "Jogando...".
+
 ### 4.4 Transição
 
-- [ ] Quando o catálogo próprio cobrir os recomps principais, o do recomplauncher.com vira opcional
-      (fonte nas Configurações) em vez de padrão.
+- [x] O catálogo do recomplauncher.com virou opcional: chave em Configurações › Catálogo e fontes, ligada
+      por padrão (decisão do usuário em 19/11/2026). Desligado, ficam os 117 recomps do Cerberus e as fontes.
 - [ ] Pedir permissão ao mantenedor do RecompLauncher para usar a lista de repositórios deles como
       ponto de partida da descoberta (só os fatos: quais projetos existem; nunca textos ou arte).

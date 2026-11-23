@@ -1,0 +1,429 @@
+//! Big Picture Mode: the launcher full screen, for a TV and a controller.
+//!
+//! Five sections in tabs along the top (LB/RB): Início, Biblioteca, Descobrir,
+//! Downloads and Configurações. A game opens its own page; B goes back to the
+//! very item you came from, and on Início it asks whether to leave. X opens a
+//! game's options anywhere. A button bar at the bottom shows what each button
+//! does, drawn for the controller in use (Xbox, PlayStation or Nintendo).
+
+mod focus;
+mod game;
+pub(crate) mod input;
+mod pages;
+mod sheets;
+mod sound;
+
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::time::Duration;
+
+use leptos::prelude::*;
+
+use crate::art::Backdrop;
+use crate::icons::{Icon, Svg};
+use crate::{Library, Route, api};
+pub use focus::Focus;
+pub use input::{Btn, PadKind};
+pub use sound::{Sound, play};
+pub use sound::{enabled as sound_enabled, set_enabled as set_sound_enabled};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Tab {
+    Home,
+    Library,
+    Discover,
+    Downloads,
+    Settings,
+}
+
+const TABS: [(Tab, &str, Icon); 5] = [
+    (Tab::Home, "Início", Icon::Home),
+    (Tab::Library, "Biblioteca", Icon::Library),
+    (Tab::Discover, "Descobrir", Icon::Discover),
+    (Tab::Downloads, "Downloads", Icon::Download),
+    (Tab::Settings, "Configurações", Icon::Settings),
+];
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum View {
+    Tab(Tab),
+    /// A game in the library (its id) or in the catalog (`recomp:<id>`).
+    Game(String),
+}
+
+impl View {
+    fn key(&self) -> String {
+        match self {
+            View::Tab(t) => format!("{t:?}"),
+            View::Game(id) => format!("game:{id}"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Sheet {
+    Leave,
+    Options(String),
+    ConfirmRemove(String),
+    Keyboard,
+}
+
+type Handler = Rc<dyn Fn(Btn) -> bool>;
+
+/// The TV screen's shared state, in context for its pages and sheets.
+#[derive(Clone, Copy)]
+pub struct Tv {
+    pub view: RwSignal<View>,
+    stack: RwSignal<Vec<View>>,
+    pub sheet: RwSignal<Option<Sheet>>,
+    pub pad: RwSignal<PadKind>,
+    pub search: RwSignal<String>,
+    pub hints: RwSignal<Vec<(Btn, &'static str)>>,
+    pub sheet_hints: RwSignal<Vec<(Btn, &'static str)>>,
+    backdrop: RwSignal<Vec<String>>,
+    pending_backdrop: StoredValue<Vec<String>>,
+    page_handler: StoredValue<Option<(u64, Handler)>, LocalStorage>,
+    sheet_handler: StoredValue<Option<(u64, Handler)>, LocalStorage>,
+    next_id: StoredValue<u64>,
+    /// Where the focus was on each page, to come back to it.
+    positions: StoredValue<HashMap<String, (usize, usize)>>,
+}
+
+impl Tv {
+    pub fn open(&self, view: View) {
+        let current = self.view.get_untracked();
+        if current == view {
+            return;
+        }
+        self.stack.update(|s| s.push(current));
+        self.view.set(view);
+        play(Sound::Select);
+    }
+
+    /// Back one page; false when there is nothing behind.
+    pub fn back(&self) -> bool {
+        let Some(previous) = self.stack.try_update(|s| s.pop()).flatten() else { return false };
+        self.view.set(previous);
+        play(Sound::Back);
+        true
+    }
+
+    pub fn tab(&self, tab: Tab) {
+        self.stack.set(Vec::new());
+        self.view.set(View::Tab(tab));
+    }
+
+    fn register(&self, slot: StoredValue<Option<(u64, Handler)>, LocalStorage>, handler: Handler) {
+        let id = self.next_id.get_value() + 1;
+        self.next_id.set_value(id);
+        slot.set_value(Some((id, handler)));
+        on_cleanup(move || {
+            slot.update_value(|s| {
+                if s.as_ref().is_some_and(|(mine, _)| *mine == id) {
+                    *s = None;
+                }
+            });
+        });
+    }
+
+    /// The current page's buttons; return true when a press was used.
+    pub fn handle_page(&self, handler: impl Fn(Btn) -> bool + 'static) {
+        self.register(self.page_handler, Rc::new(handler));
+    }
+
+    /// An open sheet takes every press.
+    pub fn handle_sheet(&self, handler: impl Fn(Btn) -> bool + 'static) {
+        self.register(self.sheet_handler, Rc::new(handler));
+    }
+
+    /// The page's focus starts where it was left, and is kept when the page goes.
+    pub fn keep_position(&self, focus: Focus) {
+        let key = self.view.get_untracked().key();
+        if let Some((row, col)) = self.positions.with_value(|p| p.get(&key).copied()) {
+            focus.set(row, col);
+        }
+        let positions = self.positions;
+        on_cleanup(move || {
+            let at = (focus.row.get_untracked(), focus.col.get_untracked());
+            positions.update_value(|p| {
+                p.insert(key, at);
+            });
+        });
+    }
+
+    /// The picture behind everything follows the focus after a short pause, so
+    /// scrolling quickly doesn't flicker through every game's art.
+    pub fn show_backdrop(&self, sources: Vec<String>) {
+        self.pending_backdrop.set_value(sources.clone());
+        let pending = self.pending_backdrop;
+        let backdrop = self.backdrop;
+        set_timeout(
+            move || {
+                if pending.with_value(|p| *p == sources) && backdrop.with_untracked(|b| *b != sources) {
+                    backdrop.set(sources);
+                }
+            },
+            Duration::from_millis(220),
+        );
+    }
+}
+
+/// One controller button, drawn the way the player's pad prints it.
+pub fn glyph(btn: Btn, kind: PadKind) -> impl IntoView {
+    let (text, class) = match (btn, kind) {
+        (Btn::A, PadKind::PlayStation) => ("✕", "ps-cross"),
+        (Btn::B, PadKind::PlayStation) => ("○", "ps-circle"),
+        (Btn::X, PadKind::PlayStation) => ("□", "ps-square"),
+        (Btn::Y, PadKind::PlayStation) => ("△", "ps-triangle"),
+        (Btn::Lb, PadKind::PlayStation) => ("L1", "shoulder"),
+        (Btn::Rb, PadKind::PlayStation) => ("R1", "shoulder"),
+        (Btn::Lb, PadKind::Nintendo) => ("L", "shoulder"),
+        (Btn::Rb, PadKind::Nintendo) => ("R", "shoulder"),
+        (Btn::A, PadKind::Nintendo) => ("A", "nin"),
+        (Btn::B, PadKind::Nintendo) => ("B", "nin"),
+        (Btn::X, PadKind::Nintendo) => ("X", "nin"),
+        (Btn::Y, PadKind::Nintendo) => ("Y", "nin"),
+        (Btn::A, _) => ("A", "xb-a"),
+        (Btn::B, _) => ("B", "xb-b"),
+        (Btn::X, _) => ("X", "xb-x"),
+        (Btn::Y, _) => ("Y", "xb-y"),
+        (Btn::Lb, _) => ("LB", "shoulder"),
+        (Btn::Rb, _) => ("RB", "shoulder"),
+        (Btn::Menu | Btn::MenuHold, PadKind::PlayStation) => ("☰", "shoulder"),
+        (Btn::Menu | Btn::MenuHold, _) => ("☰", "shoulder"),
+        _ => ("✥", "shoulder"),
+    };
+    view! { <span class=format!("tv-btn {class}")>{text}</span> }
+}
+
+fn clock() -> String {
+    let now = js_sys::Date::new_0();
+    format!("{:02}:{:02}", now.get_hours(), now.get_minutes())
+}
+
+#[component]
+pub fn TvMode() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let tv = Tv {
+        view: RwSignal::new(View::Tab(Tab::Home)),
+        stack: RwSignal::new(Vec::new()),
+        sheet: RwSignal::new(None),
+        pad: RwSignal::new(PadKind::default()),
+        search: RwSignal::new(String::new()),
+        hints: RwSignal::new(Vec::new()),
+        sheet_hints: RwSignal::new(Vec::new()),
+        backdrop: RwSignal::new(Vec::new()),
+        pending_backdrop: StoredValue::new(Vec::new()),
+        page_handler: StoredValue::new_local(None),
+        sheet_handler: StoredValue::new_local(None),
+        next_id: StoredValue::new(0),
+        positions: StoredValue::new(HashMap::new()),
+    };
+    provide_context(tv);
+    // On the monitor the player picked, then full screen; leaving before that is done stays windowed.
+    let here = StoredValue::new(true);
+    leptos::task::spawn_local(async move {
+        let _ = api::to_chosen_monitor().await;
+        if here.try_get_value().unwrap_or(false) {
+            api::window_toggle("setFullscreen", true);
+        }
+    });
+    on_cleanup(move || {
+        here.try_set_value(false);
+        api::window_toggle("setFullscreen", false);
+    });
+
+    let leave = move || library.go(Route::Home);
+    let dispatch = move |btn: Btn| {
+        let typing = tv.sheet.get_untracked() == Some(Sheet::Keyboard);
+        // Letters are buttons, except on the search keyboard.
+        let btn = match btn {
+            Btn::Type(c) if !typing => match c.to_ascii_lowercase() {
+                'q' => Btn::Lb,
+                'e' => Btn::Rb,
+                'x' => Btn::X,
+                'y' => Btn::Y,
+                _ => return,
+            },
+            Btn::Erase if !typing => Btn::B,
+            other => other,
+        };
+        if btn == Btn::MenuHold {
+            leave();
+            return;
+        }
+        if tv.sheet.get_untracked().is_some() {
+            if let Some((_, handler)) = tv.sheet_handler.get_value() {
+                handler(btn);
+            }
+            return;
+        }
+        if let Some((_, handler)) = tv.page_handler.get_value() {
+            if handler(btn) {
+                return;
+            }
+        }
+        match btn {
+            Btn::Lb | Btn::Rb => {
+                let current = match tv.view.get_untracked() {
+                    View::Tab(t) => TABS.iter().position(|(x, _, _)| *x == t).unwrap_or(0),
+                    View::Game(_) => 0,
+                };
+                let next = if btn == Btn::Rb { (current + 1) % TABS.len() } else { (current + TABS.len() - 1) % TABS.len() };
+                tv.tab(TABS[next].0);
+                play(Sound::Tab);
+            }
+            Btn::B => {
+                if !tv.back() {
+                    if tv.view.get_untracked() == View::Tab(Tab::Home) {
+                        tv.sheet.set(Some(Sheet::Leave));
+                        play(Sound::Select);
+                    } else {
+                        tv.tab(Tab::Home);
+                        play(Sound::Back);
+                    }
+                }
+            }
+            Btn::Menu => {
+                tv.tab(Tab::Settings);
+                play(Sound::Tab);
+            }
+            _ => {}
+        }
+    };
+    input::listen(dispatch, tv.pad);
+
+    let time = RwSignal::new(clock());
+    let ticker = set_interval_with_handle(move || time.set(clock()), Duration::from_secs(15));
+    on_cleanup(move || {
+        if let Ok(t) = ticker {
+            t.clear();
+        }
+    });
+
+    let tabs = move || {
+        let current = tv.view.get();
+        match current {
+            View::Game(_) => view! {
+                <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>"Voltar"</span></div>
+            }
+            .into_any(),
+            View::Tab(now) => {
+                let items = TABS
+                    .iter()
+                    .map(|(tab, label, icon)| {
+                        let on = *tab == now;
+                        let badge = (*tab == Tab::Downloads).then(|| {
+                            move || {
+                                let n = library.progress.with(|p| p.len());
+                                (n > 0).then(|| view! { <i class="tv-badge">{n}</i> })
+                            }
+                        });
+                        let target = *tab;
+                        view! { <span class="tv-tab" class:on=on on:click=move |_| tv.tab(target)><Svg icon=*icon size=22 />{*label}{badge}</span> }
+                    })
+                    .collect_view();
+                view! {
+                    <nav class="tv-tabs">
+                        {move || glyph(Btn::Lb, tv.pad.get())}
+                        {items}
+                        {move || glyph(Btn::Rb, tv.pad.get())}
+                    </nav>
+                }
+                .into_any()
+            }
+        }
+    };
+
+    let page = move || match tv.view.get() {
+        View::Tab(Tab::Home) => view! { <pages::Home /> }.into_any(),
+        View::Tab(Tab::Library) => view! { <pages::LibraryGrid /> }.into_any(),
+        View::Tab(Tab::Discover) => view! { <pages::Discover /> }.into_any(),
+        View::Tab(Tab::Downloads) => view! { <pages::Downloads /> }.into_any(),
+        View::Tab(Tab::Settings) => view! { <pages::Settings /> }.into_any(),
+        View::Game(id) => view! { <game::GamePage id /> }.into_any(),
+    };
+
+    let hints = move || {
+        let list = if tv.sheet.get().is_some() { tv.sheet_hints.get() } else { tv.hints.get() };
+        let kind = tv.pad.get();
+        let sections = (tv.sheet.get().is_none() && matches!(tv.view.get(), View::Tab(_))).then(|| {
+            view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>"Seções"</b></span> }
+        });
+        let items = list.into_iter().map(|(btn, label)| view! { <span class="tv-hint">{glyph(btn, kind)}<b>{label}</b></span> }).collect_view();
+        let held = (!library.running.with(|r| r.is_empty())).then(|| view! { <span class="tv-hint dim end">"Jogando agora"</span> });
+        view! { {items}{sections}{held} }
+    };
+
+    let sheet = move || tv.sheet.get().map(|s| view! { <sheets::SheetView sheet=s /> });
+
+    view! {
+        <div class="tv">
+            <div class="tv-bg">{move || { let s = tv.backdrop.get(); (!s.is_empty()).then(|| view! { <Backdrop sources=s /> }) }}</div>
+            <div class="tv-shade"></div>
+            <header class="tv-top">
+                <div class="tv-brand">
+                    <img class="mark" src="brand/cerberus-pixel-icone.svg" alt="" draggable="false" />
+                    <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt="Cerberus Launcher" draggable="false" />
+                </div>
+                {tabs}
+                <div class="tv-clock">{move || time.get()}</div>
+            </header>
+            <main class="tv-main">{page}</main>
+            <footer class="tv-hints">{hints}</footer>
+            {sheet}
+        </div>
+    }
+}
+
+/// Outside the TV screen: holding a controller's Menu button for about a
+/// second, or pressing F11, opens it.
+pub fn watch_for_tv(library: Library) {
+    let since = StoredValue::new(None::<f64>);
+    let poll = set_interval_with_handle(
+        move || {
+            if library.route.get_untracked() == Route::BigPicture {
+                since.set_value(None);
+                return;
+            }
+            let held = web_sys::window()
+                .and_then(|w| w.navigator().get_gamepads().ok())
+                .is_some_and(|pads| {
+                    pads.iter().any(|p| {
+                        use wasm_bindgen::JsCast;
+                        p.dyn_into::<web_sys::Gamepad>().is_ok_and(|pad| {
+                            pad.connected() && pad.buttons().get(9).dyn_into::<web_sys::GamepadButton>().is_ok_and(|b| b.pressed())
+                        })
+                    })
+                });
+            let now = js_sys::Date::now();
+            match (held, since.get_value()) {
+                (true, None) => since.set_value(Some(now)),
+                (true, Some(t)) if now - t >= 900.0 => {
+                    since.set_value(None);
+                    library.go(Route::BigPicture);
+                }
+                (false, _) => since.set_value(None),
+                _ => {}
+            }
+        },
+        Duration::from_millis(100),
+    );
+    let keys = window_event_listener(leptos::ev::keydown, move |e| {
+        if e.key() == "F11" && library.route.get_untracked() != Route::BigPicture {
+            e.prevent_default();
+            library.go(Route::BigPicture);
+        }
+    });
+    let keys = StoredValue::new_local(Some(keys));
+    on_cleanup(move || {
+        if let Ok(p) = poll {
+            p.clear();
+        }
+        keys.update_value(|k| {
+            if let Some(k) = k.take() {
+                k.remove();
+            }
+        });
+    });
+}

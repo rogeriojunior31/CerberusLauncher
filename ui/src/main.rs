@@ -1,10 +1,12 @@
 mod api;
 mod art;
 mod backups;
-mod bigpicture;
+mod tv;
 mod discover;
 mod format;
 mod game;
+mod classics;
+mod looks;
 mod customize;
 mod adopt;
 mod first_run;
@@ -16,7 +18,10 @@ mod pages;
 mod settings_page;
 mod shell;
 mod tiles;
+mod news;
+mod game_menu;
 mod versions;
+mod overlay;
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -29,6 +34,10 @@ use art::{Poster, cover_sources};
 
 fn main() {
     console_error_panic_hook::set_once();
+    if overlay::is_overlay() {
+        leptos::mount::mount_to_body(overlay::OverlayMenu);
+        return;
+    }
     leptos::mount::mount_to_body(App);
 }
 
@@ -39,11 +48,15 @@ pub enum Route {
     Discover,
     Downloads,
     Saves,
+    /// Updates waiting and what happened lately.
+    News,
     Settings,
     /// The full-screen view for a TV and a controller.
     BigPicture,
     /// A game's page, by library id; `recomp:<id>` works for recomps not yet installed.
     Game(String),
+    /// A classic from the ROM folders, by its file.
+    Classic(String),
 }
 
 impl Route {
@@ -51,10 +64,20 @@ impl Route {
     fn section(&self) -> Route {
         match self {
             Route::Game(id) if id.starts_with("recomp:") => Route::Discover,
-            Route::Game(_) => Route::Library,
+            Route::Game(_) | Route::Classic(_) => Route::Library,
             other => other.clone(),
         }
     }
+}
+
+/// Marks or unmarks a game as a favorite, and lists the library again.
+pub fn toggle_favorite(library: Library, id: String, on: bool) {
+    leptos::task::spawn_local(async move {
+        if library.report(api::set_favorite(id, on).await).is_some() {
+            library.games.refetch();
+            library.toast(if on { "Adicionado aos favoritos." } else { "Tirado dos favoritos." });
+        }
+    });
 }
 
 #[derive(Clone, PartialEq)]
@@ -141,7 +164,7 @@ impl Library {
 }
 
 /// The main button's label and icon: the step the backend says comes next.
-fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
+pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
     match &game.next_step {
         NextStep::Play => ("Jogar", icons::Icon::Play),
         NextStep::RunInstaller => ("Abrir instalador", icons::Icon::External),
@@ -197,6 +220,7 @@ fn App() -> impl IntoView {
         customizing: RwSignal::new(None),
     };
     provide_context(library);
+    provide_context(game_menu::GameMenu(RwSignal::new(None)));
     provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.
@@ -223,6 +247,8 @@ fn App() -> impl IntoView {
         library.games.refetch();
     });
     api::on_toast(move |text| library.toast(text));
+    tv::watch_for_tv(library);
+    settings_page::apply_calm(settings_page::calm_saved());
 
     // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
     let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
@@ -234,6 +260,12 @@ fn App() -> impl IntoView {
             first_run.set(Some(settings));
         } else if settings.start_in_tv {
             library.go(Route::BigPicture);
+        } else {
+            match settings.start_page.as_str() {
+                "library" => library.go(Route::Library),
+                "discover" => library.go(Route::Discover),
+                _ => {}
+            }
         }
     });
     let setup = move || {
@@ -259,11 +291,42 @@ fn App() -> impl IntoView {
         Route::Discover => view! { <discover::DiscoverPage /> }.into_any(),
         Route::Downloads => view! { <pages::DownloadsPage /> }.into_any(),
         Route::Saves => view! { <pages::SavesPage /> }.into_any(),
+        Route::News => view! { <news::NewsPage /> }.into_any(),
+        Route::Classic(path) => view! { <classics::ClassicPage path /> }.into_any(),
         Route::Settings => view! { <settings_page::SettingsPage /> }.into_any(),
         // Drawn over the whole window instead, below.
         Route::BigPicture => ().into_any(),
         Route::Game(id) => view! { <game::GamePage id /> }.into_any(),
     };
+    // Every page opens at its top, not where the last one was scrolled to.
+    let main_ref = NodeRef::<leptos::html::Main>::new();
+    Effect::new(move |_| {
+        library.route.track();
+        if let Some(main) = main_ref.get_untracked() {
+            main.set_scroll_top(0);
+        }
+    });
+    // A desktop shortcut's game: played once the library is listed.
+    let wanted = RwSignal::new(None::<String>);
+    spawn_local(async move {
+        if let Some(id) = api::take_play_request().await {
+            wanted.set(Some(id));
+        }
+    });
+    api::on_play_request(move |id| wanted.set(Some(id)));
+    api::on_show_game(move |id: String| library.go(Route::Game(id)));
+    Effect::new(move |_| {
+        let Some(id) = wanted.get() else { return };
+        let Some(Ok(games)) = library.games.get() else { return };
+        wanted.set(None);
+        match games.into_iter().find(|g| g.id == id) {
+            Some(game) => {
+                library.go(Route::Game(game.id.clone()));
+                play_game(library, game);
+            }
+            None => library.toast("O jogo desse atalho não está mais na biblioteca."),
+        }
+    });
     let editor = move || library.editing.get().map(|game| view! { <EditDialog game /> });
     let locate = move || {
         let id = locating.get()?;
@@ -290,14 +353,21 @@ fn App() -> impl IntoView {
             </div>
         })
     };
-    let big_picture = move || (library.route.get() == Route::BigPicture).then(|| view! { <bigpicture::BigPicture /> });
+    let big_picture = move || (library.route.get() == Route::BigPicture).then(|| view! { <tv::TvMode /> });
+    // Outside Big Picture Mode the window is never full screen, however the TV
+    // screen was left (its own cleanup can be skipped when it closes mid-event).
+    Effect::new(move |_| {
+        if library.route.get() != Route::BigPicture {
+            api::window_toggle("setFullscreen", false);
+        }
+    });
 
     view! {
         <div class="app">
             <shell::Sidebar />
             <div class="mainwrap">
                 <shell::TitleBar />
-                <main class="main">{page}</main>
+                <main class="main" node_ref=main_ref>{page}</main>
             </div>
         </div>
         {big_picture}
@@ -307,6 +377,7 @@ fn App() -> impl IntoView {
         <shell::Toasts />
         {editor}
         {locate}
+        <game_menu::GameMenuLayer />
     }
 }
 

@@ -27,6 +27,10 @@ pub struct RomFile {
     /// For N64 cartridges, the exact version the header names.
     #[serde(default)]
     pub n64: Option<N64Code>,
+    /// A game on several discs: every disc, in order (`path` is the first, or
+    /// the player's own .m3u list).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub discs: Vec<PathBuf>,
 }
 
 /// Which N64 game and version a cartridge is: its two-letter id (`KT` for
@@ -99,7 +103,7 @@ struct N64Header {
 /// still finishes.
 const MOST_ENTRIES: usize = 300_000;
 const N64: &[&str] = &["z64", "n64", "v64"];
-const DISC: &[&str] = &["iso", "chd", "cue", "gdi", "cdi", "rvz", "wbfs", "gcm", "cso", "wia", "xex", "pkg"];
+const DISC: &[&str] = &["iso", "chd", "cue", "gdi", "cdi", "rvz", "wbfs", "gcm", "cso", "wia", "xex", "pkg", "m3u"];
 
 fn cartridge_system(ext: &str) -> Option<&'static str> {
     let system = match ext {
@@ -172,14 +176,114 @@ fn identify(path: &Path) -> Option<RomFile> {
     if N64.contains(&ext.as_str()) {
         let header = n64_header(path)?;
         let region = if header.region.is_empty() { region_from_name(&stem) } else { header.region };
-        return Some(RomFile { path: path.to_path_buf(), system: "n64".into(), title: header.name, region, n64: Some(header.code) });
+        return Some(RomFile { path: path.to_path_buf(), system: "n64".into(), title: header.name, region, n64: Some(header.code), discs: Vec::new() });
     }
     let system = match cartridge_system(&ext) {
         Some(system) => system.to_string(),
         None if DISC.contains(&ext.as_str()) => String::new(),
         None => return None,
     };
-    Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None })
+    Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
+}
+
+/// "(Disc 2)", "(Disk 2 of 3)", "(CD2)": the disc's number, and the name without the tag.
+fn disc_tag(stem: &str) -> Option<(u32, String)> {
+    let lower = stem.to_lowercase();
+    for word in ["(disc", "(disk", "(cd"] {
+        let Some(start) = lower.find(word) else { continue };
+        let rest = &lower[start + word.len()..];
+        let end = rest.find(')')?;
+        let inside = rest[..end].trim();
+        let number: String = inside.chars().take_while(char::is_ascii_digit).collect();
+        let tail = inside[number.len()..].trim();
+        if number.is_empty() || !(tail.is_empty() || tail.starts_with("of ")) {
+            continue;
+        }
+        let cut = start + word.len() + end + 1;
+        let base = format!("{}{}", &stem[..start], &stem[cut..]).split_whitespace().collect::<Vec<_>>().join(" ");
+        return Some((number.parse().ok()?, base));
+    }
+    None
+}
+
+fn is_list(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("m3u"))
+}
+
+/// The discs an .m3u lists, beside it or where it says; only files that exist.
+fn listed_discs(list: &Path) -> Vec<PathBuf> {
+    let Ok(file) = fs::File::open(list) else { return Vec::new() };
+    let mut text = String::new();
+    // A disc list is a few lines; a bigger file isn't one.
+    if file.take(64 * 1024).read_to_string(&mut text).is_err() {
+        return Vec::new();
+    }
+    let dir = list.parent().unwrap_or(Path::new("."));
+    text.trim_start_matches('\u{feff}')
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| dir.join(l))
+        .filter(|p| p.is_file() && !is_list(p))
+        .take(16)
+        .collect()
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy().replace('/', "\\").eq_ignore_ascii_case(&b.to_string_lossy().replace('/', "\\"))
+}
+
+/// A game on several discs shows once: the player's .m3u list when there is
+/// one (its discs no longer show apart), else its "(Disc 1)" file, holding
+/// the others from the same folder.
+pub fn join_discs(found: Vec<RomFile>) -> Vec<RomFile> {
+    let mut lists: Vec<RomFile> = Vec::new();
+    let mut rest: Vec<RomFile> = Vec::new();
+    for mut rom in found {
+        if is_list(&rom.path) {
+            rom.discs = listed_discs(&rom.path);
+            if !rom.discs.is_empty() {
+                lists.push(rom);
+            }
+        } else {
+            rest.push(rom);
+        }
+    }
+    rest.retain(|rom| !lists.iter().any(|l| l.discs.iter().any(|d| same_file(d, &rom.path))));
+    // Discs of one game: same folder, same name without the tag, same file type.
+    let key = |rom: &RomFile| {
+        let stem = rom.path.file_stem()?.to_string_lossy().into_owned();
+        let (number, base) = disc_tag(&stem)?;
+        let ext = rom.path.extension()?.to_string_lossy().to_lowercase();
+        let dir = rom.path.parent()?.to_string_lossy().to_lowercase();
+        Some(((dir, base.to_lowercase(), ext), number))
+    };
+    let mut groups: HashMap<(String, String, String), Vec<(u32, PathBuf)>> = HashMap::new();
+    for rom in &rest {
+        if let Some((k, number)) = key(rom) {
+            groups.entry(k).or_default().push((number, rom.path.clone()));
+        }
+    }
+    let mut out = Vec::new();
+    for mut rom in rest {
+        let Some((k, _)) = key(&rom) else {
+            out.push(rom);
+            continue;
+        };
+        let Some(group) = groups.get_mut(&k) else { continue };
+        if group.len() < 2 {
+            out.push(rom);
+            continue;
+        }
+        group.sort();
+        if !same_file(&group[0].1, &rom.path) {
+            continue;
+        }
+        rom.discs = group.iter().map(|(_, p)| p.clone()).collect();
+        out.push(rom);
+    }
+    out.extend(lists);
+    out
 }
 
 /// Every game file under `dirs`, folders included.
@@ -214,7 +318,7 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
             }
         }
     }
-    found
+    join_discs(found)
 }
 
 /// The words of a name that say which game it is: lower case, without
@@ -272,16 +376,47 @@ fn header_fits(game: &str, rom: &RomFile) -> bool {
 
 /// Could this file be a game of the console `origin`?
 fn fits(rom: &RomFile, origin: &str) -> bool {
+    if rom.system.is_empty() {
+        return origin.is_empty() || origin == "other" || origin == "arcade" || DISC_CONSOLES.contains(&origin);
+    }
+    console_fits(&rom.system, origin)
+}
+
+/// A cartridge of `system` can be a game of `origin`.
+pub fn console_fits(system: &str, origin: &str) -> bool {
     if origin.is_empty() || origin == "other" || origin == "arcade" {
         return true;
     }
-    if rom.system.is_empty() {
-        return DISC_CONSOLES.contains(&origin);
+    let game_boy = matches!((system, origin), ("gb", "gbc") | ("gbc", "gb"));
+    let switch = system == "switch" && origin == "switch2";
+    system == origin || game_boy || switch
+}
+
+/// The console a cartridge file is for, by its extension; `None` for disc
+/// images and unknown files, which could be many consoles.
+pub fn cartridge_of(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    if N64.contains(&ext.as_str()) {
+        return Some("n64");
     }
-    let same = rom.system == origin;
-    let game_boy = matches!((rom.system.as_str(), origin), ("gb", "gbc") | ("gbc", "gb"));
-    let switch = rom.system == "switch" && origin == "switch2";
-    same || game_boy || switch
+    cartridge_system(&ext)
+}
+
+/// A console's name as players say it.
+pub fn console_name(system: &str) -> &str {
+    match system {
+        "nes" => "NES",
+        "snes" => "Super Nintendo",
+        "n64" => "Nintendo 64",
+        "gb" => "Game Boy",
+        "gbc" => "Game Boy Color",
+        "gba" => "Game Boy Advance",
+        "ds" => "Nintendo DS",
+        "3ds" => "Nintendo 3DS",
+        "genesis" => "Mega Drive",
+        "switch" => "Nintendo Switch",
+        other => other,
+    }
 }
 
 /// For each recomp, the player's copy of its game, if they have one. A US copy
@@ -331,6 +466,41 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn reads_the_disc_tag() {
+        assert_eq!(disc_tag("Final Fantasy VII (USA) (Disc 2)"), Some((2, "Final Fantasy VII (USA)".into())));
+        assert_eq!(disc_tag("Metal Gear Solid (Europe) (Disk 1 of 2) (En)"), Some((1, "Metal Gear Solid (Europe) (En)".into())));
+        assert_eq!(disc_tag("Game (CD3)"), Some((3, "Game".into())));
+        assert_eq!(disc_tag("Discworld (USA)"), None);
+        assert_eq!(disc_tag("Game (Disc Edition)"), None);
+    }
+
+    #[test]
+    fn a_game_on_several_discs_shows_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let ff = dir.path().join("ps1");
+        let mgs = dir.path().join("mgs");
+        fs::create_dir_all(&ff).unwrap();
+        fs::create_dir_all(&mgs).unwrap();
+        for name in ["Final Fantasy VII (USA) (Disc 2).chd", "Final Fantasy VII (USA) (Disc 1).chd", "Final Fantasy VII (USA) (Disc 3).chd", "Crash (USA).chd", "Lone (USA) (Disc 1).chd"] {
+            fs::write(ff.join(name), b"disc").unwrap();
+        }
+        for name in ["MGS (Disc 1).cue", "MGS (Disc 2).cue"] {
+            fs::write(mgs.join(name), b"disc").unwrap();
+        }
+        // The player's own list wins over the names.
+        fs::write(mgs.join("MGS.m3u"), "# discs\nMGS (Disc 1).cue\r\nMGS (Disc 2).cue\nmissing.cue\n").unwrap();
+        let mut found = scan(&[dir.path().to_path_buf()]);
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        let names: Vec<String> = found.iter().map(|r| r.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["MGS.m3u", "Crash (USA).chd", "Final Fantasy VII (USA) (Disc 1).chd", "Lone (USA) (Disc 1).chd"]);
+        let ff7 = &found[2];
+        assert_eq!(ff7.discs.iter().map(|d| d.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(),
+            ["Final Fantasy VII (USA) (Disc 1).chd", "Final Fantasy VII (USA) (Disc 2).chd", "Final Fantasy VII (USA) (Disc 3).chd"]);
+        assert_eq!(found[0].discs.len(), 2);
+        assert!(found[1].discs.is_empty() && found[3].discs.is_empty());
+    }
+
     fn temp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cerberus-roms-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -348,7 +518,7 @@ mod tests {
     }
 
     fn rom(path: &str, system: &str, title: &str) -> RomFile {
-        RomFile { path: PathBuf::from(path), system: system.into(), title: title.into(), region: String::new(), n64: None }
+        RomFile { path: PathBuf::from(path), system: system.into(), title: title.into(), region: String::new(), n64: None, discs: Vec::new() }
     }
 
     fn code(id: &str, region: char, revision: u8) -> N64Code {

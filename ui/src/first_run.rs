@@ -92,7 +92,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             <p class="fr-lead">"Seus jogos, recompilados para PC, numa biblioteca só. Um minuto de configuração e pronto."</p>
             <div class="fr-three">
                 <div class="fr-card"><Svg icon=Icon::Search size=26 /><b>"Acha seus jogos"</b><span>"Aponte as pastas das suas ROMs e discos: ele mostra quais já têm recomp."</span></div>
-                <div class="fr-card"><Svg icon=Icon::Download size=26 /><b>"Instala e atualiza"</b><span>"Direto do GitHub de cada projeto, conferindo cada arquivo."</span></div>
+                <div class="fr-card"><Svg icon=Icon::Download size=26 /><b>"Instala e atualiza"</b><span>"Direto da página de cada projeto, conferindo cada arquivo."</span></div>
                 <div class="fr-card"><Svg icon=Icon::Settings size=26 /><b>"Do seu jeito"</b><span>"Ajustes, mods e backups de saves para cada jogo, na mesa ou na TV."</span></div>
             </div>
         }
@@ -107,7 +107,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
                         <span>{if on_tv {
                             "Tela cheia, feita para controle. O Cerberus abre assim toda vez."
                         } else {
-                            "Numa janela, com mouse e teclado. A Tela grande fica a um clique."
+                            "Numa janela, com mouse e teclado. O Big Picture Mode fica a um clique."
                         }}</span>
                     </button>
                 }
