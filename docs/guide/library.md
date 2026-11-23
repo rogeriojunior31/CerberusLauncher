@@ -11,7 +11,7 @@ Every game Cerberus knows about, in one place.
 | **Steam** | Found on their own in every Steam library folder on the PC. |
 | **Epic** | Found on their own from the Epic Games Launcher's install records. |
 | **Recomps** | Installed from [Discover](recomps.md), or brought in from a folder you already have. |
-| **Added** | Any `.exe` you add with **Add game**. Cerberus looks up the name and cover on Steam. |
+| **Added** | Any `.exe` you add with **+** (Add game) at the bottom of the side menu. Cerberus looks up the name and cover on Steam. |
 | **Classics** | ROMs and disc images found in your ROM folders. See [Classics](classics.md). |
 
 Steam and Epic games still start through their own launchers. Cerberus opens them and counts play time while it's running, even when it's minimized to the tray. For Steam games, the play time Steam itself counts is shown too.

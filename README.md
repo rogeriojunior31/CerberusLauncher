@@ -96,7 +96,7 @@ The first time Cerberus opens, a short setup guide asks a few questions. You can
 
 ### Add any other game
 
-Click **Add game** and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
+Click **+** (Add game) at the bottom of the side menu and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
 
 Some games open a launcher before the game itself. For those, choose which program counts as playing under **Manage → Tracked process**.
 
