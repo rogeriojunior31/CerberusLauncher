@@ -141,8 +141,22 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
         };
         (badge, bar)
     };
+    // Play (or Install) right on the cover, without opening the page first.
+    let quick = info.game.clone().filter(|g| !matches!(g.next_step, cerberus_shared::NextStep::ChooseCopy { .. } | cerberus_shared::NextStep::Locate { .. })).map(|g| {
+        let (label, icon) = crate::launch_action(&g);
+        let label = format!("{label} · {}", g.name);
+        view! {
+            <div class="qp-zone">
+                <button type="button" class="qp" title=label.clone() aria-label=label
+                    on:click=move |e| { e.stop_propagation(); crate::play_game(library, g.clone()); }>
+                    <Svg icon size=20 />
+                </button>
+            </div>
+        }
+    });
     view! {
         <div class="tile" class:absent=info.absent>
+            {quick}
             <button type="button" class="tile-b" on:click=on_open on:contextmenu=on_menu title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
@@ -178,6 +192,23 @@ pub fn Shelf(
     });
     let note = note.map(|text| view! { <p>{text}</p> });
     let cards = tiles.into_iter().map(|info| view! { <Tile info /> }).collect_view();
+    // The arrows only when the row scrolls, and each one off at its end.
+    let at_start = RwSignal::new(true);
+    let at_end = RwSignal::new(false);
+    let measure = move || {
+        if let Some(row) = track.get_untracked() {
+            let (left, width, full) = (row.scroll_left(), row.client_width(), row.scroll_width());
+            at_start.set(left <= 2);
+            at_end.set(left + width >= full - 2);
+        }
+    };
+    Effect::new(move || {
+        if track.get().is_some() {
+            request_animation_frame(measure);
+        }
+    });
+    let resized = window_event_listener(leptos::ev::resize, move |_| measure());
+    on_cleanup(move || resized.remove());
 
     view! {
         <section class="shelf">
@@ -188,15 +219,17 @@ pub fn Shelf(
                 </div>
                 <div class="pager">
                     {see}
-                    <button type="button" class="round" aria-label=tr!("Anterior") on:click=move |_| scroll(-1.0)>
-                        <Svg icon=Icon::Left size=18 />
-                    </button>
-                    <button type="button" class="round" aria-label=tr!("Próximo") on:click=move |_| scroll(1.0)>
-                        <Svg icon=Icon::Right size=18 />
-                    </button>
+                    <Show when=move || !(at_start.get() && at_end.get())>
+                        <button type="button" class="round" aria-label=tr!("Anterior") disabled=move || at_start.get() on:click=move |_| scroll(-1.0)>
+                            <Svg icon=Icon::Left size=18 />
+                        </button>
+                        <button type="button" class="round" aria-label=tr!("Próximo") disabled=move || at_end.get() on:click=move |_| scroll(1.0)>
+                            <Svg icon=Icon::Right size=18 />
+                        </button>
+                    </Show>
                 </div>
             </div>
-            <div class="track" node_ref=track>{cards}</div>
+            <div class="track" node_ref=track on:scroll=move |_| measure()>{cards}</div>
         </section>
     }
 }

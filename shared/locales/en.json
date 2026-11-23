@@ -1304,6 +1304,7 @@
   "{} já está instalado pelo Cerberus em {}. Desinstale esse antes de trazer outra pasta.": "{} is already installed by Cerberus in {}. Uninstall that one before bringing another folder.",
   "{} já está sendo instalado.": "{} is already being installed.",
   "{} no hardcore": "{} in hardcore",
+  "{} no total": "{} in total",
   "{} não existe mais.": "{} doesn't exist anymore.",
   "{} não existe.": "{} doesn't exist.",
   "{} não é um formato que o Cerberus saiba instalar.": "{} isn't a format Cerberus knows how to install.",
@@ -1339,5 +1340,6 @@
   "Últimas conquistas": "Latest achievements",
   "Últimas duas semanas": "Last two weeks",
   "Últimas fotos": "Latest screenshots",
+  "última sessão de {}": "last session of {}",
   "✓ Tenho o jogo": "✓ I own the game"
 }

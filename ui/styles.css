@@ -1598,3 +1598,22 @@ html.overlay-mode, html.overlay-mode body { background: transparent; }
 .sv-status.bad { color: var(--bad); }
 .sv-body { padding: 4px 18px 18px; border-top: 1px solid var(--line); animation: lb-in 0.2s var(--ease); }
 .sv-body > .card { background: transparent; border: 0; padding: 14px 0 0; box-shadow: none; }
+
+/* Play right on a cover */
+.qp-zone { position: absolute; top: 0; left: 0; right: 0; aspect-ratio: 2 / 3; z-index: 2; pointer-events: none; transition: transform 0.3s var(--ease); }
+.tile:hover .qp-zone { transform: translateY(-5px); }
+.tile:hover .tile-b .poster-wrap { transform: translateY(-5px); }
+.qp { position: absolute; right: 12px; bottom: 12px; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; pointer-events: auto;
+  background: var(--grad); color: #fff; box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.8); opacity: 0; transform: translateY(6px) scale(0.92);
+  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease); }
+.tile:hover .qp, .tile:focus-within .qp, .qp:focus-visible { opacity: 1; transform: none; }
+.qp:hover { transform: scale(1.08); }
+@media (hover: none) { .qp { opacity: 1; transform: none; } }
+.pager .round:disabled { opacity: 0.35; cursor: default; }
+
+/* The banner: logo, your numbers, the description */
+.sl-logo { display: block; max-width: min(460px, 70%); max-height: 130px; object-fit: contain; object-position: left center; filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.6)); margin: 2px 0 4px; }
+.sl-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; color: #e3e6ee; font-size: 14px; font-weight: 600; }
+.sl-facts span + span::before { content: "\00B7"; margin-right: 14px; color: var(--dim); }
+.sl-about { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 62ch; }
+

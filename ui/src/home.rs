@@ -26,13 +26,42 @@ struct Feature {
     open: Route,
     /// The game to start from the banner, when it is in the library.
     game: Option<Game>,
+    /// Your numbers with it: last session, total, status.
+    facts: Vec<String>,
+    /// The game's logo, drawn instead of the title when it loads.
+    logo: Option<String>,
+    /// A Steam game: its store description fills `about`.
+    steam_app: Option<u32>,
 }
 
 fn game_feature(game: &Game) -> Feature {
+    let mut facts = Vec::new();
+    if let Some(last) = game.last_played {
+        facts.push(tr!("Jogado {}", crate::format::ago(last)));
+    }
+    if let Some(s) = game.last_session_secs.filter(|s| *s >= 60) {
+        facts.push(tr!("última sessão de {}", crate::format::playtime(s)));
+    }
+    if game.playtime_secs >= 60 {
+        facts.push(tr!("{} no total", crate::format::playtime(game.playtime_secs)));
+    }
+    if let Some(s) = game.status {
+        facts.push(crate::game_notes::label(s).to_string());
+    }
+    let steam_app = match &game.source {
+        Source::Steam { app_id } => Some(*app_id),
+        _ => None,
+    };
+    let logo = game.logo_path.as_deref().map(crate::art::src).or_else(|| {
+        steam_app.map(|id| format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png"))
+    });
     Feature {
         kicker: tr!("Continue jogando").to_string(),
         title: game.name.clone(),
         based: source_name(&game.source).to_string(),
+        facts,
+        logo,
+        steam_app,
         about: String::new(),
         heroes: hero_sources(game),
         soft: game.hero_url.as_deref().is_some_and(is_low_res) && matches!(game.source, Source::Recomp { .. }),
@@ -47,6 +76,9 @@ fn recomp_feature(entry: &RecompEntry) -> Feature {
         kicker: tr!("Recomp · {}", entry.console),
         title: entry.name.clone(),
         based: tr!("Baseado em {}", entry.game),
+        facts: Vec::new(),
+        logo: entry.logo.as_deref().map(crate::art::src),
+        steam_app: None,
         about: entry.about.clone(),
         heroes: recomp_heroes(entry),
         soft: entry.hero.as_deref().is_some_and(is_low_res),
@@ -104,6 +136,8 @@ pub fn Home() -> impl IntoView {
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
         let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });
+        let favorites: Vec<TileInfo> = games.iter().filter(|g| g.favorite && !g.hidden).map(|g| game_tile(g, library)).collect();
+        let favorites = (!favorites.is_empty()).then(|| view! { <Shelf title=tr!("Favoritos").to_string() tiles=favorites see_all=Route::Library /> });
         let found = (!found.is_empty()).then(|| {
             view! {
                 <Shelf
@@ -137,7 +171,7 @@ pub fn Home() -> impl IntoView {
         });
         let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">{tr!("Carregando...")}</p> });
 
-        view! { <div class="page home">{error}{loading}{slider}{recent}{found}{popular}{newest}{everything}</div> }
+        view! { <div class="page home">{error}{loading}{slider}{recent}{favorites}{found}{popular}{newest}{everything}</div> }
     }
 }
 
@@ -200,14 +234,36 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                     .into_any()
                 }
             };
-            let about = (!feature.about.is_empty()).then(|| view! { <p>{feature.about.clone()}</p> });
+            // A Steam game's short description comes from its store page (kept on disk).
+            let store = feature.steam_app.map(|app| LocalResource::new(move || async move { crate::api::steam_details(app).await.ok().map(|d| d.short) }));
+            let fixed_about = feature.about.clone();
+            let about = move || {
+                let text = store.and_then(|s| s.get().flatten()).unwrap_or_else(|| fixed_about.clone());
+                (!text.is_empty()).then(|| view! { <p class="sl-about">{text}</p> })
+            };
+            let facts = (!feature.facts.is_empty()).then(|| {
+                let items = feature.facts.iter().map(|f| view! { <span>{f.clone()}</span> }).collect_view();
+                view! { <div class="sl-facts">{items}</div> }
+            });
+            let logo_failed = RwSignal::new(false);
+            let title_text = StoredValue::new(feature.title.clone());
+            let heading = match feature.logo.clone() {
+                Some(src) => view! {
+                    <Show when=move || !logo_failed.get() fallback=move || view! { <h2>{title_text.get_value()}</h2> }>
+                        <img class="sl-logo" src=src.clone() alt=title_text.get_value() on:error=move |_| logo_failed.set(true) />
+                    </Show>
+                }
+                .into_any(),
+                None => view! { <h2>{feature.title.clone()}</h2> }.into_any(),
+            };
             view! {
                 <div class="slide" class:on=on inert=move || !on() aria-hidden=move || (!on()).to_string()>
                     <Backdrop sources=feature.heroes.clone() soft=feature.soft />
                     <div class="sl-in">
                         <span class="kick">{feature.kicker.clone()}</span>
-                        <h2>{feature.title.clone()}</h2>
+                        {heading}
                         <span class="based">{feature.based.clone()}</span>
+                        {facts}
                         {about}
                         <div class="acts">
                             {primary}
