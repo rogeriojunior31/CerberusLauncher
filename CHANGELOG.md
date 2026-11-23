@@ -2,7 +2,7 @@
 
 ## 0.10.0 — primeira versão para Windows
 
-Primeira versão com instalador. Baixe `Cerberus Launcher_0.10.0_x64-setup.exe` e instale.
+Primeira versão com instalador. Baixe `Cerberus-Launcher_0.10.0_x64-setup.exe` em Assets e instale.
 
 ### Instalação
 
