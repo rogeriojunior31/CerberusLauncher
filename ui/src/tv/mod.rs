@@ -53,6 +53,8 @@ pub enum View {
     Tab(Tab),
     /// A game in the library (its id) or in the catalog (`recomp:<id>`).
     Game(String),
+    /// One game's achievements (source code and key), for games not in the library.
+    Achievements(String, String),
 }
 
 impl View {
@@ -60,6 +62,7 @@ impl View {
         match self {
             View::Tab(t) => format!("{t:?}"),
             View::Game(id) => format!("game:{id}"),
+            View::Achievements(source, key) => format!("ach:{source}:{key}"),
         }
     }
 }
@@ -271,7 +274,7 @@ pub fn TvMode() -> impl IntoView {
             Btn::Lb | Btn::Rb => {
                 let current = match tv.view.get_untracked() {
                     View::Tab(t) => TABS.iter().position(|(x, _, _)| *x == t).unwrap_or(0),
-                    View::Game(_) => 0,
+                    View::Game(_) | View::Achievements(..) => 0,
                 };
                 let next = if btn == Btn::Rb { (current + 1) % TABS.len() } else { (current + TABS.len() - 1) % TABS.len() };
                 tv.tab(TABS[next].0);
@@ -308,7 +311,7 @@ pub fn TvMode() -> impl IntoView {
     let tabs = move || {
         let current = tv.view.get();
         match current {
-            View::Game(_) => view! {
+            View::Game(_) | View::Achievements(..) => view! {
                 <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>{tr!("Voltar")}</span></div>
             }
             .into_any(),
@@ -347,6 +350,7 @@ pub fn TvMode() -> impl IntoView {
         View::Tab(Tab::Downloads) => view! { <pages::Downloads /> }.into_any(),
         View::Tab(Tab::Settings) => view! { <pages::Settings /> }.into_any(),
         View::Game(id) => view! { <game::GamePage id /> }.into_any(),
+        View::Achievements(source, key) => view! { <achievements::GameList source key /> }.into_any(),
     };
 
     let hints = move || {
