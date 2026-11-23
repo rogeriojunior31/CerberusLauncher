@@ -210,11 +210,6 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                 }))}
             <p class="muted small">"Com um jogo aberto, fechar a janela sempre deixa o Cerberus na bandeja, para contar o tempo de jogo e guardar os saves no fim da partida. Ele fecha sozinho quando o jogo terminar."</p>
         </section>
-        <section class="card set">
-            <h3>"Sobre"</h3>
-            {row("Cerberus Launcher", "Código aberto, licença MIT.",
-                view! { <span class="muted">{concat!("Versão ", env!("CARGO_PKG_VERSION"))}</span> })}
-        </section>
     }
 }
 
