@@ -95,14 +95,19 @@ fn BackupRow(backup: Backup, game_id: String, refresh: RwSignal<u32>, busy: RwSi
             let restored = library.report(api::restore_backup(&id.get_value(), &name.get_value()).await);
             busy.set(false);
             if let Some(files) = restored {
-                library.toast(tr!("{} arquivo(s) restaurado(s). Os saves de antes ficaram num backup novo.", files));
+                library.toast(if files == 1 {
+                    tr!("1 arquivo restaurado. Os saves de antes ficaram num backup novo.").to_string()
+                } else {
+                    tr!("{} arquivos restaurados. Os saves de antes ficaram num backup novo.", files)
+                });
             }
             refresh.update(|n| *n += 1);
         });
     };
 
     let when = format::date_time(backup.created);
-    let detail = tr!("{} · {} arquivo(s) · {}", cerberus_shared::i18n::translate(&backup.reason), backup.files, format::megabytes(backup.bytes));
+    let files = if backup.files == 1 { tr!("1 arquivo").to_string() } else { tr!("{} arquivos", backup.files) };
+    let detail = format!("{} · {} · {}", cerberus_shared::i18n::translate(&backup.reason), files, format::megabytes(backup.bytes));
     let label = move || if armed.get() { tr!("Confirmar: substituir os saves atuais") } else { tr!("Restaurar") };
 
     view! {

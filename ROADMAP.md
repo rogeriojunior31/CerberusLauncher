@@ -620,7 +620,7 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 
 ### 6.7 Recomps (complementa a 5.3) [R]
 
-- [ ] Pausar as atualizações de um jogo e limite de velocidade de download, mais lento enquanto se joga. — P
+- [x] Pausar as atualizações de um jogo e limite de velocidade de download, mais lento enquanto se joga. — P
 - [ ] Pasta de instalação por jogo e proxy em Configurações › Rede. — P
 - [ ] Repetir quando o Windows ou o antivírus prende um arquivo, com mensagem clara. — P
 - [ ] Etiquetas no catálogo (Widescreen, 60 FPS, Mods, Online) com filtro, situação do projeto (encerrado, pausado)

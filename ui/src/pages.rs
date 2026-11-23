@@ -356,60 +356,125 @@ fn day_label(at: u64) -> String {
 #[component]
 pub fn SavesPage() -> impl IntoView {
     let library = expect_context::<Library>();
+    let settings = LocalResource::new(api::get_settings);
+    let open = RwSignal::new(None::<String>);
+    // Where copies go besides this PC, and anything still waiting to get there.
+    let cloud = move || {
+        let s = settings.get().and_then(Result::ok)?;
+        let banner = match (&s.cloud_dir, s.pending_uploads) {
+            (None, _) => view! {
+                <div class="card sv-cloud off">
+                    <Svg icon=Icon::Saves size=24 />
+                    <div>
+                        <b>{tr!("Só neste PC")}</b>
+                        <p class="muted small">{tr!("Escolha uma pasta do OneDrive, Google Drive ou Dropbox e as cópias vão também para lá, prontas para outro PC.")}</p>
+                    </div>
+                    <button type="button" class="btn sm main" on:click=move |_| spawn_local(async move {
+                        if library.report(api::set_cloud_dir(false).await).is_some() {
+                            settings.refetch();
+                        }
+                    })>{tr!("Escolher pasta")}</button>
+                </div>
+            }
+            .into_any(),
+            (Some(dir), 0) => view! {
+                <div class="card sv-cloud ok">
+                    <Svg icon=Icon::Check size=24 />
+                    <div>
+                        <b>{tr!("Na nuvem")}</b>
+                        <p class="muted small path">{dir.clone()}</p>
+                    </div>
+                    <span class="pill ok">{tr!("Tudo enviado")}</span>
+                </div>
+            }
+            .into_any(),
+            (Some(dir), n) => view! {
+                <div class="card sv-cloud wait">
+                    <Svg icon=Icon::Info size=24 />
+                    <div>
+                        <b>{if n == 1 { tr!("1 cópia esperando a pasta da nuvem").to_string() } else { tr!("{} cópias esperando a pasta da nuvem", n) }}</b>
+                        <p class="muted small path">{dir.clone()}</p>
+                    </div>
+                    <button type="button" class="btn sm" on:click=move |_| spawn_local(async move {
+                        if library.report(api::retry_save_uploads().await).is_some() {
+                            settings.refetch();
+                        }
+                    })>{tr!("Tentar enviar")}</button>
+                </div>
+            }
+            .into_any(),
+        };
+        Some(banner)
+    };
     let rows = move || {
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let recomps: Vec<Game> = games.into_iter().filter(|g| matches!(g.source, Source::Recomp { .. })).collect();
         if recomps.is_empty() {
             return view! {
-                <div class="empty">
-                    <Svg icon=Icon::Saves size=40 />
-                    <h2>{tr!("Nenhum recomp instalado")}</h2>
-                    <p class="muted">{tr!("Os saves dos recomps são copiados sozinhos: quando você fecha o jogo, antes de atualizar e antes de desinstalar.")}</p>
+                <div class="card dl-empty">
+                    <Svg icon=Icon::Saves size=28 />
+                    <div>
+                        <b>{tr!("Nenhum recomp instalado")}</b>
+                        <p class="muted small">{tr!("Os saves dos recomps são copiados sozinhos: quando você fecha o jogo, antes de atualizar e antes de desinstalar.")}</p>
+                    </div>
                 </div>
             }
             .into_any();
         }
-        let list = recomps.into_iter().map(|game| view! { <SaveRow game /> }).collect_view();
-        view! { <div class="dl-list">{list}</div> }.into_any()
+        let cloud_on = settings.get().and_then(Result::ok).is_some_and(|s| s.cloud_dir.is_some());
+        let list = recomps.into_iter().map(|game| view! { <SaveRow game open cloud_on /> }).collect_view();
+        view! { <div class="sv-list">{list}</div> }.into_any()
     };
     view! {
-        <div class="page">
+        <div class="page dl-page">
             <header class="page-h">
                 <div>
                     <h1>{tr!("Saves")}</h1>
-                    <p class="muted">{tr!("Backups automáticos dos recomps. Os 10 mais recentes de cada jogo ficam guardados.")}</p>
+                    <p class="muted">{tr!("Cópias automáticas ao fechar o jogo, antes de atualizar e antes de desinstalar. As 10 mais recentes de cada jogo ficam guardadas.")}</p>
                 </div>
             </header>
+            {cloud}
             {rows}
         </div>
     }
 }
 
+/// A game's saves in one line (status, last copy, size); opens into its history.
 #[component]
-fn SaveRow(game: Game) -> impl IntoView {
-    let library = expect_context::<Library>();
+fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl IntoView {
     let id = game.id.clone();
     let backups = LocalResource::new(move || {
         let id = id.clone();
         async move { api::list_backups(&id).await }
     });
+    let gid = StoredValue::new(game.id.clone());
+    let is_open = move || open.get().as_deref() == Some(gid.get_value().as_str());
     let summary = move || match backups.get() {
-        None => tr!("Carregando...").to_string(),
-        Some(Err(error)) => error,
+        None => (tr!("Carregando…").to_string(), "", String::new()),
+        Some(Err(error)) => (error, "bad", String::new()),
         Some(Ok(list)) => match list.first() {
-            None => tr!("Nenhum backup ainda").to_string(),
-            Some(newest) => tr!("{} backup(s) · último {}", list.len(), format::ago(newest.created)),
+            None => (tr!("Ainda sem backup").to_string(), "none", String::new()),
+            Some(newest) => {
+                let bytes: u64 = list.iter().map(|b| b.bytes).sum();
+                let count = if list.len() == 1 { tr!("1 cópia").to_string() } else { tr!("{} cópias", list.len()) };
+                let where_ = if cloud_on { tr!("Na nuvem") } else { tr!("Só neste PC") };
+                (tr!("{} · última {}", where_, format::ago(newest.created)), if cloud_on { "ok" } else { "local" }, format!("{count} · {}", megabytes(bytes)))
+            }
         },
     };
-    let route = Route::Game(game.id.clone());
     view! {
-        <button type="button" class="dl-row card clickable" on:click=move |_| library.go(route.clone())>
-            <div class="thumb"><Poster sources=cover_sources(&game) title=game.name.clone() /></div>
-            <div class="dl-info">
-                <b>{game.name.clone()}</b>
-                <span class="muted">{summary}</span>
-            </div>
-            <Svg icon=Icon::Right />
-        </button>
+        <div class="card sv-row" class:open=is_open>
+            <button type="button" class="sv-head" aria-expanded=move || is_open().to_string()
+                on:click=move |_| open.update(|o| *o = if o.as_deref() == Some(gid.get_value().as_str()) { None } else { Some(gid.get_value()) })>
+                <div class="thumb"><Poster sources=cover_sources(&game) title=game.name.clone() /></div>
+                <div class="dl-info">
+                    <b>{game.name.clone()}</b>
+                    {move || { let (text, tone, _) = summary(); view! { <span class=format!("sv-status {tone}")><i></i>{text}</span> } }}
+                </div>
+                <small class="muted">{move || summary().2}</small>
+                <span class="sv-chev"><Svg icon=Icon::Right size=18 /></span>
+            </button>
+            {move || is_open().then(|| view! { <div class="sv-body"><crate::backups::Backups game_id=gid.get_value() /></div> })}
+        </div>
     }
 }

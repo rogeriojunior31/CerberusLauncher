@@ -1571,3 +1571,30 @@ html.overlay-mode, html.overlay-mode body { background: transparent; }
 .dl-hist small { color: var(--dim); font-variant-numeric: tabular-nums; }
 .row-btn .switch { margin-left: auto; }
 @media (prefers-reduced-motion: reduce) { .dl-bar.busy i { animation: none; } }
+
+/* Saves */
+.sv-cloud { display: flex; align-items: center; gap: 16px; }
+.sv-cloud > div { flex: 1; min-width: 0; }
+.sv-cloud p { margin: 3px 0 0; }
+.sv-cloud.off > svg { color: var(--dim); }
+.sv-cloud.ok { border-color: rgba(74, 222, 128, 0.28); }
+.sv-cloud.ok > svg { color: #86efac; }
+.sv-cloud.wait { border-color: rgba(251, 191, 36, 0.35); }
+.sv-cloud.wait > svg { color: #fbbf24; }
+.sv-cloud .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-list { display: flex; flex-direction: column; gap: 10px; }
+.sv-row { padding: 0; overflow: hidden; }
+.sv-head { display: flex; align-items: center; gap: 16px; width: 100%; padding: 12px 18px 12px 12px; text-align: left; transition: background 0.15s; }
+.sv-head:hover { background: var(--fill); }
+.sv-head .thumb { width: 44px; }
+.sv-head > small { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sv-chev { color: var(--dim); transition: transform 0.2s var(--ease); display: grid; }
+.sv-row.open .sv-chev { transform: rotate(90deg); }
+.sv-status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13.5px; }
+.sv-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+.sv-status.ok i { background: #4ade80; }
+.sv-status.local i { background: #60a5fa; }
+.sv-status.none i { background: #fbbf24; }
+.sv-status.bad { color: var(--bad); }
+.sv-body { padding: 4px 18px 18px; border-top: 1px solid var(--line); animation: lb-in 0.2s var(--ease); }
+.sv-body > .card { background: transparent; border: 0; padding: 14px 0 0; box-shadow: none; }
