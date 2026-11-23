@@ -67,6 +67,7 @@ pub fn Sidebar() -> impl IntoView {
                 })
             }}
             <div class="side-foot">
+                <crate::updates::UpdateNotice />
                 <button type="button" class="nav" on:click=move |_| library.add_game()>
                     <Svg icon=Icon::Plus />
                     <span>{tr!("Adicionar jogo")}</span>

@@ -658,10 +658,42 @@ fn about(s: SettingsView, _busy: RwSignal<bool>, _apply: impl Fn(Task, &'static 
                 </div>
                 <img class="about-logo" src="brand/cerberus-launcher-pixel.svg" alt=tr!("Logo do Cerberus Launcher") />
             </div>
+            {update_row()}
             {row(tr!("Pedir um recomp"), tr!("Sugira um projeto para o catálogo, pelo GitHub do Cerberus."),
                 view! { <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })><Svg icon=Icon::External size=16 />{tr!("Abrir")}</button> })}
         </section>
     }
+}
+
+/// Settings › About: look for a newer Cerberus now.
+fn update_row() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let updates = expect_context::<crate::updates::Updates>();
+    let checking = RwSignal::new(false);
+    let check = move |_| {
+        checking.set(true);
+        spawn_local(async move {
+            let got = library.report(api::update_check().await);
+            checking.set(false);
+            match got {
+                Some(Some(u)) => {
+                    updates.found.set(Some(u));
+                    updates.open.set(true);
+                }
+                Some(None) => library.toast(tr!("Você já está na versão mais nova.")),
+                None => {}
+            }
+        });
+    };
+    row(
+        tr!("Atualizações"),
+        tr!("O Cerberus procura versões novas no GitHub ao abrir e a cada 6 horas, e avisa no menu lateral. Você escolhe quando instalar."),
+        view! {
+            <button type="button" class="btn sm" disabled=move || checking.get() on:click=check>
+                <Svg icon=Icon::Refresh size=16 />{move || if checking.get() { tr!("Procurando…") } else { tr!("Procurar agora") }}
+            </button>
+        },
+    )
 }
 
 /// Linking a RetroAchievements account and showing its progress.

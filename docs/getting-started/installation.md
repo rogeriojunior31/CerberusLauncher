@@ -29,7 +29,11 @@ Get-FileHash .\Cerberus-Launcher_0.10.0_x64-setup.exe -Algorithm SHA256
 
 ## Update
 
-Download the new installer and run it over the old version. Your library, settings and save backups stay where they are.
+Cerberus looks for a newer version on GitHub when it opens and every 6 hours. When there is one, **New version** shows up at the bottom of the sidebar. Click it to read what changed, then **Update now**: the installer is downloaded, checked against the fingerprint GitHub publishes, and installed silently. Cerberus closes and opens again on its own. Your library, saves and settings stay as they are. After an update, **What's new** shows that version's notes once.
+
+You can also check by hand in **Settings → About → Check now**.
+
+You can also download the new installer yourself and run it over the old version.
 
 ## Uninstall
 

@@ -393,6 +393,18 @@ pub struct SteamAccount {
     pub games: u32,
 }
 
+/// A newer Cerberus on GitHub (or this version's notes, for "What's new").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AppUpdate {
+    pub version: String,
+    /// The release notes, as written on GitHub (Markdown).
+    pub notes: String,
+    pub size: u64,
+    pub sha256: Option<String>,
+    pub url: String,
+    pub published: String,
+}
+
 /// One finished play session.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaySession {

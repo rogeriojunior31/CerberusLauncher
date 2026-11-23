@@ -628,6 +628,40 @@ pub async fn classic_achievements(path: &str, console: &str) -> Result<Option<ce
     call("classic_achievements", &Arg { path, console }).await
 }
 
+/// This copy's version (the UI and the app are built together).
+pub fn app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+pub fn on_update_available(handler: impl FnMut(cerberus_shared::AppUpdate) + 'static) {
+    on_event("update-available", handler);
+}
+
+/// Bytes of the update downloaded so far, and the total.
+pub fn on_update_progress(handler: impl FnMut((u64, u64)) + 'static) {
+    on_event("update-progress", handler);
+}
+
+pub async fn update_check() -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    call("update_check", &()).await
+}
+
+pub async fn update_found() -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    call("update_found", &()).await
+}
+
+pub async fn update_install() -> Result<(), String> {
+    call("update_install", &()).await
+}
+
+pub async fn whats_new() -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    call("whats_new", &()).await
+}
+
+pub async fn whats_new_seen() -> Result<(), String> {
+    call("whats_new_seen", &()).await
+}
+
 /// A game's play sessions, oldest first.
 pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>, String> {
     call("game_sessions", &Id { id }).await

@@ -26,6 +26,7 @@ mod achievements;
 mod i18n;
 mod overlay;
 mod unlock;
+mod updates;
 
 use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
@@ -247,6 +248,7 @@ fn App() -> impl IntoView {
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
+    provide_context(updates::Updates::start());
     provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.
@@ -404,6 +406,8 @@ fn App() -> impl IntoView {
         <Show when=move || library.adopting.get()><adopt::AdoptDialog /></Show>
         {move || library.customizing.get().map(|game| view! { <customize::CustomizeDialog game /> })}
         <shell::Toasts />
+        <updates::UpdateDialog />
+        <updates::WhatsNewDialog />
         {editor}
         {locate}
         <game_menu::GameMenuLayer />

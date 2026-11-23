@@ -42,6 +42,9 @@ pub struct Settings {
     /// never kept), written into RetroArch whenever it lacks it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_token: Option<String>,
+    /// The version whose "What's new" was shown; a newer running version shows its notes once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_version: Option<String>,
     /// Steam's Web API, turned on by the player: their own key and their SteamID64.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steam_key: Option<String>,

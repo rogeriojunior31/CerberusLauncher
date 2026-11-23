@@ -1484,3 +1484,16 @@ html.overlay-mode, html.overlay-mode body { background: transparent; }
 
 
 
+
+/* Updating Cerberus */
+.nav.update-nav { color: #ffd9c2; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.nav.update-nav svg { color: var(--accent); }
+.nav.update-nav:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.dialog.update-dialog { width: min(620px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 16px; }
+.upd-h { display: flex; align-items: center; gap: 14px; }
+.upd-h img { width: 48px; height: 48px; }
+.upd-h h2 { margin: 0 0 2px; font-size: 21px; }
+.upd-notes { max-height: min(46vh, 420px); overflow-y: auto; padding: 14px 16px; border-radius: 14px; background: var(--fill); border: 1px solid var(--line); scrollbar-width: thin; }
+.upd-notes .about-body { font-size: 14px; gap: 8px; }
+.upd-progress { display: flex; flex-direction: column; gap: 6px; }
+.upd-progress .ach-bar { flex: none; height: 8px; }

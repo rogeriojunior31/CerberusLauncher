@@ -314,7 +314,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       WebView2 embutido para PCs sem ele. Desinstalar mantém os dados (a caixa para apagar diz o que apaga) e tira
       o "Abrir com o Windows" e as chaves do instalador. Conferido: instalar, primeira abertura e desinstalar.
       Falta: assinatura digital (o SmartScreen avisa) e publicar a release.
-- [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
+- [x] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
 - [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play).
 - [x] Adicionar à Steam (Gerenciar): jogo de fora na biblioteca da Steam, com capa e fundo, abrindo pelo Cerberus;
       com a Steam fechada, backup do shortcuts.vdf, e "Tirar da Steam" desfaz. Conferido no app com o SpaghettiKart.
@@ -438,7 +438,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 ### 5.2 Confiança e distribuição (prioridade 2)
 
-- [ ] **Atualização do próprio Cerberus** (já listada em 4.3d):
+- [x] **Atualização do próprio Cerberus** (já listada em 4.3d):
       - Um `version.json` com URL, SHA-256 e tamanho por plataforma, mais uma versão mínima obrigatória.
       - Instalação silenciosa do NSIS e reabertura do app.
       - Arquivo ruim marcado para não ser oferecido de novo, e conferência da versão exata dentro do instalador.

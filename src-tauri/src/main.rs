@@ -35,6 +35,7 @@ mod steam_shortcuts;
 mod steam_store;
 mod steam_details;
 mod trail;
+mod self_update;
 mod play_log;
 mod game_settings;
 mod art_custom;
@@ -758,6 +759,61 @@ async fn classic_achievements(app: AppHandle, http: State<'_, reqwest::Client>, 
     };
     let (game, list) = achievements::retro::game(&http, &user, &key, &id.to_string()).await?;
     Ok(Some(cerberus_shared::GameAchievements { game, achievements: list }))
+}
+
+/// Asks GitHub now for a newer Cerberus.
+#[tauri::command]
+async fn update_check(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    let found = self_update::check(&http).await?;
+    *app.state::<self_update::Found>().0.lock().unwrap_or_else(|p| p.into_inner()) = found.clone();
+    Ok(found)
+}
+
+/// The newer version found earlier, if any (for windows opened later).
+#[tauri::command]
+fn update_found(app: AppHandle) -> Option<cerberus_shared::AppUpdate> {
+    app.state::<self_update::Found>().0.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+/// Downloads, checks and installs the newer version found; Cerberus closes and reopens.
+#[tauri::command]
+async fn update_install(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<(), String> {
+    let found = app.state::<self_update::Found>().0.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    let update = match found {
+        Some(u) => u,
+        None => self_update::check(&http).await?.ok_or(tr!("Você já está na versão mais nova."))?,
+    };
+    if running_games(app.state::<sessions::Sessions>()).len() > 0 {
+        return Err(tr!("Feche o jogo antes de atualizar o Cerberus.").into());
+    }
+    let data = app.state::<DataDir>().0.clone();
+    self_update::install(&app, &http, &data, update).await
+}
+
+/// This version's notes once after an update; `None` on a first install or when seen.
+#[tauri::command]
+async fn whats_new(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    let now = self_update::current();
+    match chosen.seen_version.as_deref() {
+        Some(seen) if self_update::is_newer(now, seen) => self_update::notes_of(&http, now).await,
+        Some(_) => Ok(None),
+        None => {
+            // First run of a fresh install: nothing to tell, just remember this version.
+            chosen.seen_version = Some(now.to_string());
+            settings::save(&data, &chosen)?;
+            Ok(None)
+        }
+    }
+}
+
+#[tauri::command]
+fn whats_new_seen(app: AppHandle) -> Result<(), String> {
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    chosen.seen_version = Some(self_update::current().to_string());
+    settings::save(&data, &chosen)
 }
 
 /// A game's play sessions, oldest first, for its play-time chart.
@@ -2118,6 +2174,7 @@ fn main() {
             looks::take_back_all(&data_dir);
             app.manage(trail::Trail::new(&data_dir));
             app.manage(unlock_toast::Queue::default());
+            app.manage(self_update::Found::default());
             let folders = recomp::Folders::new(&data_dir, chosen.recomps_dir.clone());
             folders.set_cloud(chosen.cloud_dir.clone());
             app.manage(folders);
@@ -2127,6 +2184,7 @@ fn main() {
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
             background::tray(app.handle())?;
             store_time::watch(app.handle().clone());
+            self_update::watch(app.handle().clone());
             app.manage(overlay::Overlay::default());
             screenshots::watch(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
@@ -2265,6 +2323,11 @@ fn main() {
             achievements_hub,
             steam_details,
             game_sessions,
+            update_check,
+            update_found,
+            update_install,
+            whats_new,
+            whats_new_seen,
             classic_achievements,
             open_store_link,
             steam_local_account,

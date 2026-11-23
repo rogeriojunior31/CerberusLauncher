@@ -53,6 +53,7 @@ Cerberus changes files outside its own folder only when you ask, and backs them 
 | Service | When | What for |
 |---|---|---|
 | `raw.githubusercontent.com` | Every 6 hours | Cerberus's own recomp catalog |
+| `api.github.com`, `github.com` | At start and every 6 hours; the download only when you click Update | Newer versions of Cerberus itself |
 | `recomplauncher.com` | Every 6 hours, unless turned off | The public recomp catalog |
 | GitHub, GitLab, Forgejo servers | When you install or update | Releases of each recomp |
 | `store.steampowered.com`, `api.steampowered.com`, Steam CDN | When you add a game or open a page | Names and covers |
