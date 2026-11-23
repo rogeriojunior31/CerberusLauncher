@@ -364,3 +364,154 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       por padrão (decisão do usuário em 19/11/2026). Desligado, ficam os 117 recomps do Cerberus e as fontes.
 - [ ] Pedir permissão ao mantenedor do RecompLauncher para usar a lista de repositórios deles como
       ponto de partida da descoberta (só os fatos: quais projetos existem; nunca textos ou arte).
+
+
+## Onda 5: próximas entregas (levantamento de 23/11/2026)
+
+Levantamento do RecompLauncher (Beta 68, de 23/11/2026; GPL: só ideias e fatos, nunca código) e do Hydra
+(MIT), cruzado com o que o Cerberus já tem. Ordem = prioridade dentro de cada bloco. O que depende de servidor
+ou de conta de terceiros está marcado; o que só serve para jogos piratas fica de fora de vez (no fim).
+
+### 5.1 Hub de conquistas (prioridade 1)
+
+Uma página **Conquistas** no menu lateral que acompanha todas as plataformas, mais uma aba **Conquistas** na
+página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub entre jogos (só totais no perfil).
+
+**Fontes de dados (validadas neste PC em 23/11/2026):**
+
+- [ ] **Steam pelo cache local do próprio cliente, sem chave nem perfil público.**
+      - `Steam\appcache\stats\UserGameStatsSchema_<appid>.bin` traz o catálogo de cada jogo: nome e descrição em
+        vários idiomas (inclusive `brazilian`), ícone, ícone cinza e se a conquista é secreta.
+      - `UserGameStats_<conta>_<appid>.bin` traz o que foi desbloqueado, com a data.
+      - Os dois são KeyValues binário. Conferido aqui: 254 jogos em cache; no Balatro, 31 conquistas, 8 desbloqueadas
+        e todas com data.
+      - Ícone: `https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/<appid>/<hash>.jpg`.
+      - O Hydra não lê esses arquivos: seria diferencial nosso.
+      - Limite: o cache cobre os jogos que a Steam deste PC já sincronizou.
+- [ ] **Tempo de jogo e última vez da Steam pelo `userdata\<conta>\config\localconfig.vdf`** (`Playtime`, `LastPlayed`;
+      259 jogos aqui). Hoje o Cerberus só conta o tempo enquanto está aberto; isso traz o histórico todo da Steam.
+- [ ] **Raridade das conquistas da Steam** (% de jogadores que desbloquearam) pelo endpoint público
+      `ISteamUserStats/GetGlobalAchievementPercentagesForApp` (sem chave). *A validar.*
+- [ ] **Steam sem cache (opcional):** chave da Web API e SteamID do jogador (`GetPlayerAchievements`, `GetSchemaForGame`);
+      exige perfil com detalhes de jogo públicos. *A validar.* (O Hydra usa um token tirado da sessão logada da loja
+      e lê páginas da Comunidade; não vamos por esse caminho.)
+- [ ] **RetroAchievements pela Web API oficial**, com a chave que o jogador já conecta:
+      - `API_GetGameInfoAndUserProgress` dá as conquistas do jogo com pontos, emblema e data, separando normal e hardcore.
+      - `API_GetUserCompletionProgress` dá todos os jogos com o progresso de cada um, para o hub.
+      - Falta descobrir o id do jogo no RA para cada clássico (pelo hash da ROM ou pela linha do log do RetroArch). *A validar.*
+- [ ] **Epic (fase 3, precisa de login na conta Epic):**
+      - Login OAuth com o cliente público do launcher, o mesmo do Legendary, do Heroic e do Hydra.
+      - Conquistas pela GraphQL do launcher (`playerAchievementGameRecordsBySandbox`).
+      - Tempo de jogo pelo `library-service` (`/library/api/public/playtime/account/<id>/all`).
+      - Falta o "sandbox" de cada jogo: o `CatalogNamespace` dos manifestos da Epic deve servir. *A validar*: não há jogo
+        da Epic instalado neste PC, e a Epic não guarda conquistas nem tempo de jogo no disco.
+- [ ] **Conquistas dos recomps (fase 3):**
+      - Ler os arquivos de troféus que cada port já grava; o Hydra (MIT) mapeia os formatos: bitmask, linhas id+hora,
+        jsonl e log.
+      - Avaliar o canal de sessão do RecompLauncher (variável de ambiente com um pipe por partida, uma mensagem JSON por
+        linha), para os recomps que adotarem a biblioteca deles.
+
+**Telas:**
+
+- [ ] **Hub:** totais de todas as plataformas (desbloqueadas, % concluído, jogos 100%, pontos do RA) e **últimas
+      conquistas de todos os jogos** numa linha do tempo.
+- [ ] **Hub, lista de jogos:**
+      - Filtros por plataforma (Steam, Epic, RetroAchievements, Recomps).
+      - Filtros por estado: em andamento, concluídos, não começados.
+      - Ordem: recentes, % concluído, A a Z, mais raros.
+      - Busca por nome.
+- [ ] **Aba Conquistas do jogo:**
+      - Resumo X/Y com barra, e um troféu quando chega a 100%.
+      - Busca e filtro Todas / Desbloqueadas / Bloqueadas.
+      - Ordem: mais comuns, mais raras, recentes.
+      - Secretas escondidas até clicar, com opção para mostrar todas.
+      - Selo de hardcore e conjuntos (subsets) do RA.
+      - % de raridade com "<0,1%" para as raríssimas.
+- [ ] **Biblioteca:** progresso de conquistas na capa e opção de ordenar por conquistas.
+- [ ] **Big Picture Mode:** a mesma página de conquistas.
+- [ ] **Aviso ao desbloquear por cima do jogo:** janela transparente, sem foco e sempre no topo, num canto escolhido,
+      com ícone, raridade e "platina" quando completa o jogo.
+      - Steam: vigiar a data de modificação do `UserGameStats` durante a partida.
+      - RA: o log do RetroArch, que já lemos.
+- [ ] **Cartão "Seu tempo de jogo"** na página do jogo (ideia do RecompLauncher):
+      - Barras das últimas 2 semanas, total, semana, mês, número de sessões e sessão mais longa.
+      - Soma Cerberus, Steam e Epic, separando a origem.
+
+### 5.2 Confiança e distribuição (prioridade 2)
+
+- [ ] **Atualização do próprio Cerberus** (já listada em 4.3d):
+      - Um `version.json` com URL, SHA-256 e tamanho por plataforma, mais uma versão mínima obrigatória.
+      - Instalação silenciosa do NSIS e reabertura do app.
+      - Arquivo ruim marcado para não ser oferecido de novo, e conferência da versão exata dentro do instalador.
+      - Cartão "O que há de novo" depois de atualizar e Configurações › Novidades.
+- [ ] **Assinatura do instalador** (some o aviso do SmartScreen) e uma Action de conferência da release (versão certa,
+      assinado, arquivo certo).
+- [ ] **Janela de falha:**
+      - As últimas linhas do log do jogo e a explicação que já temos.
+      - "Usar a placa de vídeo mais rápida".
+      - Botão para abrir uma issue com o log e o histórico.
+- [ ] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
+- [ ] **Recuperar o WebView2** quando ele travar, sem derrubar jogos nem downloads; avisar que o RivaTuner é a causa comum.
+- [ ] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
+- [ ] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
+      pouco de aleatoriedade.
+- [ ] Achar o arquivo da release pelo sistema e pela CPU quando o padrão do catálogo parar de bater (projeto que
+      renomeou os arquivos).
+
+### 5.3 Recomps e Easy Setup (prioridade 3)
+
+- [ ] **Fila única de downloads:** downloads e builds juntos, "Pausar tudo" e contador no menu.
+- [ ] Por jogo: atualizar sozinho e optar por versões de teste (pre-release).
+- [ ] "Liberar espaço": apagar arquivos de instalação que não são mais necessários.
+- [ ] Recomp que mudou de página no catálogo: "Mudar para ele", levando saves, tempo de jogo e arquivos.
+- [ ] **Recomps com vários jogos** numa instalação só, cada um com a própria capa, tempo, conquistas e atalhos.
+- [ ] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
+      ajustes, requisitos do sistema. É compatibilidade com o formato aberto deles; avisar sem bloquear quando o PC
+      não atende.
+- [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
+- [ ] Achar jogos nas pastas que os emuladores já conhecem: Dolphin, PCSX2, RPCS3, RetroArch, Cemu e Ryujinx, só lendo.
+- [ ] Reconhecer jogos de PlayStation pelo ID do disco (não só pelo nome).
+- [ ] Trazer recomps que já estão na Steam ou em outro launcher, além da pasta escolhida.
+- [ ] Notar uma instalação interrompida (cancelada, travada, falta de luz) e refazer antes de jogar.
+
+### 5.4 Durante o jogo e integração (prioridade 4)
+
+- [ ] **Discord "Jogando..."** (já listado em 4.3d): nome do jogo, capa e tempo da partida.
+- [ ] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
+- [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
+- [ ] Menu da bandeja com os jogos recentes.
+- [ ] Impedir o PC de dormir durante downloads.
+- [ ] **HowLongToBeat** na página do jogo (tempo para zerar).
+- [ ] Informações do jogo original pela Wikipedia, guardadas por um mês.
+- [ ] Prévia ao vivo dos filtros visuais sobre a imagem do próprio jogo, e um filtro "Studio".
+- [ ] Arte de mídia: o jogo desenhado como o cartucho, cartão ou disco dele.
+- [ ] Saves na nuvem de jogos de PC comuns (Steam, Epic, adicionados) pelos locais de save conhecidos (base do
+      Ludusavi/PCGamingWiki; conferir a licença antes de usar).
+
+### 5.5 Interface e acessibilidade (prioridade 5)
+
+- [ ] **Tamanho do texto:** zoom da janela de 90% a 150%, com Ctrl +, Ctrl − e Ctrl 0.
+- [ ] Respeitar o "reduzir movimento" do Windows sozinho (hoje só a chave "Menos animações").
+- [ ] Mais idiomas além de português e inglês (o RecompLauncher tem 22): espanhol primeiro.
+- [ ] Detectar portáteis (ROG Ally, Legion Go, Steam Deck) e ajustar padrões.
+- [ ] Temas: cores e som de conquista personalizáveis.
+- [ ] Formulário de opinião dentro do app (área, humor, mensagem, dados do PC opcionais).
+- [ ] Modo portátil (tudo na pasta do programa).
+
+### 5.6 Depende de servidor ou de outra decisão (avaliar)
+
+- [ ] Relatos dos jogadores ("Como rodou?"), nota para o Steam Deck, aviso de "esta versão está travando muito",
+      desenvolvedores verificados para seguir, "Avise-me" de lançamentos, notícias e aviso imediato de versão nova.
+      No RecompLauncher tudo isso vem do site deles; para nós, só com um servidor próprio ou com permissão de usar o deles.
+- [ ] Conta e sincronização entre PCs (biblioteca, tempo de jogo, saves) com login.
+- [ ] Perfil, amigos, placares e avaliações de jogos (Hydra): precisam de servidor e moderação.
+- [ ] Estatísticas de uso opcionais, perguntadas na primeira abertura, com página de privacidade.
+- [ ] **Linux e Steam Deck:** Proton/umu para os recomps só de Windows; pacotes AppImage, Flatpak, .deb e Nix.
+- [ ] Sistema de plugins e ferramentas para desenvolvedores de recomps (validar manifesto, pasta de build local).
+- [ ] Emuladores fora do RetroArch (RPCS3, shadPS4, DuckStation, PCSX2, PPSSPP), com os troféus e conquistas deles.
+- [ ] Importar a biblioteca do LaunchBox.
+
+### Fora de vez
+
+- Ler arquivos de conquistas de emuladores de Steam usados em jogos piratas (CODEX, RUNE, Goldberg, EMPRESS etc.),
+  fontes de download, torrent e hosters. O Hydra tem; o Cerberus nunca terá.
