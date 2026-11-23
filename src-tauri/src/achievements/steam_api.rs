@@ -191,7 +191,8 @@ fn age(file: &Path) -> Option<Duration> {
     fs::metadata(file).and_then(|m| m.modified()).ok()?.elapsed().ok()
 }
 
-/// Every owned game, kept for an hour.
+/// Every owned game, kept for 5 minutes (one question: it says which games were
+/// played since, and only those are asked again).
 /// With `online` off only the disk is read, however old (the hub shows that at
 /// once and asks Steam right after).
 pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, online: bool) -> Result<Vec<Owned>, String> {
@@ -199,7 +200,7 @@ pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: 
     if !online {
         return fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or(OFFLINE.to_string());
     }
-    if age(&file).is_some_and(|a| a < Duration::from_secs(3600)) {
+    if age(&file).is_some_and(|a| a < Duration::from_secs(300)) {
         if let Some(list) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()) {
             return Ok(list);
         }
@@ -210,6 +211,54 @@ pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: 
     let _ = fs::create_dir_all(cache_dir(data_dir));
     let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
     Ok(list)
+}
+
+/// How far the player is in a game: its achievements, and how many are unlocked.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Top {
+    pub total: u32,
+    pub unlocked: u32,
+    /// When the game had last been played when this was read: asked again only
+    /// after it's played again.
+    #[serde(default)]
+    pub played: u64,
+}
+
+/// Games asked of Steam in one question.
+const PER_QUESTION: usize = 100;
+
+/// How far the player is in many games at once (`GetTopAchievementsForGames`:
+/// 100 games per question, against one game per question for the full list).
+/// It has no unlock dates; those come from `mine`. Kept on disk, and only the
+/// games played since they were read are asked again: with nothing new played,
+/// nothing is asked. `apps` holds each game and when it was last played.
+pub async fn tops(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, apps: &[(u32, u64)], online: bool) -> Result<HashMap<u32, Top>, String> {
+    let file = cache_dir(data_dir).join(format!("tops-{steamid}.json"));
+    let mut known: HashMap<u32, Top> = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    if !online {
+        return if known.is_empty() { Err(OFFLINE.into()) } else { Ok(known) };
+    }
+    let stale: Vec<(u32, u64)> = apps.iter().copied().filter(|(app, played)| known.get(app).is_none_or(|t| t.played < *played || t.played == 0)).collect();
+    let when: HashMap<u32, u64> = stale.iter().copied().collect();
+    let stale: Vec<u32> = stale.into_iter().map(|(app, _)| app).collect();
+    for chunk in stale.chunks(PER_QUESTION) {
+        let mut query = format!("key={}&steamid={}&max_achievements=10000", encode(key), encode(steamid));
+        for (i, app) in chunk.iter().enumerate() {
+            query.push_str(&format!("&appids%5B{i}%5D={app}"));
+        }
+        let v = get(http, "IPlayerService/GetTopAchievementsForGames/v1/", &query).await?;
+        for g in v.pointer("/response/games").and_then(Value::as_array).into_iter().flatten() {
+            let Some(app) = g.get("appid").and_then(Value::as_u64) else { continue };
+            let total = g.get("total_achievements").and_then(Value::as_u64).unwrap_or(0) as u32;
+            let unlocked = g.get("achievements").and_then(Value::as_array).map_or(0, |a| a.len()) as u32;
+            let played = when.get(&(app as u32)).copied().unwrap_or(0).max(1);
+            known.insert(app as u32, Top { total, unlocked: unlocked.min(total), played });
+        }
+        tokio::time::sleep(Duration::from_millis(350)).await;
+    }
+    let _ = fs::create_dir_all(cache_dir(data_dir));
+    let _ = fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+    Ok(known)
 }
 
 /// One of the player's achievements, as the API gives it.
@@ -246,7 +295,17 @@ pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
         "ISteamUserStats/GetPlayerAchievements/v1/",
         &format!("key={}&steamid={}&appid={app}&l={lang_now}", encode(key), encode(steamid)),
     )
-    .await?;
+    .await;
+    // A pause after each question keeps Steam from turning the key away.
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    // Steam answers "not public" for single games even on a public profile
+    // (demos, free weekends, shared games): remembered as empty until played again.
+    if matches!(&v, Err(e) if *e == cerberus_shared::i18n::t(NOT_PUBLIC)) {
+        let _ = fs::create_dir_all(cache_dir(data_dir));
+        let kept = MineFile { last_played, lang: lang_now.into(), list: Vec::new() };
+        let _ = fs::write(&file, serde_json::to_string(&kept).unwrap_or_default());
+    }
+    let v = v?;
     // A game without stats answers success false ("Requested app has no stats"):
     // it has no achievements. Private game details were already turned into an error.
     let stats = v.get("playerstats").ok_or(tr!("A Steam respondeu algo inesperado."))?;

@@ -53,6 +53,21 @@ pub fn on_overlay_opened(mut handler: impl FnMut() + 'static) {
     on_event("overlay-opened", move |_: ()| handler());
 }
 
+/// A new achievement notice is waiting (in the notice's own window).
+pub fn on_unlock_queued(mut handler: impl FnMut() + 'static) {
+    on_event("unlock-queued", move |_: ()| handler());
+}
+
+/// The next achievement notice to show; `None` hides the window.
+pub async fn unlock_next() -> Result<Option<cerberus_shared::UnlockNotice>, String> {
+    call("unlock_next", &()).await
+}
+
+/// Shows a sample achievement notice.
+pub async fn unlock_test() -> Result<(), String> {
+    call("unlock_test", &()).await
+}
+
 /// The menu over a game asked for the game's page in the launcher.
 pub fn on_show_game(handler: impl FnMut(String) + 'static) {
     on_event("show-game", handler);
@@ -596,10 +611,11 @@ pub async fn rerun_setup() -> Result<SettingsView, String> {
 struct RaArgs {
     user: String,
     key: String,
+    password: Option<String>,
 }
 
-pub async fn ra_connect(user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
-    call("ra_connect", &RaArgs { user, key }).await
+pub async fn ra_connect(user: String, key: String, password: Option<String>) -> Result<cerberus_shared::RaProfile, String> {
+    call("ra_connect", &RaArgs { user, key, password }).await
 }
 
 /// The Steam account on this PC: SteamID64 and name.

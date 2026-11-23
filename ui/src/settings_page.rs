@@ -154,7 +154,7 @@ pub fn SettingsPage() -> impl IntoView {
             .into_any(),
             Section::Emulation => emulation(s).into_any(),
             Section::Steam => view! { <SteamAccountCard /> }.into_any(),
-            Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() /> }.into_any(),
+            Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() retroarch=s.ra_retroarch /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
             Section::Storage => storage(s, busy, apply).into_any(),
             Section::About => about(s, busy, apply).into_any(),
@@ -413,17 +413,16 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 }
 
 fn emulation(s: SettingsView) -> impl IntoView {
-    view! { <Emulation roms=s.roms.len() ra_user=s.ra_user.clone() /> }
+    view! { <Emulation roms=s.roms.len() ra_user=s.ra_user.clone() ra_retroarch=s.ra_retroarch /> }
 }
 
 /// RetroArch for the classics: install or pick it, its cores, and RetroAchievements in it.
 #[component]
-fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
+fn Emulation(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> impl IntoView {
     let library = expect_context::<Library>();
     let state = RwSignal::new(None::<cerberus_shared::EmulationView>);
     let busy = RwSignal::new(None::<String>);
     let progress = RwSignal::new((0u64, 0u64));
-    let password = RwSignal::new(String::new());
     spawn_local(async move {
         state.set(library.report(api::emulation_status().await));
     });
@@ -494,22 +493,12 @@ fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
                 }
             })
             .collect_view();
-        let retro = match (&v.ra_user, ra_linked) {
-            (Some(user), _) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conectado como {}", user)}</span> }.into_any(),
-            (None, false) => view! { <small>{tr!("Conecte sua conta em Contas › RetroAchievements primeiro.")}</small> }.into_any(),
-            (None, true) => view! {
-                <form class="row" on:submit=move |e: leptos::ev::SubmitEvent| {
-                    e.prevent_default();
-                    let pass = password.get_untracked();
-                    password.set(String::new());
-                    run("ra".to_string(), Box::pin(api::link_retroarch_achievements(pass)), tr!("RetroArch conectado ao RetroAchievements."));
-                }>
-                    <input class="input" type="password" placeholder=tr!("Sua senha do RetroAchievements") prop:value=move || password.get()
-                        on:input=move |e| password.set(event_target_value(&e)) />
-                    <button type="submit" class="btn sm main" disabled=move || disabled() || !has || password.get().is_empty()>{tr!("Conectar")}</button>
-                </form>
-            }
-            .into_any(),
+        // The account lives in Settings › Accounts; here is only whether RetroArch has it.
+        let retro = match (&v.ra_user, ra_linked, ra_retroarch) {
+            (Some(user), _, _) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conectado como {}", user)}</span> }.into_any(),
+            (None, true, true) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conecta sozinho ao abrir um jogo")}</span> }.into_any(),
+            (None, true, false) => view! { <small>{tr!("Informe sua senha em Contas › RetroAchievements para ligar as conquistas no RetroArch.")}</small> }.into_any(),
+            (None, false, _) => view! { <small>{tr!("Conecte sua conta em Contas › RetroAchievements primeiro.")}</small> }.into_any(),
         };
         view! {
             <section class="card set">
@@ -559,7 +548,7 @@ fn Emulation(roms: usize, ra_user: Option<String>) -> impl IntoView {
             </section>
             <section class="card set">
                 <h3>{tr!("Conquistas no RetroArch")}</h3>
-                {row("RetroAchievements", tr!("O Cerberus troca sua senha por um código de acesso no site e grava só o código no RetroArch. A senha não fica guardada. O arquivo de configurações do RetroArch ganha uma cópia de segurança antes."), retro)}
+                {row("RetroAchievements", tr!("A conta é a de Contas › RetroAchievements. O Cerberus grava no RetroArch só o código de acesso, nunca a senha, e faz uma cópia de segurança das configurações dele antes."), retro)}
             </section>
             <section class="card set">
                 {row(tr!("Seus clássicos"), tr!("{} jogos encontrados nas pastas de ROMs. Jogue pela aba Clássicos da Biblioteca.", roms),
@@ -768,17 +757,40 @@ fn SteamAccountCard() -> impl IntoView {
                 .into_any()
             }
         };
-        view! { <section class="card set"><h3>"Steam"</h3>{body}</section> }
+        view! {
+            <section class="card set">
+                <h3>"Steam"</h3>
+                {body}
+                <div class="row">
+                    <button type="button" class="link" on:click=move |_| spawn_local(async move { library.report(api::unlock_test().await); })>
+                        {tr!("Testar o aviso de conquista")}
+                    </button>
+                </div>
+            </section>
+        }
     }
 }
 
 #[component]
-fn RetroAchievements(linked: Option<String>) -> impl IntoView {
+fn RetroAchievements(linked: Option<String>, retroarch: bool) -> impl IntoView {
     let library = expect_context::<Library>();
     let profile = RwSignal::new(None::<RaProfile>);
     let loading = RwSignal::new(linked.is_some());
     let user = RwSignal::new(String::new());
     let key = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
+    let retroarch = RwSignal::new(retroarch);
+    let link = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        let pass = password.get_untracked();
+        password.set(String::new());
+        spawn_local(async move {
+            if library.report(api::link_retroarch_achievements(pass).await).is_some() {
+                retroarch.set(true);
+                library.toast(tr!("Conquistas ligadas no RetroArch."));
+            }
+        });
+    };
     let busy = RwSignal::new(false);
     if linked.is_some() {
         spawn_local(async move {
@@ -791,11 +803,17 @@ fn RetroAchievements(linked: Option<String>) -> impl IntoView {
         e.prevent_default();
         busy.set(true);
         spawn_local(async move {
-            let got = library.report(api::ra_connect(user.get_untracked(), key.get_untracked()).await);
+            let pass = Some(password.get_untracked()).filter(|p| !p.is_empty());
+            let with_pass = pass.is_some();
+            let got = library.report(api::ra_connect(user.get_untracked(), key.get_untracked(), pass).await);
             busy.set(false);
+            password.set(String::new());
             if let Some(p) = got {
                 library.toast(tr!("Conectado ao RetroAchievements como {}.", p.user));
                 key.set(String::new());
+                if with_pass {
+                    retroarch.set(true);
+                }
                 profile.set(Some(p));
             }
         });
@@ -804,6 +822,7 @@ fn RetroAchievements(linked: Option<String>) -> impl IntoView {
         spawn_local(async move {
             if library.report(api::ra_disconnect().await).is_some() {
                 profile.set(None);
+                retroarch.set(false);
                 library.toast(tr!("Conta do RetroAchievements desconectada deste PC."));
             }
         });
@@ -851,7 +870,19 @@ fn RetroAchievements(linked: Option<String>) -> impl IntoView {
                         </div>
                         <h4 class="ra-sub">{tr!("Jogados recentemente")}</h4>
                         <div class="ra-games">{games}</div>
-                        <p class="muted small">{tr!("As conquistas aparecem quando você joga num emulador conectado à sua conta. Quando a emulação chegar ao Cerberus, ele conecta os emuladores para você.")}</p>
+                        <h4 class="ra-sub">{tr!("Conquistas nos clássicos")}</h4>
+                        {move || if retroarch.get() {
+                            view! { <p class="muted small"><span class="pill ok"><Svg icon=Icon::Check size=14 />{tr!("Ligadas")}</span>" "{tr!("O RetroArch usa esta conta em todo jogo aberto pelo Cerberus.")}</p> }.into_any()
+                        } else {
+                            view! {
+                                <p class="muted small">{tr!("Para ganhar conquistas jogando, o RetroArch precisa entrar na sua conta. Informe a senha uma vez: o Cerberus troca por um código de acesso e não guarda a senha.")}</p>
+                                <form class="ra-form" on:submit=link>
+                                    <input class="input" type="password" placeholder=tr!("Sua senha do RetroAchievements") autocomplete="current-password"
+                                        prop:value=move || password.get() on:input=move |e| password.set(event_target_value(&e)) />
+                                    <button type="submit" class="btn sm main" disabled=move || password.get().is_empty()>{tr!("Ligar")}</button>
+                                </form>
+                            }.into_any()
+                        }}
                     </section>
                 }
                 .into_any()
@@ -863,6 +894,8 @@ fn RetroAchievements(linked: Option<String>) -> impl IntoView {
                     <form class="ra-form" on:submit=connect>
                         <input class="input" placeholder=tr!("Usuário") autocomplete="username" prop:value=move || user.get() on:input=move |e| user.set(event_target_value(&e)) />
                         <input class="input" type="password" placeholder=tr!("Chave da Web API") prop:value=move || key.get() on:input=move |e| key.set(event_target_value(&e)) />
+                        <input class="input" type="password" placeholder=tr!("Senha (opcional, para as conquistas no RetroArch)") autocomplete="current-password"
+                            prop:value=move || password.get() on:input=move |e| password.set(event_target_value(&e)) />
                         <button type="submit" class="btn sm main" disabled=move || busy.get() || user.get().trim().is_empty() || key.get().trim().is_empty()>
                             {move || if busy.get() { tr!("Conectando...") } else { tr!("Conectar") }}
                         </button>

@@ -24,6 +24,7 @@ mod versions;
 mod achievements;
 mod i18n;
 mod overlay;
+mod unlock;
 
 use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
@@ -38,6 +39,13 @@ use art::{Poster, cover_sources};
 fn main() {
     console_error_panic_hook::set_once();
     i18n::init();
+    if unlock::is_unlock() {
+        if let Some(root) = document().document_element() {
+            let _ = root.class_list().add_1("overlay-mode");
+        }
+        leptos::mount::mount_to_body(unlock::UnlockToast);
+        return;
+    }
     if overlay::is_overlay() {
         leptos::mount::mount_to_body(overlay::OverlayMenu);
         return;

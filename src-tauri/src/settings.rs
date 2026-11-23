@@ -38,6 +38,10 @@ pub struct Settings {
     pub ra_user: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
+    /// RetroAchievements' connect token, traded once for the password (which is
+    /// never kept), written into RetroArch whenever it lacks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ra_token: Option<String>,
     /// Steam's Web API, turned on by the player: their own key and their SteamID64.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steam_key: Option<String>,

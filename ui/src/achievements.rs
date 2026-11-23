@@ -3,6 +3,7 @@
 
 use cerberus_shared::{Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, GameAward, tr};
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 
 use crate::art::Poster;
 use crate::icons::{Icon, Svg};
@@ -94,6 +95,7 @@ pub fn AchievementsPage() -> impl IntoView {
     let platform = RwSignal::new(Platform::All);
     let state = RwSignal::new(State::All);
     let order = RwSignal::new(Order::Recent);
+    let refresh_later = StoredValue::new(None::<Callback<()>>);
     let refresh = move || {
         if refreshing.get_untracked() {
             return;
@@ -101,13 +103,26 @@ pub fn AchievementsPage() -> impl IntoView {
         refreshing.set(true);
         leptos::task::spawn_local(async move {
             let got = api::achievements_hub(true).await;
+            let again = got.as_ref().is_ok_and(|h| h.retry_soon);
             // A failed refresh keeps what's already on screen.
             if got.is_ok() || hub.get_untracked().is_none() {
                 hub.set(Some(got));
             }
             refreshing.set(false);
+            // Steam asked to wait: carry on by itself in a few minutes, if the page is still open.
+            if again {
+                let f = wasm_bindgen::closure::Closure::once_into_js(move || {
+                    if hub.try_get_untracked().is_some() {
+                        if let Some(again) = refresh_later.try_get_value().flatten() {
+                            again.run(());
+                        }
+                    }
+                });
+                let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(f.unchecked_ref(), 180_000);
+            }
         });
     };
+    refresh_later.set_value(Some(Callback::new(move |_| refresh())));
     leptos::task::spawn_local(async move {
         let got = api::achievements_hub(false).await;
         if hub.get_untracked().is_none() {

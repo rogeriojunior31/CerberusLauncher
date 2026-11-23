@@ -20,6 +20,7 @@ mod achievements;
 mod language;
 mod dlss;
 mod overlay;
+mod unlock_toast;
 mod disc_image;
 mod screenshots;
 mod monitors;
@@ -127,6 +128,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         monitor: chosen.monitor.clone(),
         language: chosen.language.clone(),
         ra_user: chosen.ra_user.clone(),
+        ra_retroarch: chosen.ra_token.is_some(),
         roms: {
             let played = emulation::played(&data.0);
             app.state::<RomIndex>()
@@ -540,6 +542,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
     };
     let log = data.join("emulators").join("retroarch-session.log");
+    connect_retroarch(&data, &exe);
     let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| emulation::launch(&exe, &opened, &console, Some(&log)));
     let id = format!("classic:{path}");
     trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no RetroArch").to_string()).map_err(Clone::clone));
@@ -557,7 +560,16 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
                     for line in text[read..].lines() {
                         if let Some(title) = emulation::unlocked(line) {
                             trail::note(&app, &id, tk!("Conquista"), &Ok(title.clone()));
-                            notify::tell(&app, tr!("Conquista desbloqueada"), &title);
+                            unlock_toast::show(
+                                &app,
+                                cerberus_shared::UnlockNotice {
+                                    title: tr!("Conquista desbloqueada").to_string(),
+                                    name: title.clone(),
+                                    description: String::new(),
+                                    icon: None,
+                                    kind: cerberus_shared::UnlockKind::Normal,
+                                },
+                            );
                         }
                     }
                     read = text.len();
@@ -582,10 +594,25 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
 #[tauri::command]
 async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Client>, password: String) -> Result<cerberus_shared::EmulationView, String> {
     let (data, picked) = retroarch_choice(&app);
-    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale ou escolha o RetroArch primeiro."))?;
-    let user = settings::load(&data).ra_user.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
-    emulation::link_retroachievements(&http, &exe, &user, &password).await?;
+    let mut chosen = settings::load(&data);
+    let user = chosen.ra_user.clone().ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
+    let (name, token) = emulation::connect_token(&http, &user, &password).await?;
+    chosen.ra_token = Some(token.clone());
+    settings::save(&data, &chosen)?;
+    // RetroArch gets it now when it's there, or at the next game otherwise.
+    if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
+        emulation::write_token(&exe, &name, &token)?;
+    }
     Ok(emulation::status(&data, picked.as_deref()))
+}
+
+/// Keeps RetroArch connected to the account given in Settings (a new RetroArch,
+/// or one whose settings were reset, gets it back before the game opens).
+fn connect_retroarch(data: &Path, exe: &Path) {
+    let chosen = settings::load(data);
+    if let (Some(user), Some(token)) = (chosen.ra_user, chosen.ra_token) {
+        let _ = emulation::write_token(exe, &user, &token);
+    }
 }
 
 /// The page the desktop window opens on.
@@ -781,17 +808,30 @@ fn rerun_setup(app: AppHandle) -> Result<SettingsView, String> {
 
 /// Links a RetroAchievements account once the site takes the username and key.
 #[tauri::command]
-async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
+async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: String, key: String, password: Option<String>) -> Result<cerberus_shared::RaProfile, String> {
     let (user, key) = (user.trim().to_string(), key.trim().to_string());
     if user.is_empty() || key.is_empty() {
         return Err(tr!("Preencha o usuário e a chave de API.").into());
     }
     let profile = retroachievements::profile(&http, &user, &key).await?;
-    let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
+    // The password, when given, connects RetroArch too; only the token it gives is kept.
+    let token = match password.as_deref().filter(|p| !p.is_empty()) {
+        Some(p) => Some(emulation::connect_token(&http, &profile.user, p).await?),
+        None => None,
+    };
+    let (data, picked) = retroarch_choice(&app);
+    let mut chosen = settings::load(&data);
     chosen.ra_user = Some(profile.user.clone());
     chosen.ra_key = Some(key);
-    settings::save(&data.0, &chosen)?;
+    if let Some((name, token)) = &token {
+        chosen.ra_token = Some(token.clone());
+        if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
+            let _ = emulation::write_token(&exe, name, token);
+        }
+    } else if chosen.ra_user.as_deref() != Some(profile.user.as_str()) {
+        chosen.ra_token = None;
+    }
+    settings::save(&data, &chosen)?;
     Ok(profile)
 }
 
@@ -810,6 +850,7 @@ fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
     let mut chosen = settings::load(&data.0);
     chosen.ra_user = None;
     chosen.ra_key = None;
+    chosen.ra_token = None;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
 }
@@ -1975,6 +2016,7 @@ fn main() {
             // Filters left beside a game by a crash or a forced close go now.
             looks::take_back_all(&data_dir);
             app.manage(trail::Trail::new(&data_dir));
+            app.manage(unlock_toast::Queue::default());
             let folders = recomp::Folders::new(&data_dir, chosen.recomps_dir.clone());
             folders.set_cloud(chosen.cloud_dir.clone());
             app.manage(folders);
@@ -2109,6 +2151,8 @@ fn main() {
             dlss_restore,
             overlay::overlay_state,
             overlay::overlay_close,
+            unlock_toast::unlock_next,
+            unlock_toast::unlock_test,
             overlay::overlay_screenshot,
             overlay::overlay_quit_game,
             overlay::overlay_open_launcher,

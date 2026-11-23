@@ -388,9 +388,9 @@ pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Resu
         .map_err(|e| tr!("Não foi possível abrir o RetroArch: {}", e))
 }
 
-/// Trades the player's password for RetroAchievements' connect token and
-/// writes it into RetroArch's settings (backed up first). The password is not kept.
-pub async fn link_retroachievements(http: &reqwest::Client, exe: &Path, user: &str, password: &str) -> Result<String, String> {
+/// Trades the player's password for RetroAchievements' connect token: the
+/// account's exact name and the token. The password is not kept.
+pub async fn connect_token(http: &reqwest::Client, user: &str, password: &str) -> Result<(String, String), String> {
     let reply = http
         .post("https://retroachievements.org/dorequest.php")
         .header("User-Agent", format!("CerberusLauncher/{}", env!("CARGO_PKG_VERSION")))
@@ -406,14 +406,25 @@ pub async fn link_retroachievements(http: &reqwest::Client, exe: &Path, user: &s
     }
     let token = body.get("Token").and_then(serde_json::Value::as_str).filter(|t| !t.is_empty()).ok_or(tr!("O RetroAchievements não mandou o código de acesso."))?;
     let name = body.get("User").and_then(serde_json::Value::as_str).unwrap_or(user).to_string();
+    Ok((name, token.to_string()))
+}
+
+/// Puts the account in RetroArch's settings when they don't have it already
+/// (backed up first). Nothing is written when it's already there.
+pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
     let cfg = config_file(exe);
     let text = fs::read_to_string(&cfg).unwrap_or_default();
+    let same = config_value(&text, "cheevos_enable").as_deref() == Some("true")
+        && config_value(&text, "cheevos_username").as_deref() == Some(name)
+        && config_value(&text, "cheevos_token").as_deref() == Some(token);
+    if same {
+        return Ok(());
+    }
     if !text.is_empty() {
         let _ = fs::copy(&cfg, cfg.with_extension("cfg.cerberus-bak"));
     }
-    let updated = with_values(&text, &[("cheevos_enable", "true"), ("cheevos_username", &name), ("cheevos_token", token), ("cheevos_password", "")]);
-    fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))?;
-    Ok(name)
+    let updated = with_values(&text, &[("cheevos_enable", "true"), ("cheevos_username", name), ("cheevos_token", token), ("cheevos_password", "")]);
+    fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
 }
 
 /// An achievement RetroArch unlocked, from a line of its log:

@@ -102,13 +102,17 @@ async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [Achiev
     }
 }
 
-/// How many games' achievements are asked of Steam's API at once.
-/// Steam's edge servers turn the key away for a while when asked too fast.
-const AT_ONCE: usize = 2;
+/// Steam's edge servers turn the key away for a while when asked too fast:
+/// one question at a time, with a pause after each one that reached Steam.
+const AT_ONCE: usize = 1;
+/// Games whose unlock dates are asked again per refresh (the most recently
+/// played first); the rest use what's kept, and the counts are always fresh.
+const DATES_PER_REFRESH: usize = 25;
 
-/// Steam's part from the Web API: every owned game with achievements. Games the
-/// API has are taken from it (it knows unlocks made on other PCs); the local
-/// cache still fills icons, and keeps games the API doesn't list.
+/// Steam's part from the Web API: every owned game with achievements. The
+/// counts come for all games in a few questions; unlock dates come per game,
+/// a few each refresh. The local cache still fills icons, and keeps games the
+/// API doesn't list.
 async fn steam_api_part(
     http: &reqwest::Client,
     data_dir: &Path,
@@ -120,26 +124,46 @@ async fn steam_api_part(
 ) -> Result<(Vec<AchievementGame>, Vec<RecentUnlock>, Option<String>), String> {
     use futures_util::StreamExt;
     use std::sync::atomic::{AtomicBool, Ordering};
+    let not_public = cerberus_shared::i18n::t(steam_api::NOT_PUBLIC);
     let owned = match steam_api::owned(http, data_dir, key, id, online).await {
         Ok(list) => list,
         // Steam busy: last hour's list on disk still beats nothing.
-        Err(e) if online && e != cerberus_shared::i18n::t(steam_api::NOT_PUBLIC) => match steam_api::owned(http, data_dir, key, id, false).await {
+        Err(e) if online && e != not_public => match steam_api::owned(http, data_dir, key, id, false).await {
             Ok(list) => list,
             Err(_) => return Err(e),
         },
         Err(e) => return Err(e),
     };
-    // Once Steam says no (private details, too many questions), the rest is read
-    // from the disk only, instead of asking again and again.
-    let blocked = AtomicBool::new(!online);
-    let blocked = &blocked;
     let local_keys: std::collections::HashSet<String> = local.iter().map(|g| g.key.clone()).collect();
-    let wanted: Vec<steam_api::Owned> = owned.into_iter().filter(|o| o.stats && (o.minutes > 0 || local_keys.contains(&o.app.to_string()))).collect();
-    let mut asks = futures_util::stream::iter(wanted.into_iter().map(|o| async move {
-        let ask = !blocked.load(Ordering::Relaxed);
+    let mut wanted: Vec<steam_api::Owned> = owned.into_iter().filter(|o| o.stats && (o.minutes > 0 || local_keys.contains(&o.app.to_string()))).collect();
+    // The games played last come first, so a stop halfway still shows what matters.
+    wanted.sort_by(|a, b| b.last_played.cmp(&a.last_played).then(b.minutes.cmp(&a.minutes)));
+
+    let mut first_error: Option<String> = None;
+    let apps: Vec<(u32, u64)> = wanted.iter().map(|o| (o.app, o.last_played)).collect();
+    let tops = match steam_api::tops(http, data_dir, key, id, &apps, online).await {
+        Ok(t) => t,
+        Err(e) if e == not_public => return Err(e),
+        Err(e) => {
+            if online && e != steam_api::OFFLINE {
+                first_error = Some(e);
+            }
+            steam_api::tops(http, data_dir, key, id, &apps, false).await.unwrap_or_default()
+        }
+    };
+
+    // Once Steam says no, the rest is read from the disk only.
+    let blocked = AtomicBool::new(!online || first_error.is_some());
+    let blocked = &blocked;
+    // With the counts in hand the profile is public: a "not public" for one game
+    // is about that game only, not a reason to stop.
+    let public = !tops.is_empty();
+    let mut asks = futures_util::stream::iter(wanted.into_iter().enumerate().map(|(i, o)| async move {
+        let ask = i < DATES_PER_REFRESH && !blocked.load(Ordering::Relaxed);
         let mut list = steam_api::mine(http, data_dir, key, id, o.app, o.last_played, ask).await;
         if let Err(e) = &list {
-            if ask && e != steam_api::OFFLINE {
+            let one_game = public && *e == cerberus_shared::i18n::t(steam_api::NOT_PUBLIC);
+            if ask && e != steam_api::OFFLINE && !one_game {
                 blocked.store(true, Ordering::Relaxed);
                 let refused = e.clone();
                 list = steam_api::mine(http, data_dir, key, id, o.app, o.last_played, false).await.map_err(|_| refused);
@@ -155,28 +179,32 @@ async fn steam_api_part(
         .collect();
     let mut games = Vec::new();
     let mut recent = Vec::new();
-    let mut first_error = None;
     let mut from_api = std::collections::HashSet::new();
     while let Some((o, list)) = asks.next().await {
         let list = match list {
             Ok(list) => list,
             Err(e) => {
-                if e != steam_api::OFFLINE {
+                if e != steam_api::OFFLINE && !(public && e == not_public) {
                     first_error.get_or_insert(e);
                 }
-                continue;
+                Vec::new()
             }
         };
-        if list.is_empty() {
+        let top = tops.get(&o.app).copied().filter(|t| t.total > 0);
+        if list.is_empty() && top.is_none() {
             continue;
         }
         let app = o.app.to_string();
         from_api.insert(app.clone());
-        let unlocked: Vec<&steam_api::Mine> = list.iter().filter(|m| m.achieved).collect();
-        let all = unlocked.len() == list.len();
-        let last = unlocked.iter().map(|m| m.unlocked_at).filter(|t| *t > 0).max();
+        let unlocked_list: Vec<&steam_api::Mine> = list.iter().filter(|m| m.achieved).collect();
+        let (total, unlocked) = match top {
+            Some(t) => (t.total, t.unlocked),
+            None => (list.len() as u32, unlocked_list.len() as u32),
+        };
+        let all = total > 0 && unlocked == total;
+        let last = unlocked_list.iter().map(|m| m.unlocked_at).filter(|t| *t > 0).max();
         let name = if o.name.trim().is_empty() { local.iter().find(|g| g.key == app).map(|g| g.name.clone()).unwrap_or_else(|| format!("App {app}")) } else { o.name.clone() };
-        for m in &unlocked {
+        for m in &unlocked_list {
             if m.unlocked_at == 0 {
                 continue;
             }
@@ -205,12 +233,12 @@ async fn steam_api_part(
             name,
             art: steam::art(o.app),
             platform: "Steam".into(),
-            total: list.len() as u32,
-            unlocked: unlocked.len() as u32,
+            total,
+            unlocked,
             hardcore: 0,
             points: 0,
             points_total: 0,
-            last_unlock: last,
+            last_unlock: last.or_else(|| local.iter().find(|g| g.key == app).and_then(|g| g.last_unlock)),
             playtime_secs: (o.minutes > 0).then_some(o.minutes * 60),
             last_played: (o.last_played > 0).then_some(o.last_played),
             award: all.then_some(cerberus_shared::GameAward::Completed),
@@ -287,6 +315,7 @@ pub async fn hub(
                 games = g;
                 recent = r;
                 if let Some(e) = warning {
+                    hub.retry_soon = e == cerberus_shared::i18n::t(steam_api::BUSY);
                     hub.problems.push(tr!("Steam: {}", e));
                 }
             }

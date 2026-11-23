@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use cerberus_shared::{Achievement, tk, tr};
+use cerberus_shared::{Achievement, UnlockKind, UnlockNotice, tk, tr};
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::steam;
@@ -79,19 +79,36 @@ impl Live {
             w.changed = now;
             let Some((name, list)) = steam::read_game(&account, app_id) else { continue };
             let (fresh, complete) = news(&w.unlocked, &list);
+            let game = if name.trim().is_empty() { format!("App {app_id}") } else { name };
             for a in &fresh {
                 let rare = w.rarity.get(&a.id).copied().filter(|r| *r < RARE);
                 let title = match rare {
                     Some(r) => tr!("Conquista rara desbloqueada ({}% dos jogadores)", format!("{r:.1}")),
                     None => tr!("Conquista desbloqueada").to_string(),
                 };
-                let body = if a.description.is_empty() { a.name.clone() } else { format!("{} — {}", a.name, a.description) };
-                crate::notify::tell(app, &title, &body);
+                crate::unlock_toast::show(
+                    app,
+                    UnlockNotice {
+                        title,
+                        name: a.name.clone(),
+                        description: a.description.clone(),
+                        icon: a.icon.clone(),
+                        kind: if rare.is_some() { UnlockKind::Rare } else { UnlockKind::Normal },
+                    },
+                );
                 crate::trail::note(app, &format!("steam:{app_id}"), tk!("Conquista"), &Ok(a.name.clone()));
             }
             if complete {
-                let game = if name.trim().is_empty() { format!("App {app_id}") } else { name };
-                crate::notify::tell(app, tr!("100% das conquistas!"), &tr!("Você completou {}.", game));
+                crate::unlock_toast::show(
+                    app,
+                    UnlockNotice {
+                        title: tr!("100% das conquistas!").to_string(),
+                        name: game.clone(),
+                        description: tr!("Você completou {}.", game),
+                        icon: None,
+                        kind: UnlockKind::Complete,
+                    },
+                );
             }
             if !fresh.is_empty() {
                 let _ = app.emit("achievements-changed", app_id);

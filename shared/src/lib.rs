@@ -340,6 +340,9 @@ pub struct SettingsView {
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,
+    /// The RetroAchievements password was given once: RetroArch gets connected by itself.
+    #[serde(default)]
+    pub ra_retroarch: bool,
     /// Files found in the ROM folders, for the Clássicos view.
     #[serde(default)]
     pub roms: Vec<RomView>,
@@ -386,6 +389,27 @@ pub struct SteamAccount {
     pub games_public: bool,
     /// Owned games, when they can be read.
     pub games: u32,
+}
+
+/// What kind of achievement notice to draw over the game.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UnlockKind {
+    Normal,
+    /// Few players have it.
+    Rare,
+    /// The last one: the game is at 100%.
+    Complete,
+}
+
+/// A notice over the game when an achievement unlocks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnlockNotice {
+    pub title: String,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub kind: UnlockKind,
 }
 
 /// Where a game's achievements come from.
@@ -535,6 +559,9 @@ pub struct AchievementsHub {
     pub retro_softcore: u64,
     /// Why a source couldn't be read this time (offline, key refused...).
     pub problems: Vec<String>,
+    /// Steam turned questions away before every game was read: ask again in a few minutes.
+    #[serde(default)]
+    pub retry_soon: bool,
 }
 
 /// One game's achievements, for its page in the hub.
