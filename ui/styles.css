@@ -1684,3 +1684,12 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .foot-icon { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); border: 1px solid var(--line); transition: background 0.15s, color 0.15s; }
 .foot-icon:hover { background: var(--fill2); color: var(--ink); }
 .foot-icon.on { background: var(--card2); color: var(--accent); }
+
+/* Discover: genres */
+.genre-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.gchip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--fill2);
+  color: var(--muted); font-weight: 600; font-size: 13px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.gchip:hover { color: var(--ink); border-color: var(--line2); }
+.gchip small { font-size: 11px; color: var(--dim); font-weight: 600; }
+.gchip.on { background: var(--grad); border-color: transparent; color: #fff; }
+.gchip.on small { color: rgba(255, 255, 255, 0.8); }

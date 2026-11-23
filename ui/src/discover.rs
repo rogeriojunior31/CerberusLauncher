@@ -178,6 +178,51 @@ fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
     needle.split_whitespace().all(|word| haystack.contains(word))
 }
 
+/// The catalog's genres, in the player's words. "other" isn't offered.
+fn genre_label(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "action" => tr!("Ação"),
+        "platformer" => tr!("Plataformas"),
+        "shooter" => tr!("Tiro"),
+        "rpg" => "RPG",
+        "racing" => tr!("Corrida"),
+        "fighting" => tr!("Luta"),
+        "adventure" => tr!("Aventura"),
+        "sports" => tr!("Esportes"),
+        "puzzle" => tr!("Quebra-cabeça"),
+        _ => return None,
+    })
+}
+
+/// What a recomp adds, as the catalog tags it (several tags mean the same thing).
+// Tags come in Portuguese (the catalog is kept in it) or back in English, so both are listed.
+const FEATURES: [(&str, &[&str]); 7] = [
+    ("controller", &["Controller", "Controller Support", "Controle", "Suporte a controle"]),
+    ("achievements", &["Achievements", "Conquistas"]),
+    ("coop", &["Local Co-op", "Split Screen", "Multiplayer", "Co-op", "Cooperativo local", "Tela dividida", "Multijogador", "Cooperativo"]),
+    ("online", &["Online", "Netplay", "Jogo em rede"]),
+    ("fps", &["High FPS", "60 FPS", "FPS alto"]),
+    ("wide", &["Widescreen", "Ultrawide", "Ultrawide experimental", "Experimental ultrawide"]),
+    ("mods", &["Mods", "Mod support", "Suporte a mods"]),
+];
+
+fn feature_label(id: &str) -> &'static str {
+    match id {
+        "controller" => tr!("Suporte a controle"),
+        "achievements" => tr!("Conquistas"),
+        "coop" => tr!("Multijogador local"),
+        "online" => tr!("Online"),
+        "fps" => tr!("Mais FPS"),
+        "wide" => tr!("Tela larga"),
+        "mods" => tr!("Mods"),
+        _ => "",
+    }
+}
+
+fn has_feature(entry: &RecompEntry, id: &str) -> bool {
+    FEATURES.iter().find(|(f, _)| *f == id).is_some_and(|(_, tags)| entry.tags.iter().any(|t| tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
+}
+
 #[component]
 pub fn DiscoverPage() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -185,6 +230,8 @@ pub fn DiscoverPage() -> impl IntoView {
     let console = RwSignal::new(String::new());
     let sort = RwSignal::new(Sort::Popular);
     let only_owned = RwSignal::new(false);
+    let genre = RwSignal::new(String::new());
+    let feature = RwSignal::new(String::new());
     // Recomps by their own names ("Zelda 64: Recompiled"), or by the game they bring back ("Majora's Mask").
     let by_game = RwSignal::new(by_game_saved());
     let shown = RwSignal::new(PAGE);
@@ -194,6 +241,8 @@ pub fn DiscoverPage() -> impl IntoView {
         console.track();
         sort.track();
         only_owned.track();
+        genre.track();
+        feature.track();
         shown.set(PAGE);
     });
 
@@ -211,6 +260,22 @@ pub fn DiscoverPage() -> impl IntoView {
         counts.sort_by_key(|(_, _, n)| std::cmp::Reverse(*n));
         counts
     };
+    // Genres with recomps on the chosen platform, most first.
+    let genres = move || {
+        let wanted_console = console.get();
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for (entry, _) in one_each(&entries()) {
+            if genre_label(&entry.genre).is_none() || !(wanted_console.is_empty() || entry.origin == wanted_console) {
+                continue;
+            }
+            match counts.iter_mut().find(|(g, _)| *g == entry.genre) {
+                Some(found) => found.1 += 1,
+                None => counts.push((entry.genre.clone(), 1)),
+            }
+        }
+        counts.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+        counts
+    };
 
     let filtered = move || {
         let needle = search.get().to_lowercase();
@@ -222,6 +287,8 @@ pub fn DiscoverPage() -> impl IntoView {
             .into_iter()
             .filter(|(e, _)| wanted_console.is_empty() || e.origin == wanted_console)
             .filter(|(e, _)| !only_owned.get() || e.owned_copy.is_some())
+            .filter(|(e, _)| genre.with(|g| g.is_empty() || e.genre == *g))
+            .filter(|(e, _)| feature.with(|f| f.is_empty() || has_feature(e, f)))
             .filter_map(|(lead, n)| {
                 if matches_search(&lead, &needle) {
                     return Some((lead, n));
@@ -237,11 +304,13 @@ pub fn DiscoverPage() -> impl IntoView {
         games
     };
 
-    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get();
+    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get() || !genre.get().is_empty() || !feature.get().is_empty();
     let clear = move |_| {
         search.set(String::new());
         console.set(String::new());
         only_owned.set(false);
+        genre.set(String::new());
+        feature.set(String::new());
     };
 
     let grid = move || {
@@ -368,9 +437,30 @@ pub fn DiscoverPage() -> impl IntoView {
                             <option value=id>{format!("{name} ({n})")}</option>
                         }).collect_view()}
                     </select>
+                    <label for="catalog-feature">{tr!("Recurso")}</label>
+                    <select id="catalog-feature" class="select" prop:value=move || feature.get()
+                        on:change=move |e| feature.set(event_target_value(&e))>
+                        <option value="">{tr!("Qualquer recurso")}</option>
+                        {FEATURES.iter().map(|(id, _)| view! { <option value=*id>{feature_label(id)}</option> }).collect_view()}
+                    </select>
                     <Show when=has_filters>
                         <button type="button" class="link" on:click=clear>{tr!("Limpar filtros")}</button>
                     </Show>
+                </div>
+                <div class="genre-chips" role="radiogroup" aria-label=tr!("Gênero")>
+                    <button type="button" class="gchip" role="radio" class:on=move || genre.with(String::is_empty)
+                        aria-checked=move || genre.with(String::is_empty).to_string() on:click=move |_| genre.set(String::new())>{tr!("Todos os gêneros")}</button>
+                    {move || genres().into_iter().map(|(id, n)| {
+                        let mine = id.clone();
+                        let pick = id.clone();
+                        let on = move || genre.with(|g| *g == mine);
+                        view! {
+                            <button type="button" class="gchip" role="radio" class:on=on.clone() aria-checked=move || on().to_string()
+                                on:click=move |_| genre.update(|g| *g = if *g == pick { String::new() } else { pick.clone() })>
+                                {genre_label(&id).unwrap_or_default()}<small>{n}</small>
+                            </button>
+                        }
+                    }).collect_view()}
                 </div>
             </section>
             {grid}
