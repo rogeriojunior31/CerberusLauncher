@@ -24,6 +24,8 @@ While a game is running, closing the window always keeps Cerberus in the tray, s
 | Setting | What it does |
 |---|---|
 | **Language** | **Automatic** follows Windows: Portuguese for Portuguese speakers, English for everyone else. You can also pick one. The window reloads in the new language |
+| **Theme** | **Dark**, or **Black (OLED)** with a fully black background for OLED screens and dark rooms |
+| **Accent color** | Orange, blue, green, purple or pink, for main buttons, progress bars and the open page |
 | **Size** | 90%, 100%, 110% or 125%: text, covers and buttons in the window. Big Picture Mode follows the screen |
 | **Fewer animations** | No transitions or motion |
 

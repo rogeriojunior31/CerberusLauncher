@@ -52,7 +52,7 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
 /// What the search finds: each section's options, by the titles their rows show.
 const FIND: &[(Section, &[&str])] = &[
     (Section::General, &[tk!("Página inicial"), "Monitor", tk!("Configuração inicial"), tk!("Abrir com o Windows"), tk!("Começar escondido na bandeja"), tk!("Continuar na bandeja")]),
-    (Section::Appearance, &[tk!("Idioma"), tk!("Tamanho"), tk!("Menos animações")]),
+    (Section::Appearance, &[tk!("Idioma"), tk!("Tema"), tk!("Cor de destaque"), tk!("Tamanho"), tk!("Menos animações")]),
     (Section::InGame, &[tk!("Menu sobre o jogo"), tk!("Fotos com F12"), tk!("Sair da frente enquanto joga"), tk!("Aviso de conquista"), tk!("Mostrar sobre o jogo"), tk!("Canto da tela")]),
     (Section::Notices, &[tk!("Jogo pronto para jogar"), tk!("Jogo fechou com erro"), tk!("Foto salva"), tk!("Avisos do Windows"), tk!("Conquistas")]),
     (Section::BigPicture, &[tk!("Abrir no Big Picture Mode"), tk!("Sons de navegação"), tk!("Entrar e sair pelo controle")]),
@@ -206,6 +206,45 @@ fn save_size(percent: u32) {
         let _ = s.set_item(SIZE_KEY, &percent.to_string());
     }
     apply_size(percent);
+}
+
+const THEME_KEY: &str = "cerberus-theme";
+const ACCENT_KEY: &str = "cerberus-accent";
+/// The backgrounds: id and name.
+const THEMES: [(&str, &str); 2] = [("dark", tk!("Escuro")), ("oled", tk!("Preto (OLED)"))];
+/// The colors for what to do (buttons, bars, the current page): id, name, and the swatch.
+const ACCENTS: [(&str, &str, &str); 5] = [
+    ("orange", tk!("Laranja"), "linear-gradient(135deg, #ff9a3d, #ff3d4d)"),
+    ("blue", tk!("Azul"), "linear-gradient(135deg, #5cc8ff, #3d6bff)"),
+    ("green", tk!("Verde"), "linear-gradient(135deg, #a6e45a, #1fbf75)"),
+    ("purple", tk!("Roxo"), "linear-gradient(135deg, #c58bff, #7a5cff)"),
+    ("pink", tk!("Rosa"), "linear-gradient(135deg, #ff8ac2, #ff3d7a)"),
+];
+
+fn stored(key: &str) -> Option<String> {
+    web_sys::window().and_then(|w| w.local_storage().ok().flatten()).and_then(|s| s.get_item(key).ok().flatten())
+}
+
+/// The theme and accent picked on this PC (the first of each when none).
+pub fn look_saved() -> (&'static str, &'static str) {
+    let theme = stored(THEME_KEY).and_then(|v| THEMES.iter().find(|t| t.0 == v)).map_or(THEMES[0].0, |t| t.0);
+    let accent = stored(ACCENT_KEY).and_then(|v| ACCENTS.iter().find(|a| a.0 == v)).map_or(ACCENTS[0].0, |a| a.0);
+    (theme, accent)
+}
+
+/// Puts the theme and accent on the whole window (the stylesheet reads them).
+pub fn apply_look((theme, accent): (&str, &str)) {
+    if let Some(root) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.document_element()) {
+        let _ = root.set_attribute("data-theme", theme);
+        let _ = root.set_attribute("data-accent", accent);
+    }
+}
+
+fn save_look(key: &str, value: &str) {
+    if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = s.set_item(key, value);
+    }
+    apply_look(look_saved());
 }
 
 fn save_calm(on: bool) {
@@ -457,7 +496,31 @@ fn language_row() -> impl IntoView {
 fn appearance() -> impl IntoView {
     let calm = RwSignal::new(calm_saved());
     let size = RwSignal::new(size_saved());
+    let look = RwSignal::new(look_saved());
     let busy = RwSignal::new(false);
+    let themes = THEMES
+        .into_iter()
+        .map(|(id, name)| {
+            let on = move || look.get().0 == id;
+            view! {
+                <button type="button" class="seg" role="radio" class:on=on aria-checked=move || on().to_string()
+                    on:click=move |_| { save_look(THEME_KEY, id); look.set(look_saved()); }>{cerberus_shared::i18n::t(name)}</button>
+            }
+        })
+        .collect_view();
+    let accents = ACCENTS
+        .into_iter()
+        .map(|(id, name, swatch)| {
+            let on = move || look.get().1 == id;
+            let name = cerberus_shared::i18n::t(name);
+            view! {
+                <button type="button" class="swatch" role="radio" class:on=on aria-checked=move || on().to_string() aria-label=name title=name
+                    style=format!("background: {swatch}") on:click=move |_| { save_look(ACCENT_KEY, id); look.set(look_saved()); }>
+                    <Svg icon=Icon::Check size=16 />
+                </button>
+            }
+        })
+        .collect_view();
     let sizes = SIZES
         .into_iter()
         .map(|p| {
@@ -471,6 +534,10 @@ fn appearance() -> impl IntoView {
         <section class="card set">
             <h3>{tr!("Aparência")}</h3>
             {language_row()}
+            {row(tr!("Tema"), tr!("O fundo da janela. Preto (OLED) apaga o fundo de vez, bom para telas OLED e quartos escuros."),
+                view! { <div class="segs" role="radiogroup" aria-label=tr!("Tema")>{themes}</div> })}
+            {row(tr!("Cor de destaque"), tr!("A cor dos botões principais, das barras de progresso e da página aberta."),
+                view! { <div class="swatches" role="radiogroup" aria-label=tr!("Cor de destaque")>{accents}</div> })}
             {row(tr!("Tamanho"), tr!("Textos, capas e botões da janela. O Big Picture Mode segue o tamanho da tela."),
                 view! { <div class="segs" role="radiogroup" aria-label=tr!("Tamanho")>{sizes}</div> })}
             {move || row(tr!("Menos animações"), tr!("Sem transições nem movimento, para PCs mais simples ou para quem prefere assim."),
