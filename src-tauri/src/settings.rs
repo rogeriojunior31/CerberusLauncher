@@ -80,6 +80,9 @@ pub struct Settings {
     /// What happens while a game is open.
     #[serde(default)]
     pub in_game: cerberus_shared::InGame,
+    /// Which notices to give, and where.
+    #[serde(default)]
+    pub notices: cerberus_shared::Notices,
 }
 
 fn yes() -> bool {

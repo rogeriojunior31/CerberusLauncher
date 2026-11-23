@@ -15,6 +15,7 @@ enum Section {
     General,
     Appearance,
     InGame,
+    Notices,
     BigPicture,
     Library,
     Install,
@@ -30,7 +31,7 @@ enum Section {
 }
 
 const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
-    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv)]),
+    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv)]),
     (
         tk!("Jogos"),
         &[
@@ -141,6 +142,7 @@ pub fn SettingsPage() -> impl IntoView {
             Section::General => general(s, busy, apply).into_any(),
             Section::Appearance => appearance().into_any(),
             Section::InGame => in_game(s, busy, apply).into_any(),
+            Section::Notices => notices(s, busy, apply).into_any(),
             Section::BigPicture => big_picture(s, busy, apply).into_any(),
             Section::Library => roms(s, busy, apply).into_any(),
             Section::Install => install(s, busy, apply).into_any(),
@@ -285,6 +287,35 @@ fn appearance() -> impl IntoView {
             {language_row()}
             {move || row(tr!("Menos animações"), tr!("Sem transições nem movimento, para PCs mais simples ou para quem prefere assim."),
                 switch(calm.get(), tr!("Menos animações"), busy, move || { let on = !calm.get_untracked(); save_calm(on); calm.set(on); }))}
+        </section>
+    }
+}
+
+/// Which notices to give, and whether Windows shows them.
+fn notices(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let now = s.notices.clone();
+    let change = move |edit: fn(&mut cerberus_shared::Notices)| {
+        let mut next = now.clone();
+        edit(&mut next);
+        move || apply(Box::pin(api::set_notices(next.clone())), "")
+    };
+    let n = s.notices.clone();
+    view! {
+        <section class="card set">
+            <div class="card-h"><h3>{tr!("Notificações")}</h3></div>
+            {row(tr!("Jogo pronto para jogar"), tr!("Quando um recomp termina de instalar ou atualizar, ou o instalador de um jogo termina."),
+                switch(n.installed, tr!("Jogo pronto para jogar"), busy, change(|x| x.installed = !x.installed)))}
+            {row(tr!("Jogo fechou com erro"), tr!("Com o motivo e a dica do que fazer, quando dá para saber."),
+                switch(n.crashed, tr!("Jogo fechou com erro"), busy, change(|x| x.crashed = !x.crashed)))}
+            {row(tr!("Foto salva"), tr!("Confirma cada foto tirada com F12."),
+                switch(n.screenshots, tr!("Foto salva"), busy, change(|x| x.screenshots = !x.screenshots)))}
+        </section>
+        <section class="card set">
+            <div class="card-h"><h3>{tr!("Onde aparecem")}</h3></div>
+            {row(tr!("Avisos do Windows"), tr!("Com o Cerberus fora da frente (jogando, ou na bandeja), o aviso aparece no canto do Windows. Desligado, aparece só dentro do Cerberus."),
+                switch(n.windows, tr!("Avisos do Windows"), busy, change(|x| x.windows = !x.windows)))}
+            {row(tr!("Conquistas"), tr!("O aviso de conquista sobre o jogo tem seus próprios ajustes."),
+                view! { <span class="muted small">{tr!("Em Durante o jogo")}</span> })}
         </section>
     }
 }

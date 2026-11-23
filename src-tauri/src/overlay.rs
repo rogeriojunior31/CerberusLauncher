@@ -42,7 +42,7 @@ pub fn toggle(app: &AppHandle) {
     }
     let Some((window, game)) = crate::screenshots::game_in_front(app) else { return };
     let Some((x, y, width, height)) = win::client_rect(window) else {
-        crate::notify::tell(app, tr!("Não foi possível abrir o menu"), tr!("o jogo está minimizado ou em tela cheia exclusiva"));
+        crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível abrir o menu"), tr!("o jogo está minimizado ou em tela cheia exclusiva"));
         return;
     };
     app.state::<Overlay>().set(Some((game.id.clone(), window as isize)));
@@ -77,7 +77,7 @@ pub fn toggle(app: &AppHandle) {
             let _ = window.set_focus();
             win::bring_to_front(window.hwnd().map(|h| h.0 as isize).unwrap_or(0));
         }
-        Err(e) => crate::notify::tell(app, tr!("Não foi possível abrir o menu"), &e.to_string()),
+        Err(e) => crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível abrir o menu"), &e.to_string()),
     }
 }
 

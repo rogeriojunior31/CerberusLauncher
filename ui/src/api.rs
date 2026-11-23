@@ -1014,3 +1014,11 @@ pub async fn set_in_game(choices: cerberus_shared::InGame) -> Result<cerberus_sh
     }
     call("set_in_game", &Arg { choices }).await
 }
+
+pub async fn set_notices(choices: cerberus_shared::Notices) -> Result<cerberus_shared::SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        choices: cerberus_shared::Notices,
+    }
+    call("set_notices", &Arg { choices }).await
+}

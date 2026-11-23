@@ -243,7 +243,7 @@ fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
         None => why.clone(),
     };
     crate::trail::note(app, &game.id, tk!("O jogo fechou com erro"), &Err(detail));
-    crate::notify::tell(app, &tr!("{} fechou com erro", game.name), &why);
+    crate::notify::tell(app, crate::notify::Kind::Crashed, &tr!("{} fechou com erro", game.name), &why);
 }
 
 fn record(app: &AppHandle, game: &Game, seconds: u64) {

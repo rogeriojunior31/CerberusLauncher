@@ -33,6 +33,17 @@ While a game is running, closing the window always keeps Cerberus in the tray, s
 | **Step aside while playing** | Cerberus minimizes when a game opens and comes back when it closes. Off by default |
 | **Achievement notice** | The small notice over the game when an achievement unlocks, the **screen corner** it shows in, and **Test** to see it now |
 
+### Notifications
+
+| Setting | What it does |
+|---|---|
+| **Game ready to play** | When a recomp finishes installing or updating, or a game's installer finishes |
+| **Game closed with an error** | With the reason and a tip, when Cerberus can tell |
+| **Picture saved** | Confirms each F12 screenshot |
+| **Windows notifications** | With Cerberus not in front, the notice shows in Windows' corner. Off: only inside Cerberus |
+
+Answers to something you just did, like the in-game menu failing to open, always show. The achievement notice has its own settings in **While playing**.
+
 ### Big Picture Mode
 
 | Setting | What it does |

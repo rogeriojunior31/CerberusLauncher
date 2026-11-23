@@ -90,7 +90,7 @@ fn finish(app: &AppHandle, game: &Game) {
     match use_program(app, &game.id, &program) {
         Ok(_) => {
             crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Ok(program.display().to_string()));
-            crate::notify::tell(app, &tr!("{} está pronto", game.name), tr!("O instalador terminou e o jogo foi encontrado."));
+            crate::notify::tell(app, crate::notify::Kind::Installed, &tr!("{} está pronto", game.name), tr!("O instalador terminou e o jogo foi encontrado."));
         }
         Err(error) => {
             crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Err(error.clone()));

@@ -124,6 +124,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         download_limit: chosen.download_limit,
         slow_while_playing: chosen.slow_while_playing,
         in_game: chosen.in_game.clone(),
+        notices: chosen.notices.clone(),
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
@@ -992,6 +993,16 @@ fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Resu
 }
 
 #[tauri::command]
+fn set_notices(app: AppHandle, choices: cerberus_shared::Notices) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.notices = choices;
+    settings::save(&data.0, &chosen)?;
+    notify::set(chosen.notices.clone());
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
 fn set_in_game(app: AppHandle, choices: cerberus_shared::InGame) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1332,7 +1343,7 @@ async fn install_recomp(
     trail::note(&app, &game.id, tk!("Instalação"), &Ok(tr!("Versão {} instalada", version)));
     // The download may have taken a while: say it's ready even if the player is elsewhere.
     if !app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false)) {
-        notify::tell(&app, &tr!("{} está pronto", game.name), &tr!("Versão {} instalada. Abra o Cerberus para jogar.", version));
+        notify::tell(&app, notify::Kind::Installed, &tr!("{} está pronto", game.name), &tr!("Versão {} instalada. Abra o Cerberus para jogar.", version));
     }
     // Easy Setup: the player's copy was found in their ROM folders, so the recomp
     // is set up with it right away. Failing that only means setting it by hand.
@@ -2238,6 +2249,7 @@ fn main() {
                 recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
             }
             in_game::set(chosen.in_game.clone());
+            notify::set(chosen.notices.clone());
             store_time::watch(app.handle().clone());
             self_update::watch(app.handle().clone());
             app.manage(overlay::Overlay::default());
@@ -2382,6 +2394,7 @@ fn main() {
             set_updates_paused,
             set_download_limit,
             set_in_game,
+            set_notices,
             update_check,
             update_found,
             update_install,

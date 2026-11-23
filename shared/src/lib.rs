@@ -360,6 +360,8 @@ pub struct SettingsView {
     pub slow_while_playing: bool,
     #[serde(default)]
     pub in_game: InGame,
+    #[serde(default)]
+    pub notices: Notices,
     /// The player's own SteamGridDB key, for picking art.
     #[serde(default)]
     pub steamgriddb_key: Option<String>,
@@ -976,5 +978,25 @@ pub struct InGame {
 impl Default for InGame {
     fn default() -> Self {
         Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false }
+    }
+}
+
+/// Which notices Cerberus gives, and whether Windows shows them (Settings › Notifications).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Notices {
+    /// A recomp or game finished installing.
+    pub installed: bool,
+    /// A game closed with an error.
+    pub crashed: bool,
+    /// A picture was saved with F12.
+    pub screenshots: bool,
+    /// When Cerberus isn't in front, Windows shows the notice; off: only inside Cerberus.
+    pub windows: bool,
+}
+
+impl Default for Notices {
+    fn default() -> Self {
+        Self { installed: true, crashed: true, screenshots: true, windows: true }
     }
 }

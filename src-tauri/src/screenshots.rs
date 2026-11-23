@@ -113,8 +113,8 @@ pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), St
 fn take(app: &AppHandle) {
     let Some((window, game)) = game_in_front(app) else { return };
     match shoot(app, window, &game) {
-        Ok(()) => crate::notify::tell(app, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
-        Err(e) => crate::notify::tell(app, tr!("Não foi possível tirar a foto"), &e),
+        Ok(()) => crate::notify::tell(app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
+        Err(e) => crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível tirar a foto"), &e),
     }
 }
 

@@ -51,7 +51,7 @@ pub fn show(app: &AppHandle, notice: UnlockNotice) {
                 Ok(w) => w,
                 Err(_) => {
                     app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).clear();
-                    crate::notify::tell(app, &fallback.0, &fallback.1);
+                    crate::notify::tell(app, crate::notify::Kind::Reply, &fallback.0, &fallback.1);
                     return;
                 }
             }
