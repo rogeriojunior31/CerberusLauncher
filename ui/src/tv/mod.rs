@@ -352,8 +352,7 @@ pub fn TvMode() -> impl IntoView {
             view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>{tr!("Seções")}</b></span> }
         });
         let items = list.into_iter().map(|(btn, label)| view! { <span class="tv-hint">{glyph(btn, kind)}<b>{label}</b></span> }).collect_view();
-        let held = (!library.running.with(|r| r.is_empty())).then(|| view! { <span class="tv-hint dim end">{tr!("Jogando agora")}</span> });
-        view! { {items}{sections}{held} }
+        view! { {items}{sections} }
     };
 
     let sheet = move || tv.sheet.get().map(|s| view! { <sheets::SheetView sheet=s /> });
@@ -368,7 +367,18 @@ pub fn TvMode() -> impl IntoView {
                     <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt=tr!("Cerberus Launcher") draggable="false" />
                 </div>
                 {tabs}
-                <div class="tv-clock">{move || time.get()}</div>
+                <div class="tv-top-end">
+                    {move || {
+                        time.track();
+                        let id = library.running.with(|r| r.iter().next().cloned())?;
+                        let name = library.games.with(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| x.name.clone())))?;
+                        let mins = library.started.with(|s| s.get(&id).map(|t| ((js_sys::Date::now() - t) / 60000.0) as u64)).unwrap_or(0);
+                        Some(view! {
+                            <span class="tv-playing"><i></i>{tr!("Jogando {}", name)}<small>{if mins == 0 { tr!("agora").to_string() } else { format!("{mins} min") }}</small></span>
+                        })
+                    }}
+                    <div class="tv-clock">{move || time.get()}</div>
+                </div>
             </header>
             <main class="tv-main">{page}</main>
             <footer class="tv-hints">{hints}</footer>

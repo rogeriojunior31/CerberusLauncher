@@ -129,6 +129,8 @@ pub struct Library {
     failed: RwSignal<std::collections::BTreeMap<String, String>>,
     /// Download speed samples (bytes per second), newest last, by recomp id.
     speed: RwSignal<HashMap<String, Vec<f64>>>,
+    /// When each running game was seen starting (ms since 1970).
+    started: RwSignal<HashMap<String, f64>>,
 }
 
 impl Library {
@@ -252,6 +254,7 @@ fn App() -> impl IntoView {
         customizing: RwSignal::new(None),
         failed: RwSignal::new(Default::default()),
         speed: RwSignal::new(HashMap::new()),
+        started: RwSignal::new(HashMap::new()),
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
@@ -265,6 +268,13 @@ fn App() -> impl IntoView {
         }
     });
     api::on_session(move |event| {
+        library.started.update(|all| {
+            if event.running {
+                all.entry(event.game_id.clone()).or_insert_with(js_sys::Date::now);
+            } else {
+                all.remove(&event.game_id);
+            }
+        });
         library.running.update(|all| {
             if event.running {
                 all.insert(event.game_id.clone());

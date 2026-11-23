@@ -1080,7 +1080,7 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 .tv-line.on .tv-line-act { color: #fff; }
 
 /* Página do jogo */
-.tv-page.game { display: grid; grid-template-columns: 1fr calc(440 * var(--u)); gap: calc(60 * var(--u)); align-items: end; min-height: 100%; }
+.tv-page.game { display: grid; grid-template-columns: minmax(0, 1fr) calc(440 * var(--u)); gap: calc(60 * var(--u)); align-items: end; min-height: 100%; }
 .tv-game-main { display: flex; flex-direction: column; gap: calc(14 * var(--u)); padding-top: calc(160 * var(--u)); }
 .tv-actions { display: flex; flex-wrap: wrap; gap: calc(16 * var(--u)); margin: calc(16 * var(--u)) 0; }
 .tv-action { position: relative; overflow: hidden; padding: calc(18 * var(--u)) calc(34 * var(--u)); border-radius: 999px; background: rgba(255, 255, 255, 0.1); font-weight: 800; border: calc(3 * var(--u)) solid transparent; transition: transform 0.2s, background 0.2s, border-color 0.2s; }
@@ -1623,3 +1623,33 @@ html.overlay-mode, html.overlay-mode body { background: transparent; }
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12); overflow: hidden; z-index: 1; }
 .ach-mini i { display: block; height: 100%; border-radius: 5px; background: var(--grad); }
 .ach-mini.done i { background: linear-gradient(90deg, #ffcc4d, #ff9a3d); }
+
+/* Big Picture: notices above the TV screen, sized for the couch */
+body:has(.tv) .toasts { z-index: 80; left: 50%; right: auto; bottom: 9vh; transform: translateX(-50%); max-width: 60vw; align-items: center; }
+body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw; }
+.tv-top-end { display: flex; align-items: center; gap: calc(24 * var(--u)); justify-self: end; }
+.tv-playing { display: inline-flex; align-items: center; gap: calc(10 * var(--u)); padding: calc(8 * var(--u)) calc(16 * var(--u)); border-radius: 999px;
+  background: rgba(74, 222, 128, 0.14); border: 1px solid rgba(74, 222, 128, 0.4); font-weight: 700; font-size: calc(19 * var(--u)); }
+.tv-playing i { width: calc(10 * var(--u)); height: calc(10 * var(--u)); border-radius: 50%; background: #4ade80; box-shadow: 0 0 calc(10 * var(--u)) #4ade80; }
+.tv-playing small { color: #bbf7d0; font-weight: 600; }
+.tv-shots { display: flex; gap: calc(14 * var(--u)); margin-top: calc(14 * var(--u)); padding: calc(12 * var(--u)) calc(8 * var(--u)); overflow-x: auto; scrollbar-width: none; }
+.tv-shot { width: calc(220 * var(--u)); aspect-ratio: 16 / 9; border-radius: calc(12 * var(--u)); overflow: hidden; border: calc(3 * var(--u)) solid transparent; opacity: 0.75;
+  transition: transform 0.18s var(--ease), border-color 0.18s, opacity 0.18s; flex: none; }
+.tv-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-shot.on { opacity: 1; border-color: #fff; transform: scale(1.06); }
+.tv-viewer { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: rgba(3, 4, 7, 0.96); animation: lb-in 0.18s var(--ease); }
+.tv-viewer img { max-width: 88vw; max-height: 70vh; border-radius: 1vw; margin-top: -2vh; }
+.tv-viewer-n { position: absolute; bottom: 12vh; left: 50%; transform: translateX(-50%); font-size: 1.4vw; color: var(--muted); }
+.tv-ach { display: flex; flex-direction: column; gap: calc(10 * var(--u)); padding: calc(16 * var(--u)) 0; border-bottom: 1px solid var(--line); }
+.tv-ach-h { display: flex; justify-content: space-between; color: var(--muted); }
+.tv-ach-h b { color: var(--ink); }
+.tv-ach-bar { height: calc(8 * var(--u)); border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.tv-ach-bar i { display: block; height: 100%; background: var(--grad); }
+.tv-ach-icons { display: flex; gap: calc(8 * var(--u)); }
+.tv-ach-icons img { width: calc(46 * var(--u)); height: calc(46 * var(--u)); border-radius: calc(8 * var(--u)); }
+.tv-chips { display: flex; flex-wrap: wrap; gap: calc(12 * var(--u)); margin: calc(6 * var(--u)) 0 calc(26 * var(--u)); }
+.tv-chip { padding: calc(10 * var(--u)) calc(22 * var(--u)); border-radius: 999px; background: rgba(255, 255, 255, 0.07); border: calc(2 * var(--u)) solid transparent;
+  color: var(--muted); font-weight: 700; font-size: calc(20 * var(--u)); transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s var(--ease); }
+.tv-chip.sel { background: rgba(255, 255, 255, 0.18); color: var(--ink); }
+.tv-chip.on { border-color: #fff; color: var(--ink); transform: scale(1.05); }
+.tv-chip.order { margin-left: auto; }

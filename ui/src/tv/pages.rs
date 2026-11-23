@@ -352,14 +352,48 @@ pub fn LibraryGrid() -> impl IntoView {
     let tv = expect_context::<Tv>();
     let focus = Focus::new("lib", true);
     tv.keep_position(focus);
+    // Row 0 is the chips: kinds of game, then the order.
+    let kind = RwSignal::new(0usize);
+    let order = RwSignal::new(0usize);
+    let kinds: [&'static str; 6] = [tr!("Todos"), tr!("Favoritos"), tr!("Jogando"), "Recomps", "Steam", "Epic"];
+    let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
     let games = Memo::new(move |_| {
-        let mut list = library_games(library);
-        list.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
+        let mut list: Vec<Game> = library_games(library)
+            .into_iter()
+            .filter(|g| match kind.get() {
+                1 => g.favorite,
+                2 => g.status == Some(cerberus_shared::GameStatus::Playing),
+                3 => matches!(g.source, cerberus_shared::Source::Recomp { .. }),
+                4 => matches!(g.source, cerberus_shared::Source::Steam { .. }),
+                5 => matches!(g.source, cerberus_shared::Source::Epic { .. }),
+                _ => true,
+            })
+            .collect();
+        match order.get() {
+            1 => list.sort_by_key(|g| g.name.to_lowercase()),
+            2 => list.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
+            _ => list.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase())),
+        }
         list
     });
-    let rows = move || grid_rows(games.with(Vec::len));
+    let rows = move || {
+        let mut r = vec![kinds.len() + 1];
+        r.extend(grid_rows(games.with(Vec::len)));
+        r
+    };
     Effect::new(move |_| focus.clamp(&rows()));
-    let focused = move || games.with(|g| g.get(focus.row.get() * COLUMNS + focus.col.get()).cloned());
+    let focused = move || {
+        let row = focus.row.get();
+        (row > 0).then(|| games.with(|g| g.get((row - 1) * COLUMNS + focus.col.get()).cloned())).flatten()
+    };
+    let choose_chip = move |c: usize| {
+        play(Sound::Select);
+        if c < kinds.len() {
+            kind.set(c);
+        } else {
+            order.update(|o| *o = (*o + 1) % orders.len());
+        }
+    };
     Effect::new(move |_| {
         if let Some(g) = focused() {
             tv.show_backdrop(Item::Game(g).heroes());
@@ -371,6 +405,10 @@ pub fn LibraryGrid() -> impl IntoView {
             if focus.step(btn, &rows()) {
                 play(Sound::Move);
             }
+            true
+        }
+        Btn::A if focus.row.get_untracked() == 0 => {
+            choose_chip(focus.col.get_untracked());
             true
         }
         Btn::A => {
@@ -398,12 +436,12 @@ pub fn LibraryGrid() -> impl IntoView {
     let grid = move || {
         let list = games.get();
         if list.is_empty() {
-            return view! { <p class="tv-empty">{tr!("Sua biblioteca está vazia. Instale um recomp no Descobrir.")}</p> }.into_any();
+            return view! { <p class="tv-empty">{tr!("Nenhum jogo com esse filtro.")}</p> }.into_any();
         }
         list.into_iter()
             .enumerate()
             .map(|(i, g)| {
-                let (r, c) = (i / COLUMNS, i % COLUMNS);
+                let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
                 tile(Item::Game(g), focus.key(r, c), move || focus.is(r, c))
             })
             .collect_view()
@@ -412,6 +450,16 @@ pub fn LibraryGrid() -> impl IntoView {
     view! {
         <div class="tv-page">
             <h1 class="tv-title">{tr!("Biblioteca")}<small>{move || tr!("{} jogos", games.with(Vec::len))}</small></h1>
+            <div class="tv-chips">
+                {kinds.into_iter().enumerate().map(|(c, label)| view! {
+                    <span class="tv-chip" class:sel=move || kind.get() == c class:on=move || focus.is(0, c) data-tvf=focus.key(0, c)
+                        on:mouseenter=move |_| focus.set(0, c) on:click=move |_| choose_chip(c)>{label}</span>
+                }).collect_view()}
+                <span class="tv-chip order" class:on=move || focus.is(0, kinds.len()) data-tvf=focus.key(0, kinds.len())
+                    on:mouseenter=move |_| focus.set(0, kinds.len()) on:click=move |_| choose_chip(kinds.len())>
+                    {move || tr!("Ordem: {}", orders[order.get()])}
+                </span>
+            </div>
             <div class="tv-grid">{grid}</div>
         </div>
     }

@@ -30,7 +30,7 @@ enum Act {
 fn label(act: &Act, library: Library, entry: &Option<RecompEntry>) -> String {
     match act {
         Act::Play(g) => crate::launch_action(g).0.to_string(),
-        Act::Running => tr!("Jogando").into(),
+        Act::Running => tr!("Voltar ao jogo").into(),
         Act::Install(_) => match entry.as_ref().and_then(|e| e.latest.clone()) {
             Some(r) if r.size > 0 => tr!("Instalar · {}", format::megabytes(r.size)),
             _ => tr!("Instalar").into(),
@@ -111,10 +111,44 @@ pub fn GamePage(id: String) -> impl IntoView {
         list.push(Act::Options);
         list
     };
-    let rows = move || vec![actions().len()];
+    // A Steam game's store page and achievements, both kept on disk once read.
+    let steam_app = Memo::new(move |_| match game.get().map(|g| g.source) {
+        Some(Source::Steam { app_id }) => Some(app_id),
+        _ => None,
+    });
+    let store = LocalResource::new(move || {
+        let app = steam_app.get();
+        async move {
+            match app {
+                Some(a) => api::steam_details(a).await.ok(),
+                None => None,
+            }
+        }
+    });
+    let achievements = LocalResource::new(move || {
+        let app = steam_app.get();
+        async move {
+            match app {
+                Some(a) => api::game_achievements("steam", &a.to_string()).await.ok(),
+                None => None,
+            }
+        }
+    });
+    let shots = move || store.get().flatten().map(|d| d.screenshots).unwrap_or_default();
+    let viewing = RwSignal::new(None::<usize>);
+    let rows = move || {
+        let n = shots().len();
+        if n > 0 { vec![actions().len(), n] } else { vec![actions().len()] }
+    };
     Effect::new(move |_| focus.clamp(&rows()));
 
-    tv.hints.set(vec![(Btn::A, tr!("Escolher")), (Btn::X, tr!("Opções")), (Btn::B, tr!("Voltar"))]);
+    Effect::new(move |_| {
+        tv.hints.set(if viewing.get().is_some() {
+            vec![(Btn::Left, tr!("Trocar imagem")), (Btn::B, tr!("Fechar"))]
+        } else {
+            vec![(Btn::A, tr!("Escolher")), (Btn::X, tr!("Opções")), (Btn::B, tr!("Voltar"))]
+        });
+    });
     let run = move |act: Act| match act {
         Act::Play(g) => {
             play(Sound::Select);
@@ -146,13 +180,36 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             tv.sheet.set(Some(Sheet::Options(id.get_value())));
         }
-        Act::Running | Act::Unavailable => {}
+        // The game is open: Cerberus steps aside so it's in front again.
+        Act::Running => {
+            play(Sound::Select);
+            crate::api::window_action("minimize");
+        }
+        Act::Unavailable => {}
     };
-    tv.handle_page(move |btn| match btn {
+    tv.handle_page(move |btn| {
+        // The full-screen picture: left and right step, B or A closes.
+        if let Some(i) = viewing.get_untracked() {
+            let n = shots().len().max(1);
+            match btn {
+                Btn::Left => viewing.set(Some((i + n - 1) % n)),
+                Btn::Right => viewing.set(Some((i + 1) % n)),
+                Btn::B | Btn::A => viewing.set(None),
+                _ => {}
+            }
+            play(Sound::Move);
+            return true;
+        }
+        match btn {
         Btn::Left | Btn::Right | Btn::Up | Btn::Down => {
             if focus.step(btn, &rows()) {
                 play(Sound::Move);
             }
+            true
+        }
+        Btn::A if focus.row.get_untracked() == 1 => {
+            play(Sound::Select);
+            viewing.set(Some(focus.col.get_untracked()));
             true
         }
         Btn::A => {
@@ -166,6 +223,7 @@ pub fn GamePage(id: String) -> impl IntoView {
             true
         }
         _ => false,
+        }
     });
 
     let buttons = move || {
@@ -207,6 +265,24 @@ pub fn GamePage(id: String) -> impl IntoView {
         let based = e.as_ref().filter(|e| !e.game.is_empty()).map(|e| view! { <p class="tv-based">{tr!("Baseado em ")}<b>{e.game.clone()}</b></p> });
         let note = e.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|n| view! { <p class="tv-note-box"><b>{tr!("Como começar")}</b>{n}</p> });
         let about = e.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|a| view! { <p class="tv-about">{a}</p> });
+        // Steam games: the store's short description.
+        let store_about = move || store.get().flatten().map(|d| d.short).filter(|s| !s.is_empty()).map(|s| view! { <p class="tv-about">{s}</p> });
+        let media = move || {
+            let list = shots();
+            (!list.is_empty()).then(|| {
+                let thumbs = list
+                    .into_iter()
+                    .enumerate()
+                    .map(|(c, s)| view! {
+                        <span class="tv-shot" class:on=move || focus.is(1, c) data-tvf=focus.key(1, c)
+                            on:mouseenter=move |_| focus.set(1, c) on:click=move |_| viewing.set(Some(c))>
+                            <img src=s.thumb alt="" loading="lazy" />
+                        </span>
+                    })
+                    .collect_view();
+                view! { <div class="tv-shots">{thumbs}</div> }
+            })
+        };
         Some(view! {
             <div class="tv-game-main">
                 <span class="tv-kicker">{kicker}</span>
@@ -214,7 +290,9 @@ pub fn GamePage(id: String) -> impl IntoView {
                 {based}
                 <div class="tv-actions">{buttons}</div>
                 {about}
+                {store_about}
                 {note}
+                {media}
             </div>
         })
     };
@@ -242,11 +320,61 @@ pub fn GamePage(id: String) -> impl IntoView {
                 facts.push((tr!("Sua cópia"), copy.rsplit(['\\', '/']).next().unwrap_or_default().to_string()));
             }
         }
+        if let Some(d) = store.get().flatten() {
+            if let Some(dev) = d.developers.first() {
+                facts.push((tr!("Desenvolvedora"), dev.clone()));
+            }
+            if !d.released.is_empty() {
+                facts.push((tr!("Lançamento"), d.released.clone()));
+            }
+            if !d.genres.is_empty() {
+                facts.push((tr!("Gêneros"), d.genres.iter().take(3).cloned().collect::<Vec<_>>().join(", ")));
+            }
+            match d.controller.as_str() {
+                "full" => facts.push((tr!("Controle"), tr!("Suporte total").to_string())),
+                "partial" => facts.push((tr!("Controle"), tr!("Suporte parcial").to_string())),
+                _ => {}
+            }
+            if let Some(m) = d.metacritic {
+                facts.push(("Metacritic", format!("{m}/100")));
+            }
+        }
         let cover = item().map(|i| view! { <div class="tv-side-cover"><Poster sources=i.covers() title=i.name() /></div> });
         let rows = facts.into_iter().map(|(k, v)| view! { <div class="tv-fact"><span>{k}</span><b>{v}</b></div> }).collect_view();
-        view! { <aside class="tv-side">{cover}{rows}</aside> }
+        // Achievements: progress and the latest unlocks.
+        let ach = achievements.get().flatten().filter(|d| d.game.total > 0).map(|d| {
+            let g = d.game.clone();
+            let pct = g.percent();
+            let mut list = d.achievements.clone();
+            list.sort_by(|a, b| b.unlocked_at.cmp(&a.unlocked_at));
+            let icons = list
+                .into_iter()
+                .filter(|a| a.unlocked_at.is_some())
+                .take(5)
+                .map(|a| view! { <img src=a.icon.clone().unwrap_or_default() alt=a.name.clone() title=a.name.clone() /> })
+                .collect_view();
+            view! {
+                <div class="tv-ach">
+                    <div class="tv-ach-h"><span>{tr!("Conquistas")}</span><b>{format!("{}/{}", g.unlocked, g.total)}</b></div>
+                    <div class="tv-ach-bar"><i style=format!("width: {pct}%")></i></div>
+                    <div class="tv-ach-icons">{icons}</div>
+                </div>
+            }
+        });
+        view! { <aside class="tv-side">{cover}{ach}{rows}</aside> }
     };
 
+    let viewer = move || {
+        let i = viewing.get()?;
+        let list = shots();
+        let shot = list.get(i)?.clone();
+        Some(view! {
+            <div class="tv-viewer" on:click=move |_| viewing.set(None)>
+                <img src=shot.full alt="" />
+                <span class="tv-viewer-n">{format!("{} / {}", i + 1, list.len())}</span>
+            </div>
+        })
+    };
     view! {
         <div class="tv-page game">
             {move || if item().is_some() {
@@ -255,5 +383,6 @@ pub fn GamePage(id: String) -> impl IntoView {
                 view! { <p class="tv-empty">{tr!("Esse jogo não está mais aqui.")}</p> }.into_any()
             }}
         </div>
+        {viewer}
     }
 }
