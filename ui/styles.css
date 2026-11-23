@@ -476,6 +476,16 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .tab { height: 40px; padding: 0 18px; border-radius: 12px; color: var(--muted); font-weight: 700; font-size: 14.5px; transition: background 0.15s, color 0.15s; }
 .tab:hover { color: var(--ink); }
 .tab.on { background: var(--ink); color: var(--bg); }
+/* The game page's tabs: a pill that slides to the chosen one. */
+.gp-page .tabs { position: relative; }
+.gp-page .tabs::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: var(--px, 5px); width: var(--pw, 0); border-radius: 12px; background: var(--ink);
+  opacity: 0; transition: left 0.35s var(--ease), width 0.35s var(--ease), opacity 0.2s; }
+.gp-page .tabs.pill-on::before { opacity: 1; }
+.gp-page .tabs.pill-on .tab.on { background: transparent; }
+.gp-page .tabs .tab { position: relative; z-index: 1; }
+.tab-n { margin-left: 2px; padding: 2px 7px; border-radius: 999px; background: var(--fill2); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tab.on .tab-n { background: rgba(0, 0, 0, 0.12); color: var(--bg); }
+@media (prefers-reduced-motion: reduce) { .gp-page .tabs::before { transition: none; } }
 
 .ov { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 28%, 380px); gap: 24px; align-items: start; }
 .ov-rail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }

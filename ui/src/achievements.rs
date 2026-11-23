@@ -523,6 +523,7 @@ fn GameBody(d: GameAchievements, #[prop(optional)] embedded: bool) -> impl IntoV
             <div class="ach-tab-h">
                 {award_badge(g.award, g.award_at)}
                 {progress(g.unlocked, g.total)}
+                {g.last_unlock.map(|t| view! { <small class="muted">{tr!("Última conquista {}", format::ago(t))}</small> })}
             </div>
         }
         .into_any()
@@ -546,11 +547,15 @@ fn GameBody(d: GameAchievements, #[prop(optional)] embedded: bool) -> impl IntoV
         }
         .into_any()
     };
-    view! {
-        {head}
+    // In the game's own page the header already says the time and the progress.
+    let stats_view = (!embedded).then(|| view! {
         <div class="stats">
             {stats.into_iter().map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> }).collect_view()}
         </div>
+    });
+    view! {
+        {head}
+        {stats_view}
         <section class="catalog-filters" aria-label=tr!("Filtros das conquistas")>
             <div class="toolbar">
                 <label class="search">

@@ -615,6 +615,7 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
+ "md-5",
  "png 0.17.16",
  "reqwest 0.12.28",
  "serde",

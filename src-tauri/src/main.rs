@@ -742,6 +742,24 @@ async fn open_store_link(app: AppHandle, http: State<'_, reqwest::Client>, app_i
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// A classic's RetroAchievements: its game found by the ROM's hash or name.
+/// `None` when no account is connected or RetroAchievements has no such game.
+#[tauri::command]
+async fn classic_achievements(app: AppHandle, http: State<'_, reqwest::Client>, path: String, console: String) -> Result<Option<cerberus_shared::GameAchievements>, String> {
+    let Some((user, key)) = retro_account(&app) else { return Ok(None) };
+    let rom = PathBuf::from(&path);
+    let Some(known) = app.state::<RomIndex>().get().into_iter().find(|r| r.path == rom) else {
+        return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
+    };
+    let stem = rom.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let data = app.state::<DataDir>().0.clone();
+    let Some(id) = achievements::classic::game_for(&http, &data, &user, &key, &rom, &console, &[known.title.clone(), stem]).await? else {
+        return Ok(None);
+    };
+    let (game, list) = achievements::retro::game(&http, &user, &key, &id.to_string()).await?;
+    Ok(Some(cerberus_shared::GameAchievements { game, achievements: list }))
+}
+
 /// A game's play sessions, oldest first, for its play-time chart.
 #[tauri::command]
 fn game_sessions(app: AppHandle, id: String) -> Vec<cerberus_shared::PlaySession> {
@@ -2211,6 +2229,7 @@ fn main() {
             achievements_hub,
             steam_details,
             game_sessions,
+            classic_achievements,
             open_store_link,
             steam_local_account,
             steam_account,

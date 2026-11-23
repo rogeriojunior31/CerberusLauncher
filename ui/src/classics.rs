@@ -317,18 +317,37 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 library.report(crate::api::open_rom_folder(folder).await);
             });
         };
-        let stats = [
-            (tr!("Tempo de jogo"), if rom.playtime_secs > 0 { crate::format::playtime(rom.playtime_secs) } else { tr!("Ainda não jogado").to_string() }),
-            (tr!("Última vez"), rom.last_played.map(crate::format::ago).unwrap_or_else(|| tr!("Nunca").to_string())),
+        let facts = [
             (tr!("Console"), console_name(console).to_string()),
             (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
         ]
         .into_iter()
         .chain((rom.discs.len() > 1).then(|| (tr!("Discos"), rom.discs.len().to_string())))
-        .into_iter()
-        .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
+        .map(|(label, value)| view! { <div><dt>{label}</dt><dd>{value}</dd></div> })
         .collect_view();
         let history_id = format!("classic:{}", rom.path);
+        let played = match (rom.playtime_secs, rom.last_played) {
+            (0, None) => tr!("Você ainda não jogou").to_string(),
+            (t, Some(last)) => tr!("Jogou por {} · última vez {}", crate::format::playtime(t), crate::format::ago(last)),
+            (t, None) => tr!("Jogou por {}", crate::format::playtime(t)),
+        };
+        // RetroAchievements for this ROM, found by its hash or its name.
+        let (ach_path, ach_console) = (rom.path.clone(), console.to_string());
+        let achievements = LocalResource::new(move || {
+            let (p, c) = (ach_path.clone(), ach_console.clone());
+            async move {
+                match crate::api::classic_achievements(&p, &c).await {
+                    Ok(Some(d)) => Ok(d),
+                    Ok(None) => Err(String::new()),
+                    Err(e) => Err(e),
+                }
+            }
+        });
+        let on_all = Callback::new(move |_| {
+            if let Some(Ok(d)) = achievements.get_untracked() {
+                library.go(Route::AchievementGame("retro".into(), d.game.key.clone()));
+            }
+        });
         Some(
             view! {
                 <div class="gp-hero">
@@ -341,10 +360,13 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                         <div class="gp-info">
                             <span class="kick">{tr!("Clássico · {}", console_name(console))}</span>
                             <h1>{title.clone()}</h1>
+                            <span class="gp-played"><crate::icons::Svg icon=crate::icons::Icon::Clock size=15 />{played}</span>
                         </div>
                         <div class="gp-act">{to_recomp}{play}</div>
                     </section>
-                    <div class="stats">{stats}</div>
+                    <div class="ov">
+                    <div class="ov-main">
+                    <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played />
                     <section class="card classic-file">
                         <div class="card-h">
                             <h3>{if rom.discs.len() > 1 { tr!("Arquivos do jogo") } else { tr!("Arquivo do jogo") }}</h3>
@@ -368,6 +390,12 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                         }}
                     </section>
                     <crate::game::History id=history_id />
+                    </div>
+                    <aside class="ov-rail">
+                        <crate::game_overview::AchievementsCard data=achievements on_all />
+                        <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{facts}</dl></section>
+                    </aside>
+                    </div>
                 </div>
             }
             .into_any(),

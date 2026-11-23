@@ -3,7 +3,7 @@
 //! trailers, the description, and the side rail (achievements, details,
 //! controller, requirements, languages, links).
 
-use cerberus_shared::{Game, PlaySession, StoreDetails, StoreMovie, tr};
+use cerberus_shared::{PlaySession, StoreDetails, StoreMovie, tr};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
@@ -41,16 +41,11 @@ fn day_label(ms: f64) -> String {
 
 /// "Your play time": the last 14 days as bars, and the numbers beside them.
 #[component]
-pub fn PlayCard(game: Game) -> impl IntoView {
-    let sessions = LocalResource::new({
-        let id = game.id.clone();
-        move || {
-            let id = id.clone();
-            async move { api::game_sessions(&id).await.unwrap_or_default() }
-        }
+pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
+    let sessions = LocalResource::new(move || {
+        let id = id.clone();
+        async move { api::game_sessions(&id).await.unwrap_or_default() }
     });
-    let total = game.playtime_secs;
-    let last = game.last_played;
     move || {
         let list: Vec<PlaySession> = sessions.get().unwrap_or_default();
         let now = js_sys::Date::now();
@@ -342,8 +337,7 @@ pub fn About(details: StoreDetails) -> impl IntoView {
 
 /// The rail's achievements card: progress and the latest unlocks.
 #[component]
-pub fn AchievementsCard(app: u32, #[prop(into)] on_all: Callback<()>) -> impl IntoView {
-    let data = LocalResource::new(move || async move { api::game_achievements("steam", &app.to_string()).await });
+pub fn AchievementsCard(data: LocalResource<Result<cerberus_shared::GameAchievements, String>>, #[prop(into)] on_all: Callback<()>) -> impl IntoView {
     move || match data.get() {
         None => view! {
             <section class="card rail-card">

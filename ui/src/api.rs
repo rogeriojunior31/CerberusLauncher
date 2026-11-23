@@ -618,6 +618,16 @@ pub async fn ra_connect(user: String, key: String, password: Option<String>) -> 
     call("ra_connect", &RaArgs { user, key, password }).await
 }
 
+/// A classic's RetroAchievements game and the player's progress, when there is one.
+pub async fn classic_achievements(path: &str, console: &str) -> Result<Option<cerberus_shared::GameAchievements>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        path: &'a str,
+        console: &'a str,
+    }
+    call("classic_achievements", &Arg { path, console }).await
+}
+
 /// A game's play sessions, oldest first.
 pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>, String> {
     call("game_sessions", &Id { id }).await

@@ -115,6 +115,14 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     // Steam games: their achievements, as the hub reads them.
     let steam_app = game.as_ref().and_then(|g| g.id.strip_prefix("steam:")).map(str::to_string);
     let has_achievements = steam_app.is_some();
+    // Read once for the tab's count, the rail card and the tab itself.
+    let achievements = steam_app.clone().map(|app| {
+        LocalResource::new(move || {
+            let app = app.clone();
+            async move { api::game_achievements("steam", &app).await }
+        })
+    });
+    provide_context(GameAchievementsData(achievements));
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
         || tab.get_untracked() == Tab::Settings && !has_settings
@@ -124,6 +132,26 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         tab.set(Tab::Overview);
     }
     let action = primary_action(game.clone(), entry.clone());
+    // The pill behind the chosen tab slides to it.
+    Effect::new(move || {
+        tab.track();
+        request_animation_frame(|| {
+            let Some(on) = document().query_selector(".gp-page .tabs .tab.on").ok().flatten() else { return };
+            let on: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(on);
+            if let Some(bar) = on.parent_element() {
+                let bar: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(bar);
+                let _ = bar.style().set_property("--px", &format!("{}px", on.offset_left()));
+                let _ = bar.style().set_property("--pw", &format!("{}px", on.offset_width()));
+                let _ = bar.class_list().add_1("pill-on");
+            }
+        });
+    });
+    let count = move |which: Tab| -> Option<String> {
+        match which {
+            Tab::Achievements => achievements.and_then(|r| r.get()).and_then(Result::ok).filter(|d| d.game.total > 0).map(|d| format!("{}/{}", d.game.unlocked, d.game.total)),
+            _ => None,
+        }
+    };
     let tab_button = move |which: Tab, label: &'static str| {
         let icon = match which {
             Tab::Overview => Icon::Info,
@@ -137,6 +165,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         view! {
             <button type="button" class="tab with-icon" class:on=move || tab.get() == which on:click=move |_| tab.set(which)>
                 <Svg icon size=16 />{label}
+                {move || count(which).map(|n| view! { <span class="tab-n">{n}</span> })}
             </button>
         }
     };
@@ -320,7 +349,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
         view! { <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{rows}</dl></section> }
     });
-    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard game=g /> }.into_any());
+    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played /> }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {
         Source::Steam { app_id } => Some(*app_id),
         _ => None,
@@ -428,6 +457,10 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
 
 /// A Steam game's Overview: your play time, the store's pictures and text, and
 /// the rail with achievements, details, controller, requirements, languages, links.
+/// A Steam game's achievements, read once per page.
+#[derive(Clone, Copy)]
+pub struct GameAchievementsData(pub Option<LocalResource<Result<cerberus_shared::GameAchievements, String>>>);
+
 #[component]
 fn SteamOverview(app: u32, play_card: Option<AnyView>, tab: RwSignal<Tab>) -> impl IntoView {
     let details = LocalResource::new(move || async move { api::steam_details(app).await });
@@ -463,7 +496,7 @@ fn SteamOverview(app: u32, play_card: Option<AnyView>, tab: RwSignal<Tab>) -> im
                 {store}
             </div>
             <aside class="ov-rail">
-                <crate::game_overview::AchievementsCard app on_all />
+                {use_context::<GameAchievementsData>().and_then(|d| d.0).map(|data| view! { <crate::game_overview::AchievementsCard data on_all /> })}
                 {rail}
             </aside>
         </div>
