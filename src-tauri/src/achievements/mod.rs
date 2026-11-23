@@ -1,6 +1,7 @@
 //! The achievements hub: Steam (from the Steam client's files on this PC) and
 //! RetroAchievements (from its Web API), side by side.
 
+pub mod live;
 pub mod retro;
 pub mod steam;
 pub mod steam_api;

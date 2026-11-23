@@ -124,6 +124,8 @@ pub fn watch(app: AppHandle) {
         let mut games: Vec<(String, String, String)> = Vec::new();
         let mut scanned = Instant::now() - Duration::from_secs(3600);
         let mut playing: HashMap<String, Instant> = HashMap::new();
+        let mut live = crate::achievements::live::Live::default();
+        let steam_app = |id: &str| id.strip_prefix("steam:").and_then(|n| n.parse::<u32>().ok());
         loop {
             // The stores' lists change rarely; reading them each minute is plenty.
             if scanned.elapsed() >= Duration::from_secs(60) {
@@ -138,11 +140,19 @@ pub fn watch(app: AppHandle) {
                 if !playing.contains_key(id) {
                     playing.insert(id.clone(), Instant::now());
                     let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: true });
+                    if let Some(n) = steam_app(id) {
+                        live.start(&app, n);
+                    }
                 }
             }
             let ended: Vec<String> = playing.keys().filter(|id| !now_running.contains(*id)).cloned().collect();
             for id in ended {
                 let Some(started) = playing.remove(&id) else { continue };
+                if let Some(n) = steam_app(&id) {
+                    // Steam may store the last unlock as the game closes.
+                    live.check(&app);
+                    live.stop(n);
+                }
                 let seconds = started.elapsed().as_secs();
                 let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: false });
                 // A blink (a launcher checking for updates) isn't a session.
@@ -156,6 +166,7 @@ pub fn watch(app: AppHandle) {
                 crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
                 let _ = app.emit("playtime-updated", &id);
             }
+            live.check(&app);
             std::thread::sleep(Duration::from_secs(5));
         }
     });

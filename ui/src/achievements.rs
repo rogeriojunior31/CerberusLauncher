@@ -413,8 +413,28 @@ pub fn AchievementGamePage(source: String, key: String) -> impl IntoView {
     }
 }
 
+/// A game's achievements inside its page in the Library.
 #[component]
-fn GameBody(d: GameAchievements) -> impl IntoView {
+pub fn AchievementsTab(source: String, key: String) -> impl IntoView {
+    let source = StoredValue::new(source);
+    let key = StoredValue::new(key);
+    let data = LocalResource::new(move || async move { api::game_achievements(&source.get_value(), &key.get_value()).await });
+    move || match data.get() {
+        None => view! { <div class="ach-loading" role="status"><span class="spin"></span>{tr!("Lendo as conquistas…")}</div> }.into_any(),
+        Some(Err(e)) => view! {
+            <div class="empty small"><Svg icon=Icon::Trophy size=28 /><p class="muted">{e}</p></div>
+        }
+        .into_any(),
+        Some(Ok(d)) if d.achievements.is_empty() => view! {
+            <div class="empty small"><Svg icon=Icon::Trophy size=28 /><p class="muted">{tr!("Esse jogo não tem conquistas.")}</p></div>
+        }
+        .into_any(),
+        Some(Ok(d)) => view! { <div class="ach-tab"><GameBody d embedded=true /></div> }.into_any(),
+    }
+}
+
+#[component]
+fn GameBody(d: GameAchievements, #[prop(optional)] embedded: bool) -> impl IntoView {
     let library = expect_context::<Library>();
     let g = d.game.clone();
     let search = RwSignal::new(String::new());
@@ -483,7 +503,16 @@ fn GameBody(d: GameAchievements) -> impl IntoView {
                 on:click=move |_| show.set(which)>{label}</button>
         }
     };
-    view! {
+    let head = if embedded {
+        view! {
+            <div class="ach-tab-h">
+                {award_badge(g.award, g.award_at)}
+                {progress(g.unlocked, g.total)}
+            </div>
+        }
+        .into_any()
+    } else {
+        view! {
         <header class="ach-head">
             <span class="ach-art big">
                 <Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() />
@@ -499,6 +528,11 @@ fn GameBody(d: GameAchievements) -> impl IntoView {
                 })}
             </div>
         </header>
+        }
+        .into_any()
+    };
+    view! {
+        {head}
         <div class="stats">
             {stats.into_iter().map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> }).collect_view()}
         </div>

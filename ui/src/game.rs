@@ -23,6 +23,7 @@ enum Tab {
     Saves,
     Mods,
     Photos,
+    Achievements,
     Settings,
     Manage,
 }
@@ -92,10 +93,14 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let manageable = game.is_some() || entry.is_some();
     // F12 takes pictures of the games Cerberus opens itself.
     let photos = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. } | Source::Local { .. }));
+    // Steam games: their achievements, as the hub reads them.
+    let steam_app = game.as_ref().and_then(|g| g.id.strip_prefix("steam:")).map(str::to_string);
+    let has_achievements = steam_app.is_some();
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
         || tab.get_untracked() == Tab::Settings && !has_settings
         || tab.get_untracked() == Tab::Manage && !manageable
+        || tab.get_untracked() == Tab::Achievements && !has_achievements
     {
         tab.set(Tab::Overview);
     }
@@ -107,6 +112,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             Tab::Settings => Icon::Settings,
             Tab::Mods => Icon::Puzzle,
             Tab::Photos => Icon::Photo,
+            Tab::Achievements => Icon::Trophy,
             Tab::Manage => Icon::Edit,
         };
         view! {
@@ -121,6 +127,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             {has_saves.then(|| tab_button(Tab::Saves, tr!("Saves")))}
             {has_settings.then(|| tab_button(Tab::Settings, tr!("Ajustes")))}
             {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
+            {has_achievements.then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
             {photos.then(|| tab_button(Tab::Photos, tr!("Fotos")))}
             {manageable.then(|| tab_button(Tab::Manage, tr!("Gerenciar")))}
         </nav>
@@ -130,6 +137,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let body_entry = entry.clone();
     let body = move || match tab.get() {
         Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() /> }.into_any(),
+        Tab::Achievements => match &steam_app {
+            Some(app) => view! { <crate::achievements::AchievementsTab source="steam".to_string() key=app.clone() /> }.into_any(),
+            None => ().into_any(),
+        },
         Tab::Saves => match &body_game {
             Some(g) => view! { <Backups game_id=g.id.clone() /> }.into_any(),
             None => ().into_any(),
