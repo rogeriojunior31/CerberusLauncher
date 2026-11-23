@@ -1178,6 +1178,25 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .ach-tag { height: 22px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 7px; background: var(--fill2); color: var(--muted); font-size: 12px; font-weight: 700; }
 .ach-tag.rare { background: rgba(255, 90, 60, 0.16); color: #ff9b85; }
 .ach-tag.hard { background: rgba(255, 196, 61, 0.16); color: #ffd36b; }
+/* Awards: beaten, completed, mastered. Hardcore ones are gold and shine. */
+.award { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 8px; flex: none;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.02em; background: rgba(214, 222, 238, 0.12); color: #e3e9f5; border: 1px solid rgba(214, 222, 238, 0.22); }
+.award.full { background: rgba(214, 222, 238, 0.2); }
+.award.hard { background: linear-gradient(135deg, #ffe08a, #ffb23f 55%, #ff8a3d); color: #2b1500; border-color: rgba(255, 224, 138, 0.9);
+  box-shadow: 0 0 14px rgba(255, 186, 70, 0.5); }
+.award.hard.full { box-shadow: 0 0 18px rgba(255, 196, 80, 0.75), 0 0 2px rgba(255, 240, 200, 0.9) inset; }
+.award.hard::after, .ach-icon.hard::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.65) 50%, transparent 70%);
+  transform: translateX(-130%); animation: ach-sheen 3.4s ease-in-out infinite; }
+@keyframes ach-sheen { 0%, 60% { transform: translateX(-130%); } 100% { transform: translateX(130%); } }
+.ach-icon { position: relative; }
+.ach-icon.hard { border-color: #ffc94d; box-shadow: 0 0 0 1px #ffc94d, 0 0 16px rgba(255, 186, 70, 0.55); }
+.ach-game.award-soft { border-color: rgba(214, 222, 238, 0.28); }
+.ach-game.award-hard { border-color: rgba(255, 196, 61, 0.6); box-shadow: 0 0 26px -10px rgba(255, 180, 60, 0.6); }
+.ach-head-t .award { height: 28px; font-size: 12px; }
+html.calm .award.hard::after, html.calm .ach-icon.hard::after { display: none; }
+@media (prefers-reduced-motion: reduce) { .award.hard::after, .ach-icon.hard::after { display: none; } }
 @media (max-width: 760px) {
   .ach-head { flex-direction: column; align-items: flex-start; }
   .ach-games, .ach-recents { grid-template-columns: 1fr; }

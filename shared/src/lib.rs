@@ -399,6 +399,40 @@ impl AchievementSource {
     }
 }
 
+/// The highest award a game earned: beaten (normal or hardcore), completed
+/// (every achievement) or mastered (every achievement in hardcore). Steam games
+/// at 100% count as completed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameAward {
+    BeatenSoftcore,
+    BeatenHardcore,
+    Completed,
+    Mastered,
+}
+
+impl GameAward {
+    /// RetroAchievements' `HighestAwardKind`: "beaten-softcore", "beaten-hardcore", "completed", "mastered".
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "beaten-softcore" => Some(GameAward::BeatenSoftcore),
+            "beaten-hardcore" => Some(GameAward::BeatenHardcore),
+            "completed" => Some(GameAward::Completed),
+            "mastered" => Some(GameAward::Mastered),
+            _ => None,
+        }
+    }
+
+    pub fn hardcore(self) -> bool {
+        matches!(self, GameAward::BeatenHardcore | GameAward::Mastered)
+    }
+
+    /// Every achievement, not just beaten.
+    pub fn full(self) -> bool {
+        matches!(self, GameAward::Completed | GameAward::Mastered)
+    }
+}
+
 /// A game with achievements, as the hub lists it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AchievementGame {
@@ -426,6 +460,11 @@ pub struct AchievementGame {
     /// Steam's own play time and last played, from the client's files.
     pub playtime_secs: Option<u64>,
     pub last_played: Option<u64>,
+    /// The highest award, and when it was earned.
+    #[serde(default)]
+    pub award: Option<GameAward>,
+    #[serde(default)]
+    pub award_at: Option<u64>,
 }
 
 impl AchievementGame {

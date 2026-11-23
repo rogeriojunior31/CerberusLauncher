@@ -1,7 +1,7 @@
 //! The achievements hub: every game with achievements on Steam and
 //! RetroAchievements, the latest unlocks, and each game's own list.
 
-use cerberus_shared::{Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, tr};
+use cerberus_shared::{Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, GameAward, tr};
 use leptos::prelude::*;
 
 use crate::art::Poster;
@@ -19,8 +19,29 @@ enum Platform {
 enum State {
     All,
     Started,
+    Beaten,
     Done,
     NotStarted,
+}
+
+fn award_label(award: GameAward) -> &'static str {
+    match award {
+        GameAward::BeatenSoftcore => tr!("Zerado"),
+        GameAward::BeatenHardcore => tr!("Zerado no hardcore"),
+        GameAward::Completed => tr!("Completo"),
+        GameAward::Mastered => tr!("Dominado"),
+    }
+}
+
+/// The game's award as a badge; hardcore ones are gold and shine.
+fn award_badge(award: Option<GameAward>, at: Option<u64>) -> Option<impl IntoView + use<>> {
+    let award = award?;
+    let title = at.map(|t| tr!("{} em {}", award_label(award), format::date_time(t))).unwrap_or_else(|| award_label(award).to_string());
+    Some(view! {
+        <span class="award" class:hard=award.hardcore() class:full=award.full() title=title>
+            <Svg icon=Icon::Trophy size=13 />{award_label(award)}
+        </span>
+    })
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -99,6 +120,8 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let unlocked: u32 = hub.games.iter().map(|g| g.unlocked).sum();
     let total: u32 = hub.games.iter().map(|g| g.total).sum();
     let complete = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+    let beaten = hub.games.iter().filter(|g| g.award.is_some()).count();
+    let hardcore_awards = hub.games.iter().filter(|g| g.award.is_some_and(GameAward::hardcore)).count();
     let started: Vec<&AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0).collect();
     let average = if started.is_empty() { 0 } else { started.iter().map(|g| g.percent()).sum::<u32>() / started.len() as u32 };
 
@@ -119,7 +142,9 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let stats = view! {
         <div class="stats">
             <div class="stat"><span>{tr!("Desbloqueadas")}</span><b>{format!("{} / {}", format::count(unlocked as u64), format::count(total as u64))}</b></div>
-            <div class="stat"><span>{tr!("Jogos completos")}</span><b>{complete}</b></div>
+            <div class="stat"><span>{tr!("Zerados")}</span><b>{beaten}</b>
+                {(hardcore_awards > 0).then(|| view! { <small class="muted">{tr!("{} no hardcore", hardcore_awards)}</small> })}</div>
+            <div class="stat"><span>{tr!("100% das conquistas")}</span><b>{complete}</b></div>
             <div class="stat"><span>{tr!("Média nos jogos começados")}</span><b>{format!("{average}%")}</b></div>
             <div class="stat"><span>{tr!("Jogos com conquistas")}</span><b>{hub.games.len()}</b></div>
             {hub.retro.then(|| view! {
@@ -183,6 +208,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
             .filter(|g| match state.get() {
                 State::All => true,
                 State::Started => g.unlocked > 0 && g.unlocked < g.total,
+                State::Beaten => g.award.is_some(),
                 State::Done => g.total > 0 && g.unlocked == g.total,
                 State::NotStarted => g.unlocked == 0,
             })
@@ -222,7 +248,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         .into_iter()
         .map(|(p, label)| seg(label, Signal::derive(move || platform.get() == p), Callback::new(move |_| platform.set(p))))
         .collect_view();
-    let states = [(State::All, tr!("Todos")), (State::Started, tr!("Em andamento")), (State::Done, tr!("Completos")), (State::NotStarted, tr!("Não começados"))]
+    let states = [(State::All, tr!("Todos")), (State::Started, tr!("Em andamento")), (State::Beaten, tr!("Zerados")), (State::Done, tr!("100%")), (State::NotStarted, tr!("Não começados"))]
         .into_iter()
         .map(|(s, label)| {
             view! {
@@ -268,7 +294,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
 fn GameRow(g: AchievementGame) -> impl IntoView {
     let library = expect_context::<Library>();
     let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
-    let done = g.total > 0 && g.unlocked == g.total;
+    let hard = g.award.is_some_and(GameAward::hardcore);
     let detail = match (g.playtime_secs, g.last_unlock) {
         (Some(t), Some(u)) => tr!("{} jogados · última conquista {}", format::playtime(t), format::ago(u)),
         (Some(t), None) => tr!("{} jogados", format::playtime(t)),
@@ -276,14 +302,14 @@ fn GameRow(g: AchievementGame) -> impl IntoView {
         (None, None) => String::new(),
     };
     view! {
-        <button type="button" class="ach-game" class:done=done on:click=move |_| library.go(route.clone())>
+        <button type="button" class="ach-game" class:award-hard=hard class:award-soft=g.award.is_some() && !hard on:click=move |_| library.go(route.clone())>
             <span class="ach-art">
                 <Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() />
             </span>
             <span class="ach-game-t">
                 <span class="ach-game-h">
                     <b>{g.name.clone()}</b>
-                    {done.then(|| view! { <Svg icon=Icon::Trophy size=16 /> })}
+                    {award_badge(g.award, g.award_at)}
                 </span>
                 <span class="ach-game-m">{platform_chip(g.source)}{platform_note(&g)}</span>
                 {progress(g.unlocked, g.total)}
@@ -293,12 +319,14 @@ fn GameRow(g: AchievementGame) -> impl IntoView {
     }
 }
 
-/// An achievement's picture: in color when unlocked, grey otherwise.
+/// An achievement's picture: in color when unlocked, grey otherwise, and gold
+/// with a shine when unlocked in hardcore.
 #[component]
 fn AchIcon(a: Achievement, unlocked: bool) -> impl IntoView {
     let src = if unlocked { a.icon.clone() } else { a.icon_locked.clone().or(a.icon.clone()) };
+    let hard = unlocked && a.hardcore_at.is_some();
     view! {
-        <span class="ach-icon" class:locked=!unlocked>
+        <span class="ach-icon" class:locked=!unlocked class:hard=hard title=hard.then(|| tr!("Desbloqueada no hardcore"))>
             {src.map(|s| view! { <img src=s alt="" loading="lazy" /> })}
         </span>
     }
@@ -352,7 +380,6 @@ fn GameBody(d: GameAchievements) -> impl IntoView {
     let revealed = RwSignal::new(std::collections::HashSet::<String>::new());
     let any_rarity = d.achievements.iter().any(|a| a.rarity.is_some());
     let any_hidden = d.achievements.iter().any(|a| a.hidden && a.unlocked_at.is_none());
-    let done = g.total > 0 && g.unlocked == g.total;
     let in_library = format!("steam:{}", g.key);
     let library_game = (g.source == AchievementSource::Steam)
         .then(|| library.games.get().and_then(Result::ok).and_then(|list| list.into_iter().find(|x| x.id == in_library)))
@@ -419,7 +446,8 @@ fn GameBody(d: GameAchievements) -> impl IntoView {
             </span>
             <div class="ach-head-t">
                 <span class="ach-game-m">{platform_chip(g.source)}{platform_note(&g)}</span>
-                <h1>{g.name.clone()}{done.then(|| view! { <Svg icon=Icon::Trophy size=26 /> })}</h1>
+                <h1>{g.name.clone()}</h1>
+                {award_badge(g.award, g.award_at)}
                 {progress(g.unlocked, g.total)}
                 {library_game.map(|game| {
                     let id = game.id.clone();

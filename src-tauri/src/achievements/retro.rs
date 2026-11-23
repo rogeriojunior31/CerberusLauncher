@@ -7,7 +7,7 @@
 //! - `API_GetGameInfoAndUserProgress`: one game's achievements with points,
 //!   badges, unlock dates and how many players have each.
 
-use cerberus_shared::{Achievement, AchievementGame, AchievementSource, RecentUnlock};
+use cerberus_shared::{Achievement, AchievementGame, AchievementSource, GameAward, RecentUnlock};
 use serde_json::Value;
 
 use crate::retroachievements::{get, number, picture, text};
@@ -107,6 +107,8 @@ fn game_from_progress(g: &Value) -> AchievementGame {
         last_unlock: unix(&text(g, "MostRecentAwardedDate")),
         playtime_secs: None,
         last_played: None,
+        award: GameAward::from_code(&text(g, "HighestAwardKind")),
+        award_at: unix(&text(g, "HighestAwardDate")),
     }
 }
 
@@ -145,7 +147,8 @@ pub async fn game(http: &reqwest::Client, user: &str, key: &str, id: &str) -> Re
     if !id.chars().all(|c| c.is_ascii_digit()) {
         return Err(cerberus_shared::tr!("Jogo inválido.").into());
     }
-    let v = get(http, "API_GetGameInfoAndUserProgress.php", user, key, &format!("&g={id}")).await?;
+    // a=1 adds the game's highest award (beaten, completed, mastered).
+    let v = get(http, "API_GetGameInfoAndUserProgress.php", user, key, &format!("&g={id}&a=1")).await?;
     Ok(game_from_info(id, &v))
 }
 
@@ -196,6 +199,8 @@ fn game_from_info(id: &str, v: &Value) -> (AchievementGame, Vec<Achievement>) {
         last_unlock: achievements.iter().filter_map(|a| a.unlocked_at).max(),
         playtime_secs: None,
         last_played: None,
+        award: GameAward::from_code(&text(v, "HighestAwardKind")),
+        award_at: unix(&text(v, "HighestAwardDate")),
     };
     (game, achievements)
 }
@@ -238,7 +243,11 @@ mod tests {
 
     #[test]
     fn completion_and_recent_entries() {
-        let g = game_from_progress(&serde_json::json!({"GameID": 7, "Title": "Sonic", "ConsoleName": "Mega Drive", "MaxPossible": 20, "NumAwarded": 5, "NumAwardedHardcore": 3, "MostRecentAwardedDate": "2024-01-31T18:05:00+00:00"}));
+        let g = game_from_progress(&serde_json::json!({"GameID": 7, "Title": "Sonic", "ConsoleName": "Mega Drive", "MaxPossible": 20, "NumAwarded": 5, "NumAwardedHardcore": 3, "MostRecentAwardedDate": "2024-01-31T18:05:00+00:00", "HighestAwardKind": "beaten-hardcore", "HighestAwardDate": "2024-01-31T18:05:00+00:00"}));
+        assert_eq!(g.award, Some(GameAward::BeatenHardcore));
+        assert!(g.award.unwrap().hardcore() && !g.award.unwrap().full());
+        assert_eq!(g.award_at, Some(1_706_724_300));
+        assert_eq!(game_from_progress(&serde_json::json!({"HighestAwardKind": null})).award, None);
         assert_eq!((g.key.as_str(), g.total, g.unlocked, g.hardcore, g.percent()), ("7", 20, 5, 3, 25));
         assert_eq!(g.last_unlock, Some(1_706_724_300));
         let r = recent_from(&serde_json::json!({"Date": "2024-01-31 18:05:00", "HardcoreMode": 1, "AchievementID": 9, "Title": "Ring", "Description": "x", "BadgeName": "55", "Points": 3, "GameTitle": "Sonic", "GameID": 7}));
