@@ -30,3 +30,5 @@ Cerberus speaks English and Brazilian Portuguese. It follows your Windows langua
 - [Library](../guide/library.md)
 - [Recomps](../guide/recomps.md)
 - [Settings](../guide/settings.md)
+
+The last screen also lists what Cerberus found on its own: Steam and Epic games already in the Library, and RetroArch for the classics.

@@ -43,6 +43,48 @@ fn covers(list: Vec<RecompEntry>) -> impl IntoView {
     view! { <div class="fr-covers">{tiles}</div> }
 }
 
+/// What else Cerberus found on this PC on its own: Steam and Epic games already
+/// in the library, and RetroArch for the classics. Nothing found, nothing shown.
+#[component]
+fn OnThisPc() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let emulation = LocalResource::new(api::emulation_status);
+    move || {
+        let (steam, epic) = library.games.with(|g| {
+            g.as_ref().and_then(|r| r.as_ref().ok()).map_or((0, 0), |list| {
+                let count = |f: fn(&cerberus_shared::Source) -> bool| list.iter().filter(|g| f(&g.source)).count();
+                (count(|s| matches!(s, cerberus_shared::Source::Steam { .. })), count(|s| matches!(s, cerberus_shared::Source::Epic { .. })))
+            })
+        });
+        let retroarch = emulation.get().and_then(Result::ok).is_some_and(|v| v.retroarch.is_some());
+        let games = |n: usize| if n == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", n) };
+        let mut found = Vec::new();
+        if steam > 0 {
+            found.push(("Steam", games(steam)));
+        }
+        if epic > 0 {
+            found.push(("Epic Games", games(epic)));
+        }
+        if retroarch {
+            found.push(("RetroArch", tr!("para os clássicos").to_string()));
+        }
+        if found.is_empty() {
+            return ().into_any();
+        }
+        let chips = found
+            .into_iter()
+            .map(|(name, what)| view! { <span class="fr-chip"><Svg icon=Icon::Check size=16 /><b>{name}</b><small>{what}</small></span> })
+            .collect_view();
+        view! {
+            <div class="fr-found">
+                <p class="fr-note">{tr!("Também encontrado neste PC")}</p>
+                <div class="fr-chips">{chips}</div>
+            </div>
+        }
+        .into_any()
+    }
+}
+
 /// The language first, so the rest of the setup reads right. Each language is
 /// written in itself; choosing one reloads the window in it.
 fn language_pick() -> impl IntoView {
@@ -248,6 +290,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
                 <h1>{tr!("Tudo pronto")}</h1>
                 <p class="fr-lead">{lead}</p>
                 {(!found.is_empty()).then(|| covers(found))}
+                <OnThisPc />
             }
             .into_any()
         }
