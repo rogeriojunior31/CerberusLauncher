@@ -38,6 +38,7 @@ Inside the data folder:
 
 - **SteamGridDB, Steam Web API and RetroAchievements keys** stay on this PC, in `settings.json`. They are only sent to the service they belong to.
 - **Your RetroAchievements password is never stored.** Cerberus trades it once for an access token, saves only the token in RetroArch's settings, and backs up that file first.
+- **A copy of your data** (Settings → Storage → Copy my data) never includes keys, tokens or passwords, so it can be shared or synced without them.
 
 ## Files outside the data folder
 
