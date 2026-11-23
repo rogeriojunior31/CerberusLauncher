@@ -42,7 +42,7 @@
       }
     },
     "size_text": "28 MB",
-    "stars": 7744
+    "stars": 7764
   },
   {
     "id": "starfox64recomp",
@@ -87,7 +87,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 409
+    "stars": 411
   },
   {
     "id": "mariokart64recomp",
@@ -133,7 +133,7 @@
       }
     },
     "size_text": "23 MB",
-    "stars": 640
+    "stars": 644
   },
   {
     "id": "banjorecomp",
@@ -178,7 +178,7 @@
       }
     },
     "size_text": "18 MB",
-    "stars": 2148
+    "stars": 2152
   },
   {
     "id": "goemon64recomp",
@@ -268,7 +268,7 @@
       }
     },
     "size_text": "70 MB",
-    "stars": 6127
+    "stars": 6161
   },
   {
     "id": "2ship2harkinian",
@@ -311,7 +311,7 @@
       }
     },
     "size_text": "43 MB",
-    "stars": 2503
+    "stars": 2519
   },
   {
     "id": "starship",
@@ -339,7 +339,7 @@
     },
     "files": {},
     "size_text": "5 MB",
-    "stars": 2151
+    "stars": 2157
   },
   {
     "id": "spaghettikart",
@@ -382,7 +382,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 2504
+    "stars": 2511
   },
   {
     "id": "unleashedrecomp",
@@ -411,7 +411,7 @@
     },
     "files": {},
     "size_text": "51 MB",
-    "stars": 5399
+    "stars": 5413
   },
   {
     "id": "symphonyrecomp",
@@ -456,7 +456,7 @@
       }
     },
     "size_text": "61 MB",
-    "stars": 1147,
+    "stars": 1163,
     "license": ""
   },
   {
@@ -475,8 +475,8 @@
     "needs": "Sua cópia de Forza Horizon (Xbox 360).",
     "saves": [],
     "start": "PinyonShiftLauncher.exe",
-    "tag": "v0.9.1",
-    "released": "2026-11-17",
+    "tag": "v0.9.5",
+    "released": "2026-11-20",
     "systems": [
       "windows",
       "linux",
@@ -489,20 +489,20 @@
     },
     "files": {
       "windows": {
-        "name": "host-objects-0.9.1-windows-x64-base.zip",
-        "sha256": "c90ccddf59021acc08a43647c43d6e1b2de2064a9c9571231c5988e1b6f68629"
+        "name": "host-objects-0.9.5-windows-x64-base.zip",
+        "sha256": "3d5f41ca3e695491b29a13cef5aed55ac4615958be0754b29d75e22b5977ef70"
       },
       "linux": {
         "name": "PinyonShift-Launcher-linux-x86_64.tar.gz",
-        "sha256": "7803bc1d729ffdf98a2b2f3737759bb9e1eaa0ac17a8cf41fd7286b350936c3c"
+        "sha256": "7a90d77f2b9390a95faf4cf1d17bc7f1f0d3499170a5ccd1290106c925e06d5e"
       },
       "macos": {
         "name": "PinyonShift-Launcher-macos-x86_64.zip",
-        "sha256": "5414567105a80d9f8c8fb899d2bac8f22671dfbad5ba41b76c2f78093fe25dc3"
+        "sha256": "f7776b3edbb71dce0a7e46d4896112d0e0c6968cad1a24a15155e572c8b68a0a"
       }
     },
     "size_text": "4 MB",
-    "stars": 1071,
+    "stars": 1093,
     "license": "BSD-3-Clause"
   },
   {
@@ -542,7 +542,7 @@
       }
     },
     "size_text": "148 MB",
-    "stars": 1006,
+    "stars": 1041,
     "license": "GPL-3.0"
   },
   {
@@ -576,7 +576,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 924,
+    "stars": 943,
     "license": ""
   },
   {
@@ -610,7 +610,7 @@
       }
     },
     "size_text": "102 MB",
-    "stars": 694,
+    "stars": 719,
     "license": "MIT"
   },
   {
@@ -650,7 +650,7 @@
       }
     },
     "size_text": "211 MB",
-    "stars": 622,
+    "stars": 629,
     "license": "MIT"
   },
   {
@@ -690,7 +690,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 595,
+    "stars": 597,
     "license": "GPL-3.0"
   },
   {
@@ -709,8 +709,8 @@
     "needs": "Sua cópia de ICO (PlayStation 2).",
     "saves": [],
     "start": "x64/ico_pc_x64.exe",
-    "tag": "v0.11.11",
-    "released": "2026-11-18",
+    "tag": "v0.11.14",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -721,16 +721,16 @@
     },
     "files": {
       "windows": {
-        "name": "ico-pc-v0.11.11-win-portable.zip",
-        "sha256": "c38bd47569588869deded3933522593b8f6a9de7b8665a0482deabf9e9b84d47"
+        "name": "ico-pc-v0.11.14-win-portable.zip",
+        "sha256": "797eb1b7c5562237421fbd00e480bf6cc9513c3ff191d3217228b0487103631e"
       },
       "linux": {
-        "name": "ico-pc-v0.11.11-linux-x86_64.AppImage",
-        "sha256": "d629cda2deaabeb1cf2c4d413bbb014bac8cb5a04e436c8cec600b107be1ced1"
+        "name": "ico-pc-v0.11.14-linux-x86_64.AppImage",
+        "sha256": "5263e73afdfc0427259938f325a3c69d2966b5da4290797b8eae6fc8387f29f0"
       }
     },
     "size_text": "33 MB",
-    "stars": 561,
+    "stars": 578,
     "license": "NOASSERTION"
   },
   {
@@ -770,7 +770,7 @@
       }
     },
     "size_text": "184 MB",
-    "stars": 521,
+    "stars": 524,
     "license": "BSD-3-Clause"
   },
   {
@@ -789,8 +789,8 @@
     "needs": "Sua cópia de Gears of War collection (Xbox 360).",
     "saves": [],
     "start": "CogBox.exe",
-    "tag": "0.6.5",
-    "released": "2026-11-18",
+    "tag": "0.6.7",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -799,12 +799,12 @@
     },
     "files": {
       "windows": {
-        "name": "COGBox-0.6.5.7z",
-        "sha256": "fe9b091f76efe24ad8e49d9db2438c2e7da49207e52f063f86da48d14607170d"
+        "name": "COGBox-0.6.7.7z",
+        "sha256": "721ad5557cec7ba2a6cbecfd03ad5612594ff0b36730b7605f2083ebf2a2c173"
       }
     },
-    "size_text": "159 MB",
-    "stars": 511,
+    "size_text": "125 MB",
+    "stars": 558,
     "license": "MIT"
   },
   {
@@ -844,7 +844,7 @@
       }
     },
     "size_text": "379 MB",
-    "stars": 442,
+    "stars": 446,
     "license": "GPL-3.0"
   },
   {
@@ -884,7 +884,7 @@
       }
     },
     "size_text": "7 MB",
-    "stars": 444,
+    "stars": 450,
     "license": "NOASSERTION"
   },
   {
@@ -924,7 +924,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 439,
+    "stars": 441,
     "license": "MIT"
   },
   {
@@ -958,7 +958,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 379,
+    "stars": 380,
     "license": "BSD-3-Clause"
   },
   {
@@ -998,7 +998,7 @@
       }
     },
     "size_text": "85 MB",
-    "stars": 359,
+    "stars": 369,
     "license": ""
   },
   {
@@ -1017,8 +1017,8 @@
     "needs": "Sua cópia de Ninja Gaiden Black (Xbox).",
     "saves": [],
     "start": "NinjaGaidenBlack.exe",
-    "tag": "v0.9.74",
-    "released": "2026-11-18",
+    "tag": "v0.9.83",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -1030,15 +1030,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaidenBlack-windows-x64.zip",
-        "sha256": "9d6c617822ddfc0eb8254ab2094f477bde608170ec3b8fcd2d6cdf3ffc5fbfc7"
+        "sha256": "940b6b4bcf1fee606973a048f1b8194fabf4054245d4fe106a2c167e5d8e158e"
       },
       "linux": {
         "name": "NinjaGaidenBlack-x86_64.AppImage",
-        "sha256": "6c650041d3926496c41ded72c2a84ac58bf2d1501e46bda3dfc61f18cf7f1de3"
+        "sha256": "cef1c078109bd9d7d738db7b09b4b2b4bddda2eaaf414ba5d53af30b3ae06b83"
       }
     },
     "size_text": "20 MB",
-    "stars": 358,
+    "stars": 378,
     "license": "GPL-3.0"
   },
   {
@@ -1057,8 +1057,8 @@
     "needs": "Sua cópia de Conker's Bad Fur Day (Nintendo 64).",
     "saves": [],
     "start": "ConkerRecomp.exe",
-    "tag": "V0.1.6",
-    "released": "2026-10-13",
+    "tag": "V0.1.7",
+    "released": "2026-11-19",
     "systems": [
       "windows",
       "linux",
@@ -1071,20 +1071,20 @@
     },
     "files": {
       "windows": {
-        "name": "ConkerRecompiled-V0.1.6-Windows.zip",
-        "sha256": "0fcef307aff8f3632cddfecb4a1a6233af0afb0b77d5deaab6538be5c563115e"
+        "name": "ConkerRecompiled-V0.1.7-Windows.zip",
+        "sha256": "87fff328c48ab0bd89bc64a7fcbbdfaf49f64dda1b53bffa3c1570afdee5d979"
       },
       "linux": {
-        "name": "ConkerRecompiled-V0.1.6-Linux.tar.gz",
-        "sha256": "4fc3b53bf422385c11eadea14415445ca5c72dd32795a22ce200c5713368a422"
+        "name": "ConkerRecompiled-V0.1.7-Linux.tar.gz",
+        "sha256": "b091a9571f19d825fcdd310711f0d7b9dc89cd737b47c152ec3437f31f5f68b6"
       },
       "macos": {
-        "name": "ConkerRecompiled-V0.1.6-macOS.zip",
-        "sha256": "e8f13c1c893fe38a844cdce3b84a752c63c02af930bebb2af760a45a133a41cf"
+        "name": "ConkerRecompiled-V0.1.7-macOS.zip",
+        "sha256": "952e61bb46bb592f0087169f33d6b824b7b1f102dfe89cec3a61970500f66a32"
       }
     },
     "size_text": "22 MB",
-    "stars": 347,
+    "stars": 348,
     "license": "MIT"
   },
   {
@@ -1124,7 +1124,7 @@
       }
     },
     "size_text": "17 MB",
-    "stars": 335,
+    "stars": 344,
     "license": "MIT"
   },
   {
@@ -1158,7 +1158,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 311,
+    "stars": 318,
     "license": "BSD-3-Clause"
   },
   {
@@ -1198,7 +1198,7 @@
       }
     },
     "size_text": "402 MB",
-    "stars": 295,
+    "stars": 296,
     "license": "NOASSERTION"
   },
   {
@@ -1262,8 +1262,8 @@
     "adds": "",
     "needs": "Sua cópia de Def Jam: Fight for NY (Xbox).",
     "saves": [],
-    "tag": "v1.1.2",
-    "released": "2026-11-14",
+    "tag": "v1.2.2",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -1274,16 +1274,16 @@
     },
     "files": {
       "windows": {
-        "name": "DefJamRecompiled-1.1.2-windows-x64.exe",
-        "sha256": "cc52dab79e7518918ccaac84335d1394880c04bfd66ab91518ac676a420e0e66"
+        "name": "DefJamRecompiled-1.2.2-windows-x64.exe",
+        "sha256": "2fc4be6ec8ef0769c44ac50a322ed2041879951f026c6270d40ccf923097a985"
       },
       "linux": {
-        "name": "DefJamRecompiled-1.1.2-linux-x86_64.AppImage",
-        "sha256": "e796d33d36f2fcfe3389eeb2df3359d680d55a15d36a8677f035739511ebda09"
+        "name": "DefJamRecompiled-1.2.2-linux-x86_64.AppImage",
+        "sha256": "9cee20579db4df68c376a3a4edf077b18a38205f2a004aa2fa82b6347e466d99"
       }
     },
     "size_text": "64 MB",
-    "stars": 274,
+    "stars": 283,
     "license": "NOASSERTION"
   },
   {
@@ -1302,8 +1302,8 @@
     "needs": "Sua cópia de Dead or Alive Xtreme Beach Volleyball (Xbox).",
     "saves": [],
     "start": "Launcher.cmd",
-    "tag": "v0.6.2",
-    "released": "2026-11-02",
+    "tag": "v0.8.0",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux",
@@ -1316,20 +1316,20 @@
     },
     "files": {
       "windows": {
-        "name": "DOAXBV-0.6.2.zip",
-        "sha256": "8b48263c7f021775d180d57a41549bbc6e864b06681265cf1a5e7f2532a83d4c"
+        "name": "DOAXBV-0.8.0.zip",
+        "sha256": "a4b80511a2d538b30a76358068fcc47ddb0837360b6fb952e0ef92358dd1f48c"
       },
       "linux": {
-        "name": "DOAXBV-0.6.2-Linux.zip",
-        "sha256": "da58a0c0b47af73ab6ab1150e8bb0b972759db5aa38951cbde6c73ba41561e22"
+        "name": "DOAXBV-0.8.0-Linux.zip",
+        "sha256": "021b90c3ec947b2894549b68b0087bb81deb0d9f482d9289f9d4063b89a8d689"
       },
       "macos": {
-        "name": "DOAXBV-0.6.2-macOS.zip",
-        "sha256": "bc710f2062e1a06eb4245f0642b4b66cd217cbc79c86d166a629cb21389ea069"
+        "name": "DOAXBV-0.8.0-macOS.zip",
+        "sha256": "b3f807d948b41160ad212facf60b2e815335c2c17fdade11e7616d605d6fe0b6"
       }
     },
-    "size_text": "103 MB",
-    "stars": 272,
+    "size_text": "105 MB",
+    "stars": 278,
     "license": "GPL-3.0"
   },
   {
@@ -1369,7 +1369,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 265,
+    "stars": 278,
     "license": "GPL-3.0"
   },
   {
@@ -1403,7 +1403,7 @@
       }
     },
     "size_text": "55 MB",
-    "stars": 247,
+    "stars": 251,
     "license": "GPL-3.0"
   },
   {
@@ -1443,7 +1443,7 @@
       }
     },
     "size_text": "193 MB",
-    "stars": 239,
+    "stars": 242,
     "license": ""
   },
   {
@@ -1483,7 +1483,7 @@
       }
     },
     "size_text": "10 MB",
-    "stars": 232,
+    "stars": 234,
     "license": "MIT"
   },
   {
@@ -1502,8 +1502,8 @@
     "needs": "Sua cópia de Downhill Domination (PlayStation 2).",
     "saves": [],
     "start": "DownhillRevived.exe",
-    "tag": "v0.8.10",
-    "released": "2026-11-17",
+    "tag": "v0.8.12",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux",
@@ -1516,20 +1516,20 @@
     },
     "files": {
       "windows": {
-        "name": "DownhillRevived-0.8.10-win.zip",
-        "sha256": "23c018353edc96505f1f4ca7f1f46df6a893dc88bb7e0f027fb80e61e390807d"
+        "name": "DownhillRevived-0.8.12-win.zip",
+        "sha256": "f993ecce3561bac49c161312aac49de05d8aff9ccf393d7faf1d510b97810f45"
       },
       "linux": {
-        "name": "DownhillRevived-0.8.10-linux-experimental.zip",
-        "sha256": "a8e5e401de52f0a5746788677c67e4532ed2f1c281547b4feb53a970c5c96d30"
+        "name": "DownhillRevived-0.8.12-linux-experimental.zip",
+        "sha256": "d86a299509c4fb6ccefb9ee708af724f9814a74d7cfc919079ee79943bad08a7"
       },
       "macos": {
-        "name": "DownhillRevived-0.8.10-mac-experimental.zip",
-        "sha256": "e7dfbafbb363be12fef6df6b3f47b81150cf74ec7ea09bf06e0a6a55c0961fd0"
+        "name": "DownhillRevived-0.8.12-mac-experimental.zip",
+        "sha256": "a6b843a92f80c91f6389c365d5fa75086bf8efd7eec9a0d583e5afa7ee731ca6"
       }
     },
-    "size_text": "24 MB",
-    "stars": 229,
+    "size_text": "25 MB",
+    "stars": 241,
     "license": "GPL-3.0"
   },
   {
@@ -1575,7 +1575,7 @@
       }
     },
     "size_text": "45 MB",
-    "stars": 216,
+    "stars": 220,
     "license": "GPL-3.0"
   },
   {
@@ -1609,7 +1609,7 @@
       }
     },
     "size_text": "49 MB",
-    "stars": 213,
+    "stars": 225,
     "license": "GPL-3.0"
   },
   {
@@ -1628,8 +1628,8 @@
     "needs": "Sua cópia de The Lord of the Rings: The Fellowship of the Ring / The Two Towers / The Return of the King (Xbox).",
     "saves": [],
     "start": "Athelas.exe",
-    "tag": "1.9.0",
-    "released": "2026-11-18",
+    "tag": "1.9.1",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -1638,12 +1638,12 @@
     },
     "files": {
       "windows": {
-        "name": "Athelas-1.9.0.7z",
-        "sha256": "ff300052d0e0051dce86fa825357b73166082a8980ef0ed9eee02df38a399106"
+        "name": "Athelas-1.9.1.7z",
+        "sha256": "f67a13f318d0cf10f2715719568837536ec5dfcd525e292e3151aaf759cdcd6d"
       }
     },
-    "size_text": "133 MB",
-    "stars": 215,
+    "size_text": "131 MB",
+    "stars": 228,
     "license": "MIT"
   },
   {
@@ -1683,7 +1683,7 @@
       }
     },
     "size_text": "19 MB",
-    "stars": 208,
+    "stars": 215,
     "license": "GPL-3.0"
   },
   {
@@ -1702,8 +1702,8 @@
     "needs": "Sua cópia de Super Street Fighter II Turbo; Street Fighter Alpha; Street Fighter Alpha 2; Street Fighter Zero 2 Alpha; Street Fighter (Other).",
     "saves": [],
     "start": "cps2recomp-launcher.exe",
-    "tag": "v1.6.0-beta.2",
-    "released": "2026-11-17",
+    "tag": "v1.6.0-beta.5",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux",
@@ -1717,19 +1717,19 @@
     "files": {
       "windows": {
         "name": "CPS2Recomp-windows-x64.zip",
-        "sha256": "ac6d2f7bcf22916989546f6f1d4bb96a47276f11baed91eadcb728b340f5a7a5"
+        "sha256": "885a45d0f10027bedc1df90d359310384ddd79c424110d5f59f70092865bc995"
       },
       "linux": {
         "name": "CPS2Recomp-linux-x86_64.tar.gz",
-        "sha256": "ad818cf89c58bb7453f267524fa3c49ea5ce83418778385fb633452f8aa526e4"
+        "sha256": "ae0267689935e7a223b4dfd57c0a5f189eee2f8b82a31e9981bf96823c0a3223"
       },
       "macos": {
         "name": "CPS2Recomp-macOS.zip",
-        "sha256": "6878e4d79874abe525d883b5589ef137f0c5ed316e02afb6481ce727415bbe07"
+        "sha256": "9fd2761cb87ab802a3ca8038a57d6bcda5ec25de6ac1b72fa732fd93c463d613"
       }
     },
-    "size_text": "142 MB",
-    "stars": 205,
+    "size_text": "158 MB",
+    "stars": 213,
     "license": "GPL-3.0"
   },
   {
@@ -1763,7 +1763,7 @@
       }
     },
     "size_text": "26 MB",
-    "stars": 203,
+    "stars": 211,
     "license": "MIT"
   },
   {
@@ -1803,7 +1803,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 196,
+    "stars": 198,
     "license": "MIT"
   },
   {
@@ -1822,8 +1822,8 @@
     "needs": "Sua cópia de Gears of War 2 (Xbox 360).",
     "saves": [],
     "start": "gow2.exe",
-    "tag": "v0.4.7",
-    "released": "2026-11-18",
+    "tag": "v0.4.8",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -1834,12 +1834,12 @@
     },
     "files": {
       "windows": {
-        "name": "gow2-recomp-0.4.7-win64.zip",
-        "sha256": "ee71c8b5b740490b58fa85ca6b9d511de7e0d2e841a4405a1a6bdd3d9f74b903"
+        "name": "gow2-recomp-0.4.8-win64.zip",
+        "sha256": "af858040f87fa8f996d8347387db88b45c6032b33fd8958d2ee75a56b084ac42"
       },
       "linux": {
-        "name": "gow2-recomp-0.4.7-linux-x86_64.tar.gz",
-        "sha256": "a50566dbaea16a617b7104c3d903bb6dab237e17e57fd988999d7b5515bf630c"
+        "name": "gow2-recomp-0.4.8-linux-x86_64.tar.gz",
+        "sha256": "4c03e8a37fb457ef54ab72eb7813935634a6e55381ae4f9d8a88191b81a98bf1"
       }
     },
     "size_text": "110 MB",
@@ -1877,7 +1877,7 @@
       }
     },
     "size_text": "45 MB",
-    "stars": 189,
+    "stars": 190,
     "license": "MIT"
   },
   {
@@ -1896,8 +1896,8 @@
     "needs": "Sua cópia de WWE SmackDown vs. Raw 2011 (Xbox 360).",
     "saves": [],
     "start": "SvR2011 Launcher.exe",
-    "tag": "v2.2.5",
-    "released": "2026-11-16",
+    "tag": "v2.2.6",
+    "released": "2026-11-20",
     "systems": [
       "windows"
     ],
@@ -1906,12 +1906,12 @@
     },
     "files": {
       "windows": {
-        "name": "SvR2011-Mods-v2.2.5.zip",
+        "name": "SvR2011-Mods-v2.2.6.zip",
         "sha256": "3f0190546f13f0f14bce7c94ca5d8496905824c5c22d05ad6d8012ac90c319e7"
       }
     },
     "size_text": "353 MB",
-    "stars": 186,
+    "stars": 192,
     "license": "NOASSERTION"
   },
   {
@@ -1957,7 +1957,7 @@
       }
     },
     "size_text": "18 MB",
-    "stars": 139,
+    "stars": 140,
     "license": "GPL-3.0"
   },
   {
@@ -1997,7 +1997,7 @@
       }
     },
     "size_text": "42 MB",
-    "stars": 130,
+    "stars": 134,
     "license": "GPL-2.0"
   },
   {
@@ -2037,7 +2037,7 @@
       }
     },
     "size_text": "68 MB",
-    "stars": 129,
+    "stars": 130,
     "license": ""
   },
   {
@@ -2056,8 +2056,8 @@
     "needs": "Sua cópia de Sonic Free Riders (Xbox 360).",
     "saves": [],
     "start": "FreeRidersRecompiled.exe",
-    "tag": "v0.10.66",
-    "released": "2026-11-18",
+    "tag": "v0.10.75",
+    "released": "2026-11-22",
     "systems": [
       "windows",
       "linux"
@@ -2068,16 +2068,16 @@
     },
     "files": {
       "windows": {
-        "name": "FreeRidersRecompiled-0.10.66-windows-x64.zip",
-        "sha256": "9b0971c7bbd10ac77e31cd8f8c30c832d925390456bb4b883bd95eaa327270b0"
+        "name": "FreeRidersRecompiled-0.10.75-windows-x64.zip",
+        "sha256": "8f1e3705b69c6acbc4d202c0bae0348d8d893922c1d4a98f0563aeba16ae5168"
       },
       "linux": {
-        "name": "FreeRidersRecompiled-0.10.66-linux-x64.tar.gz",
-        "sha256": "eb430eb211b3da3da20bf72788807618819f69fcb0cab33f2a23ab684f1ca996"
+        "name": "FreeRidersRecompiled-0.10.75-linux-x64.tar.gz",
+        "sha256": "fc883d7032c82a356026da1496280404b4590fbb5a0a82909aeb4179b06c1fed"
       }
     },
-    "size_text": "51 MB",
-    "stars": 127,
+    "size_text": "67 MB",
+    "stars": 132,
     "license": "GPL-3.0"
   },
   {
@@ -2117,7 +2117,7 @@
       }
     },
     "size_text": "117 MB",
-    "stars": 127,
+    "stars": 129,
     "license": ""
   },
   {
@@ -2157,7 +2157,7 @@
       }
     },
     "size_text": "31 MB",
-    "stars": 125,
+    "stars": 126,
     "license": ""
   },
   {
@@ -2197,7 +2197,7 @@
       }
     },
     "size_text": "35 MB",
-    "stars": 117,
+    "stars": 119,
     "license": "GPL-2.0"
   },
   {
@@ -2277,7 +2277,7 @@
       }
     },
     "size_text": "45 MB",
-    "stars": 105,
+    "stars": 106,
     "license": "GPL-3.0"
   },
   {
@@ -2296,8 +2296,8 @@
     "needs": "Sua cópia de 2014 FIFA World Cup Brazil (Xbox 360).",
     "saves": [],
     "start": "Launcher.exe",
-    "tag": "v0.3.0",
-    "released": "2026-11-17",
+    "tag": "v0.3.1",
+    "released": "2026-11-23",
     "systems": [
       "windows"
     ],
@@ -2306,12 +2306,12 @@
     },
     "files": {
       "windows": {
-        "name": "fifa-world-cup-2014-recompiled-0.3.0-portable.zip",
-        "sha256": "98c01a0599a2e45186d0f20b57da4f259a0347c3f33d58510c881f047288f9f4"
+        "name": "fifa-world-cup-2014-recompiled-0.3.1-portable.zip",
+        "sha256": "78a99a2f4067b9c89cb8a762dd6a9fc28f879048ba4f7154239c28c952a00953"
       }
     },
     "size_text": "47 MB",
-    "stars": 105,
+    "stars": 109,
     "license": "BSD-3-Clause"
   },
   {
@@ -2397,7 +2397,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 82,
+    "stars": 84,
     "license": "GPL-2.0"
   },
   {
@@ -2416,8 +2416,8 @@
     "needs": "Sua cópia de Rush 2: Extreme Racing USA (Nintendo 64).",
     "saves": [],
     "start": "Rush2Recompiled.exe",
-    "tag": "v1.0.58",
-    "released": "2026-11-18",
+    "tag": "v1.0.59",
+    "released": "2026-11-20",
     "systems": [
       "windows",
       "linux"
@@ -2428,16 +2428,16 @@
     },
     "files": {
       "windows": {
-        "name": "Rush2Recompiled-1.0.58.zip",
-        "sha256": "d4970d5008d76df84b45d4ff76a2b31884b917bbbbe9bae656d9fccd4f525072"
+        "name": "Rush2Recompiled-1.0.59.zip",
+        "sha256": "e44d54fa8bf03d4b81f2a326f26db615c720331a358142fec3491a2c67de250f"
       },
       "linux": {
-        "name": "Rush2Recompiled-1.0.58-x86_64.AppImage",
-        "sha256": "d9c748e330944026d9d4f83a36f5156db496596f54f9e15526c5d001cf4b4003"
+        "name": "Rush2Recompiled-1.0.59-x86_64.AppImage",
+        "sha256": "9b1b0ad98738e9a99e1ffb250ea055353f94247f7b4a1c8e51c9c28677f076d5"
       }
     },
     "size_text": "24 MB",
-    "stars": 80,
+    "stars": 81,
     "license": ""
   },
   {
@@ -2477,7 +2477,7 @@
       }
     },
     "size_text": "10 MB",
-    "stars": 78,
+    "stars": 79,
     "license": "GPL-2.0"
   },
   {
@@ -2496,8 +2496,8 @@
     "needs": "Sua cópia de Knuckles' Chaotix (32X).",
     "saves": [],
     "start": "ChaotixRecompiled.exe",
-    "tag": "v0.15.22",
-    "released": "2026-11-15",
+    "tag": "v0.15.24",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -2508,16 +2508,16 @@
     },
     "files": {
       "windows": {
-        "name": "ChaotixRecompiled-0.15.22-windows-x64.zip",
-        "sha256": "e5b03f24aa629f2af6dcf788fcd70450dc3d1ecfd6d4b4b17cafaca1d8588a3d"
+        "name": "ChaotixRecompiled-0.15.24-windows-x64.zip",
+        "sha256": "99da9dc2ea6688169a330a71944b6ca434142062f85fb0ac0194226b1afd6b1e"
       },
       "linux": {
-        "name": "ChaotixRecompiled-0.15.22-linux-x64.tar.gz",
-        "sha256": "02fc17216adb3408758f9460f31d4d49c6d8af305ffe44c40ae54be48b073d06"
+        "name": "ChaotixRecompiled-0.15.24-linux-x64.tar.gz",
+        "sha256": "85f49eb5f43ffa5e6a010de8c8cf79118d0b76ebae7dea1e93a8c489fce843de"
       }
     },
     "size_text": "10 MB",
-    "stars": 74,
+    "stars": 75,
     "license": "MIT"
   },
   {
@@ -2551,7 +2551,7 @@
       }
     },
     "size_text": "42 MB",
-    "stars": 72,
+    "stars": 76,
     "license": "GPL-3.0"
   },
   {
@@ -2591,7 +2591,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 64,
+    "stars": 66,
     "license": "GPL-2.0"
   },
   {
@@ -2631,7 +2631,7 @@
       }
     },
     "size_text": "21 MB",
-    "stars": 59,
+    "stars": 60,
     "license": "NOASSERTION"
   },
   {
@@ -2671,7 +2671,7 @@
       }
     },
     "size_text": "27 MB",
-    "stars": 49,
+    "stars": 50,
     "license": "GPL-3.0"
   },
   {
@@ -2717,7 +2717,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 48,
+    "stars": 49,
     "license": ""
   },
   {
@@ -2751,7 +2751,7 @@
       }
     },
     "size_text": "205 MB",
-    "stars": 45,
+    "stars": 51,
     "license": "GPL-3.0"
   },
   {
@@ -2791,7 +2791,7 @@
       }
     },
     "size_text": "27 MB",
-    "stars": 42,
+    "stars": 45,
     "license": "GPL-3.0"
   },
   {
@@ -2884,8 +2884,8 @@
     "needs": "Sua cópia de The Legend of Zelda: Tears of the Kingdom (Nintendo Switch).",
     "saves": [],
     "kind": "installer",
-    "tag": "v0.4.1",
-    "released": "2026-11-15",
+    "tag": "v0.5.0",
+    "released": "2026-11-22",
     "systems": [
       "windows",
       "linux"
@@ -2896,16 +2896,16 @@
     },
     "files": {
       "windows": {
-        "name": "TotK-Setup-0.4.1-windows.zip",
-        "sha256": "5b1ebd4285167e80ec0a7ee2a5c0ec85540cbeea8c83234067a76f83f7a33ee8"
+        "name": "TotK-Setup-0.5.0-windows.zip",
+        "sha256": "201b08348ffb72c70570eba8f92f67d31bc611b5aff4b0de09756259e0c95a7d"
       },
       "linux": {
-        "name": "TotK-Setup-0.4.1-x86_64-pgo.AppImage",
-        "sha256": "cb91aa7d5c90a42be4de896cc2f995220d1d40bca9b8ca96088a161654a8d1f6"
+        "name": "TotK-Setup-0.5.0-x86_64-pgo.AppImage",
+        "sha256": "32c44b622350c2049e65010496ff60266ece55b54e9c7a82f32a578f664a1051"
       }
     },
-    "size_text": "159 MB",
-    "stars": 7685,
+    "size_text": "161 MB",
+    "stars": 8137,
     "license": "MIT"
   },
   {
@@ -2923,28 +2923,28 @@
     "adds": "",
     "needs": "Sua cópia de Mario Kart World (Nintendo Switch 2).",
     "saves": [],
-    "tag": "v0.1.13",
-    "released": "2026-11-16",
+    "tag": "v0.1.18",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
     ],
     "assets": {
-      "windows": "mkw-recomp-*-windows-x64.zip",
+      "windows": "mkw-recomp-*-windows-x64-noavx2.zip",
       "linux": "mkw-recomp-*-x86_64.AppImage"
     },
     "files": {
       "windows": {
-        "name": "mkw-recomp-0.1.13-windows-x64.zip",
-        "sha256": "676a7ed509f9991b858b1f9d1bcb06bf597816c3641456493898f2872cf15f41"
+        "name": "mkw-recomp-0.1.18-windows-x64-noavx2.zip",
+        "sha256": "7ce3148d23a2fe255ee36536bd24e027bc4313c54eff50a590e73cb33fa32ccc"
       },
       "linux": {
-        "name": "mkw-recomp-0.1.13-x86_64.AppImage",
-        "sha256": "df8cae56b7f54006db658f7875a6207d9a36731239ca05f49fbf80751912ebd8"
+        "name": "mkw-recomp-0.1.18-x86_64.AppImage",
+        "sha256": "2f480f4d7d43651dcaaf6979317b1b4db91356c207f3a1bf59df342375cae74d"
       }
     },
-    "size_text": "167 MB",
-    "stars": 1504,
+    "size_text": "212 MB",
+    "stars": 1726,
     "license": "MIT"
   },
   {
@@ -2978,7 +2978,7 @@
       }
     },
     "size_text": "111 MB",
-    "stars": 1229,
+    "stars": 1257,
     "license": "GPL-3.0"
   },
   {
@@ -2996,28 +2996,28 @@
     "adds": "",
     "needs": "Sua cópia de Donkey Kong Bananza (Nintendo Switch 2).",
     "saves": [],
-    "tag": "v0.4.2",
-    "released": "2026-11-18",
+    "tag": "v0.5.1",
+    "released": "2026-11-20",
     "systems": [
       "windows",
       "linux"
     ],
     "assets": {
-      "windows": "DKB-Setup-*+8cece20-windows.zip",
-      "linux": "DKB-Setup-*+8cece20-linux-x86_64.tar.gz"
+      "windows": "DKB-Setup-*+44ba6b1-windows.zip",
+      "linux": "DKB-Setup-*+44ba6b1-linux-x86_64.tar.gz"
     },
     "files": {
       "windows": {
-        "name": "DKB-Setup-0.4.2+8cece20-windows.zip",
-        "sha256": "aa84dbc0f056232f95f573ff3f2aade6273ae409441b0678fdbafb70159221e7"
+        "name": "DKB-Setup-0.5.1+44ba6b1-windows.zip",
+        "sha256": "7f70832c141e63ff3c3d060140e3d48bc503c51576457ae2ac51ee444886c73d"
       },
       "linux": {
-        "name": "DKB-Setup-0.4.2+8cece20-linux-x86_64.tar.gz",
-        "sha256": "52372eb93ce5fe0b814070579d0cc6f1d495530b086e873692f73b43ed36aa68"
+        "name": "DKB-Setup-0.5.1+44ba6b1-linux-x86_64.tar.gz",
+        "sha256": "faa7a906c7d46c0995ce7668df5467203b5c2479bc21fd53e49137e87f28302e"
       }
     },
     "size_text": "125 MB",
-    "stars": 1212,
+    "stars": 1365,
     "license": "GPL-3.0"
   },
   {
@@ -3057,7 +3057,7 @@
       }
     },
     "size_text": "160 MB",
-    "stars": 1057,
+    "stars": 1071,
     "license": "GPL-2.0"
   },
   {
@@ -3096,7 +3096,7 @@
       }
     },
     "size_text": "154 MB",
-    "stars": 940,
+    "stars": 968,
     "license": "GPL-3.0"
   },
   {
@@ -3114,8 +3114,8 @@
     "adds": "",
     "needs": "Sua cópia de Pokemon Pokopia (Nintendo Switch 2).",
     "saves": [],
-    "tag": "v0.15.0",
-    "released": "2026-11-18",
+    "tag": "v0.17.0",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -3126,16 +3126,16 @@
     },
     "files": {
       "windows": {
-        "name": "PokopiaRecomp-0.15.0-win64.zip",
-        "sha256": "abfb499dabab50c1bc213cfeae65a81b293e37db7505c25a90c490c55e36d9b9"
+        "name": "PokopiaRecomp-0.17.0-win64.zip",
+        "sha256": "d7e9690e33d1e551200e71889b78dd66257e81a14df2f459776afd02279b1429"
       },
       "linux": {
-        "name": "PokopiaRecomp-0.15.0-linux-x64.tar.gz",
-        "sha256": "04fbb87cded28a3c3209dbcd10b5f07205873818d69d0571a4c2a459432a62aa"
+        "name": "PokopiaRecomp-0.17.0-linux-x64.tar.gz",
+        "sha256": "24d6ea6acf6dcc65e53c49ebc9571136c85537eab15b8ea2d924ba45f991af41"
       }
     },
-    "size_text": "183 MB",
-    "stars": 896,
+    "size_text": "185 MB",
+    "stars": 996,
     "license": "GPL-3.0"
   },
   {
@@ -3169,7 +3169,7 @@
       }
     },
     "size_text": "101 MB",
-    "stars": 629,
+    "stars": 647,
     "license": "GPL-3.0"
   },
   {
@@ -3188,8 +3188,8 @@
     "needs": "Sua cópia de Metroid Dread (Nintendo Switch).",
     "saves": [],
     "start": "Metroid Dread.exe",
-    "tag": "v0.5.9",
-    "released": "2026-11-12",
+    "tag": "v0.5.10",
+    "released": "2026-11-19",
     "systems": [
       "windows",
       "linux"
@@ -3200,16 +3200,16 @@
     },
     "files": {
       "windows": {
-        "name": "MetroidDread-PC-v0.5.9-Windows-x64.zip",
-        "sha256": "99ac48100883d50e165bb52121cb780545191bb897e178d1cf38341b6e32177e"
+        "name": "MetroidDread-PC-v0.5.10-Windows-x64.zip",
+        "sha256": "c0466a4c80f6fc8335407e9c30e9872e95b668ac010a089f251adf7d283a5cb5"
       },
       "linux": {
         "name": "Metroid_Dread-x86_64.AppImage",
-        "sha256": "4e33123d26c67bce7931b5cd507387a0ad7c947d81072ea303bdad9d5a9f8fb1"
+        "sha256": "5666edbffdc87d7a1f8651d2179321a6931f1d893874a3f8edc8eace930383b1"
       }
     },
-    "size_text": "145 MB",
-    "stars": 452,
+    "size_text": "146 MB",
+    "stars": 476,
     "license": "Apache-2.0"
   },
   {
@@ -3227,8 +3227,8 @@
     "adds": "",
     "needs": "Sua cópia de Super Mario Odyssey (Nintendo Switch).",
     "saves": [],
-    "tag": "v0.4.7",
-    "released": "2026-11-18",
+    "tag": "v1.0.0",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -3239,16 +3239,16 @@
     },
     "files": {
       "windows": {
-        "name": "Super.Odyssey.PC.Recomp-0.4.7-windows.zip",
-        "sha256": "5a9d7dd556c05627096abfc07a6c5bea3f171af9abf57a7cc1518f0c8ac670c9"
+        "name": "Super.Odyssey.PC.Recomp-1.0.0-windows.zip",
+        "sha256": "c3d33171602048c30783c1fe85a8243782d0754e12ccb23b5bad21c200581c99"
       },
       "linux": {
-        "name": "Super.Odyssey.PC.Recomp-0.4.7-linux-x86_64.AppImage",
-        "sha256": "76362c4eb0d510eccdffc0709593630704d87427d10ce560b729990e065c18e4"
+        "name": "Super.Odyssey.PC.Recomp-1.0.0-linux-x86_64.AppImage",
+        "sha256": "a098ad80076219dbbf8dc5d8f4de674d935cc209e89726411a311329f13afa52"
       }
     },
     "size_text": "221 MB",
-    "stars": 398,
+    "stars": 582,
     "license": "NOASSERTION"
   },
   {
@@ -3282,7 +3282,7 @@
       }
     },
     "size_text": "142 MB",
-    "stars": 390,
+    "stars": 404,
     "license": "MIT"
   },
   {
@@ -3301,8 +3301,8 @@
     "needs": "Sua cópia de Pokémon: Let's Go, Pikachu! (Nintendo Switch).",
     "saves": [],
     "start": "LetsGoRecomp.exe",
-    "tag": "v0.7.7",
-    "released": "2026-11-18",
+    "tag": "v0.7.8",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -3311,12 +3311,12 @@
     },
     "files": {
       "windows": {
-        "name": "LetsGoRecomp-0.7.7-windows.zip",
-        "sha256": "c18e6955a7ba34d1abc077003382ada71cad546c2deb2d820f0cc298262a3b02"
+        "name": "LetsGoRecomp-0.7.8-windows.zip",
+        "sha256": "1ec3395689822e1f6c089c14fb3bac25879e18c785d6ee05843cadc5a3085a09"
       }
     },
     "size_text": "88 MB",
-    "stars": 314,
+    "stars": 326,
     "license": "NOASSERTION"
   },
   {
@@ -3355,7 +3355,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 228,
+    "stars": 291,
     "license": "MIT"
   },
   {
@@ -3389,7 +3389,7 @@
       }
     },
     "size_text": "72 MB",
-    "stars": 177,
+    "stars": 182,
     "license": "NOASSERTION"
   },
   {
@@ -3407,8 +3407,8 @@
     "adds": "",
     "needs": "Sua cópia de God of War: Ascension (PlayStation 3).",
     "saves": [],
-    "tag": "v0.1.0-alpha.15",
-    "released": "2026-11-17",
+    "tag": "v0.3.0",
+    "released": "2026-11-22",
     "systems": [
       "windows"
     ],
@@ -3417,12 +3417,12 @@
     },
     "files": {
       "windows": {
-        "name": "Ascension-R-0.1.0-alpha.15-kit-win64.zip",
-        "sha256": "33cea69d1d5ee6010d12687c259d14a507e4d3ffdf4f46d8ded5f7303bece6c4"
+        "name": "Ascension-R-0.3.0-kit-win64.zip",
+        "sha256": "9676c283c80399d38357dc5aae2c84a2df7363496e4ac7b9230a72140e737a50"
       }
     },
     "size_text": "148 MB",
-    "stars": 165,
+    "stars": 186,
     "license": "NOASSERTION"
   },
   {
@@ -3467,7 +3467,7 @@
       }
     },
     "size_text": "38 MB",
-    "stars": 4185,
+    "stars": 4207,
     "license": "NOASSERTION"
   },
   {
@@ -3512,7 +3512,7 @@
       }
     },
     "size_text": "29 MB",
-    "stars": 1841,
+    "stars": 1842,
     "license": ""
   },
   {
@@ -3545,7 +3545,7 @@
       }
     },
     "size_text": "37 MB",
-    "stars": 961,
+    "stars": 988,
     "license": "GPL-3.0"
   },
   {
@@ -3584,7 +3584,7 @@
       }
     },
     "size_text": "81 MB",
-    "stars": 718,
+    "stars": 756,
     "license": "GPL-3.0"
   },
   {
@@ -3629,7 +3629,7 @@
       }
     },
     "size_text": "71 MB",
-    "stars": 474,
+    "stars": 477,
     "license": "NOASSERTION"
   },
   {
@@ -3647,8 +3647,8 @@
     "adds": "",
     "needs": "Sua cópia de Shadow the Hedgehog (Xbox).",
     "saves": [],
-    "tag": "v1.0.0",
-    "released": "2026-11-15",
+    "tag": "v1.0.1",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -3659,16 +3659,16 @@
     },
     "files": {
       "windows": {
-        "name": "ShadowRecomp-Windows-x64-v1.0.0.zip",
-        "sha256": "a2ff573bbea94d317482e5022189abd7ec77a6e4695cee349b062dbc0c8a40e6"
+        "name": "ShadowRecomp-Windows-x64-v1.0.1.zip",
+        "sha256": "e8cf3cd210e8ba44e10980b0a3587644db715b782ce72dc7c773c07ba81767a3"
       },
       "linux": {
-        "name": "ShadowRecomp-Linux-x86_64-v1.0.0.tar.gz",
-        "sha256": "8a1466c9636703deeb1976e6ca4ebe807813cbf8ebd7b336bf5067313850c3a4"
+        "name": "ShadowRecomp-Linux-x86_64-v1.0.1.tar.gz",
+        "sha256": "0f7d08392b8be32b7040ec77c3335cf73be4f43caa5c8fa04e2707c1c5a31322"
       }
     },
     "size_text": "30 MB",
-    "stars": 398,
+    "stars": 447,
     "license": "GPL-3.0"
   },
   {
@@ -3701,7 +3701,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 337,
+    "stars": 344,
     "license": "MIT"
   },
   {
@@ -3719,8 +3719,8 @@
     "adds": "",
     "needs": "Sua cópia de Ninja Gaiden II (Xbox 360).",
     "saves": [],
-    "tag": "v0.6.10",
-    "released": "2026-11-18",
+    "tag": "v0.7.5",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -3732,15 +3732,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaiden2-windows-x64.zip",
-        "sha256": "21124802bee48ca84d9cff1f9bddec2e3be4312dc64ff49a1520468580c99608"
+        "sha256": "dae20cd9587b41567c0b8332b147309054d2a7736b20fe8b08d49c1bf9206bae"
       },
       "linux": {
         "name": "NinjaGaiden2-x86_64.AppImage",
-        "sha256": "193d74e804215fbb9cb6a36c8ba78fb5ff9ac620bac06a21f306441278297453"
+        "sha256": "678d2bbfed17624269dc7d2af343828f873604a3e58898f088bc2a79c496d19f"
       }
     },
-    "size_text": "156 MB",
-    "stars": 292,
+    "size_text": "157 MB",
+    "stars": 326,
     "license": "GPL-3.0"
   },
   {
@@ -3758,8 +3758,8 @@
     "adds": "",
     "needs": "Sua cópia de Command & Conquer: Red Alert 2 - Yuri's Revenge (Other).",
     "saves": [],
-    "tag": "v0.1.3",
-    "released": "2026-10-27",
+    "tag": "v0.1.4",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -3771,15 +3771,15 @@
     "files": {
       "windows": {
         "name": "RA2-Recomp-Installer-windows-x64.exe",
-        "sha256": "9a9e92aed8eb2f1bbdf965a69f89dddf80a68e469cb918c9bb2560143010249e"
+        "sha256": "54c49f3d721b32409ce4a3402e393b79d15ef931dccd06ada10c78dc44fe7e99"
       },
       "linux": {
         "name": "RA2-Recomp-Installer-linux-x64.tar.gz",
-        "sha256": "dfa901f9063c0f188064a395534892213c87942346f0a2059a1fb6b56143e487"
+        "sha256": "cb2294f4d6d0212e7481a63f260641f27ce81cbd45bbaf8d2b56bf7534cf6be5"
       }
     },
     "size_text": "19 MB",
-    "stars": 226,
+    "stars": 236,
     "license": "MIT"
   },
   {
@@ -3797,8 +3797,8 @@
     "adds": "",
     "needs": "Sua cópia de Army of Two (Xbox 360).",
     "saves": [],
-    "tag": "v1.5.0",
-    "released": "2026-11-09",
+    "tag": "v1.6.0",
+    "released": "2026-11-21",
     "systems": [
       "windows"
     ],
@@ -3807,12 +3807,12 @@
     },
     "files": {
       "windows": {
-        "name": "ArmyOfTwo-v1.5.0.zip",
-        "sha256": "90bae4ab4ea63a06b05be53445dbaa385833d2c14ae0f466093e20bb94cb4f9e"
+        "name": "ArmyOfTwo-v1.6.0.zip",
+        "sha256": "4017235a18b35455391bac2bba175322ed3bff6382e9229816871e1d09523bf2"
       }
     },
-    "size_text": "35 MB",
-    "stars": 188,
+    "size_text": "36 MB",
+    "stars": 191,
     "license": "MIT"
   },
   {
@@ -3851,7 +3851,7 @@
       }
     },
     "size_text": "133 MB",
-    "stars": 179,
+    "stars": 188,
     "license": "GPL-3.0"
   },
   {
@@ -3896,7 +3896,7 @@
       }
     },
     "size_text": "81 MB",
-    "stars": 132,
+    "stars": 134,
     "license": "GPL-3.0"
   },
   {
@@ -3929,7 +3929,7 @@
       }
     },
     "size_text": "7 MB",
-    "stars": 93,
+    "stars": 95,
     "license": ""
   },
   {
@@ -3947,8 +3947,8 @@
     "adds": "",
     "needs": "Sua cópia de Crash Bandicoot: The Wrath of Cortex (PlayStation 2).",
     "saves": [],
-    "tag": "v0.9.1",
-    "released": "2026-11-18",
+    "tag": "v0.10.1",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -3959,16 +3959,16 @@
     },
     "files": {
       "windows": {
-        "name": "CrashWOC-NuWorld-v0.9.1-windows-x64.zip",
-        "sha256": "8c2a363c35aef7ad750140ebfb705bd89fb06ec88142dfbe963ad421317822b1"
+        "name": "CrashWOC-NuWorld-v0.10.1-windows-x64.zip",
+        "sha256": "1c79402be4d8655decfbfeaf99279bbcf336fc2c2db41a3bdb79cf02245a8448"
       },
       "linux": {
-        "name": "CrashWOC-NuWorld-v0.9.1-linux-x86_64.tar.gz",
-        "sha256": "88e914c8b2ed82664fc667da61bbe0564c365f9a8681dfe01ae7de008ff27f4b"
+        "name": "CrashWOC-NuWorld-v0.10.1-linux-x86_64.tar.gz",
+        "sha256": "27ca37e8f7f80237d6152a0a74b047728f45eb505af29bbaaf5c53d0ad9c29cc"
       }
     },
     "size_text": "6 MB",
-    "stars": 88,
+    "stars": 95,
     "license": "GPL-3.0"
   },
   {
@@ -4013,7 +4013,7 @@
       }
     },
     "size_text": "51 MB",
-    "stars": 80,
+    "stars": 84,
     "license": "NOASSERTION"
   },
   {
@@ -4046,7 +4046,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 70,
+    "stars": 76,
     "license": "NOASSERTION"
   },
   {
@@ -4118,7 +4118,7 @@
       }
     },
     "size_text": "56 MB",
-    "stars": 53,
+    "stars": 56,
     "license": "GPL-3.0"
   },
   {
@@ -4151,7 +4151,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 53,
+    "stars": 61,
     "license": ""
   },
   {
@@ -4190,7 +4190,7 @@
       }
     },
     "size_text": "38 MB",
-    "stars": 45,
+    "stars": 47,
     "license": "GPL-2.0"
   },
   {
@@ -4208,8 +4208,8 @@
     "adds": "",
     "needs": "Sua cópia de Conker: Live & Reloaded (Xbox).",
     "saves": [],
-    "tag": "v4.0.0",
-    "released": "2026-11-14",
+    "tag": "v5.0.0",
+    "released": "2026-11-20",
     "systems": [
       "windows",
       "linux"
@@ -4220,16 +4220,16 @@
     },
     "files": {
       "windows": {
-        "name": "LiveAndRecompiled-v4.0.0-windows-x86_64.zip",
-        "sha256": "ebaee5c05ac958868f9b9891e9fd98aa4ee07886ff7de2bfdb44ec1c30b5951f"
+        "name": "LiveAndRecompiled-v5.0.0-windows-x86_64.zip",
+        "sha256": "e051e00319c1a472eb09acfaa690082ce4709b2e426888f52ee8196205e79512"
       },
       "linux": {
-        "name": "LiveAndRecompiled-v4.0.0-linux-x86_64.tar.gz",
-        "sha256": "28c63ccd419379f53a574889a94525eea177654b7bd7919087b90a2a4b0d28bc"
+        "name": "LiveAndRecompiled-v5.0.0-linux-x86_64.tar.gz",
+        "sha256": "ab442226cc51c07f8dc12a6e5d220e7a296f7a3eeffbca2031b2a1b86d0cd65d"
       }
     },
-    "size_text": "96 MB",
-    "stars": 42,
+    "size_text": "131 MB",
+    "stars": 45,
     "license": "GPL-3.0"
   },
   {
@@ -4262,7 +4262,7 @@
       }
     },
     "size_text": "22 MB",
-    "stars": 42,
+    "stars": 48,
     "license": "NOASSERTION"
   },
   {
@@ -4353,8 +4353,8 @@
     "needs": "Sua cópia de Forza Horizon (Xbox 360).",
     "saves": [],
     "kind": "installer",
-    "tag": "v0.3.8",
-    "released": "2026-11-15",
+    "tag": "v0.3.9",
+    "released": "2026-11-19",
     "systems": [
       "windows",
       "linux"
@@ -4365,16 +4365,16 @@
     },
     "files": {
       "windows": {
-        "name": "ForzaHorizon1-ReImagined-Setup-0.3.8.exe",
-        "sha256": "f606b12fd75114f9286766aec55e9726d697c3f780ccf5a44d528aeedc854ddc"
+        "name": "ForzaHorizon1-ReImagined-Setup-0.3.9.exe",
+        "sha256": "40d6f69953009c8e4cf0dc47b4f68d26aa99fb3b4aa7345260cc329d000d2873"
       },
       "linux": {
         "name": "ForzaHorizon1-ReImagined-linux-x86_64.tar.gz",
-        "sha256": "48acff49e0046abfc5edef68b1288066e1e01f7e13c6d6bb5162010dc7aff4b1"
+        "sha256": "0cdd1d790a62e89f687033487d1be0c3c077a3baf1a6a6c76be22f876732065c"
       }
     },
     "size_text": "149 MB",
-    "stars": 478
+    "stars": 490
   },
   {
     "id": "yfm-redecomp",
@@ -4412,7 +4412,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 323
+    "stars": 329
   },
   {
     "id": "khdays-port",
@@ -4445,7 +4445,7 @@
       }
     },
     "size_text": "31 MB",
-    "stars": 245
+    "stars": 249
   },
   {
     "id": "rayman3-hd-recompiled",
@@ -4462,8 +4462,8 @@
     "adds": "",
     "needs": "Sua cópia de Rayman 3 HD (Xbox 360).",
     "saves": [],
-    "tag": "v1.2.0",
-    "released": "2026-11-17",
+    "tag": "v1.3.1",
+    "released": "2026-11-23",
     "systems": [
       "windows"
     ],
@@ -4472,12 +4472,12 @@
     },
     "files": {
       "windows": {
-        "name": "Rayman3HDRecompiled-1.2.0-portable.zip",
-        "sha256": "bf4228a1983ad07cf1ba3ffc64e08dc2d100c63e29ce01ea9a3e329eca366898"
+        "name": "Rayman3HDRecompiled-1.3.1-portable.zip",
+        "sha256": "a0fce3fe70c4181831c48e5558f9c130a21e572b811e7ea5b7e34a29aab0d22a"
       }
     },
-    "size_text": "43 MB",
-    "stars": 92
+    "size_text": "44 MB",
+    "stars": 96
   },
   {
     "id": "mhgurecomp",
@@ -4494,8 +4494,8 @@
     "adds": "",
     "needs": "Sua cópia de Monster Hunter Generations Ultimate (Nintendo Switch), versão 1.4.0, já extraída nas pastas exefs e romfs.",
     "saves": [],
-    "tag": "0.17.8",
-    "released": "2026-11-18",
+    "tag": "0.19.2",
+    "released": "2026-11-23",
     "systems": [
       "windows",
       "linux"
@@ -4506,16 +4506,16 @@
     },
     "files": {
       "windows": {
-        "name": "Windows-MHGURecomp.0.17.8.zip",
-        "sha256": "0e85bf046092ca6a8db43ed113eb6ac4c7e26ac3a7b2dca82fc23c4b30e9aab5"
+        "name": "Windows-MHGURecomp.0.19.2.zip",
+        "sha256": "949a9be8ba5099349db0254c9dc31efab8ae4adeb66181e67c58084bcf7c39ea"
       },
       "linux": {
-        "name": "Linux-MHGURecomp.0.17.8.tar.gz",
-        "sha256": "855175629ba520113927d6506cc3361ea4863e4932e8ae10198875719896f038"
+        "name": "Linux-MHGURecomp.0.19.2.tar.gz",
+        "sha256": "833fc841995b9a5cd2205869700cb63fc7d720ed2506dd09100a1922b5d220eb"
       }
     },
     "size_text": "44 MB",
-    "stars": 662,
+    "stars": 736,
     "handoff": {
       "kind": "folder",
       "folder": "data"
@@ -4543,8 +4543,8 @@
     "adds": "",
     "needs": "Sua cópia de Dragon Ball Z: Budokai Tenkaichi 3 (mod Tenkaichi 4) (PlayStation 2).",
     "saves": [],
-    "tag": "v0.1.39.6-R1.5",
-    "released": "2026-11-18",
+    "tag": "v0.1.39.6-R3",
+    "released": "2026-11-22",
     "systems": [
       "windows",
       "linux"
@@ -4556,14 +4556,14 @@
     "files": {
       "windows": {
         "name": "BT4decomp-windows-x64.zip",
-        "sha256": "9e64aa49ffe4a0e82492c8c17a7f096a69039d3748fd0d7fd93d4b6f910b7215"
+        "sha256": "1065eb8420e28c2137f4449f15251a5f3969f5857db2a43fdb24e3dfc60d4e0f"
       },
       "linux": {
         "name": "BT4decomp-linux-x64.zip",
-        "sha256": "9c54bc145903465a0bf87ad7098dee73ff3d95b5211b9b36c5e2f0063c1776ab"
+        "sha256": "2730e2a514dcc06e8a3603a1af70548eee51a8a11efcd91e5ec4955286d9bcc6"
       }
     },
     "size_text": "71 MB",
-    "stars": 129
+    "stars": 135
   }
 ]

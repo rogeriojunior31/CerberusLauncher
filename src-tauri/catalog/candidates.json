@@ -29,8 +29,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 8423,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 8439
   },
   {
     "id": "s2arm",
@@ -47,8 +46,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.5.8",
-    "released": "2026-11-18",
+    "tag": "v0.6.9",
+    "released": "2026-11-23",
     "systems": [
       "windows"
     ],
@@ -58,12 +57,43 @@
     "files": {
       "windows": {
         "name": "S2Arm-windows-x64.zip",
-        "sha256": "a1358678f3bad6d23fbb7b80bb3dcb01cca905b82734ccd6e5384ac76ee01967"
+        "sha256": "6cecb830b3769cf5a6fdc9f859daa076636740bbff21cf4116b772a15f9d83a0"
       }
     },
-    "size_text": "199 MB",
-    "stars": 3588,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "size_text": "223 MB",
+    "stars": 3868
+  },
+  {
+    "id": "xbox2windows",
+    "title": "xbox2windows",
+    "name": "Xbox2Windows",
+    "repo": "R0Y00/Xbox2Windows",
+    "about": "Static recompilation research for Xbox Series X|S software on x64 Windows, with source-built CPU and GPU tests. Full-game startup is unverified.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "gpu-check-v0.1.0",
+    "released": "2026-11-20",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "Xbox2Windows-GpuCheck-win-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "Xbox2Windows-GpuCheck-win-x64.zip",
+        "sha256": "cc489a34bb0d3b8af8bb4e3ce0bc9d09cfa100183da204b69784e1ac9fb9c8b9"
+      }
+    },
+    "size_text": "1 MB",
+    "stars": 1493
   },
   {
     "id": "ps3recomp",
@@ -80,8 +110,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.19.0",
-    "released": "2026-11-06",
+    "tag": "v0.20.0",
+    "released": "2026-11-21",
     "systems": [
       "windows",
       "linux"
@@ -92,17 +122,54 @@
     },
     "files": {
       "windows": {
-        "name": "ps3recomp-v0.19.0-win-x64.zip",
-        "sha256": "37418029743f83c0d98e15d210b3c0c7a38ff63b2a995f3aaf156fc9882bbf4d"
+        "name": "ps3recomp-v0.20.0-win-x64.zip",
+        "sha256": "143cb6b9fa88c5a0b31a1e097ddbaed68c1607d3d1bf8ce1ca211e1a67260246"
       },
       "linux": {
-        "name": "ps3recomp-v0.19.0-linux-x64.zip",
-        "sha256": "901e5894f155ee503e210e309bd2efed72c1beb24c491726234ac1516a4a89aa"
+        "name": "ps3recomp-v0.20.0-linux-x64.zip",
+        "sha256": "03e7fce9155d3bb9dde0e7bda06a7d10e2d28b85ed4707a28a4fde1a14f47258"
+      }
+    },
+    "size_text": "6 MB",
+    "stars": 739
+  },
+  {
+    "id": "gb-recompiled",
+    "title": "gb-recompiled",
+    "name": "gb recompiled",
+    "repo": "arcanite24/gb-recompiled",
+    "about": "Static recompiler for Game Boy and Game Boy Color ROMs that emits portable C projects with an SDL2 runtime.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.1.0",
+    "released": "2026-08-03",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "gb-recompiled-windows-x64.zip",
+      "linux": "gb-recompiled-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "gb-recompiled-windows-x64.zip",
+        "sha256": "81d67729a4bbefc4e7247e9fbf53f2909ee74bb77f6d1daacf3d1920ea245269"
+      },
+      "linux": {
+        "name": "gb-recompiled-linux-x64.tar.gz",
+        "sha256": "b77fbf8913a9dd770097df81e8e0f84cf2e0d9e3a44dc1a1ee4d1846c5035535"
       }
     },
     "size_text": "3 MB",
-    "stars": 717,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 465
   },
   {
     "id": "recompstore",
@@ -134,8 +201,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 401,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 414
   },
   {
     "id": "nfsu2recomp",
@@ -167,8 +233,7 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 281,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 299
   },
   {
     "id": "switchwakerhd",
@@ -212,8 +277,77 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 269,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 279
+  },
+  {
+    "id": "bo2-mac",
+    "title": "bo2-mac",
+    "name": "bo2 mac",
+    "repo": "adrbn/bo2-mac",
+    "about": "Call of Duty: Black Ops II statically recompiled from 32-bit x86 Windows to native ARM64 macOS: Remill → LLVM IR, a hand-written Win32 runtime, Direct3D 11 drawn by Metal. No Wine, no game files.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.3.1",
+    "released": "2026-11-23",
+    "systems": [
+      "macos"
+    ],
+    "assets": {
+      "macos": "bo2-mac.zip"
+    },
+    "files": {
+      "macos": {
+        "name": "bo2-mac.zip",
+        "sha256": "c2763ba54fb8622d8ad06811af12cd5e2672e79aafcb413193d384e87d187713"
+      }
+    },
+    "size_text": "107 MB",
+    "stars": 279
+  },
+  {
+    "id": "mk8-online",
+    "title": "mk8-online",
+    "name": "MK8 online",
+    "repo": "Vnnc1/MK8-online",
+    "about": "Experimental static recompilation of Mario Kart 8 Deluxe 4.0.1 for Windows x64 and Linux amd64. Native Vulkan runtime, Mii creator, online play via Nextendo and Steam rooms. Bring your own game files and keys: no ROMs, assets or keys included.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.6.3",
+    "released": "2026-11-23",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "MK8-online-*-portable.zip",
+      "linux": "MK8-online-*-linux-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "MK8-online-0.6.3-portable.zip",
+        "sha256": "04e0a6bd887c092977cd8ee7570b0dd6b72aaa36c42be47a134eb3e727bf40ba"
+      },
+      "linux": {
+        "name": "MK8-online-0.6.3-linux-x86_64.AppImage",
+        "sha256": "b05865c21927700df0bc153dc1652d032203240de30ddb1c4cbbc6ff743d3059"
+      }
+    },
+    "size_text": "50 MB",
+    "stars": 270
   },
   {
     "id": "ps2-native-recomp",
@@ -245,8 +379,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 222,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 231
   },
   {
     "id": "decomp-buddy",
@@ -263,8 +396,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.33.0",
-    "released": "2026-11-14",
+    "tag": "v0.34.1",
+    "released": "2026-11-19",
     "systems": [
       "windows",
       "linux",
@@ -277,21 +410,116 @@
     },
     "files": {
       "windows": {
-        "name": "Decomp.Buddy.0.33.0.Portable.exe",
-        "sha256": "bd76d839cf5d1400adf63e9e2eda3d13fe8135192ff82cb9b507af4a524bce6f"
+        "name": "Decomp.Buddy.0.34.1.Portable.exe",
+        "sha256": "46fc63cc1c5d276ea0388148f9357bc0c32b6d81883f6e5853390f28a622d549"
       },
       "linux": {
-        "name": "Decomp.Buddy-0.33.0.AppImage",
-        "sha256": "9b91e7dc80c53d04bfcaeaf0fce625df44c8ecf99144540665064f3262af5e2a"
+        "name": "Decomp.Buddy-0.34.1.AppImage",
+        "sha256": "b7a91832eb95ff8b37e7169511367a742ccead808a4be8186a9d183dfb1c8336"
       },
       "macos": {
-        "name": "Decomp.Buddy-0.33.0-x64-mac.zip",
-        "sha256": "7cf1a5fa1f839da50c8fc4b3564f3d56a1e04a365484d41dffa987f517c3f1fa"
+        "name": "Decomp.Buddy-0.34.1-x64-mac.zip",
+        "sha256": "dbd09c09971b8f55e2a9cf82054cd4206386a903b4f76fc23c5acf9f26fc64a6"
       }
     },
-    "size_text": "118 MB",
-    "stars": 163,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "size_text": "119 MB",
+    "stars": 187
+  },
+  {
+    "id": "gta-stories-recompiled",
+    "title": "gta-stories-recompiled",
+    "name": "gta stories recompiled",
+    "repo": "batinium/gta-stories-recompiled",
+    "about": "GTA Liberty City Stories and Vice City Stories recompiled for PC (Windows, Mac) and Android, joined into one world, with a mod loader. Unofficial fan project: bring your own discs.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.3.2",
+    "released": "2026-11-22",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "GTA-Stories-Recompiled-*-windows.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "GTA-Stories-Recompiled-0.3.2-windows.zip",
+        "sha256": "fccbaa7a6e0ef9c61adf94e78240504e1a4b3565c104ff90e8d3ad1c4e525760"
+      }
+    },
+    "size_text": "97 MB",
+    "stars": 77
+  },
+  {
+    "id": "opentm2",
+    "title": "opentm2",
+    "name": "OpenTM2",
+    "repo": "Tokatta007/OpenTM2",
+    "about": "A PC port of Twisted Metal 2 (PlayStation, 1996)",
+    "license": "NOASSERTION",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v1.0.13",
+    "released": "2026-11-23",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "OpenTM2-*-Windows-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "OpenTM2-v1.0.13-Windows-x64.zip",
+        "sha256": "89bacb5f620b069d995376d2121fd4542abfc8bfe64147a3e079948d201399f1"
+      }
+    },
+    "size_text": "18 MB",
+    "stars": 48
+  },
+  {
+    "id": "midtown-madness-3-recomp",
+    "title": "midtown-madness-3-recomp",
+    "name": "midtown madness 3 recomp",
+    "repo": "MattSG/midtown-madness-3-recomp",
+    "about": "Native PC port of Midtown Madness 3 (Xbox) via static recompilation. Windows x64 playable, Linux x64 in testing. Bring your own disc. Experimental, AI-assisted.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v2026.11.21.27.1",
+    "released": "2026-11-21",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "mm3-builder-windows.exe"
+    },
+    "files": {
+      "windows": {
+        "name": "mm3-builder-windows.exe",
+        "sha256": "38377507c162867ff2ccf2458fdf7fc1eeacd22d6e92d8a7027a3a381e4d72a4"
+      }
+    },
+    "size_text": "12 MB",
+    "stars": 33
   },
   {
     "id": "akilauncher",
@@ -323,7 +551,6 @@
       }
     },
     "size_text": "12 MB",
-    "stars": 26,
-    "review_note": "Fora do catálogo do recomplauncher.com: conferir à mão se é um jogo jogável."
+    "stars": 27
   }
 ]
