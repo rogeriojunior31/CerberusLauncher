@@ -353,6 +353,11 @@ pub struct SettingsView {
     pub setup_done: bool,
     #[serde(default)]
     pub start_in_tv: bool,
+    /// Recomp download limit in MB/s; 0 for none.
+    #[serde(default)]
+    pub download_limit: u32,
+    #[serde(default)]
+    pub slow_while_playing: bool,
     /// The player's own SteamGridDB key, for picking art.
     #[serde(default)]
     pub steamgriddb_key: Option<String>,

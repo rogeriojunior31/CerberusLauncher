@@ -106,7 +106,7 @@ pub async fn download(
         let _ = fs::remove_file(&part);
         return Err(tr!("O arquivo baixado não bate com o checksum do GitHub, então foi descartado. Tente de novo.").into());
     }
-    fs::rename(&part, &target).map_err(|e| e.to_string())?;
+    super::throttle::rename_patiently(&part, &target, 20)?;
     Ok(target)
 }
 
@@ -224,6 +224,7 @@ async fn fetch_into(
     let mut out = options.open(part).await.map_err(|e| Stop::Fatal(e.to_string()))?;
 
     let mut stream = reply.bytes_stream();
+    let mut pace = super::throttle::Pace::default();
     while let Some(chunk) = until_cancelled(stream.next(), cancel).await? {
         let chunk = chunk.map_err(|_| dropped())?;
         if response_end > 0 && chunk.len() as u64 > response_end.saturating_sub(*done) {
@@ -233,6 +234,10 @@ async fn fetch_into(
         hash.update(&chunk);
         *done += chunk.len() as u64;
         report(*done, total);
+        // Under the player's limit (and slower while a game is open).
+        if let Some(wait) = pace.after(chunk.len() as u64) {
+            tokio::time::sleep(wait).await;
+        }
     }
     out.flush().await.map_err(|e| Stop::Fatal(e.to_string()))?;
     if total > 0 && *done != total { return Err(dropped()); }

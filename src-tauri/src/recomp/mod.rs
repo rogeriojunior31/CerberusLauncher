@@ -14,6 +14,7 @@ pub mod sources;
 mod translate;
 pub(crate) mod update;
 pub mod relocate;
+pub mod throttle;
 
 use cerberus_shared::tk;
 use cerberus_shared::tr;

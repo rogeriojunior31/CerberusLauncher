@@ -104,9 +104,10 @@ impl Update {
     pub(super) fn publish(&self) -> Result<(), String> {
         preserve(&self.target, &self.candidate())
             .map_err(|e| tr!("Falha ao preparar a atualização: {}", e))?;
-        fs::rename(&self.target, self.work.join("previous"))
+        // An antivirus checking the new files (or the old ones) may hold them a moment.
+        super::throttle::rename_patiently(&self.target, &self.work.join("previous"), 20)
             .map_err(|e| tr!("Falha ao reservar a versão anterior: {}", e))?;
-        fs::rename(self.candidate(), &self.target)
+        super::throttle::rename_patiently(&self.candidate(), &self.target, 20)
             .map_err(|e| tr!("Falha ao ativar a atualização: {}", e))
     }
 

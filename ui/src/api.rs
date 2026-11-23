@@ -662,6 +662,17 @@ pub async fn whats_new_seen() -> Result<(), String> {
     call("whats_new_seen", &()).await
 }
 
+/// The recomp download limit in MB/s (0 = none) and slowing down while playing.
+pub async fn set_download_limit(mb: u32, slow_while_playing: bool) -> Result<cerberus_shared::SettingsView, String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg {
+        mb: u32,
+        slow_while_playing: bool,
+    }
+    call("set_download_limit", &Arg { mb, slow_while_playing }).await
+}
+
 /// Pauses or resumes a recomp's updates.
 pub async fn set_updates_paused(id: &str, on: bool) -> Result<(), String> {
     #[derive(serde::Serialize)]

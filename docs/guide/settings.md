@@ -41,6 +41,10 @@ While a game is running, closing the window always keeps Cerberus in the tray, s
 
 **Recomps folder**: where new recomps are installed, with the free space shown. Games already installed stay where they are.
 
+**Speed limit**: caps recomp downloads (1 to 50 MB/s), or none.
+
+**Slower while you play** (on by default): while a game is open, downloads stay at up to 3 MB/s so the game doesn't lag, and go back to normal when it closes.
+
 ### Saves and cloud
 
 **Cloud saves**: the synced folder for save backups, with **Check uploads** and **Turn off**. See [Saves](saves.md).

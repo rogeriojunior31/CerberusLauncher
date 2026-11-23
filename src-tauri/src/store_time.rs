@@ -174,6 +174,9 @@ pub fn watch(app: AppHandle) {
                 let _ = app.emit("playtime-updated", &id);
             }
             live.check(&app);
+            // Downloads slow down while any game is open (store games or ones Cerberus started).
+            let ours = !app.state::<crate::sessions::Sessions>().running().is_empty();
+            crate::recomp::throttle::set_playing(ours || !playing.is_empty());
             std::thread::sleep(Duration::from_secs(5));
         }
     });

@@ -41,7 +41,11 @@ The **Play** button always shows the next step:
 
 ## Updates
 
-Cerberus checks for new versions on its own. Updates show as a badge on the cover and in **What's new**.
+Cerberus checks for new versions on its own. Updates show as a badge on the cover, in **What's new**, and on the **Downloads** page under **Updates ready**, with **Update all** when there are several.
+
+To keep a recomp on the version you have (a new one broke your mods, say), turn on **Manage → Pause updates**. It leaves the update lists until you resume.
+
+The **Downloads** page shows the download in progress with its speed and time left, installs that **didn't finish** with the reason and **Try again**, and your **recent** installs by day. If Windows or an antivirus holds a file while a recomp installs, Cerberus tries again for a few seconds before giving up.
 
 Before updating, Cerberus backs up your saves. It then prepares the new version next to the old one and swaps them only when everything is in place. If an update is interrupted, the previous version is restored the next time Cerberus opens.
 

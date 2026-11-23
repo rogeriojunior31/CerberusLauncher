@@ -45,6 +45,12 @@ pub struct Settings {
     /// The version whose "What's new" was shown; a newer running version shows its notes once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seen_version: Option<String>,
+    /// Recomp download limit in MB/s; 0 for none.
+    #[serde(default)]
+    pub download_limit: u32,
+    /// Downloads go slower while a game is open (on unless turned off).
+    #[serde(default = "yes")]
+    pub slow_while_playing: bool,
     /// Recomps whose updates the player paused, by game id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub paused_updates: std::collections::BTreeSet<String>,

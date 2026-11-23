@@ -120,6 +120,8 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),
         setup_done: chosen.setup_done,
         start_in_tv: chosen.start_in_tv,
+        download_limit: chosen.download_limit,
+        slow_while_playing: chosen.slow_while_playing,
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
@@ -975,6 +977,18 @@ fn ra_open(app: AppHandle, keys: bool) -> Result<(), String> {
 }
 
 /// Whether the app opens in the TV screen; changed in Configurações.
+/// The recomp download limit (MB/s, 0 for none) and slowing down while playing.
+#[tauri::command]
+fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.download_limit = mb.min(1000);
+    chosen.slow_while_playing = slow_while_playing;
+    settings::save(&data.0, &chosen)?;
+    recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
+    Ok(settings_view(&app))
+}
+
 #[tauri::command]
 fn set_start_in_tv(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
@@ -2206,6 +2220,10 @@ fn main() {
             let asked: Vec<String> = std::env::args().collect();
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
             background::tray(app.handle())?;
+            {
+                let chosen = settings::load(&data_dir);
+                recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
+            }
             store_time::watch(app.handle().clone());
             self_update::watch(app.handle().clone());
             app.manage(overlay::Overlay::default());
@@ -2348,6 +2366,7 @@ fn main() {
             game_sessions,
             set_game_note,
             set_updates_paused,
+            set_download_limit,
             update_check,
             update_found,
             update_install,

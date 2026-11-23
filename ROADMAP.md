@@ -622,7 +622,7 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 
 - [x] Pausar as atualizações de um jogo e limite de velocidade de download, mais lento enquanto se joga. — P
 - [ ] Pasta de instalação por jogo e proxy em Configurações › Rede. — P
-- [ ] Repetir quando o Windows ou o antivírus prende um arquivo, com mensagem clara. — P
+- [x] Repetir quando o Windows ou o antivírus prende um arquivo, com mensagem clara. — P
 - [ ] Etiquetas no catálogo (Widescreen, 60 FPS, Mods, Online) com filtro, situação do projeto (encerrado, pausado)
       e "Parecidos com este". — P
 - [ ] Chaves compartilhadas (Switch, Wii U) importadas uma vez e usadas por todos os jogos que pedem. — M

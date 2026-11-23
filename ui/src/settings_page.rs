@@ -359,7 +359,35 @@ fn install(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                     <Svg icon=Icon::Folder size=16 />{tr!("Escolher pasta")}
                 </button>
             })}
+            {download_speed(s.download_limit, s.slow_while_playing, busy, apply)}
         </section>
+    }
+}
+
+/// Download speed: a limit, and going slower while a game is open.
+fn download_speed(limit: u32, slow: bool, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let options = [0u32, 1, 2, 5, 10, 20, 50]
+        .into_iter()
+        .map(|mb| {
+            let label = if mb == 0 { tr!("Sem limite").to_string() } else { format!("{mb} MB/s") };
+            view! { <option value=mb.to_string() selected=mb == limit>{label}</option> }
+        })
+        .collect_view();
+    view! {
+        {row(tr!("Limite de velocidade"), tr!("Para não ocupar a conexão inteira de quem mais usa a internet aí."), view! {
+            <select class="select" aria-label=tr!("Limite de velocidade") disabled=move || busy.get()
+                on:change=move |e| {
+                    let mb = event_target_value(&e).parse().unwrap_or(0);
+                    apply(Box::pin(api::set_download_limit(mb, slow)), tr!("Limite de velocidade salvo."));
+                }>{options}</select>
+        })}
+        {row(tr!("Mais devagar enquanto você joga"), tr!("Com um jogo aberto, os downloads ficam em até 3 MB/s, para não dar lag. Voltam ao normal quando você fecha o jogo."), view! {
+            <button type="button" class="switch" class:on=slow role="switch" aria-checked=slow.to_string() aria-label=tr!("Mais devagar enquanto você joga")
+                disabled=move || busy.get()
+                on:click=move |_| apply(Box::pin(api::set_download_limit(limit, !slow)), if slow { tr!("Downloads na velocidade normal mesmo jogando.") } else { tr!("Downloads mais devagar enquanto você joga.") })>
+                <i></i>
+            </button>
+        })}
     }
 }
 
