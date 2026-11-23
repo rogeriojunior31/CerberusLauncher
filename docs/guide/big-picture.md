@@ -17,6 +17,7 @@ It opens on the monitor chosen in **Settings → General → Monitor**. That opt
 **Home**, **Library**, **Discover**, **Achievements**, **Downloads** and **Settings**, switched with **LB / RB**.
 
 - **Library:** chips for All, Favorites, Playing, Recomps, Steam and Epic, and an order (Recent, A–Z, Most played).
+- **Discover:** the whole catalog, with chips on top: search, only the games you have, genre (**A** goes to the next one: action, platformers, racing...) and order.
 - **Achievements:** your totals and platinums, then rows of games close to 100%, platinums and recent unlocks, each cover with its count and bar. **A** opens the game's page; games that aren't in the library (RetroAchievements classics, for example) open their own list: unlocked first, then the rest from the most common, with points and dates. Secret ones stay hidden until you press **A** on them.
 - **A game's page:** for Steam games, the store description, pictures (A opens them full screen, the D-pad changes picture), achievements and details. While the game runs, the main button is **Back to game**.
 - The top bar shows the game you're playing and for how long.

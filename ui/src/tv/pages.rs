@@ -481,6 +481,23 @@ pub fn Discover() -> impl IntoView {
     tv.keep_position(focus);
     let owned_only = RwSignal::new(false);
     let order = RwSignal::new(Order::Popular);
+    // A genre from the catalog ("" for all), changed by A on its chip.
+    let genre = RwSignal::new(String::new());
+    // The catalog's genres, the most common first.
+    let genres = Memo::new(move |_| {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for e in one_each(&catalog(library)).into_iter().map(|(lead, _)| lead) {
+            if crate::discover::genre_label(&e.genre).is_none() {
+                continue;
+            }
+            match counts.iter_mut().find(|(g, _)| *g == e.genre) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((e.genre.clone(), 1)),
+            }
+        }
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+        counts.into_iter().map(|(g, _)| g).collect::<Vec<_>>()
+    });
     // The grid grows as the focus nears its end.
     let shown = RwSignal::new(48usize);
 
@@ -497,6 +514,7 @@ pub fn Discover() -> impl IntoView {
                 all.iter().find(|e| e.title == lead.title && needle.split_whitespace().all(|w| format!("{} {}", e.name, e.game).to_lowercase().contains(w))).cloned()
             })
             .filter(|e| !owned_only.get() || e.owned_copy.is_some())
+            .filter(|e| genre.with(|g| g.is_empty() || e.genre == *g))
             .collect();
         match order.get() {
             Order::Popular => list.sort_by_key(|e| std::cmp::Reverse(e.downloads)),
@@ -508,7 +526,7 @@ pub fn Discover() -> impl IntoView {
     let visible = move || results.with(Vec::len).min(shown.get());
     // Row 0: the chips. Rows below: the grid.
     let rows = move || {
-        let mut r = vec![3];
+        let mut r = vec![4];
         r.extend(grid_rows(visible()));
         r
     };
@@ -527,6 +545,31 @@ pub fn Discover() -> impl IntoView {
             tv.show_backdrop(Item::Entry(e).heroes());
         }
     });
+    // A on a chip (or a click): search, owned only, the next genre, the next order.
+    let press = move |col: usize| {
+        play(Sound::Select);
+        match col {
+            0 => tv.sheet.set(Some(Sheet::Keyboard)),
+            1 => owned_only.update(|o| *o = !*o),
+            2 => genres.with_untracked(|all| {
+                // The next genre, then back to all of them.
+                let now = genre.get_untracked();
+                let next = match all.iter().position(|g| *g == now) {
+                    _ if now.is_empty() => all.first().cloned(),
+                    Some(i) => all.get(i + 1).cloned(),
+                    None => None,
+                };
+                genre.set(next.unwrap_or_default());
+            }),
+            _ => order.update(|o| {
+                *o = match o {
+                    Order::Popular => Order::Newest,
+                    Order::Newest => Order::Name,
+                    Order::Name => Order::Popular,
+                }
+            }),
+        }
+    };
     tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Buscar"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
@@ -537,18 +580,7 @@ pub fn Discover() -> impl IntoView {
         }
         Btn::A => {
             if focus.row.get_untracked() == 0 {
-                play(Sound::Select);
-                match focus.col.get_untracked() {
-                    0 => tv.sheet.set(Some(Sheet::Keyboard)),
-                    1 => owned_only.update(|o| *o = !*o),
-                    _ => order.update(|o| {
-                        *o = match o {
-                            Order::Popular => Order::Newest,
-                            Order::Newest => Order::Name,
-                            Order::Name => Order::Popular,
-                        }
-                    }),
-                }
+                press(focus.col.get_untracked());
             } else if let Some(e) = focused() {
                 tv.open(View::Game(format!("recomp:{}", e.id)));
             }
@@ -570,7 +602,7 @@ pub fn Discover() -> impl IntoView {
     });
 
     let chip = move |c: usize, label: Box<dyn Fn() -> String + Send + Sync>| {
-        view! { <span class="tv-chip" class:on=move || focus.is(0, c) data-tvf=focus.key(0, c)>{move || label()}</span> }
+        view! { <span class="tv-chip" class:on=move || focus.is(0, c) data-tvf=focus.key(0, c) on:click=move |_| { focus.set(0, c); press(c); }>{move || label()}</span> }
     };
     let grid = move || {
         let n = visible();
@@ -592,7 +624,8 @@ pub fn Discover() -> impl IntoView {
             <div class="tv-chips">
                 {chip(0, Box::new(move || { let q = tv.search.get(); if q.is_empty() { tr!("Buscar").to_string() } else { tr!("Buscar: {}", q) } }))}
                 {chip(1, Box::new(move || if owned_only.get() { tr!("✓ Tenho o jogo").to_string() } else { tr!("Tenho o jogo").to_string() }))}
-                {chip(2, Box::new(move || match order.get() { Order::Popular => tr!("Ordem: populares"), Order::Newest => tr!("Ordem: novos"), Order::Name => tr!("Ordem: A a Z") }.to_string()))}
+                {chip(2, Box::new(move || genre.with(|g| crate::discover::genre_label(g).map_or_else(|| tr!("Gênero: todos").to_string(), |l| tr!("Gênero: {}", l)))))}
+                {chip(3, Box::new(move || match order.get() { Order::Popular => tr!("Ordem: populares"), Order::Newest => tr!("Ordem: novos"), Order::Name => tr!("Ordem: A a Z") }.to_string()))}
             </div>
             <div class="tv-grid">{grid}</div>
             {move || results.with(Vec::is_empty).then(|| view! { <p class="tv-empty">{tr!("Nenhum jogo encontrado.")}</p> })}
@@ -766,4 +799,3 @@ pub fn Settings() -> impl IntoView {
     }
     .into_any()
 }
-

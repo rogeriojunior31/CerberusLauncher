@@ -179,7 +179,7 @@ fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
 }
 
 /// The catalog's genres, in the player's words. "other" isn't offered.
-fn genre_label(id: &str) -> Option<&'static str> {
+pub fn genre_label(id: &str) -> Option<&'static str> {
     Some(match id {
         "action" => tr!("Ação"),
         "platformer" => tr!("Plataformas"),

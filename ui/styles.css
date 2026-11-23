@@ -1082,7 +1082,6 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 .tv-grid .tv-tile { width: auto; min-width: 0; }
 .tv-chips { display: flex; gap: calc(16 * var(--u)); margin-bottom: calc(18 * var(--u)); }
 .tv-chip { padding: calc(14 * var(--u)) calc(28 * var(--u)); border-radius: 999px; background: rgba(255, 255, 255, 0.08); font-weight: 700; transition: background 0.2s, transform 0.2s, color 0.2s; }
-.tv-chip.on { background: #fff; color: #0b0d13; transform: scale(1.04); }
 
 /* Listas (Downloads, Configurações) */
 .tv-list { display: flex; flex-direction: column; gap: calc(14 * var(--u)); max-width: calc(1300 * var(--u)); }
