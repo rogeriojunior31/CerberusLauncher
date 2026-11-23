@@ -1080,6 +1080,11 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 .tv-bar.wide { position: relative; height: calc(8 * var(--u)); border-radius: 999px; overflow: hidden; margin-top: calc(10 * var(--u)); }
 .tv-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: calc(34 * var(--u)) calc(30 * var(--u)); padding: calc(16 * var(--u)) calc(4 * var(--u)); }
 .tv-grid .tv-tile { width: auto; min-width: 0; }
+.tv-toasts { position: absolute; top: calc(120 * var(--u)); right: calc(100 * var(--u)); z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: calc(12 * var(--u)); max-width: calc(720 * var(--u)); pointer-events: none; }
+.tv-toast { display: flex; align-items: center; gap: calc(16 * var(--u)); padding: calc(18 * var(--u)) calc(26 * var(--u)); border-radius: calc(18 * var(--u)); background: rgba(20, 23, 33, 0.94); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 calc(20 * var(--u)) calc(60 * var(--u)) rgba(0, 0, 0, 0.6); font-weight: 600; animation: tv-toast-in 0.35s var(--ease) both; }
+.tv-toast svg { flex: none; color: #4ade80; }
+.tv-toast.bad svg { color: var(--bad); }
+@keyframes tv-toast-in { from { opacity: 0; transform: translateX(calc(40 * var(--u))); } }
 .tv-chips { display: flex; gap: calc(16 * var(--u)); margin-bottom: calc(18 * var(--u)); }
 .tv-chip { padding: calc(14 * var(--u)) calc(28 * var(--u)); border-radius: 999px; background: rgba(255, 255, 255, 0.08); font-weight: 700; transition: background 0.2s, transform 0.2s, color 0.2s; }
 
@@ -1735,13 +1740,12 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .sg-none { padding: 8px 10px; font-size: 12px; color: var(--dim); margin: 0; }
 .side-foot { margin-top: auto; }
 .foot-row { display: flex; gap: 6px; }
-.foot-add { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border-radius: 11px; background: var(--fill2);
-  color: var(--ink); font-weight: 600; font-size: 13.5px; border: 1px solid var(--line); transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
-.foot-add:hover { background: var(--card2); border-color: var(--line2); }
-.foot-add svg { color: var(--accent); flex: none; }
-.foot-icon { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); border: 1px solid var(--line); transition: background 0.15s, color 0.15s; }
+.foot-icon { flex: 1; min-width: 0; width: auto; height: 40px; display: grid; place-items: center; border-radius: 11px; color: var(--muted); border: 1px solid var(--line); transition: background 0.15s, color 0.15s; }
 .foot-icon:hover { background: var(--fill2); color: var(--ink); }
 .foot-icon.on { background: var(--card2); color: var(--accent); }
+/* The main thing to do down here: the accent, like the other main buttons. */
+.foot-icon.foot-add { border: 0; background: var(--grad); color: var(--accent-ink); box-shadow: 0 8px 20px -10px var(--glow); }
+.foot-icon.foot-add:hover { background: var(--grad); color: var(--accent-ink); filter: brightness(1.08); }
 
 /* Discover: genres */
 .genre-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

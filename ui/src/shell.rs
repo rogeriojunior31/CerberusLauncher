@@ -47,9 +47,8 @@ pub fn Sidebar() -> impl IntoView {
             <div class="side-foot">
                 <crate::updates::UpdateNotice />
                 <div class="foot-row">
-                    <button type="button" class="foot-add" on:click=move |_| library.add_game()>
-                        <Svg icon=Icon::Plus size=18 />
-                        <span>{tr!("Adicionar jogo")}</span>
+                    <button type="button" class="foot-icon foot-add" title=tr!("Adicionar jogo") aria-label=tr!("Adicionar jogo") on:click=move |_| library.add_game()>
+                        <Svg icon=Icon::Plus size=20 />
                     </button>
                     <button type="button" class="foot-icon" title=tr!("Big Picture Mode") aria-label=tr!("Big Picture Mode")
                         on:click=move |_| library.go(Route::BigPicture)>

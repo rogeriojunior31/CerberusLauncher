@@ -365,8 +365,22 @@ pub fn TvMode() -> impl IntoView {
 
     let sheet = move || tv.sheet.get().map(|s| view! { <sheets::SheetView sheet=s /> });
 
+    // The app's notices, sized for the TV (the window's own are under this screen).
+    let toasts = move || {
+        library
+            .toasts
+            .get()
+            .into_iter()
+            .map(|t| {
+                let icon = if t.error { Icon::Info } else { Icon::Check };
+                view! { <div class="tv-toast" class:bad=t.error role=if t.error { "alert" } else { "status" }><Svg icon size=26 /><span>{t.text}</span></div> }
+            })
+            .collect_view()
+    };
+
     view! {
         <div class="tv">
+            <div class="tv-toasts" aria-live="polite">{toasts}</div>
             <div class="tv-bg">{move || { let s = tv.backdrop.get(); (!s.is_empty()).then(|| view! { <Backdrop sources=s /> }) }}</div>
             <div class="tv-shade"></div>
             <header class="tv-top">
