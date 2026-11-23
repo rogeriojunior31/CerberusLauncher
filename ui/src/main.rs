@@ -191,6 +191,7 @@ pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
         NextStep::ChooseCopy { found: Some(_) } => (tr!("Usar minha cópia"), icons::Icon::Check),
         NextStep::ChooseCopy { found: None } => (tr!("Escolher cópia do jogo"), icons::Icon::Folder),
         NextStep::Locate { .. } => (tr!("Localizar programa"), icons::Icon::Search),
+        NextStep::Install => (tr!("Instalar"), icons::Icon::Download),
     }
 }
 
@@ -199,6 +200,11 @@ pub fn play_game(library: Library, game: Game) {
     spawn_local(async move {
         let ready = match &game.next_step {
             NextStep::Play | NextStep::RunInstaller => Some(game),
+            // The store's own install window opens; the tile turns into Play when it's done.
+            NextStep::Install => {
+                library.toast(tr!("A Steam vai instalar {}. Quando terminar, ele aparece pronto para jogar.", game.name));
+                Some(game)
+            }
             NextStep::ChooseCopy { found } => {
                 let set = library.report(api::set_game_copy(&game.id, found.is_some(), false).await).flatten();
                 library.games.refetch();

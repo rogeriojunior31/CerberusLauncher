@@ -1002,6 +1002,7 @@ async fn list_games(
         found
     });
     games.extend(scan.await.unwrap_or_default());
+    owned_not_installed(&app, &http, &mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
@@ -1028,6 +1029,39 @@ async fn list_games(
     collections::apply(&app.state::<DataDir>().0, &mut games);
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
+}
+
+/// With the Steam Web API on: the account's games this PC hasn't installed, from
+/// the list kept on disk (asked of Steam again in the background once it's an
+/// hour old, and the library is listed again when it changes).
+fn owned_not_installed(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
+    let data = app.state::<DataDir>().0.clone();
+    let chosen = settings::load(&data);
+    let (Some(key), Some(id)) = (chosen.steam_key, chosen.steam_id) else { return };
+    let file = data.join("cache").join("achievements").join("steam-api").join(format!("owned-{id}.json"));
+    let owned: Vec<achievements::steam_api::Owned> = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let installed: std::collections::HashSet<String> = games.iter().map(|g| g.id.clone()).collect();
+    let covers = steam::root().map(|r| steam::cover_cache_dir(&r));
+    for o in &owned {
+        let game_id = format!("steam:{}", o.app);
+        if !installed.contains(&game_id) && !o.name.trim().is_empty() {
+            games.push(steam::not_installed(o.app, &o.name, covers.as_deref()));
+        }
+    }
+    let old = fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|age| age > Duration::from_secs(3600));
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if old && !ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        let (app, http) = (app.clone(), http.clone());
+        tauri::async_runtime::spawn(async move {
+            let before = owned.len();
+            if let Ok(list) = achievements::steam_api::owned(&http, &data, &key, &id, true).await {
+                if list.len() != before {
+                    let _ = app.emit("catalog-changed", ());
+                }
+            }
+            ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
 }
 
 /// Asks for an executable and adds it to the library, with the name and cover
@@ -1457,6 +1491,8 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
     // Store games go through their own launcher, which handles updates, DRM and
     // overlays; the rest are started, and watched, by us.
     let url = match &game.source {
+        // Not on this PC yet: Steam's own install window.
+        Source::Steam { app_id } if game.install_dir.is_empty() => format!("steam://install/{app_id}"),
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         Source::Local { .. } => {

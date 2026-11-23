@@ -131,7 +131,13 @@ pub fn watch(app: AppHandle) {
             if scanned.elapsed() >= Duration::from_secs(60) {
                 let mut found = crate::steam::installed_games();
                 found.extend(crate::epic::installed_games());
+                let before: HashSet<String> = games.iter().map(|(id, _, _)| id.clone()).collect();
                 games = found.into_iter().map(|g| (g.id, g.install_dir, g.name)).collect();
+                // A game finished installing (or was removed) in its store: the library shows it.
+                let now: HashSet<String> = games.iter().map(|(id, _, _)| id.clone()).collect();
+                if !before.is_empty() && before != now {
+                    let _ = app.emit("catalog-changed", ());
+                }
                 scanned = Instant::now();
             }
             let dirs: Vec<(String, String)> = games.iter().map(|(id, dir, _)| (id.clone(), dir.clone())).collect();

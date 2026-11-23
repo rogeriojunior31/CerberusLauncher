@@ -104,6 +104,8 @@ pub struct LibraryView {
     compact: RwSignal<bool>,
     /// The collection open under Coleções.
     shelf: RwSignal<Option<String>>,
+    /// Installed games, or the account's games this PC doesn't have.
+    absent: RwSignal<bool>,
 }
 
 impl Default for LibraryView {
@@ -115,6 +117,7 @@ impl Default for LibraryView {
             sort: RwSignal::new(Sort::Name),
             compact: RwSignal::new(false),
             shelf: RwSignal::new(None),
+            absent: RwSignal::new(false),
         }
     }
 }
@@ -233,7 +236,8 @@ fn navigate_rows(event: web_sys::KeyboardEvent) {
 #[component]
 pub fn LibraryPage() -> impl IntoView {
     let library = expect_context::<Library>();
-    let LibraryView { category, search, filter, sort, compact, shelf } = expect_context();
+    let LibraryView { category, search, filter, sort, compact, shelf, absent } = expect_context();
+    let is_absent = |g: &Game| g.next_step == cerberus_shared::NextStep::Install;
     let shelves = LocalResource::new(move || {
         library.games.track();
         crate::api::list_collections()
@@ -263,13 +267,38 @@ pub fn LibraryPage() -> impl IntoView {
                 on:click=move |_| { category.set(which); filter.set(Filter::All); }>{which.label()}</button>
         }
     }).collect_view();
-    let chips = Filter::STORES.into_iter().map(|which| {
+    // How many games each chip would show, for the tab and installed state in view.
+    let counts = Memo::new(move |_| {
+        let kind = category.get();
+        let away = absent.get();
+        library.games.with(|all| {
+            let all = all.as_ref().and_then(|r| r.as_ref().ok());
+            let in_tab: Vec<&Game> = all.into_iter().flatten().filter(|g| kind.keeps(g, None) || kind == Category::Collections).collect();
+            let stores = Filter::STORES.map(|f| in_tab.iter().filter(|g| f.keeps(g) && is_absent(g) == away).count());
+            let missing = in_tab.iter().filter(|g| is_absent(g)).count();
+            (stores, in_tab.len() - missing, missing)
+        })
+    });
+    let chips = Filter::STORES.into_iter().enumerate().map(|(i, which)| {
         let active = move || filter.get() == which;
         view! {
             <button type="button" class="chip-btn" class:on=active aria-pressed=move || active().to_string()
-                on:click=move |_| filter.set(which)>{which.label()}</button>
+                on:click=move |_| filter.set(which)>
+                {which.label()}<span class="chip-n">{move || counts.get().0[i]}</span>
+            </button>
         }
     }).collect_view();
+    let presence = move || {
+        let (_, here, missing) = counts.get();
+        (missing > 0).then(|| view! {
+            <div class="segs" role="group" aria-label=tr!("Instalação")>
+                <button type="button" class="seg" class:on=move || !absent.get() aria-pressed=move || (!absent.get()).to_string()
+                    on:click=move |_| absent.set(false)>{tr!("Instalados")}<span class="chip-n">{here}</span></button>
+                <button type="button" class="seg" class:on=move || absent.get() aria-pressed=move || absent.get().to_string()
+                    on:click=move |_| absent.set(true)>{tr!("Não instalados")}<span class="chip-n">{missing}</span></button>
+            </div>
+        })
+    };
 
     let results = move || {
         if category.get() == Category::Classics {
@@ -313,7 +342,8 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
             }.into_any();
         }
-        games.retain(|g| kind.keeps(g, open.as_deref()) && source.keeps(g) && (needle.is_empty() || g.name.to_lowercase().contains(&needle)));
+        let away = absent.get();
+        games.retain(|g| kind.keeps(g, open.as_deref()) && source.keeps(g) && is_absent(g) == away && (needle.is_empty() || g.name.to_lowercase().contains(&needle)));
         if games.is_empty() && kind == Category::Hidden && needle.is_empty() {
             return view! {
                 <div class="empty">
@@ -433,6 +463,7 @@ pub fn LibraryPage() -> impl IntoView {
                     <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
                     <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
                         <div class="chips" role="group" aria-label=tr!("Origem do jogo")>{chips.clone()}</div>
+                        {presence}
                     </Show>
                     <Show when=move || category.get() == Category::Collections>
                         <ShelfBar shelves open=Signal::derive(open_shelf) shelf />

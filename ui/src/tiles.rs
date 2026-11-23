@@ -24,6 +24,8 @@ pub struct TileInfo {
     pub open: Route,
     /// Catalog tiles follow installation events without rebuilding the surrounding shelf.
     recomp_id: Option<String>,
+    /// Owned but not on this PC: the cover is dimmed.
+    pub absent: bool,
 }
 
 pub fn source_name(source: &Source) -> &'static str {
@@ -77,6 +79,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         game: Some(game.clone()),
         open: Route::Game(game.id.clone()),
         recomp_id: None,
+        absent: game.next_step == cerberus_shared::NextStep::Install,
     }
 }
 
@@ -101,6 +104,7 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         game: None,
         open: Route::Game(format!("recomp:{}", entry.id)),
         recomp_id: Some(entry.id.clone()),
+        absent: false,
     }
 }
 
@@ -138,7 +142,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
         (badge, bar)
     };
     view! {
-        <div class="tile">
+        <div class="tile" class:absent=info.absent>
             <button type="button" class="tile-b" on:click=on_open on:contextmenu=on_menu title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
@@ -204,5 +208,7 @@ fn waiting_for(game: &Game) -> Option<&'static str> {
         cerberus_shared::NextStep::RunInstaller => Some(tr!("Instalação pendente")),
         cerberus_shared::NextStep::ChooseCopy { .. } => Some(tr!("Falta sua cópia")),
         cerberus_shared::NextStep::Locate { .. } => Some(tr!("Programa não encontrado")),
+        // Dimmed already, and under its own filter: no chip on every cover.
+        cerberus_shared::NextStep::Install => None,
     }
 }

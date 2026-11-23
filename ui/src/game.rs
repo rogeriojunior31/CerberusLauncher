@@ -762,7 +762,9 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     let is_recomp = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
     let editable = game.as_ref().is_some_and(|g| matches!(g.source, Source::Local { .. } | Source::Recomp { .. }));
 
-    let folder = game.as_ref().map(|g| {
+    // Not on this PC: no folder to open and nothing for a shortcut to start.
+    let here = game.as_ref().filter(|g| g.next_step != cerberus_shared::NextStep::Install);
+    let folder = here.map(|g| {
         let id = g.id.clone();
         let on_folder = move |_| {
             let id = id.clone();
@@ -802,7 +804,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
-    let shortcut = game.as_ref().map(|g| {
+    let shortcut = here.map(|g| {
         let id = g.id.clone();
         let on_shortcut = move |_| {
             let id = id.clone();

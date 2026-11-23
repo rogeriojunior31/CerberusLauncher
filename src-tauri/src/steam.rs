@@ -87,6 +87,37 @@ fn clean_path(path: &Path) -> Option<String> {
     Some(path.to_string_lossy().into_owned())
 }
 
+/// A game the Steam account owns but this PC hasn't installed. Its art is what
+/// the Steam client already keeps here, or Steam's servers.
+pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
+    let host = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps";
+    Game {
+        id: format!("steam:{app_id}"),
+        name: name.to_string(),
+        source: Source::Steam { app_id },
+        install_dir: String::new(),
+        cover_path: covers.and_then(|c| local_art(c, app_id, &["library_600x900.jpg", "library_capsule.jpg"])),
+        cover_url: Some(format!("{host}/{app_id}/library_600x900.jpg")),
+        hero_path: covers.and_then(|c| local_art(c, app_id, &["library_hero.jpg"])),
+        hero_url: Some(format!("{host}/{app_id}/library_hero.jpg")),
+        playtime_secs: 0,
+        last_played: None,
+        last_session_secs: None,
+        launch_args: String::new(),
+        tracking_exe: None,
+        game_copy: None,
+        setup_pending: false,
+        next_step: cerberus_shared::NextStep::Install,
+        setting_picks: Default::default(),
+        external: false,
+        logo_path: None,
+        look: None,
+        favorite: false,
+        hidden: false,
+        collections: Vec::new(),
+    }
+}
+
 fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
     let text = fs::read_to_string(path).ok()?;
     let app_id: u32 = first_value(&text, "appid")?.parse().ok()?;
@@ -191,6 +222,18 @@ fn steam_root() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_owned_game_not_on_this_pc_installs_through_steam() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("620_library_600x900.jpg"), b"x").unwrap();
+        let g = super::not_installed(620, "Portal 2", Some(dir.path()));
+        assert_eq!(g.next_step, cerberus_shared::NextStep::Install);
+        assert!(g.install_dir.is_empty());
+        assert!(g.cover_url.as_deref().unwrap().contains("/620/library_600x900.jpg"));
+        let none = super::not_installed(4000, "Garry's Mod", None);
+        assert!(none.cover_path.is_none() && none.hero_url.is_some());
+    }
+
     use super::*;
 
     #[test]

@@ -222,6 +222,8 @@ pub enum NextStep {
     /// The program to open is gone (moved, deleted, or an installer put it
     /// somewhere unknown); the player points at it.
     Locate { reason: String },
+    /// A store game the account owns that this PC hasn't installed: the store installs it.
+    Install,
 }
 
 impl Game {

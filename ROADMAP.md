@@ -536,7 +536,7 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 
 ### 6.2 Biblioteca e lojas (prioridade 2)
 
-- [ ] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" e
+- [x] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" e
       "Desinstalar" por `steam://install|uninstall/<id>`, e o jogo vira instalado sozinho quando aparece o
       `appmanifest_*.acf`. — M
 - [ ] Opções de inicialização passadas à Steam: `steam://run/<id>//<argumentos>/` [H]. — P

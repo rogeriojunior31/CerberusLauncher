@@ -137,7 +137,7 @@ pub fn GameMenuLayer() -> impl IntoView {
                     <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
                 </button>
                 <Shelves id=shelf_id in_shelves />
-                {
+                {has_folder.then(|| {
                     let id = game.id.clone();
                     view! {
                         <button type="button" role="menuitem" on:click=move |_| {
@@ -152,7 +152,7 @@ pub fn GameMenuLayer() -> impl IntoView {
                             <Svg icon=Icon::External size=16 />{tr!("Criar atalho na área de trabalho")}
                         </button>
                     }
-                }
+                })}
                 {has_folder.then(|| view! {
                     <button type="button" role="menuitem" on:click=move |_| {
                         menu.close();

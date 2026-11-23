@@ -85,7 +85,8 @@ pub fn Home() -> impl IntoView {
     move || {
         let library_state = library.games.get();
         let read_error = library_state.as_ref().and_then(|state| state.as_ref().err()).cloned();
-        let games = library_state.and_then(Result::ok).unwrap_or_default();
+        // Home is about what's on this PC: owned-but-not-installed games stay in the Library.
+        let games: Vec<Game> = library_state.and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.next_step != cerberus_shared::NextStep::Install).collect();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
 
