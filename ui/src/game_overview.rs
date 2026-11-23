@@ -86,7 +86,8 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
             })
             .collect_view();
         let rows: Vec<(Icon, String, String)> = [
-            (Icon::Clock, tr!("Total").to_string(), if total == 0 { tr!("Nunca jogado").to_string() } else { format::playtime(total) }),
+            (Icon::Clock, tr!("Total").to_string(), // Zero with a last time: played, just under a minute (Steam counts whole minutes).
+            if total == 0 && last.is_none() { tr!("Nunca jogado").to_string() } else { format::playtime(total) }),
             (Icon::Play, tr!("Última vez").to_string(), last.map(format::ago).unwrap_or_else(|| "—".into())),
             (Icon::List, tr!("Esta semana").to_string(), if week == 0 { "—".into() } else { format::playtime(week) }),
             (Icon::List, tr!("Este mês").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),

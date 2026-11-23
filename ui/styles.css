@@ -563,7 +563,7 @@ table.langs .dim { color: var(--dim); }
 .pc-list b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 700; }
 @media (max-width: 900px) { .pc-body { grid-template-columns: 1fr; } }
 .pc.compact { gap: 12px; }
-.pc-list.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; }
+.pc-list.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); row-gap: 12px; }
 .pc-list.row li { grid-template-columns: 18px 1fr; grid-template-rows: auto auto; row-gap: 2px; padding: 4px 14px; border-top: 0; border-left: 1px solid var(--line); }
 .pc-list.row li:first-child { border-left: 0; padding-left: 0; }
 .pc-list.row li svg { grid-row: 1 / 3; align-self: center; }
