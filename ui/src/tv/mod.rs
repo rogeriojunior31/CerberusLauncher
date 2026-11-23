@@ -6,6 +6,7 @@
 //! game's options anywhere. A button bar at the bottom shows what each button
 //! does, drawn for the controller in use (Xbox, PlayStation or Nintendo).
 
+mod achievements;
 mod focus;
 mod game;
 pub(crate) mod input;
@@ -33,14 +34,16 @@ pub enum Tab {
     Home,
     Library,
     Discover,
+    Achievements,
     Downloads,
     Settings,
 }
 
-const TABS: [(Tab, &str, Icon); 5] = [
+const TABS: [(Tab, &str, Icon); 6] = [
     (Tab::Home, tk!("Início"), Icon::Home),
     (Tab::Library, tk!("Biblioteca"), Icon::Library),
     (Tab::Discover, tk!("Descobrir"), Icon::Discover),
+    (Tab::Achievements, tk!("Conquistas"), Icon::Trophy),
     (Tab::Downloads, tk!("Downloads"), Icon::Download),
     (Tab::Settings, tk!("Configurações"), Icon::Settings),
 ];
@@ -340,6 +343,7 @@ pub fn TvMode() -> impl IntoView {
         View::Tab(Tab::Home) => view! { <pages::Home /> }.into_any(),
         View::Tab(Tab::Library) => view! { <pages::LibraryGrid /> }.into_any(),
         View::Tab(Tab::Discover) => view! { <pages::Discover /> }.into_any(),
+        View::Tab(Tab::Achievements) => view! { <achievements::Achievements /> }.into_any(),
         View::Tab(Tab::Downloads) => view! { <pages::Downloads /> }.into_any(),
         View::Tab(Tab::Settings) => view! { <pages::Settings /> }.into_any(),
         View::Game(id) => view! { <game::GamePage id /> }.into_any(),

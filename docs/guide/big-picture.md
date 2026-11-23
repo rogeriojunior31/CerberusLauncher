@@ -14,7 +14,12 @@ It opens on the monitor chosen in **Settings → General → Monitor**. That opt
 
 ## Sections
 
-**Home**, **Library**, **Discover**, **Downloads** and **Settings**, switched with **LB / RB**.
+**Home**, **Library**, **Discover**, **Achievements**, **Downloads** and **Settings**, switched with **LB / RB**.
+
+- **Library:** chips for All, Favorites, Playing, Recomps, Steam and Epic, and an order (Recent, A–Z, Most played).
+- **Achievements:** your totals and platinums, then rows of games close to 100%, platinums and recent unlocks, each cover with its count and bar. **A** opens the game's page.
+- **A game's page:** for Steam games, the store description, pictures (A opens them full screen, the D-pad changes picture), achievements and details. While the game runs, the main button is **Back to game**.
+- The top bar shows the game you're playing and for how long.
 
 ## Controls
 

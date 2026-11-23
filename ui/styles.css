@@ -1724,3 +1724,11 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
   transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .fr-lang:hover { color: var(--ink); }
 .fr-lang.on { background: var(--grad); border-color: transparent; color: #fff; }
+
+/* Big Picture: achievements */
+.tv-ach-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: calc(10 * var(--u)) calc(34 * var(--u)); color: var(--muted); font-size: calc(24 * var(--u)); margin: calc(4 * var(--u)) 0 calc(10 * var(--u)); }
+.tv-ach-sum b { color: var(--ink); font-size: calc(32 * var(--u)); margin-right: calc(4 * var(--u)); }
+.tv-ach-sum .gold b { color: #f5c542; }
+.tv-ach-sum .tv-ach-bar { flex-basis: 100%; max-width: calc(900 * var(--u)); }
+.tv-cover.plat { box-shadow: 0 0 0 calc(3 * var(--u)) #f5c542; }
+.tv-bar.gold i { background: linear-gradient(90deg, #ffe08a, #f5b62a); }
