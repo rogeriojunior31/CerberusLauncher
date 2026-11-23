@@ -309,6 +309,11 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       log do jogo apontado, no histórico e como aviso.
 - [x] Opções de inicialização: abrir com o Windows e começar escondido na bandeja (só quando o Windows abre).
 - [x] Tempo de jogo dos jogos da Steam e da Epic: o Cerberus vigia os programas abertos (mesmo na bandeja). Falta conferir com uma partida real.
+- [x] Instalador do Windows (0.10.0, NSIS): em português, com as imagens do Cerberus, só para o usuário (sem
+      administrador), Menu Iniciar, atalho na área de trabalho e "Executar" ao concluir (cai na configuração inicial);
+      WebView2 embutido para PCs sem ele. Desinstalar mantém os dados (a caixa para apagar diz o que apaga) e tira
+      o "Abrir com o Windows" e as chaves do instalador. Conferido: instalar, primeira abertura e desinstalar.
+      Falta: assinatura digital (o SmartScreen avisa) e publicar a release.
 - [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
 - [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play).
 - [x] Adicionar à Steam (Gerenciar): jogo de fora na biblioteca da Steam, com capa e fundo, abrindo pelo Cerberus;
