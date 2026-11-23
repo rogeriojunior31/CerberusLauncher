@@ -420,7 +420,7 @@ pub fn LibraryPage() -> impl IntoView {
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {
                             "recent" => Sort::Recent, "time" => Sort::Playtime, _ => Sort::Name,
                         })>
-                        <option value="name" selected=move || sort.get() == Sort::Name>"A a Z"</option>
+                        <option value="name" selected=move || sort.get() == Sort::Name>{tr!("A a Z")}</option>
                         <option value="recent" selected=move || sort.get() == Sort::Recent>{tr!("Jogados recentemente")}</option>
                         <option value="time" selected=move || sort.get() == Sort::Playtime>{tr!("Mais jogados")}</option>
                     </select>

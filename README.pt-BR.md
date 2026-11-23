@@ -52,6 +52,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 - **Steam:** você pode colocar qualquer jogo na Steam (para o Steam Deck e o Big Picture) ou criar um atalho na área de trabalho que abre pelo Cerberus.
 - **Clássicos com vários discos** aparecem como um jogo só. A troca de disco fica no menu do RetroArch.
 - **Integração com o Windows:** ícone na bandeja, abrir com o Windows, avisos e uma janela só, mesmo se você abrir de novo.
+- **Idiomas:** português do Brasil e inglês. Segue o idioma do Windows, ou você escolhe em **Configurações → Aparência → Idioma**. O instalador também fala os dois.
 
 ## Baixar e instalar
 

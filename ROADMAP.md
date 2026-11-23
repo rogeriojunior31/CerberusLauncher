@@ -352,6 +352,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       com a versão; "Trocar versão…" usa uma DLL de mesmo nome que o jogador já tem (o Cerberus não baixa nada),
       guarda a do jogo e "Voltar à original" desfaz. Testado com DLLs do Windows no lugar; a tela conferida com
       um jogo falso. Falta: um jogo real com DLSS.
+- [x] Idiomas: português do Brasil e inglês em todo o app (interface, Big Picture, menu por cima do jogo, avisos,
+      erros do backend, bandeja e instalador). Automático segue o Windows; escolha em Configurações › Aparência.
+      `tr!` com o texto em português como chave e `shared/locales/en.json`; teste garante que nada fica sem tradução.
+      Conferido no app trocando para inglês e voltando.
 - [ ] Discord "Jogando...".
 
 ### 4.4 Transição

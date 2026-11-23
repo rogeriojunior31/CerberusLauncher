@@ -335,7 +335,7 @@ pub fn DiscoverPage() -> impl IntoView {
                         <option value="popular">{tr!("Populares")}</option>
                         <option value="new">{tr!("Adicionados recentemente")}</option>
                         <option value="updated">{tr!("Atualizados recentemente")}</option>
-                        <option value="name">"A a Z"</option>
+                        <option value="name">{tr!("A a Z")}</option>
                     </select>
                 </div>
                 <div class="catalog-platform">

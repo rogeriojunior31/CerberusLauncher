@@ -1091,10 +1091,11 @@ fn LinkToCatalog(id: String) -> impl IntoView {
     }
 }
 
-/// "2017-03-18" -> "18/03/2017"; anything else as it is.
+/// "2017-03-18" -> "18/03/2017" ("03/18/2017" in English); anything else as it is.
 fn day(text: &str) -> String {
     let parts: Vec<&str> = text.get(..10).unwrap_or(text).split('-').collect();
     match parts.as_slice() {
+        [y, m, d] if y.len() == 4 && cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::En => format!("{m}/{d}/{y}"),
         [y, m, d] if y.len() == 4 => format!("{d}/{m}/{y}"),
         _ => text.to_string(),
     }

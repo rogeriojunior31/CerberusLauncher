@@ -31,14 +31,14 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 > **Cerberus never downloads game files.** Every recomp and every classic needs a copy of the game that you own.
 
 > [!NOTE]
-> The interface is in **Brazilian Portuguese** for now. This README shows each button as it appears in the app, with the English meaning in parentheses.
+> Cerberus speaks **English** and **Brazilian Portuguese**. It follows your Windows language, and you can pick one in **Settings → Appearance → Language**. More languages are on the way.
 
 ## Features
 
 | | |
 |---|---|
-| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library** (*Biblioteca*)<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. |
-| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover** (*Descobrir*)<br>Over 1,500 recomps and native ports. You can search by game, console or author. Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
+| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library**<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. |
+| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover**<br>Over 1,500 recomps and native ports. You can search by game, console or author. Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
 | <img src="docs/screenshots/game-page.jpg" alt="Game page" /> | **Game page**<br>Play time, versions, saves, game settings, mods, screenshots and management, all in one page. **Easy Setup** finds your copy in your ROM folders and delivers it the way each recomp expects. That works for a ROM, an extracted folder, an ISO, an Xbox or Xbox 360 image, a CHD or a CSO. |
 | <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>A TV interface for the couch. You can use a controller, keyboard or mouse, and it opens full screen on the monitor you choose. |
 
@@ -53,12 +53,13 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 - **Steam integration:** add any game to Steam (for Steam Deck and Big Picture), or create a desktop shortcut that opens the game through Cerberus.
 - **Multi-disc classics:** games on several discs show up as one game, and you swap discs from RetroArch's menu.
 - **Windows integration:** tray icon, start with Windows, notifications, and only one copy of Cerberus running at a time.
+- **Languages:** English and Brazilian Portuguese, following Windows or picked in the settings. The installer speaks both too.
 
 ## Download and install
 
 1. Download **`Cerberus-Launcher_<version>_x64-setup.exe`** from the [latest release](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest).
 2. Run it. It installs for your user only, so it doesn't ask for administrator rights.
-3. On the last page, keep **Executar o Cerberus Launcher** (*Run Cerberus Launcher*) checked. The setup guide opens.
+3. On the last page, keep **Run Cerberus Launcher** checked. The setup guide opens.
 
 <img src="docs/screenshots/installer.png" alt="Installer" width="380" />
 
@@ -72,7 +73,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 
 ## Getting started
 
-The first time Cerberus opens, a short setup guide asks a few questions. You can change every answer later in **Configurações** (*Settings*).
+The first time Cerberus opens, a short setup guide asks a few questions. You can change every answer later in **Settings**.
 
 <img src="docs/screenshots/first-run.jpg" alt="First-run setup" width="700" />
 
@@ -83,16 +84,16 @@ The first time Cerberus opens, a short setup guide asks a few questions. You can
 
 ### Install a recomp
 
-1. Open **Descobrir** (*Discover*) and search for a game, for example *Mario Kart 64*.
-2. Click **Instalar** (*Install*). Cerberus downloads the developers' release and checks the file.
+1. Open **Discover** and search for a game, for example *Mario Kart 64*.
+2. Click **Install**. Cerberus downloads the developers' release and checks the file.
 3. On the game page, **Easy Setup** shows the copy it found in your ROM folders. If it didn't find one, pick the file yourself.
-4. Click **Jogar** (*Play*). From now on, play time, save backups and history are tracked.
+4. Click **Play**. From now on, play time, save backups and history are tracked.
 
 ### Add any other game
 
-Click **Adicionar jogo** (*Add game*) and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
+Click **Add game** and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
 
-Some games open a launcher before the game itself. For those, choose which program counts as playing under **Gerenciar → Processo acompanhado** (*Manage → Tracked process*).
+Some games open a launcher before the game itself. For those, choose which program counts as playing under **Manage → Tracked process**.
 
 ### Shortcuts
 
@@ -141,13 +142,13 @@ Cerberus keeps the game's own DLL and can put it back at any time. A game update
 <details>
 <summary><b>Can I use the RetroArch I already have?</b></summary>
 
-Yes: in **Configurações → Emulação** (*Settings → Emulation*), point Cerberus to your `retroarch.exe`.
+Yes: in **Settings → Emulation**, point Cerberus to your `retroarch.exe`.
 </details>
 
 <details>
 <summary><b>A recomp I like isn't in the catalog.</b></summary>
 
-Use **Pedir um recomp** (*Request a recomp*) in Discover, or [open an issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). The catalog updates without a new version of Cerberus.
+Use **Request a recomp** in Discover, or [open an issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). The catalog updates without a new version of Cerberus.
 </details>
 
 ## Building from source

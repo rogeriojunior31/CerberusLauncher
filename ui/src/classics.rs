@@ -288,7 +288,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
     let content = move || {
         let list = roms.get()?;
         let Some(rom) = list.into_iter().find(|r| r.path == wanted.get_value()) else {
-            return Some(view! { <div class="page"><p class="muted">"Esse jogo não está mais nas suas pastas de ROMs."</p></div> }.into_any());
+            return Some(view! { <div class="page"><p class="muted">{tr!("Esse jogo não está mais nas suas pastas de ROMs.")}</p></div> }.into_any());
         };
         let console = console_of(&rom);
         let title = display_name(&rom);
@@ -299,16 +299,16 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let play = if emulated {
             view! {
                 <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />"Jogar no RetroArch"
+                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar no RetroArch")}
                 </button>
             }
             .into_any()
         } else {
-            view! { <p class="muted small">"Esse console ainda não tem emulação no Cerberus."</p> }.into_any()
+            view! { <p class="muted small">{tr!("Esse console ainda não tem emulação no Cerberus.")}</p> }.into_any()
         };
         let to_recomp = recomp.map(|e| {
             let id = e.id.clone();
-            view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{format!("Ver o recomp: {}", e.name)}</button> }
+            view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{tr!("Ver o recomp: {}", e.name)}</button> }
         });
         let folder = rom.path.clone();
         let open_folder = move |_| {
@@ -318,13 +318,13 @@ pub fn ClassicPage(path: String) -> impl IntoView {
             });
         };
         let stats = [
-            ("Tempo de jogo", if rom.playtime_secs > 0 { crate::format::playtime(rom.playtime_secs) } else { "Ainda não jogado".to_string() }),
-            ("Última vez", rom.last_played.map(crate::format::ago).unwrap_or_else(|| "Nunca".to_string())),
-            ("Console", console_name(console).to_string()),
-            ("Região", if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
+            (tr!("Tempo de jogo"), if rom.playtime_secs > 0 { crate::format::playtime(rom.playtime_secs) } else { tr!("Ainda não jogado").to_string() }),
+            (tr!("Última vez"), rom.last_played.map(crate::format::ago).unwrap_or_else(|| tr!("Nunca").to_string())),
+            (tr!("Console"), console_name(console).to_string()),
+            (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
         ]
         .into_iter()
-        .chain((rom.discs.len() > 1).then(|| ("Discos", rom.discs.len().to_string())))
+        .chain((rom.discs.len() > 1).then(|| (tr!("Discos"), rom.discs.len().to_string())))
         .into_iter()
         .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
         .collect_view();
@@ -339,7 +339,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     <section class="gp-head">
                         <div class="gp-cover"><Poster sources=art title=title.clone() /></div>
                         <div class="gp-info">
-                            <span class="kick">{format!("Clássico · {}", console_name(console))}</span>
+                            <span class="kick">{tr!("Clássico · {}", console_name(console))}</span>
                             <h1>{title.clone()}</h1>
                         </div>
                         <div class="gp-act">{to_recomp}{play}</div>
@@ -347,14 +347,14 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     <div class="stats">{stats}</div>
                     <section class="card classic-file">
                         <div class="card-h">
-                            <h3>{if rom.discs.len() > 1 { "Arquivos do jogo" } else { "Arquivo do jogo" }}</h3>
-                            <button type="button" class="btn sm" on:click=open_folder>"Abrir pasta"</button>
+                            <h3>{if rom.discs.len() > 1 { tr!("Arquivos do jogo") } else { tr!("Arquivo do jogo") }}</h3>
+                            <button type="button" class="btn sm" on:click=open_folder>{tr!("Abrir pasta")}</button>
                         </div>
                         {if rom.discs.len() > 1 {
                             let swap = if matches!(console, "ps1" | "gc") {
-                                "O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos."
+                                tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.")
                             } else {
-                                "O RetroArch abre o disco 1; esse console ainda não troca de disco pelo Cerberus. O Cerberus nunca altera esses arquivos."
+                                tr!("O RetroArch abre o disco 1; esse console ainda não troca de disco pelo Cerberus. O Cerberus nunca altera esses arquivos.")
                             };
                             view! {
                                 <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol>
@@ -363,7 +363,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                         } else {
                             view! {
                                 <span class="path">{rom.path.clone()}</span>
-                                <p class="muted small">"O RetroArch abre esse arquivo como está; o Cerberus nunca o altera."</p>
+                                <p class="muted small">{tr!("O RetroArch abre esse arquivo como está; o Cerberus nunca o altera.")}</p>
                             }.into_any()
                         }}
                     </section>
@@ -376,7 +376,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
     view! {
         <div class="gp">
             <button type="button" class="btn glass back" on:click=move |_| library.back()>
-                <crate::icons::Svg icon=crate::icons::Icon::Back size=18 />"Voltar"
+                <crate::icons::Svg icon=crate::icons::Icon::Back size=18 />{tr!("Voltar")}
             </button>
             {content}
         </div>
