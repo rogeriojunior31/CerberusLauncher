@@ -13,6 +13,8 @@
 
 [English](README.md) · **Português (Brasil)**
 
+[Baixar](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest) · [Documentação](docs/README.md) · [Novidades](CHANGELOG.md) · [Contribuindo](CONTRIBUTING.pt-BR.md)
+
 <img src="docs/screenshots/home.jpg" alt="Tela inicial do Cerberus" width="900" />
 
 </div>
@@ -151,6 +153,15 @@ Pode. Em **Configurações → Emulação**, aponte o seu `retroarch.exe`.
 Use **Pedir um recomp** no Descobrir ou [abra uma issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). O catálogo é atualizado sem precisar de uma nova versão do Cerberus.
 </details>
 
+## Documentação
+
+A documentação completa fica em **[docs/](docs/README.md)**. Por enquanto ela está só em inglês; as traduções vêm depois.
+
+- **Primeiros passos:** [instalação](docs/getting-started/installation.md) · [primeira abertura](docs/getting-started/first-launch.md)
+- **Guia:** [biblioteca](docs/guide/library.md) · [recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [clássicos](docs/guide/classics.md) · [saves](docs/guide/saves.md) · [mods](docs/guide/mods.md) · [durante o jogo](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [gerenciar um jogo](docs/guide/managing-games.md) · [configurações](docs/guide/settings.md)
+- **Ajuda:** [solução de problemas](docs/help/troubleshooting.md) · [perguntas frequentes](docs/help/faq.md) · [dados e privacidade](docs/help/data-and-privacy.md)
+- **Desenvolvimento:** [arquitetura](docs/development/architecture.md) · [compilar](docs/development/building.md) · [catálogo de recomps](docs/development/catalog.md) · [fontes de catálogo](docs/development/catalog-sources.md) · [traduções](docs/development/translations.md) · [publicar versão](docs/development/releasing.md)
+
 ## Compilar do código-fonte
 
 Você precisa de Rust 1.100 ou mais novo, do target `wasm32-unknown-unknown`, do [Trunk](https://trunkrs.dev) e do [Tauri CLI](https://tauri.app):
@@ -165,7 +176,7 @@ cargo tauri build    # instalador do Windows em target/release/bundle/nsis
 cargo test --workspace
 ```
 
-O **[CONTRIBUTING.pt-BR.md](CONTRIBUTING.pt-BR.md)** explica a estrutura do projeto, como o catálogo de recomps é mantido e o formato das fontes de catálogo.
+Os detalhes estão em **[Building](docs/development/building.md)**, e a organização do código em **[Architecture](docs/development/architecture.md)** (em inglês).
 
 ## Contribuindo
 

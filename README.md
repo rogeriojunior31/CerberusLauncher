@@ -13,6 +13,8 @@
 
 **English** · [Português (Brasil)](README.pt-BR.md)
 
+[Download](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+
 <img src="docs/screenshots/home.jpg" alt="Cerberus home screen" width="900" />
 
 </div>
@@ -151,6 +153,15 @@ Yes: in **Settings → Emulation**, point Cerberus to your `retroarch.exe`.
 Use **Request a recomp** in Discover, or [open an issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). The catalog updates without a new version of Cerberus.
 </details>
 
+## Documentation
+
+The full documentation lives in **[docs/](docs/README.md)**:
+
+- **Getting started:** [Installation](docs/getting-started/installation.md) · [First launch](docs/getting-started/first-launch.md)
+- **User guide:** [Library](docs/guide/library.md) · [Recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [Classics](docs/guide/classics.md) · [Saves](docs/guide/saves.md) · [Mods](docs/guide/mods.md) · [While you play](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [Managing a game](docs/guide/managing-games.md) · [Settings](docs/guide/settings.md)
+- **Help:** [Troubleshooting](docs/help/troubleshooting.md) · [FAQ](docs/help/faq.md) · [Data and privacy](docs/help/data-and-privacy.md)
+- **Development:** [Architecture](docs/development/architecture.md) · [Building](docs/development/building.md) · [Recomp catalog](docs/development/catalog.md) · [Catalog sources](docs/development/catalog-sources.md) · [Translations](docs/development/translations.md) · [Releasing](docs/development/releasing.md)
+
 ## Building from source
 
 You need Rust 1.100 or newer, the `wasm32-unknown-unknown` target, [Trunk](https://trunkrs.dev) and the [Tauri CLI](https://tauri.app):
@@ -165,7 +176,7 @@ cargo tauri build    # Windows installer in target/release/bundle/nsis
 cargo test --workspace
 ```
 
-**[CONTRIBUTING.md](CONTRIBUTING.md)** covers the project layout, how the recomp catalog is maintained and the format of custom catalog sources.
+See **[Building](docs/development/building.md)** for details, and **[Architecture](docs/development/architecture.md)** for how the code is organized.
 
 ## Contributing
 

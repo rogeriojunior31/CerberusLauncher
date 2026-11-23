@@ -10,6 +10,8 @@ Valeu pela ajuda! Este guia mostra como o código é organizado, como desenvolve
 - **Pedir um recomp:** use o formulário "Pedir um recomp" ou o botão com o mesmo nome no Descobrir.
 - **Mandar um pull request:** PRs pequenos e focados são mais fáceis de revisar. As verificações abaixo precisam passar.
 
+A [documentação](docs/README.md), em inglês por enquanto, vai mais fundo: [arquitetura](docs/development/architecture.md), [compilar](docs/development/building.md), [catálogo de recomps](docs/development/catalog.md), [fontes de catálogo](docs/development/catalog-sources.md), [traduções](docs/development/translations.md) e [publicar uma versão](docs/development/releasing.md).
+
 ## Estrutura do projeto
 
 ```text

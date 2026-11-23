@@ -12,6 +12,8 @@ Thanks for helping. This guide covers the code layout, the development loop, and
 - **Request a recomp** with the "Pedir um recomp" form, or the button of the same name in Discover.
 - **Send a pull request.** Small, focused PRs are easier to review. The checks below must pass.
 
+The [documentation](docs/README.md) goes deeper: [architecture](docs/development/architecture.md), [building](docs/development/building.md), [the recomp catalog](docs/development/catalog.md), [catalog sources](docs/development/catalog-sources.md), [translations](docs/development/translations.md) and [releasing](docs/development/releasing.md).
+
 ## Project layout
 
 ```text
