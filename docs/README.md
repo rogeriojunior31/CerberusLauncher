@@ -15,6 +15,7 @@ Cerberus is a free, open-source game launcher for Windows. It keeps your Steam, 
 
 | Page | What it covers |
 |---|---|
+| [Home, side menu and News](guide/home-and-news.md) | The Home page, Ready to play, and News (updates, Steam news, activity) |
 | [Library](guide/library.md) | Where games come from, tabs, favorites, collections, hidden games, art |
 | [Recomps](guide/recomps.md) | Discover, installing, updates, versions, recomps you already have |
 | [Easy Setup](guide/easy-setup.md) | How Cerberus hands your copy of a game to a recomp |

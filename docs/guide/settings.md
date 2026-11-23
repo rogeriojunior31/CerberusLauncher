@@ -2,6 +2,8 @@
 
 Every setting, in the order the **Settings** page shows them.
 
+![Settings, Appearance](../screenshots/settings.jpg)
+
 Looking for one? Type part of its name in the search box above the menu, with or without accents: "tray", "F12" or "cloud". Pick a result (or press Enter for the first) and Settings opens that section with the option marked.
 
 ## App

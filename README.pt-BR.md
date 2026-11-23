@@ -37,25 +37,31 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 
 | | |
 |---|---|
-| <img src="docs/screenshots/library.jpg" alt="Biblioteca" /> | **Biblioteca**<br>Steam, Epic e seus jogos num lugar só. Tem favoritos, coleções, jogos ocultos, arte do SteamGridDB, e tempo de jogo e histórico de cada jogo. |
-| <img src="docs/screenshots/discover.jpg" alt="Descobrir" /> | **Descobrir**<br>Mais de 1.500 recomps e ports nativos, com busca por jogo, console ou autor. Instala das releases dos desenvolvedores no GitHub, GitLab ou Forgejo, conferindo o arquivo. Dá para pausar e continuar downloads. |
+| <img src="docs/screenshots/library.jpg" alt="Biblioteca" /> | **Biblioteca**<br>Steam, Epic e seus jogos num lugar só. Tem favoritos, coleções, jogos ocultos, arte do SteamGridDB, e tempo de jogo e histórico de cada jogo. Os jogos que dá para abrir agora também ficam no menu lateral, em **Prontos para jogar**. |
+| <img src="docs/screenshots/discover.jpg" alt="Descobrir" /> | **Descobrir**<br>Mais de 1.500 recomps e ports nativos, com busca por jogo, console ou autor, e filtro por gênero ou pelo que o recomp traz (controle, conquistas, multijogador, tela larga, mods). Instala das releases dos desenvolvedores no GitHub, GitLab ou Forgejo, conferindo o arquivo. Dá para pausar e continuar downloads. |
 | <img src="docs/screenshots/game-page.jpg" alt="Página do jogo" /> | **Página do jogo**<br>Tempo de jogo, versões, saves, ajustes, mods, fotos e gerenciamento numa página só. O **Easy Setup** acha a sua cópia nas pastas de ROMs e entrega do jeito que cada recomp espera: ROM, pasta extraída, ISO, imagem de Xbox ou Xbox 360, CHD ou CSO. |
-| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>Tela para jogar do sofá, com controle, teclado ou mouse. Abre em tela cheia no monitor que você escolher. |
+| <img src="docs/screenshots/achievements.jpg" alt="Conquistas" /> | **Conquistas**<br>Steam e RetroAchievements numa página só: seus platinados (jogos com 100%), os mais perto disso, as últimas desbloqueadas e a lista completa de cada jogo, com raridade. Um aviso aparece por cima do jogo na hora em que uma conquista cai. |
+| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>Tela para jogar do sofá, com controle, teclado ou mouse. Abre em tela cheia no monitor que você escolher. Tem filtros na Biblioteca, gêneros no Descobrir, aba de Conquistas e avisos no tamanho da TV. |
+| <img src="docs/screenshots/news.jpg" alt="Novidades" /> | **Novidades**<br>Atualizações esperando pelos seus recomps, os anúncios mais recentes dos desenvolvedores dos seus jogos da Steam e o que aconteceu com cada jogo. |
 
 ### E mais
 
 - **Hub de conquistas:** todos os jogos com conquistas da Steam e do RetroAchievements, as últimas desbloqueadas, os seus platinados (jogos com 100%), os mais perto disso e a lista completa de cada jogo, com raridade e conquistas secretas. Os selos do RetroAchievements (zerado, completo, dominado) aparecem no jogo, os do hardcore em dourado. A Steam funciona direto deste PC; com a sua chave gratuita da Web API da Steam, vem a conta inteira. Enquanto você joga um jogo da Steam, o Cerberus avisa quando uma conquista é desbloqueada.
+- **Do seu jeito:** tema Escuro ou Preto (OLED), cinco cores de destaque, tamanho da janela de 90% a 125% e uma busca em **Configurações** que leva direto a qualquer opção.
+- **Seus dados num arquivo só:** **Configurações → Armazenamento → Copiar meus dados** salva biblioteca, favoritos, coleções, notas, tempo de jogo, capas escolhidas e configurações num `.zip` (nunca suas chaves ou senhas). **Restaurar de uma cópia** traz tudo de volta, neste PC ou em outro.
 - **Backup dos saves** depois de cada partida, antes de atualizar e antes de desinstalar. O Cerberus guarda os 10 mais recentes, e eles podem ir para a nuvem por uma pasta sincronizada (OneDrive, Google Drive, Dropbox).
 - **Mods** com um clique, do Thunderstore e do GameBanana. Funciona com Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed e Marathon Recompiled.
 - **Durante o jogo:**
   - <kbd>F12</kbd> tira uma foto só da janela do jogo.
   - <kbd>Ctrl</kbd>+<kbd>F12</kbd>, ou **View + Menu** no controle, abre um menu por cima do jogo. O menu mostra o tempo de jogo e tem tirar foto, voltar ao Cerberus e fechar o jogo.
+  - Em **Configurações → Durante o jogo** você liga ou desliga cada um, escolhe o canto do aviso de conquista e pode minimizar o Cerberus enquanto joga.
 - **Filtros visuais** Nítido, Cores vivas, CRT e Filme, pelo ReShade.
 - **Erro explicado:** quando um jogo fecha com erro, o Cerberus diz o motivo e onde está o log do jogo. O motivo pode ser uma DLL faltando, um Visual C++ antigo ou um travamento.
 - **DLSS:** mostra a versão que o jogo usa e troca por uma DLL que você já tem. Dá para voltar à original quando quiser.
 - **Steam:** você pode colocar qualquer jogo na Steam (para o Steam Deck e o Big Picture) ou criar um atalho na área de trabalho que abre pelo Cerberus.
 - **Clássicos com vários discos** aparecem como um jogo só. A troca de disco fica no menu do RetroArch.
-- **Integração com o Windows:** ícone na bandeja, abrir com o Windows, avisos e uma janela só, mesmo se você abrir de novo.
+- **Integração com o Windows:** ícone na bandeja, abrir com o Windows, avisos que você escolhe um por um e uma janela só, mesmo se você abrir de novo.
+- **Controles:** **Configurações → Controles** mostra os controles conectados (Xbox, PlayStation, Nintendo) e testa cada botão.
 - **Idiomas:** português do Brasil e inglês. Segue o idioma do Windows, ou você escolhe em **Configurações → Aparência → Idioma**. O instalador também fala os dois.
 
 ## Baixar e instalar
@@ -86,6 +92,7 @@ Na primeira vez, uma configuração rápida pergunta algumas coisas. Tudo pode s
 3. **Suas pastas de ROMs:** o Cerberus procura nelas e mostra quais dos seus jogos já têm recomp.
 4. **Onde instalar os recomps**, com o espaço livre de cada disco.
 5. **Saves na nuvem:** uma pasta que o OneDrive, o Google Drive ou o Dropbox sincroniza.
+6. **Tudo pronto:** seus jogos que têm recomp, e o que mais o Cerberus achou no PC: jogos da Steam e da Epic, e o RetroArch.
 
 ### Instalar um recomp
 
@@ -167,7 +174,7 @@ Use **Pedir um recomp** no Descobrir ou [abra uma issue](https://github.com/roge
 A documentação completa fica em **[docs/](docs/README.md)**. Por enquanto ela está só em inglês; as traduções vêm depois.
 
 - **Primeiros passos:** [instalação](docs/getting-started/installation.md) · [primeira abertura](docs/getting-started/first-launch.md)
-- **Guia:** [biblioteca](docs/guide/library.md) · [recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [clássicos](docs/guide/classics.md) · [conquistas](docs/guide/achievements.md) · [saves](docs/guide/saves.md) · [mods](docs/guide/mods.md) · [durante o jogo](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [gerenciar um jogo](docs/guide/managing-games.md) · [configurações](docs/guide/settings.md)
+- **Guia:** [início e novidades](docs/guide/home-and-news.md) · [biblioteca](docs/guide/library.md) · [recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [clássicos](docs/guide/classics.md) · [conquistas](docs/guide/achievements.md) · [saves](docs/guide/saves.md) · [mods](docs/guide/mods.md) · [durante o jogo](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [gerenciar um jogo](docs/guide/managing-games.md) · [configurações](docs/guide/settings.md)
 - **Ajuda:** [solução de problemas](docs/help/troubleshooting.md) · [perguntas frequentes](docs/help/faq.md) · [dados e privacidade](docs/help/data-and-privacy.md)
 - **Desenvolvimento:** [arquitetura](docs/development/architecture.md) · [compilar](docs/development/building.md) · [catálogo de recomps](docs/development/catalog.md) · [fontes de catálogo](docs/development/catalog-sources.md) · [traduções](docs/development/translations.md) · [publicar versão](docs/development/releasing.md)
 

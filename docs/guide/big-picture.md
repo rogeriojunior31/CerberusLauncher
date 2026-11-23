@@ -21,6 +21,9 @@ It opens on the monitor chosen in **Settings → General → Monitor**. That opt
 - **Achievements:** your totals and platinums, then rows of games close to 100%, platinums and recent unlocks, each cover with its count and bar. **A** opens the game's page; games that aren't in the library (RetroAchievements classics, for example) open their own list: unlocked first, then the rest from the most common, with points and dates. Secret ones stay hidden until you press **A** on them.
 - **A game's page:** for Steam games, the store description, pictures (A opens them full screen, the D-pad changes picture), achievements and details. While the game runs, the main button is **Back to game**.
 - The top bar shows the game you're playing and for how long.
+- Notices (backup done, install finished, errors) show at the top right, sized for the TV.
+
+![A game's achievements in Big Picture Mode](../screenshots/big-picture-achievements.jpg)
 
 ## Controls
 

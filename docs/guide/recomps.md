@@ -12,6 +12,8 @@ A **recomp** is a native PC version of a console game, rebuilt by the community 
 - Show the list **by recomp**, or **by game**, which groups every version of the same game.
 - **I own the game** keeps only games found in your ROM folders.
 - Sort by **Popular**, **Recently added**, **Recently updated** or **A to Z**, and filter by platform.
+- **Genre** chips (Action, Platformers, Racing, RPG...) show how many games each has; click one to keep only that kind, again to clear it.
+- **Feature** keeps the recomps that add something: controller support, achievements, local multiplayer, online, higher FPS, widescreen or mods.
 
 The catalog combines Cerberus's own list with the public list from [recomplauncher.com](https://recomplauncher.com). The second one can be turned off in **Settings → Catalog and sources**. See [Recomp catalog](../development/catalog.md).
 

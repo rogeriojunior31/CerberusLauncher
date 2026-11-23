@@ -44,7 +44,7 @@ Right-click any cover for a quick menu:
 
 - **Play**, or whatever the next step is (install, update, set up).
 - **Game page**.
-- **Favorite**, which also pins the game to the sidebar.
+- **Favorite**, which also puts the game on Home's Favorites row and at the top of **Ready to play** in the side menu.
 - **Collections**: tick the collections this game belongs to, or create a new one on the spot.
 - **Hide from library**: the game moves to the Hidden tab and leaves Home, the sidebar and Big Picture Mode. **Show in library** brings it back.
 

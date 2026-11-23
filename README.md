@@ -40,23 +40,28 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 
 | | |
 |---|---|
-| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library**<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. |
-| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover**<br>Over 1,500 recomps and native ports. You can search by game, console or author. Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
+| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library**<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. Every game you can start right now is also in the side menu, under **Ready to play**. |
+| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover**<br>Over 1,500 recomps and native ports. You can search by game, console or author, and filter by genre or by what a recomp adds (controller, achievements, multiplayer, widescreen, mods). Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
 | <img src="docs/screenshots/game-page.jpg" alt="Game page" /> | **Game page**<br>Play time, versions, saves, game settings, mods, screenshots and management, all in one page. **Easy Setup** finds your copy in your ROM folders and delivers it the way each recomp expects. That works for a ROM, an extracted folder, an ISO, an Xbox or Xbox 360 image, a CHD or a CSO. |
-| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>A TV interface for the couch. You can use a controller, keyboard or mouse, and it opens full screen on the monitor you choose. |
+| <img src="docs/screenshots/achievements.jpg" alt="Achievements" /> | **Achievements**<br>Steam and RetroAchievements on one page: your platinums (games at 100%), the games closest to it, the latest unlocks and each game's full list with rarity. A notice shows over the game the moment one unlocks. |
+| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>A TV interface for the couch. You can use a controller, keyboard or mouse, and it opens full screen on the monitor you choose. It has its own Library filters, genres in Discover, an Achievements tab and TV-sized notices. |
+| <img src="docs/screenshots/news.jpg" alt="News" /> | **News**<br>Updates waiting for your recomps, the latest announcements from the developers of your Steam games, and what happened lately with every game. |
 
 ### And also
 
 - **Achievements hub:** every game with achievements from Steam and RetroAchievements, the latest unlocks, your platinums (games at 100%), the games closest to it, and each game's full list with rarity and secret achievements. RetroAchievements awards (beaten, completed, mastered) show as badges, hardcore ones in gold. Steam works straight from this PC; with your free Steam Web API key it covers your whole account. While you play a Steam game, Cerberus tells you when an achievement unlocks.
+- **Make it yours:** Dark or Black (OLED) theme, five accent colors, window size from 90% to 125%, and a search box in **Settings** that takes you straight to any option.
+- **Your data in one file:** **Settings → Storage → Copy my data** saves the library, favorites, collections, notes, play time, chosen covers and settings in a `.zip` (never your keys or passwords). **Restore from a copy** brings it back, on this PC or another one.
 - **Save backups:** after every session, before updates and before uninstalling. Cerberus keeps the 10 most recent backups, and can copy them to the cloud through any synced folder (OneDrive, Google Drive, Dropbox).
 - **Mods:** one-click mods from Thunderstore and GameBanana, including Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed and Marathon Recompiled.
-- **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game".
+- **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game". **Settings → While playing** turns each one on or off, picks the corner for achievement notices, and can minimize Cerberus while a game runs.
 - **Visual filters:** Sharp, Vivid, CRT and Film, applied with ReShade.
 - **Crash explanations:** when a game closes with an error, Cerberus tells you the cause and where the game's log is. The cause can be a missing DLL, an old Visual C++ runtime or a crash.
 - **DLSS:** Cerberus shows which DLSS version a game uses. You can swap it for a DLL you already have and go back to the original at any time.
 - **Steam integration:** add any game to Steam (for Steam Deck and Big Picture), or create a desktop shortcut that opens the game through Cerberus.
 - **Multi-disc classics:** games on several discs show up as one game, and you swap discs from RetroArch's menu.
-- **Windows integration:** tray icon, start with Windows, notifications, and only one copy of Cerberus running at a time.
+- **Windows integration:** tray icon, start with Windows, notifications you choose one by one, and only one copy of Cerberus running at a time.
+- **Controllers:** **Settings → Controllers** lists the connected controllers (Xbox, PlayStation, Nintendo) and lets you test every button.
 - **Languages:** English and Brazilian Portuguese, following Windows or picked in the settings. The installer speaks both too.
 
 ## Download and install
@@ -86,6 +91,7 @@ The first time Cerberus opens, a short setup guide asks a few questions. You can
 3. **Your ROM folders:** Cerberus scans them and shows which of your games already have a recomp.
 4. **Where recomps are installed,** with the free space on each drive.
 5. **Saves in the cloud:** a folder that OneDrive, Google Drive or Dropbox keeps in sync.
+6. **All set:** your games that have a recomp, and what else Cerberus found on this PC: Steam and Epic games, and RetroArch.
 
 ### Install a recomp
 
@@ -167,7 +173,7 @@ Use **Request a recomp** in Discover, or [open an issue](https://github.com/roge
 The full documentation lives in **[docs/](docs/README.md)**:
 
 - **Getting started:** [Installation](docs/getting-started/installation.md) · [First launch](docs/getting-started/first-launch.md)
-- **User guide:** [Library](docs/guide/library.md) · [Recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [Classics](docs/guide/classics.md) · [Achievements](docs/guide/achievements.md) · [Saves](docs/guide/saves.md) · [Mods](docs/guide/mods.md) · [While you play](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [Managing a game](docs/guide/managing-games.md) · [Settings](docs/guide/settings.md)
+- **User guide:** [Home and News](docs/guide/home-and-news.md) · [Library](docs/guide/library.md) · [Recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [Classics](docs/guide/classics.md) · [Achievements](docs/guide/achievements.md) · [Saves](docs/guide/saves.md) · [Mods](docs/guide/mods.md) · [While you play](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [Managing a game](docs/guide/managing-games.md) · [Settings](docs/guide/settings.md)
 - **Help:** [Troubleshooting](docs/help/troubleshooting.md) · [FAQ](docs/help/faq.md) · [Data and privacy](docs/help/data-and-privacy.md)
 - **Development:** [Architecture](docs/development/architecture.md) · [Building](docs/development/building.md) · [Recomp catalog](docs/development/catalog.md) · [Catalog sources](docs/development/catalog-sources.md) · [Translations](docs/development/translations.md) · [Releasing](docs/development/releasing.md)
 

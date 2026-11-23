@@ -2,6 +2,8 @@
 
 The **Achievements** page brings Steam and RetroAchievements together: every game with achievements, what you unlocked lately, and each game's full list.
 
+![Achievements](../screenshots/achievements.jpg)
+
 ## Where the achievements come from
 
 | Source | What you need | What you get |
