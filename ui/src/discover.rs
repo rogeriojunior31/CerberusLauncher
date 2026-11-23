@@ -85,7 +85,7 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
         InstallStep::Paused { done, .. } => (tr!("Pausado · {}", megabytes(done)), None),
         InstallStep::Unpacking => (tr!("Preparando arquivos…").into(), None),
         InstallStep::Finished => (tr!("Concluído").into(), Some(100)),
-        InstallStep::Failed { message } => (tr!("Falha na instalação · {}", message), Some(0)),
+        InstallStep::Failed { message } => (tr!("Falha na instalação · {}", cerberus_shared::i18n::translate(&message)), Some(0)),
     };
     let (pause_id, resume_id) = (recomp_id.clone(), recomp_id.clone());
     let pause = pausable.then(|| {

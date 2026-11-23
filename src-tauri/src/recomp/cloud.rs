@@ -1,4 +1,5 @@
 //! A local marker records which synced folder a backup was made for.
+use cerberus_shared::tr;
 use std::{fs, io, path::{Path, PathBuf}};
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
@@ -88,10 +89,10 @@ pub(super) fn retry_game(folders: &Folders, id: &str) -> Result<(), String> {
     let destination = root.join("Cerberus Saves").join(id);
     let mut result = Ok(());
     let archives = pending(&folders.backups_dir(id), &destination)
-        .map_err(|e| format!("Não foi possível ler os envios pendentes de {id}: {e}"))?;
+        .map_err(|e| tr!("Não foi possível ler os envios pendentes de {}: {}", id, e))?;
     for archive in archives {
         if let Err(e) = send(&archive, &root, &destination, folders) {
-            result = Err(format!("Backup local guardado. Falha ao enviar para {}: {e}", destination.display()));
+            result = Err(tr!("Backup local guardado. Falha ao enviar para {0}: {1}", destination.display(), e));
         }
     }
     result
@@ -119,7 +120,7 @@ pub(crate) fn pending_count(folders: &Folders) -> usize {
 pub(crate) fn retry(folders: &Folders) -> Result<(), String> {
     if folders.cloud.read().unwrap_or_else(|p| p.into_inner()).is_none() { return Ok(()); }
     let mut result = Ok(());
-    for id in games(folders).map_err(|e| format!("Não foi possível consultar a pasta de backups: {e}"))? {
+    for id in games(folders).map_err(|e| tr!("Não foi possível consultar a pasta de backups: {}", e))? {
         if let Err(e) = retry_game(folders, &id) { result = Err(e); }
     }
     result

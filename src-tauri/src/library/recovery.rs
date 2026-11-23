@@ -1,4 +1,5 @@
 //! Recover complete records from an incompatible or truncated library array.
+use cerberus_shared::tr;
 use super::{Game, save};
 use serde::Deserializer;
 use serde::de::{SeqAccess, Visitor};
@@ -11,7 +12,7 @@ pub(super) fn read(file: &Path) -> Result<(Vec<Game>, Option<String>), String> {
     let bytes = match fs::read(file) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok((Vec::new(), None)),
-        Err(e) => return Err(format!("Não foi possível ler {}: {e}", file.display())),
+        Err(e) => return Err(tr!("Não foi possível ler {0}: {1}", file.display(), e)),
     };
     if let Ok(games) = serde_json::from_slice(&bytes) {
         return Ok((games, None));
@@ -22,11 +23,11 @@ pub(super) fn read(file: &Path) -> Result<(Vec<Game>, Option<String>), String> {
     let parsed = parser.deserialize_seq(CompleteGames(&mut games)).and_then(|()| parser.end());
     // Only EOF has an unambiguous prefix. Leave other malformed documents in place for repair.
     if games.is_empty() || parsed.is_err_and(|e| !e.is_eof()) {
-        return Err(format!("O arquivo {} precisa de reparo. O original está preservado. Restaure uma cópia e tente novamente.", file.display()));
+        return Err(tr!("O arquivo {} precisa de reparo. O original está preservado. Restaure uma cópia e tente novamente.", file.display()));
     }
-    let backup = preserve_original(file, &bytes).map_err(|e| format!("Não foi possível guardar o original de {}: {e}", file.display()))?;
-    save(file, &games).map_err(|e| format!("Falha ao gravar a biblioteca recuperada. Original em {}: {e}", backup.display()))?;
-    let notice = format!("Biblioteca recuperada. Jogos preservados: {}. Cópia do arquivo original: {}", games.len(), backup.display());
+    let backup = preserve_original(file, &bytes).map_err(|e| tr!("Não foi possível guardar o original de {0}: {1}", file.display(), e))?;
+    save(file, &games).map_err(|e| tr!("Falha ao gravar a biblioteca recuperada. Original em {0}: {1}", backup.display(), e))?;
+    let notice = tr!("Biblioteca recuperada. Jogos preservados: {}. Cópia do arquivo original: {}", games.len(), backup.display());
     Ok((games, Some(notice)))
 }
 

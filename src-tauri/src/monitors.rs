@@ -2,6 +2,7 @@
 //! picked one. Monitors are known by Windows' name for them (`\\.\DISPLAY2`);
 //! one that isn't plugged in now is ignored and the window stays where it is.
 
+use cerberus_shared::tr;
 use cerberus_shared::MonitorView;
 use tauri::{Monitor, PhysicalPosition, Runtime, WebviewWindow};
 
@@ -19,7 +20,7 @@ pub fn list<R: Runtime>(window: &WebviewWindow<R>) -> Vec<MonitorView> {
             let name = name_of(m);
             let is_primary = primary.as_deref() == Some(name.as_str());
             let size = m.size();
-            let mut label = format!("Monitor {} · {}×{}", i + 1, size.width, size.height);
+            let mut label = tr!("Monitor {} · {}×{}", i + 1, size.width, size.height);
             if is_primary {
                 label.push_str(" (principal)");
             }

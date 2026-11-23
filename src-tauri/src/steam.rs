@@ -90,8 +90,8 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
     let name = first_value(&text, "name")?;
     let install_dir = first_value(&text, "installdir")?;
     let install_dir = library.join("steamapps").join("common").join(install_dir);
-    let cover_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg");
-    let hero_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_hero.jpg");
+    let cover_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_600x900.jpg", app_id);
+    let hero_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_hero.jpg", app_id);
     Some(Game {
         id: format!("steam:{app_id}"),
         name,

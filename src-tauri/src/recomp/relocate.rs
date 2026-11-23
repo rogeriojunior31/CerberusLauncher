@@ -1,6 +1,7 @@
 //! Moving an installed recomp to another folder or drive, as Hydra's "move
 //! game": the files go, then the library points at the new place.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,27 +15,27 @@ use crate::library::LocalLibrary;
 /// the library. On the same drive it is a rename; across drives the files are
 /// copied to a temporary folder first, so a failure leaves the game where it was.
 pub fn move_install(folders: &Folders, library: &LocalLibrary, game_id: &str, into: &Path) -> Result<Game, String> {
-    let game = library.get(game_id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(game_id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
-        return Err("Só recomps instalados pelo Cerberus podem ser movidos por aqui.".into());
+        return Err(tr!("Só recomps instalados pelo Cerberus podem ser movidos por aqui.").into());
     };
     if game.external {
-        return Err("Essa pasta é sua: mova pelo Windows e use \"Já tenho instalado\" de novo.".into());
+        return Err(tr!("Essa pasta é sua: mova pelo Windows e use \"Já tenho instalado\" de novo.").into());
     }
     let from = PathBuf::from(&game.install_dir);
     check_install_folder(folders, recomp_id, &from)?;
-    let name = from.file_name().ok_or("A pasta do jogo não tem nome.")?;
+    let name = from.file_name().ok_or(tr!("A pasta do jogo não tem nome."))?;
     let to = into.join(name);
     if same_path(&to, &from) {
-        return Err("O jogo já está nessa pasta.".into());
+        return Err(tr!("O jogo já está nessa pasta.").into());
     }
     if starts_with(into, &from) {
-        return Err("Escolha uma pasta fora da pasta do jogo.".into());
+        return Err(tr!("Escolha uma pasta fora da pasta do jogo.").into());
     }
     if to.exists() {
-        return Err(format!("Já existe uma pasta {} lá. Escolha outro lugar.", to.display()));
+        return Err(tr!("Já existe uma pasta {} lá. Escolha outro lugar.", to.display()));
     }
-    fs::create_dir_all(into).map_err(|e| format!("Não foi possível usar {}: {e}", into.display()))?;
+    fs::create_dir_all(into).map_err(|e| tr!("Não foi possível usar {0}: {1}", into.display(), e))?;
 
     if fs::rename(&from, &to).is_err() {
         // Another drive: copy, then delete the old folder.
@@ -44,7 +45,7 @@ pub fn move_install(folders: &Folders, library: &LocalLibrary, game_id: &str, in
         let copied = copy_dir(&from, &staging).and_then(|()| fs::rename(&staging, &to));
         if let Err(e) = copied {
             let _ = fs::remove_dir_all(&staging);
-            return Err(format!("Não foi possível copiar o jogo: {e}. Ele continua onde estava."));
+            return Err(tr!("Não foi possível copiar o jogo: {}. Ele continua onde estava.", e));
         }
         // The copy is complete; a leftover old folder only costs space.
         let _ = fs::remove_dir_all(&from);

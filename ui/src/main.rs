@@ -149,6 +149,8 @@ impl Library {
     }
 
     fn push_toast(self, text: String, error: bool) -> u64 {
+        // Messages kept in Portuguese (like a cancelled install) show in the player's language.
+        let text = cerberus_shared::i18n::translate(&text);
         let id = js_sys::Date::now() as u64 ^ (text.len() as u64);
         self.toasts.update(|all| all.push(Toast { id, text, error }));
         id

@@ -1,5 +1,6 @@
 //! An update is prepared beside the live installation. The generation in library.json is the
 //! commit record. Until it advances, the previous directory always wins on recovery.
+use cerberus_shared::tr;
 use cerberus_shared::{Game, Source};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -27,7 +28,7 @@ fn paths(game: &Game) -> Result<(PathBuf, PathBuf), String> {
     let parent = target
         .parent()
         .filter(|_| target.is_absolute() && target.file_name().is_some())
-        .ok_or("Pasta de instalação inválida para atualizar.")?;
+        .ok_or(tr!("Pasta de instalação inválida para atualizar."))?;
     let key = format!("{:x}", Sha256::digest(game.id.as_bytes()));
     let work = parent.join(format!(".cerberus-update-{key}"));
     Ok((target, work))
@@ -35,7 +36,7 @@ fn paths(game: &Game) -> Result<(PathBuf, PathBuf), String> {
 
 fn lock(target: PathBuf, work: PathBuf, game: &Game) -> Result<Update, String> {
     let Source::Recomp { recomp_id, .. } = &game.source else {
-        return Err("Esperado um recomp.".into());
+        return Err(tr!("Esperado um recomp.").into());
     };
     let file = fs::OpenOptions::new()
         .read(true)
@@ -45,10 +46,7 @@ fn lock(target: PathBuf, work: PathBuf, game: &Game) -> Result<Update, String> {
         .open(work.with_extension("lock"))
         .map_err(|e| e.to_string())?;
     file.try_lock().map_err(|e| {
-        format!(
-            "Não foi possível reservar a atualização de {}: {e}",
-            target.display()
-        )
+        tr!("Não foi possível reservar a atualização de {0}: {1}", target.display(), e)
     })?;
     Ok(Update {
         target,
@@ -72,13 +70,10 @@ impl Update {
         let tx = lock(target, work, game)?;
         tx.reconcile(game)?;
         if tx.work.exists() {
-            return Err(format!(
-                "Não foi possível limpar a atualização anterior em {}.",
-                tx.work.display()
-            ));
+            return Err(tr!("Não foi possível limpar a atualização anterior em {}.", tx.work.display()));
         }
         let Source::Recomp { generation, .. } = game.source else {
-            return Err("Esperado um recomp.".into());
+            return Err(tr!("Esperado um recomp.").into());
         };
         let parent = tx.work.parent().unwrap();
         let initial = tempfile::Builder::new()
@@ -108,11 +103,11 @@ impl Update {
 
     pub(super) fn publish(&self) -> Result<(), String> {
         preserve(&self.target, &self.candidate())
-            .map_err(|e| format!("Falha ao preparar a atualização: {e}"))?;
+            .map_err(|e| tr!("Falha ao preparar a atualização: {}", e))?;
         fs::rename(&self.target, self.work.join("previous"))
-            .map_err(|e| format!("Falha ao reservar a versão anterior: {e}"))?;
+            .map_err(|e| tr!("Falha ao reservar a versão anterior: {}", e))?;
         fs::rename(self.candidate(), &self.target)
-            .map_err(|e| format!("Falha ao ativar a atualização: {e}"))
+            .map_err(|e| tr!("Falha ao ativar a atualização: {}", e))
     }
 
     // Remove the intent last. An interrupted cleanup is safe to resume.
@@ -136,7 +131,7 @@ impl Update {
                     .is_ok_and(|id| id == self.owner);
                 if exists(&self.candidate())? || !owned {
                     return Err(io::Error::other(
-                        "a pasta do jogo foi recriada durante a atualização",
+                        tr!("a pasta do jogo foi recriada durante a atualização"),
                     ));
                 }
                 fs::rename(&self.target, self.candidate())?;
@@ -155,10 +150,7 @@ impl Update {
             }
             Err(error) => match self.rollback() {
                 Ok(()) => Err(error),
-                Err(e) => Err(format!(
-                    "{error} · Recuperação pendente em {}: {e}",
-                    self.work.display()
-                )),
+                Err(e) => Err(tr!("{1} · Recuperação pendente em {0}: {2}", self.work.display(), error, e)),
             },
         }
     }
@@ -174,28 +166,19 @@ impl Update {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 // Cleanup may have stopped between removing the record and its empty directory.
                 return fs::remove_dir(&self.work).map_err(|e| {
-                    format!(
-                        "Pasta de recuperação inesperada em {}: {e}",
-                        self.work.display()
-                    )
+                    tr!("Pasta de recuperação inesperada em {0}: {1}", self.work.display(), e)
                 });
             }
-            Err(e) => return Err(format!("Falha ao ler {}: {e}", path.display())),
+            Err(e) => return Err(tr!("Falha ao ler {0}: {1}", path.display(), e)),
         };
         let intent: Intent = serde_json::from_slice(&bytes).map_err(|e| {
-            format!(
-                "Registro de atualização inválido em {}: {e}",
-                path.display()
-            )
+            tr!("Registro de atualização inválido em {0}: {1}", path.display(), e)
         })?;
         if intent.game != game.id || intent.target != self.target {
-            return Err(format!(
-                "A atualização em {} pertence a outra instalação.",
-                self.work.display()
-            ));
+            return Err(tr!("A atualização em {} pertence a outra instalação.", self.work.display()));
         }
         let Source::Recomp { generation, .. } = game.source else {
-            return Err("Esperado um recomp.".into());
+            return Err(tr!("Esperado um recomp.").into());
         };
         let result = if intent.generation == generation {
             self.rollback()
@@ -204,12 +187,9 @@ impl Update {
             let _ = self.cleanup();
             Ok(())
         } else {
-            return Err(format!(
-                "Confira a versão instalada e a cópia em {}.",
-                self.work.display()
-            ));
+            return Err(tr!("Confira a versão instalada e a cópia em {}.", self.work.display()));
         };
-        result.map_err(|e| format!("Falha ao recuperar {}: {e}", self.target.display()))
+        result.map_err(|e| tr!("Falha ao recuperar {0}: {1}", self.target.display(), e))
     }
 }
 
@@ -233,10 +213,7 @@ fn ordinary_file_type(path: &Path) -> io::Result<fs::FileType> {
     #[cfg(not(windows))]
     let linked = metadata.file_type().is_symlink();
     if linked || !(metadata.is_dir() || metadata.is_file()) {
-        return Err(io::Error::other(format!(
-            "Arquivo especial na instalação: {}",
-            path.display()
-        )));
+        return Err(io::Error::other(tr!("Arquivo especial na instalação: {}", path.display())));
     }
     Ok(metadata.file_type())
 }
@@ -256,10 +233,7 @@ fn preserve(from: &Path, to: &Path) -> io::Result<()> {
             if ty.is_dir() && new.is_dir() {
                 preserve(&src, &dest)?;
             } else if !(ty.is_file() && new.is_file()) {
-                return Err(io::Error::other(format!(
-                    "Tipo de arquivo incompatível: {}",
-                    src.display()
-                )));
+                return Err(io::Error::other(tr!("Tipo de arquivo incompatível: {}", src.display())));
             }
         } else if ty.is_dir() {
             fs::create_dir(&dest)?;

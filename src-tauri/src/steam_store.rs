@@ -1,6 +1,7 @@
 //! Steam store lookups for games added by hand: their official name and tall cover.
 //! Both endpoints are public and need no API key.
 
+use cerberus_shared::tr;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -113,7 +114,7 @@ async fn art(client: &Client, app_id: u32) -> Result<Art, String> {
 }
 
 async fn fetch_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder) -> Result<T, String> {
-    let offline = |e: reqwest::Error| format!("Não foi possível falar com a Steam: {e}");
+    let offline = |e: reqwest::Error| tr!("Não foi possível falar com a Steam: {}", e);
     let reply = request.send().await.map_err(offline)?;
     let reply = reply.error_for_status().map_err(offline)?;
     reply.json().await.map_err(offline)

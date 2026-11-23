@@ -2,6 +2,7 @@
 //! by id, in `collections.json`. Kept apart from the library (like favorites)
 //! because Steam and Epic games are read from their stores each time.
 
+use cerberus_shared::tr;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -51,8 +52,8 @@ fn change(data: &Path, f: impl FnOnce(&mut Shelf) -> Result<(), String>) -> Resu
 fn name_of(typed: &str) -> Result<String, String> {
     let name: String = typed.split_whitespace().collect::<Vec<_>>().join(" ");
     match name.chars().count() {
-        0 => Err("Dê um nome para a coleção.".into()),
-        41.. => Err("Use um nome de até 40 letras.".into()),
+        0 => Err(tr!("Dê um nome para a coleção.").into()),
+        41.. => Err(tr!("Use um nome de até 40 letras.").into()),
         _ => Ok(name),
     }
 }
@@ -76,7 +77,7 @@ pub fn create(data: &Path, typed: &str) -> Result<String, String> {
     let name = name_of(typed)?;
     change(data, |shelf| {
         if find(shelf, &name).is_some() {
-            return Err(format!("Já existe uma coleção chamada {name}."));
+            return Err(tr!("Já existe uma coleção chamada {}.", name));
         }
         shelf.collections.push(Collection { name: name.clone(), games: Vec::new() });
         Ok(())
@@ -107,9 +108,9 @@ pub fn rename(data: &Path, old: &str, typed: &str) -> Result<String, String> {
     let name = name_of(typed)?;
     change(data, |shelf| {
         if !name.eq_ignore_ascii_case(old) && find(shelf, &name).is_some() {
-            return Err(format!("Já existe uma coleção chamada {name}."));
+            return Err(tr!("Já existe uma coleção chamada {}.", name));
         }
-        let c = find(shelf, old).ok_or("Essa coleção não existe mais.")?;
+        let c = find(shelf, old).ok_or(tr!("Essa coleção não existe mais."))?;
         c.name = name.clone();
         Ok(())
     })?;

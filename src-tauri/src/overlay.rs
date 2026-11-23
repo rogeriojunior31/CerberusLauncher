@@ -6,6 +6,7 @@
 //! screen can't have anything over it, so this works for windowed and
 //! borderless ones. The window is made the first time and hidden after.
 
+use cerberus_shared::tr;
 use std::sync::Mutex;
 
 use cerberus_shared::OverlayView;
@@ -41,7 +42,7 @@ pub fn toggle(app: &AppHandle) {
     }
     let Some((window, game)) = crate::screenshots::game_in_front(app) else { return };
     let Some((x, y, width, height)) = win::client_rect(window) else {
-        crate::notify::tell(app, "Não foi possível abrir o menu", "o jogo está minimizado ou em tela cheia exclusiva");
+        crate::notify::tell(app, tr!("Não foi possível abrir o menu"), tr!("o jogo está minimizado ou em tela cheia exclusiva"));
         return;
     };
     app.state::<Overlay>().set(Some((game.id.clone(), window as isize)));
@@ -76,7 +77,7 @@ pub fn toggle(app: &AppHandle) {
             let _ = window.set_focus();
             win::bring_to_front(window.hwnd().map(|h| h.0 as isize).unwrap_or(0));
         }
-        Err(e) => crate::notify::tell(app, "Não foi possível abrir o menu", &e.to_string()),
+        Err(e) => crate::notify::tell(app, tr!("Não foi possível abrir o menu"), &e.to_string()),
     }
 }
 
@@ -92,11 +93,11 @@ pub fn close(app: &AppHandle) {
 
 /// The game the menu is over, and its window, while it still runs.
 fn target(app: &AppHandle) -> Result<(cerberus_shared::Game, isize), String> {
-    let (id, window) = app.state::<Overlay>().get().ok_or("O menu não está aberto sobre um jogo.")?;
+    let (id, window) = app.state::<Overlay>().get().ok_or(tr!("O menu não está aberto sobre um jogo."))?;
     if !app.state::<crate::sessions::Sessions>().is_running(&id) {
-        return Err("O jogo já fechou.".into());
+        return Err(tr!("O jogo já fechou.").into());
     }
-    let game = app.state::<crate::library::LocalLibrary>().get(&id)?.ok_or("O jogo não está mais na biblioteca.")?;
+    let game = app.state::<crate::library::LocalLibrary>().get(&id)?.ok_or(tr!("O jogo não está mais na biblioteca."))?;
     Ok((game, window))
 }
 

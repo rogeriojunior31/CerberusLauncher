@@ -1,6 +1,7 @@
 //! When a game ends badly: what its exit code usually means, in words the
 //! player can act on, and the log it left behind, if any.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -12,16 +13,16 @@ pub fn reason(code: i32, seconds: u64) -> Option<String> {
     let status = code as u32;
     let text = match status {
         0 => return None,
-        0xC000_0135 => "Falta uma DLL que o jogo precisa. Quase sempre é o Visual C++ 2015-2022 (x64): instale em Configurações › Seu PC.".to_string(),
-        0xC000_0139 => "Uma DLL do Windows é antiga demais para o jogo, quase sempre o Visual C++ 2015-2022 (x64). Atualize em Configurações › Seu PC.".to_string(),
-        0xC000_007B => "O jogo encontrou uma DLL de 32 bits ou corrompida. Reinstalar o Visual C++ em Configurações › Seu PC costuma resolver.".to_string(),
-        0xC000_0005 => "O jogo travou (acesso inválido à memória). Se acontecer sempre no mesmo ponto, atualize o recomp ou o driver de vídeo.".to_string(),
-        0xC000_00FD => "O jogo travou (estouro de pilha).".to_string(),
-        0xC000_0409 | 0xC000_0602 => "O jogo se encerrou por um erro interno dele.".to_string(),
-        0xE06D_7363 => "O jogo parou por um erro interno dele (exceção não tratada).".to_string(),
-        0x8000_0003 => "O jogo parou num ponto de depuração; costuma ser uma versão de teste do recomp.".to_string(),
-        s if s >= 0xC000_0000 => format!("O jogo travou (código 0x{s:08X})."),
-        _ if seconds < 60 => format!("O jogo fechou com o código {code} pouco depois de abrir."),
+        0xC000_0135 => tr!("Falta uma DLL que o jogo precisa. Quase sempre é o Visual C++ 2015-2022 (x64): instale em Configurações › Seu PC.").to_string(),
+        0xC000_0139 => tr!("Uma DLL do Windows é antiga demais para o jogo, quase sempre o Visual C++ 2015-2022 (x64). Atualize em Configurações › Seu PC.").to_string(),
+        0xC000_007B => tr!("O jogo encontrou uma DLL de 32 bits ou corrompida. Reinstalar o Visual C++ em Configurações › Seu PC costuma resolver.").to_string(),
+        0xC000_0005 => tr!("O jogo travou (acesso inválido à memória). Se acontecer sempre no mesmo ponto, atualize o recomp ou o driver de vídeo.").to_string(),
+        0xC000_00FD => tr!("O jogo travou (estouro de pilha).").to_string(),
+        0xC000_0409 | 0xC000_0602 => tr!("O jogo se encerrou por um erro interno dele.").to_string(),
+        0xE06D_7363 => tr!("O jogo parou por um erro interno dele (exceção não tratada).").to_string(),
+        0x8000_0003 => tr!("O jogo parou num ponto de depuração; costuma ser uma versão de teste do recomp.").to_string(),
+        s if s >= 0xC000_0000 => tr!("O jogo travou (código 0x{}).", format!("{s:08X}")),
+        _ if seconds < 60 => tr!("O jogo fechou com o código {} pouco depois de abrir.", code),
         _ => return None,
     };
     Some(text)
@@ -58,17 +59,13 @@ pub struct OldDllClues {
 /// stands out, and the general explanation applies.
 pub fn old_dll_cause(clues: &OldDllClues) -> Option<String> {
     if let Some((name, theirs, windows)) = clues.bundled_older.first() {
-        return Some(format!(
-            "A pasta do jogo traz uma cópia antiga de {name} ({}), mais velha que a do Windows ({}). Apagar ou renomear essa cópia na pasta do jogo costuma resolver: o Windows usa a dele.",
-            shown(*theirs),
-            shown(*windows)
-        ));
+        return Some(tr!("A pasta do jogo traz uma cópia antiga de {2} ({0}), mais velha que a do Windows ({1}). Apagar ou renomear essa cópia na pasta do jogo costuma resolver: o Windows usa a dele.", shown(*theirs), shown(*windows), name));
     }
     if let Some(vc) = &clues.vc_too_old {
-        return Some(format!("O Visual C++ deste PC é antigo ({vc}) para este jogo. Atualize em Configurações › Seu PC."));
+        return Some(tr!("O Visual C++ deste PC é antigo ({}) para este jogo. Atualize em Configurações › Seu PC.", vc));
     }
     if let Some(v) = clues.vulkan_too_old {
-        return Some(format!("O Vulkan do driver de vídeo é antigo ({}). Atualize o driver da placa de vídeo pelo site da NVIDIA, AMD ou Intel.", shown(v)));
+        return Some(tr!("O Vulkan do driver de vídeo é antigo ({}). Atualize o driver da placa de vídeo pelo site da NVIDIA, AMD ou Intel.", shown(v)));
     }
     None
 }

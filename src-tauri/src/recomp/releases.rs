@@ -5,6 +5,7 @@
 //! about every recomp at once, so asking again on every visit would run out fast.
 //! The copy on disk also keeps Discover working offline.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -96,28 +97,28 @@ async fn fetch(client: &Client, forge: &Forge<'_>) -> Result<String, String> {
     if let Forge::GitHub(_) = forge {
         request = request.header("Accept", "application/vnd.github+json");
     }
-    let reply = request.send().await.map_err(|_| format!("Sem conexão com o {name}."))?;
+    let reply = request.send().await.map_err(|_| tr!("Sem conexão com o {}.", name))?;
     let status = reply.status();
     if status == StatusCode::FORBIDDEN || status == StatusCode::TOO_MANY_REQUESTS {
-        return Err(format!("O {name} limitou as consultas por agora. Tente de novo em alguns minutos."));
+        return Err(tr!("O {} limitou as consultas por agora. Tente de novo em alguns minutos.", name));
     }
     if !status.is_success() {
-        return Err(format!("O {name} respondeu {}.", status.as_u16()));
+        return Err(tr!("O {1} respondeu {0}.", status.as_u16(), name));
     }
     reply.text().await.map_err(|e| e.to_string())
 }
 
 fn parse_latest(text: &str, from: &str) -> Result<LatestRelease, String> {
-    let releases: Vec<GhRelease> = serde_json::from_str(text).map_err(|_| format!("Resposta inesperada do {from}."))?;
+    let releases: Vec<GhRelease> = serde_json::from_str(text).map_err(|_| tr!("Resposta inesperada do {}.", from))?;
     let full = releases.into_iter().find(|r| !r.draft && !r.prerelease);
-    let release = full.ok_or("Esse projeto ainda não tem uma versão publicada.")?;
+    let release = full.ok_or(tr!("Esse projeto ainda não tem uma versão publicada."))?;
     let assets = release.assets.into_iter().map(to_asset).collect();
     Ok(LatestRelease { version: release.tag_name, assets })
 }
 
 fn parse_gitlab(text: &str) -> Result<LatestRelease, String> {
-    let releases: Vec<GlRelease> = serde_json::from_str(text).map_err(|_| "Resposta inesperada do GitLab.".to_string())?;
-    let release = releases.into_iter().find(|r| !r.upcoming_release).ok_or("Esse projeto ainda não tem uma versão publicada.")?;
+    let releases: Vec<GlRelease> = serde_json::from_str(text).map_err(|_| tr!("Resposta inesperada do GitLab.").to_string())?;
+    let release = releases.into_iter().find(|r| !r.upcoming_release).ok_or(tr!("Esse projeto ainda não tem uma versão publicada."))?;
     let assets = release
         .assets
         .links

@@ -6,6 +6,7 @@
 //! Only retroachievements.org is called, with Cerberus's own User-Agent, as the
 //! site asks of clients.
 
+use cerberus_shared::tr;
 use std::time::Duration;
 
 use cerberus_shared::{RaGame, RaProfile};
@@ -26,15 +27,15 @@ async fn get(http: &reqwest::Client, endpoint: &str, user: &str, key: &str, extr
         .timeout(Duration::from_secs(15))
         .send()
         .await
-        .map_err(|_| "Não foi possível falar com o RetroAchievements. Confira a internet.".to_string())?;
+        .map_err(|_| tr!("Não foi possível falar com o RetroAchievements. Confira a internet.").to_string())?;
     match reply.status().as_u16() {
-        401 | 403 => return Err("O RetroAchievements não aceitou esse usuário e chave.".into()),
-        404 => return Err("Esse usuário não existe no RetroAchievements.".into()),
-        429 => return Err("O RetroAchievements pediu para esperar um pouco. Tente de novo em instantes.".into()),
-        s if !(200..300).contains(&s) => return Err(format!("O RetroAchievements respondeu {s}.")),
+        401 | 403 => return Err(tr!("O RetroAchievements não aceitou esse usuário e chave.").into()),
+        404 => return Err(tr!("Esse usuário não existe no RetroAchievements.").into()),
+        429 => return Err(tr!("O RetroAchievements pediu para esperar um pouco. Tente de novo em instantes.").into()),
+        s if !(200..300).contains(&s) => return Err(tr!("O RetroAchievements respondeu {}.", s)),
         _ => {}
     }
-    reply.json().await.map_err(|_| "O RetroAchievements respondeu algo inesperado.".to_string())
+    reply.json().await.map_err(|_| tr!("O RetroAchievements respondeu algo inesperado.").to_string())
 }
 
 /// Percent-encodes a query value.
@@ -76,7 +77,7 @@ pub async fn profile(http: &reqwest::Client, user: &str, key: &str) -> Result<Ra
     let v = get(http, "API_GetUserProfile.php", user, key, "").await?;
     let name = text(&v, "User");
     if name.is_empty() {
-        return Err("O RetroAchievements não aceitou esse usuário e chave.".into());
+        return Err(tr!("O RetroAchievements não aceitou esse usuário e chave.").into());
     }
     let recent = get(http, "API_GetUserRecentlyPlayedGames.php", user, key, "&c=8").await.unwrap_or(Value::Null);
     let games = recent

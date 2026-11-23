@@ -64,7 +64,7 @@ impl Forge<'_> {
     /// The newest releases, newest first.
     pub fn releases_api(&self) -> String {
         match self {
-            Forge::GitHub(repo) => format!("https://api.github.com/repos/{repo}/releases?per_page=10"),
+            Forge::GitHub(repo) => format!("https://api.github.com/repos/{}/releases?per_page=10", repo),
             Forge::GitLab(path) => format!("https://gitlab.com/api/v4/projects/{}/releases?per_page=10", path.replace('/', "%2F")),
             Forge::Forgejo { server, path } => format!("https://{server}/api/v1/repos/{path}/releases?limit=10"),
         }

@@ -39,6 +39,8 @@ mod retroachievements;
 mod emulation;
 mod xdvdfs;
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -178,7 +180,7 @@ fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
         url: url.to_owned(),
         name: source.as_ref().map(|s| s.name.as_str()).filter(|s| !s.trim().is_empty()).unwrap_or(url).to_owned(),
         hydra, games, synced_at: source.as_ref().and_then(|s| s.synced_at),
-        error: source.is_none().then(|| "Sem cópia local. Atualize a fonte para consultá-la.".to_owned()),
+        error: source.is_none().then(|| tr!("Sem cópia local. Atualize a fonte para consultá-la.").to_owned()),
     };
     let state = app.state::<Sources>();
     let mut list = state.list.lock().unwrap_or_else(|p| p.into_inner());
@@ -193,7 +195,7 @@ fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
 fn source_listings(sources: State<'_, Sources>, url: String, query: String, offset: usize) -> Result<SourcePage, String> {
     let list = sources.list.lock().unwrap_or_else(|p| p.into_inner());
     let source = list.iter().find(|(v, _)| v.url == url).and_then(|(_, s)| s.as_ref())
-        .ok_or("Fonte indisponível.")?;
+        .ok_or(tr!("Fonte indisponível."))?;
     source.listings(&query, offset)
 }
 
@@ -229,7 +231,7 @@ async fn sync_source(app: &AppHandle, http: &reqwest::Client, url: &str) {
 async fn refresh_source(app: AppHandle, http: State<'_, reqwest::Client>, url: String) -> Result<SettingsView, String> {
     let state = app.state::<Sources>();
     let _guard = state.sync.lock().await;
-    if !settings::load(&app.state::<DataDir>().0).sources.contains(&url) { return Err("Fonte removida.".into()); }
+    if !settings::load(&app.state::<DataDir>().0).sources.contains(&url) { return Err(tr!("Fonte removida.").into()); }
     sync_source(&app, &http, &url).await;
     publish_sources(&app);
     Ok(settings_view(&app))
@@ -255,7 +257,7 @@ async fn set_cloud_dir(app: AppHandle, clear: bool) -> Result<SettingsView, Stri
     let dir = if clear {
         None
     } else {
-        let dialog = app.dialog().file().set_title("Pasta sincronizada (OneDrive, Google Drive, Dropbox...)");
+        let dialog = app.dialog().file().set_title(tr!("Pasta sincronizada (OneDrive, Google Drive, Dropbox...)"));
         let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
         let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
             return Ok(settings_view(&app));
@@ -290,7 +292,7 @@ async fn rescan_roms(app: &AppHandle) {
 /// Asks for a ROM folder to look through for games that have a recomp.
 #[tauri::command]
 async fn add_rom_dir(app: AppHandle) -> Result<SettingsView, String> {
-    let dialog = app.dialog().file().set_title("Pasta com suas ROMs ou imagens de disco");
+    let dialog = app.dialog().file().set_title(tr!("Pasta com suas ROMs ou imagens de disco"));
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
     let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
         return Ok(settings_view(&app));
@@ -340,7 +342,7 @@ fn steamgriddb_key(app: &AppHandle) -> Result<String, String> {
     settings::load(&app.state::<DataDir>().0)
         .steamgriddb_key
         .filter(|k| !k.trim().is_empty())
-        .ok_or_else(|| "Coloque sua chave do SteamGridDB primeiro (é gratuita).".to_string())
+        .ok_or_else(|| tr!("Coloque sua chave do SteamGridDB primeiro (é gratuita).").to_string())
 }
 
 /// Keeps the player's SteamGridDB key after checking SteamGridDB takes it;
@@ -379,7 +381,7 @@ async fn art_fetch(http: State<'_, reqwest::Client>, url: String) -> Result<Stri
 /// A picture file the player picks, as a `data:` address. `None` when cancelled.
 #[tauri::command]
 async fn art_pick_file(app: AppHandle) -> Result<Option<String>, String> {
-    let dialog = app.dialog().file().set_title("Escolha uma imagem").add_filter("Imagens", &["png", "jpg", "jpeg", "webp"]);
+    let dialog = app.dialog().file().set_title(tr!("Escolha uma imagem")).add_filter(tr!("Imagens"), &["png", "jpg", "jpeg", "webp"]);
     let Some(path) = pick_one(dialog).await? else {
         return Ok(None);
     };
@@ -408,9 +410,9 @@ fn drawing_program(game: &Game) -> Option<PathBuf> {
 /// Whether a game can take a picture filter, and the one it has.
 #[tauri::command]
 fn look_status(library: State<'_, LocalLibrary>, id: String) -> Result<cerberus_shared::LookStatus, String> {
-    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let unsupported = match drawing_program(&game) {
-        None => Some("Filtros funcionam em jogos que o Cerberus abre (recomps e jogos adicionados à mão).".to_string()),
+        None => Some(tr!("Filtros funcionam em jogos que o Cerberus abre (recomps e jogos adicionados à mão).").to_string()),
         Some(exe) => match looks::route(&exe) {
             looks::Route::Dxgi { .. } => None,
             looks::Route::Unsupported(why) => Some(why),
@@ -430,7 +432,7 @@ async fn set_look(
 ) -> Result<cerberus_shared::LookStatus, String> {
     if let Some(look) = &look {
         if !looks::LOOKS.iter().any(|(known, _, _)| *known == look.id) {
-            return Err("Esse filtro não existe.".into());
+            return Err(tr!("Esse filtro não existe.").into());
         }
         let data = app.state::<DataDir>().0.clone();
         looks::ensure(&http, &data).await?;
@@ -473,7 +475,7 @@ async fn install_retroarch(app: AppHandle, http: State<'_, reqwest::Client>) -> 
         }
     };
     let result = emulation::install(&http, &data, report).await;
-    trail::note(&app, "emulation", "Instalar RetroArch", &result.as_ref().map(|p| p.display().to_string()).map_err(Clone::clone));
+    trail::note(&app, "emulation", tk!("Instalar RetroArch"), &result.as_ref().map(|p| p.display().to_string()).map_err(Clone::clone));
     result?;
     // Cerberus's own copy wins over a pick that no longer exists.
     let mut chosen = settings::load(&data);
@@ -485,14 +487,14 @@ async fn install_retroarch(app: AppHandle, http: State<'_, reqwest::Client>) -> 
 /// Uses a RetroArch the player already has.
 #[tauri::command]
 async fn pick_retroarch(app: AppHandle) -> Result<cerberus_shared::EmulationView, String> {
-    let dialog = app.dialog().file().set_title("Escolha o retroarch.exe").add_filter("RetroArch", &["exe"]);
+    let dialog = app.dialog().file().set_title(tr!("Escolha o retroarch.exe")).add_filter("RetroArch", &["exe"]);
     let (data, picked) = retroarch_choice(&app);
     let Some(exe) = pick_one(dialog).await? else {
         return Ok(emulation::status(&data, picked.as_deref()));
     };
     let name = exe.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
     if name != "retroarch.exe" {
-        return Err("Escolha o programa retroarch.exe.".into());
+        return Err(tr!("Escolha o programa retroarch.exe.").into());
     }
     let mut chosen = settings::load(&data);
     chosen.retroarch = Some(exe.clone());
@@ -503,7 +505,7 @@ async fn pick_retroarch(app: AppHandle) -> Result<cerberus_shared::EmulationView
 #[tauri::command]
 async fn install_core(app: AppHandle, http: State<'_, reqwest::Client>, core: String) -> Result<cerberus_shared::EmulationView, String> {
     let (data, picked) = retroarch_choice(&app);
-    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale ou escolha o RetroArch primeiro.")?;
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale ou escolha o RetroArch primeiro."))?;
     emulation::install_core(&http, &exe, &core).await?;
     Ok(emulation::status(&data, picked.as_deref()))
 }
@@ -512,16 +514,16 @@ async fn install_core(app: AppHandle, http: State<'_, reqwest::Client>, core: St
 #[tauri::command]
 async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, String), String> {
     let (data, picked) = retroarch_choice(&app);
-    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale ou escolha o RetroArch primeiro.")?;
-    let dialog = app.dialog().file().set_title("Pasta com a BIOS do seu PlayStation ou PlayStation 2");
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale ou escolha o RetroArch primeiro."))?;
+    let dialog = app.dialog().file().set_title(tr!("Pasta com a BIOS do seu PlayStation ou PlayStation 2"));
     let Some(folder) = pick_folder(dialog).await? else {
         return Ok((emulation::status(&data, picked.as_deref()), String::new()));
     };
     let (ps1, ps2) = emulation::import_bios(&exe, &folder)?;
     let said = match (ps1, ps2) {
-        (0, n) => format!("{n} BIOS de PlayStation 2 adicionada(s)."),
-        (n, 0) => format!("{n} BIOS de PlayStation adicionada(s)."),
-        (a, b) => format!("{a} BIOS de PlayStation e {b} de PlayStation 2 adicionadas."),
+        (0, n) => tr!("{} BIOS de PlayStation 2 adicionada(s).", n),
+        (n, 0) => tr!("{} BIOS de PlayStation adicionada(s).", n),
+        (a, b) => tr!("{} BIOS de PlayStation e {} de PlayStation 2 adicionadas.", a, b),
     };
     Ok((emulation::status(&data, picked.as_deref()), said))
 }
@@ -530,16 +532,16 @@ async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, 
 #[tauri::command]
 fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
     let (data, picked) = retroarch_choice(&app);
-    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale o RetroArch em Configurações › Emulação para jogar os clássicos.")?;
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale o RetroArch em Configurações › Emulação para jogar os clássicos."))?;
     let rom = PathBuf::from(&path);
     // Only files from the player's own ROM folders are started.
     let Some(known) = app.state::<RomIndex>().get().into_iter().find(|r| r.path == rom) else {
-        return Err("Esse arquivo não está nas suas pastas de ROMs.".into());
+        return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
     };
     let log = data.join("emulators").join("retroarch-session.log");
     let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| emulation::launch(&exe, &opened, &console, Some(&log)));
     let id = format!("classic:{path}");
-    trail::note(&app, &id, "Jogar clássico", &result.as_ref().map(|_| "Aberto no RetroArch".to_string()).map_err(Clone::clone));
+    trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no RetroArch").to_string()).map_err(Clone::clone));
     let mut child = result?;
     let started = std::time::Instant::now();
     background::classic_started();
@@ -553,8 +555,8 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
                 if text.len() > read {
                     for line in text[read..].lines() {
                         if let Some(title) = emulation::unlocked(line) {
-                            trail::note(&app, &id, "Conquista", &Ok(title.clone()));
-                            notify::tell(&app, "Conquista desbloqueada", &title);
+                            trail::note(&app, &id, tk!("Conquista"), &Ok(title.clone()));
+                            notify::tell(&app, tr!("Conquista desbloqueada"), &title);
                         }
                     }
                     read = text.len();
@@ -568,7 +570,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         let seconds = started.elapsed().as_secs();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
         let saved = emulation::add_played(&data, &path, seconds, now);
-        trail::note(&app, &id, "Partida", &saved.map(|_| if seconds < 60 { "Menos de 1 min jogado".to_string() } else { format!("{} min jogados", seconds / 60) }));
+        trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) }));
         let _ = app.emit("catalog-changed", ());
         background::classic_ended(&app);
     });
@@ -579,8 +581,8 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
 #[tauri::command]
 async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Client>, password: String) -> Result<cerberus_shared::EmulationView, String> {
     let (data, picked) = retroarch_choice(&app);
-    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or("Instale ou escolha o RetroArch primeiro.")?;
-    let user = settings::load(&data).ra_user.ok_or("Conecte sua conta em Configurações › RetroAchievements primeiro.")?;
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale ou escolha o RetroArch primeiro."))?;
+    let user = settings::load(&data).ra_user.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
     emulation::link_retroachievements(&http, &exe, &user, &password).await?;
     Ok(emulation::status(&data, picked.as_deref()))
 }
@@ -589,7 +591,7 @@ async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Cl
 #[tauri::command]
 fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> {
     if !matches!(page.as_str(), "home" | "library" | "discover") {
-        return Err("Página inválida.".into());
+        return Err(tr!("Página inválida.").into());
     }
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -604,7 +606,7 @@ fn set_autostart(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app.autolaunch();
     let result = if on { manager.enable() } else { manager.disable() };
-    result.map_err(|e| format!("O Windows não deixou mudar a inicialização: {e}"))?;
+    result.map_err(|e| tr!("O Windows não deixou mudar a inicialização: {}", e))?;
     Ok(settings_view(&app))
 }
 
@@ -699,7 +701,7 @@ fn rerun_setup(app: AppHandle) -> Result<SettingsView, String> {
 async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
     let (user, key) = (user.trim().to_string(), key.trim().to_string());
     if user.is_empty() || key.is_empty() {
-        return Err("Preencha o usuário e a chave de API.".into());
+        return Err(tr!("Preencha o usuário e a chave de API.").into());
     }
     let profile = retroachievements::profile(&http, &user, &key).await?;
     let data = app.state::<DataDir>();
@@ -758,7 +760,7 @@ fn get_settings(app: AppHandle) -> SettingsView {
 /// Asks for a folder for new recomp installs. Games already installed stay put.
 #[tauri::command]
 async fn pick_recomps_dir(app: AppHandle) -> Result<SettingsView, String> {
-    let dialog = app.dialog().file().set_title("Pasta para instalar recomps");
+    let dialog = app.dialog().file().set_title(tr!("Pasta para instalar recomps"));
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
     let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
         return Ok(settings_view(&app));
@@ -775,7 +777,7 @@ fn reset_recomps_dir(app: AppHandle) -> Result<SettingsView, String> {
 fn use_recomps_dir(app: &AppHandle, dir: Option<PathBuf>) -> Result<SettingsView, String> {
     let folders = app.state::<recomp::Folders>();
     let target = dir.clone().unwrap_or_else(|| folders.default_installs.clone());
-    fs::create_dir_all(&target).map_err(|e| format!("Não foi possível usar {}: {e}", target.display()))?;
+    fs::create_dir_all(&target).map_err(|e| tr!("Não foi possível usar {0}: {1}", target.display(), e))?;
     let data_dir = app.state::<DataDir>().0.clone();
     let mut chosen = settings::load(&data_dir);
     chosen.recomps_dir = dir;
@@ -847,8 +849,8 @@ async fn add_local_game(
     library: State<'_, LocalLibrary>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Option<Game>, String> {
-    let dialog = app.dialog().file().set_title("Escolha o executável do jogo");
-    let dialog = if cfg!(windows) { dialog.add_filter("Jogos", &["exe"]) } else { dialog };
+    let dialog = app.dialog().file().set_title(tr!("Escolha o executável do jogo"));
+    let dialog = if cfg!(windows) { dialog.add_filter(tr!("Jogos"), &["exe"]) } else { dialog };
     let Some(exe) = pick_one(dialog).await? else {
         return Ok(None);
     };
@@ -867,7 +869,7 @@ async fn add_local_game(
 fn rename_game(library: State<'_, LocalLibrary>, id: String, name: String) -> Result<Game, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("O nome não pode ficar vazio.".into());
+        return Err(tr!("O nome não pode ficar vazio.").into());
     }
     library.update(&id, |game| game.name = name)
 }
@@ -880,10 +882,10 @@ async fn find_cover(
     folder: State<'_, CoverFolder>,
     id: String,
 ) -> Result<Game, String> {
-    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let art = steam_store::art_for_name(&http, &game.name).await?;
     let Some(art) = art.filter(|art| art.cover.is_some()) else {
-        return Err(format!("Nenhuma capa encontrada na Steam para \"{}\".", game.name));
+        return Err(tr!("Nenhuma capa encontrada na Steam para \"{}\".", game.name));
     };
     let mut old = None;
     let updated = library.update(&id, |game| {
@@ -903,8 +905,8 @@ async fn pick_cover(
     folder: State<'_, CoverFolder>,
     id: String,
 ) -> Result<Option<Game>, String> {
-    let dialog = app.dialog().file().set_title("Escolha a capa do jogo");
-    let dialog = dialog.add_filter("Imagens", &["png", "jpg", "jpeg", "webp"]);
+    let dialog = app.dialog().file().set_title(tr!("Escolha a capa do jogo"));
+    let dialog = dialog.add_filter(tr!("Imagens"), &["png", "jpg", "jpeg", "webp"]);
     let Some(source) = pick_one(dialog).await? else {
         return Ok(None);
     };
@@ -930,16 +932,16 @@ fn remove_game(
         return Ok(());
     };
     if sessions.is_running(&id) {
-        return Err("Feche o jogo antes de removê-lo.".into());
+        return Err(tr!("Feche o jogo antes de removê-lo.").into());
     }
     // Files first: if they can't go, the game stays listed. Saves are copied
     // before anything is deleted, and the copies outlive the uninstall.
     if let Source::Recomp { recomp_id, .. } = &game.source {
         installing.while_idle(recomp_id, || {
             if sessions.is_running(&id) {
-                return Err("Feche o jogo antes de removê-lo.".into());
+                return Err(tr!("Feche o jogo antes de removê-lo.").into());
             }
-            recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), "Antes de desinstalar")?;
+            recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), tk!("Antes de desinstalar"))?;
             // A folder the player installed on their own stays theirs: only the link goes.
             if !game.external {
                 recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
@@ -1009,7 +1011,7 @@ async fn install_recomp(
         Err(message) => {
             report(cerberus_shared::InstallStep::Failed { message: message.clone() });
             // Keyed by the library id a successful install would have had.
-            trail::note(&app, &format!("recomp:{id}"), "Instalação", &Err(message.clone()));
+            trail::note(&app, &format!("recomp:{id}"), tk!("Instalação"), &Err(message.clone()));
             return Err(message);
         }
     };
@@ -1017,10 +1019,10 @@ async fn install_recomp(
         Source::Recomp { version, .. } => version.clone(),
         _ => String::new(),
     };
-    trail::note(&app, &game.id, "Instalação", &Ok(format!("Versão {version} instalada")));
+    trail::note(&app, &game.id, tk!("Instalação"), &Ok(tr!("Versão {} instalada", version)));
     // The download may have taken a while: say it's ready even if the player is elsewhere.
     if !app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false)) {
-        notify::tell(&app, &format!("{} está pronto", game.name), &format!("Versão {version} instalada. Abra o Cerberus para jogar."));
+        notify::tell(&app, &tr!("{} está pronto", game.name), &tr!("Versão {} instalada. Abra o Cerberus para jogar.", version));
     }
     // Easy Setup: the player's copy was found in their ROM folders, so the recomp
     // is set up with it right away. Failing that only means setting it by hand.
@@ -1038,26 +1040,26 @@ async fn install_recomp(
 /// when `folder`).
 #[tauri::command]
 async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: String, use_found: bool, folder: bool) -> Result<Option<Game>, String> {
-    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
-        return Err("Só recomps usam uma cópia do jogo.".into());
+        return Err(tr!("Só recomps usam uma cópia do jogo.").into());
     };
     // A recomp that takes only extracted folders always gets the folder picker.
     let folder = folder || recomp::find(recomp_id).is_some_and(|e| e.copy_accepts == "folder");
     let copy = if use_found {
         let owned = owned_games(&app);
-        let entry = recomp::find(recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+        let entry = recomp::find(recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
         let found = owned.get(&entry.id).cloned();
-        PathBuf::from(found.ok_or("Nenhuma cópia desse jogo nas suas pastas de ROMs.")?)
+        PathBuf::from(found.ok_or(tr!("Nenhuma cópia desse jogo nas suas pastas de ROMs."))?)
     } else if folder {
-        let dialog = app.dialog().file().set_title("Escolha a pasta com os arquivos do jogo");
+        let dialog = app.dialog().file().set_title(tr!("Escolha a pasta com os arquivos do jogo"));
         let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
         let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
             return Ok(None);
         };
         picked.into_path().map_err(|e| e.to_string())?
     } else {
-        let dialog = app.dialog().file().set_title("Escolha sua cópia do jogo (ROM ou imagem de disco)");
+        let dialog = app.dialog().file().set_title(tr!("Escolha sua cópia do jogo (ROM ou imagem de disco)"));
         let Some(picked) = pick_one(dialog).await? else {
             return Ok(None);
         };
@@ -1079,7 +1081,7 @@ enum ModHost {
 /// The mod source and mods folder of an installed recomp; `None` when it has no mods.
 async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(ModHost, PathBuf, PathBuf)>, String> {
     let library = app.state::<LocalLibrary>();
-    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, exe, .. } = &game.source else {
         return Ok(None);
     };
@@ -1123,12 +1125,12 @@ async fn list_mods(app: AppHandle, http: State<'_, reqwest::Client>, id: String)
 /// Installs (or updates) a mod and the mods it needs.
 #[tauri::command]
 async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: String, full_name: String) -> Result<(), String> {
-    let (host, folder, record) = mod_setup(&app, &id).await?.ok_or("Esse jogo não tem mods.")?;
+    let (host, folder, record) = mod_setup(&app, &id).await?.ok_or(tr!("Esse jogo não tem mods."))?;
     let cache = app.state::<DataDir>().cache().join("mods");
     let source = match host {
         ModHost::Thunderstore(source) => source,
         ModHost::GameBanana(game, kind) => {
-            let mod_id = gamebanana::id_of(&full_name).ok_or("Mod desconhecido.")?;
+            let mod_id = gamebanana::id_of(&full_name).ok_or(tr!("Mod desconhecido."))?;
             let listed = gamebanana::list(&http, &cache, game).await?;
             let found = listed.iter().find(|m| m.id == mod_id);
             let version = found.map(|m| m.version.clone()).unwrap_or_default();
@@ -1185,7 +1187,7 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
 
 #[tauri::command]
 async fn remove_mod(app: AppHandle, id: String, full_name: String) -> Result<(), String> {
-    let (host, folder, record) = mod_setup(&app, &id).await?.ok_or("Esse jogo não tem mods.")?;
+    let (host, folder, record) = mod_setup(&app, &id).await?.ok_or(tr!("Esse jogo não tem mods."))?;
     let mut installed = mods::load_installed(&record);
     if let Some((_, files)) = installed.0.remove(&full_name) {
         match (host, gamebanana::id_of(&full_name)) {
@@ -1200,14 +1202,14 @@ async fn remove_mod(app: AppHandle, id: String, full_name: String) -> Result<(),
 /// After an installer ran and the game wasn't found: the player points at its program.
 #[tauri::command]
 async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
-    let dialog = app.dialog().file().set_title("Onde está o jogo? Escolha o programa dele");
-    let dialog = if cfg!(windows) { dialog.add_filter("Programa", &["exe"]) } else { dialog };
+    let dialog = app.dialog().file().set_title(tr!("Onde está o jogo? Escolha o programa dele"));
+    let dialog = if cfg!(windows) { dialog.add_filter(tr!("Programa"), &["exe"]) } else { dialog };
     let Some(program) = pick_one(dialog).await? else {
         return Ok(None);
     };
     let result = setup_runner::use_program(&app, &id, &program);
     let outcome = result.as_ref().map(|_| program.display().to_string()).map_err(Clone::clone);
-    trail::note(&app, &id, "Localizar programa", &outcome);
+    trail::note(&app, &id, tk!("Localizar programa"), &outcome);
     result.map(Some)
 }
 
@@ -1219,14 +1221,14 @@ fn tracking_mode(library: State<'_, LocalLibrary>, id: String) -> Result<Option<
 #[tauri::command]
 async fn pick_tracking_exe(app: AppHandle, id: String, automatic: bool) -> Result<Option<Game>, String> {
     let library = app.state::<LocalLibrary>();
-    let game = library.get(&id)?.ok_or("Jogo removido da biblioteca.")?;
-    if sessions::tracking_mode(&game).is_none() { return Err("A seleção de processo está indisponível para este jogo.".into()); }
+    let game = library.get(&id)?.ok_or(tr!("Jogo removido da biblioteca."))?;
+    if sessions::tracking_mode(&game).is_none() { return Err(tr!("A seleção de processo está indisponível para este jogo.").into()); }
     let selected = if automatic { None } else {
-        let dialog = app.dialog().file().set_title("Escolha o executável que roda durante a partida").add_filter("Programa", &["exe"]);
+        let dialog = app.dialog().file().set_title(tr!("Escolha o executável que roda durante a partida")).add_filter(tr!("Programa"), &["exe"]);
         let Some(path) = pick_one(dialog).await? else { return Ok(None) };
         let path = dunce::canonicalize(path).map_err(|e| e.to_string())?;
         if !path.is_file() || !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
-            return Err("Escolha o arquivo .exe do jogo.".into());
+            return Err(tr!("Escolha o arquivo .exe do jogo.").into());
         }
         Some(path.to_string_lossy().into_owned())
     };
@@ -1256,8 +1258,8 @@ fn open_steamgriddb_keys(app: AppHandle) -> Result<(), String> {
 /// Opens a catalog recomp's project page; only catalog repos, never an arbitrary link.
 #[tauri::command]
 fn open_project(app: AppHandle, id: String) -> Result<(), String> {
-    let entry = recomp::find(&id).ok_or("Esse recomp não está no catálogo.")?;
-    let url = entry.forge().ok_or("O endereço do projeto no catálogo não é válido.")?.page();
+    let entry = recomp::find(&id).ok_or(tr!("Esse recomp não está no catálogo."))?;
+    let url = entry.forge().ok_or(tr!("O endereço do projeto no catálogo não é válido."))?.page();
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
@@ -1269,31 +1271,31 @@ fn play(app: AppHandle, game: Game) -> Result<(), String> {
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         Source::Local { .. } => {
-            let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+            let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or(tr!("O jogo foi removido da biblioteca."))?;
             ready_to_play(&current)?;
-            let Source::Local { exe } = &current.source else { return Err("Registro do jogo inválido.".into()) };
+            let Source::Local { exe } = &current.source else { return Err(tr!("Registro do jogo inválido.").into()) };
             return sessions::start(&app, &current, Path::new(exe));
         }
         Source::Recomp { recomp_id, .. } => {
             return app.state::<recomp::Installing>().while_idle(recomp_id, || {
-                let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or("O jogo foi removido da biblioteca.")?;
+                let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or(tr!("O jogo foi removido da biblioteca."))?;
                 ready_to_play(&current)?;
-                let Source::Recomp { exe, .. } = &current.source else { return Err("Registro do recomp inválido.".into()) };
+                let Source::Recomp { exe, .. } = &current.source else { return Err(tr!("Registro do recomp inválido.").into()) };
                 sessions::start(&app, &current, Path::new(exe))
             });
         }
     };
     app.opener()
         .open_url(url, None::<&str>)
-        .map_err(|e| format!("Não foi possível abrir o launcher da loja: {e}"))
+        .map_err(|e| tr!("Não foi possível abrir o launcher da loja: {}", e))
 }
 
 /// Play refuses what the button wouldn't offer: a recomp without its game copy
 /// would open to an error, a missing program can't open at all.
 fn ready_to_play(game: &Game) -> Result<(), String> {
     match recomp::next_step(game, None) {
-        cerberus_shared::NextStep::ChooseCopy { .. } => Err(format!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
-        cerberus_shared::NextStep::Locate { reason } => Err(format!("{reason} Use \"Localizar programa\" na página do jogo.")),
+        cerberus_shared::NextStep::ChooseCopy { .. } => Err(tr!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
+        cerberus_shared::NextStep::Locate { reason } => Err(tr!("{} Use \"Localizar programa\" na página do jogo.", reason)),
         _ => Ok(()),
     }
 }
@@ -1312,15 +1314,15 @@ fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
 /// `None` when the picker is cancelled.
 #[tauri::command]
 async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
-    let game = app.state::<LocalLibrary>().get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = app.state::<LocalLibrary>().get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
-        return Err("Só recomps instalados pelo Cerberus podem ser movidos por aqui.".into());
+        return Err(tr!("Só recomps instalados pelo Cerberus podem ser movidos por aqui.").into());
     };
     if app.state::<sessions::Sessions>().is_running(&id) {
-        return Err("Feche o jogo antes de movê-lo.".into());
+        return Err(tr!("Feche o jogo antes de movê-lo.").into());
     }
     app.state::<recomp::Installing>().while_idle(recomp_id, || Ok(()))?;
-    let dialog = app.dialog().file().set_title("Escolha para onde mover o jogo");
+    let dialog = app.dialog().file().set_title(tr!("Escolha para onde mover o jogo"));
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder());
     let Some(picked) = picked.await.map_err(|e| e.to_string())? else {
         return Ok(None);
@@ -1333,7 +1335,7 @@ async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
     })
     .await
     .map_err(|e| e.to_string())??;
-    trail::note(&app, &moved.id, "Mover", &Ok(format!("Movido para {}", moved.install_dir)));
+    trail::note(&app, &moved.id, tk!("Mover"), &Ok(tr!("Movido para {}", moved.install_dir)));
     Ok(Some(moved))
 }
 
@@ -1344,9 +1346,9 @@ fn pause_install(installing: State<'_, recomp::Installing>, id: String) {
 
 /// The recomp behind a library entry, and where it is installed.
 fn recomp_of(library: &LocalLibrary, id: &str) -> Result<(String, PathBuf), String> {
-    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, .. } = game.source else {
-        return Err("Só os recomps têm backup de saves.".into());
+        return Err(tr!("Só os recomps têm backup de saves.").into());
     };
     Ok((recomp_id, PathBuf::from(game.install_dir)))
 }
@@ -1361,8 +1363,8 @@ fn list_backups(library: State<'_, LocalLibrary>, folders: State<'_, recomp::Fol
 #[tauri::command]
 async fn backup_now(app: AppHandle, library: State<'_, LocalLibrary>, folders: State<'_, recomp::Folders>, id: String) -> Result<Option<Backup>, String> {
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
-    let result = recomp::backup_saves(&folders, &recomp_id, &install_dir, "Manual");
-    trail::note(&app, &id, "Backup manual", &sessions::backup_outcome(&result));
+    let result = recomp::backup_saves(&folders, &recomp_id, &install_dir, tk!("Manual"));
+    trail::note(&app, &id, tk!("Backup manual"), &sessions::backup_outcome(&result));
     result
 }
 
@@ -1377,12 +1379,12 @@ async fn restore_backup(
 ) -> Result<u32, String> {
     // The game would overwrite the restored files with what it has in memory.
     if sessions.is_running(&id) {
-        return Err("Feche o jogo antes de restaurar um backup.".into());
+        return Err(tr!("Feche o jogo antes de restaurar um backup.").into());
     }
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
     let result = recomp::restore_backup(&folders, &recomp_id, &install_dir, &name);
-    let outcome = result.as_ref().map(|n| format!("{n} arquivos de {name} restaurados")).map_err(Clone::clone);
-    trail::note(&app, &id, "Restaurar backup", &outcome);
+    let outcome = result.as_ref().map(|n| tr!("{} arquivos de {} restaurados", n, name)).map_err(Clone::clone);
+    trail::note(&app, &id, tk!("Restaurar backup"), &outcome);
     result
 }
 
@@ -1403,7 +1405,7 @@ fn found_view(found: recomp::adopt::Found) -> Option<cerberus_shared::AdoptFound
 /// Cerberus. `None` when the picker is cancelled.
 #[tauri::command]
 async fn scan_for_recomps(app: AppHandle) -> Result<Option<cerberus_shared::AdoptScan>, String> {
-    let dialog = app.dialog().file().set_title("Em que pasta estão os recomps que você já instalou?");
+    let dialog = app.dialog().file().set_title(tr!("Em que pasta estão os recomps que você já instalou?"));
     let Some(folder) = pick_folder(dialog).await? else {
         return Ok(None);
     };
@@ -1418,13 +1420,13 @@ async fn scan_for_recomps(app: AppHandle) -> Result<Option<cerberus_shared::Adop
 /// `program`) one the player picks.
 #[tauri::command]
 async fn adopt_recomp(app: AppHandle, recomp_id: String, program: Option<String>) -> Result<Option<Game>, String> {
-    let entry = recomp::find(&recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let entry = recomp::find(&recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let program = match program {
         Some(path) => PathBuf::from(path),
         None => {
-            let title = format!("Onde está o {}? Escolha o programa dele", entry.name);
+            let title = tr!("Onde está o {}? Escolha o programa dele", entry.name);
             let dialog = app.dialog().file().set_title(&title);
-            let dialog = if cfg!(windows) { dialog.add_filter("Programa", &["exe"]) } else { dialog };
+            let dialog = if cfg!(windows) { dialog.add_filter(tr!("Programa"), &["exe"]) } else { dialog };
             let Some(program) = pick_one(dialog).await? else {
                 return Ok(None);
             };
@@ -1433,8 +1435,8 @@ async fn adopt_recomp(app: AppHandle, recomp_id: String, program: Option<String>
     };
     let library = app.state::<LocalLibrary>();
     let result = recomp::adopt::adopt(&library, &entry, &program);
-    let outcome = result.as_ref().map(|_| format!("Trazido de {}", program.display())).map_err(Clone::clone);
-    trail::note(&app, &recomp::library_id(&entry.id), "Trazer recomp", &outcome);
+    let outcome = result.as_ref().map(|_| tr!("Trazido de {}", program.display())).map_err(Clone::clone);
+    trail::note(&app, &recomp::library_id(&entry.id), tk!("Trazer recomp"), &outcome);
     let _ = app.emit("catalog-changed", ());
     result.map(Some)
 }
@@ -1442,7 +1444,7 @@ async fn adopt_recomp(app: AppHandle, recomp_id: String, program: Option<String>
 /// The catalog recomps a game added by hand could be, the surest first.
 #[tauri::command]
 fn recomp_suggestions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::AdoptFound>, String> {
-    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Local { exe } = &game.source else { return Ok(Vec::new()) };
     let found = recomp::adopt::candidates(Path::new(exe), &recomp::catalog::all());
     Ok(found.into_iter().filter_map(found_view).collect())
@@ -1451,20 +1453,20 @@ fn recomp_suggestions(library: State<'_, LocalLibrary>, id: String) -> Result<Ve
 /// Turns a game added by hand into the catalog recomp it is, keeping its play time.
 #[tauri::command]
 fn link_to_recomp(app: AppHandle, library: State<'_, LocalLibrary>, id: String, recomp_id: String) -> Result<Game, String> {
-    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
-    let Source::Local { exe } = &game.source else { return Err("Só jogos adicionados à mão podem ser vinculados.".into()) };
-    let entry = recomp::find(&recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    let Source::Local { exe } = &game.source else { return Err(tr!("Só jogos adicionados à mão podem ser vinculados.").into()) };
+    let entry = recomp::find(&recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let linked = recomp::adopt::adopt(&library, &entry, Path::new(exe))?;
-    trail::note(&app, &linked.id, "Vincular ao catálogo", &Ok(entry.name.clone()));
+    trail::note(&app, &linked.id, tk!("Vincular ao catálogo"), &Ok(entry.name.clone()));
     let _ = app.emit("catalog-changed", ());
     Ok(linked)
 }
 
 /// A recomp's catalog settings offer and where it is installed.
 fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings::Offer), String> {
-    let game = library.get(id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
-        return Err("Só recomps têm ajustes do catálogo.".into());
+        return Err(tr!("Só recomps têm ajustes do catálogo.").into());
     };
     let offer = recomp::find(recomp_id).map(|e| e.settings).unwrap_or_default();
     Ok((game, offer))
@@ -1494,7 +1496,7 @@ fn set_game_setting(
 ) -> Result<cerberus_shared::GameSettings, String> {
     // The game writes its settings when it closes, over whatever was changed meanwhile.
     if sessions.is_running(&id) {
-        return Err("Feche o jogo antes de mudar os ajustes.".into());
+        return Err(tr!("Feche o jogo antes de mudar os ajustes.").into());
     }
     let (game, offer) = settings_of(&library, &id)?;
     let install = Path::new(&game.install_dir);
@@ -1505,13 +1507,13 @@ fn set_game_setting(
         _ => offer.reset(install, &mut picks),
     };
     if let Err(error) = &result {
-        trail::note(&app, &id, "Ajustes", &Err(error.clone()));
+        trail::note(&app, &id, tk!("Ajustes"), &Err(error.clone()));
     }
     result?;
     if picks != game.setting_picks {
         library.update(&id, |g| g.setting_picks = picks.clone())?;
     }
-    let updated = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let updated = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     Ok(offer.view(install, &updated.setting_picks))
 }
 
@@ -1560,12 +1562,12 @@ fn delete_collection(app: AppHandle, name: String) -> Result<(), String> {
 fn open_rom_folder(app: AppHandle, path: String) -> Result<(), String> {
     let rom = PathBuf::from(&path);
     if !app.state::<RomIndex>().get().iter().any(|r| r.path == rom) {
-        return Err("Esse arquivo não está nas suas pastas de ROMs.".into());
+        return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
     }
-    let folder = rom.parent().ok_or("Esse arquivo não tem pasta.")?;
+    let folder = rom.parent().ok_or(tr!("Esse arquivo não tem pasta."))?;
     app.opener()
         .open_path(folder.to_string_lossy(), None::<&str>)
-        .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
+        .map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
 /// A game asked for by a desktop shortcut (`--play <id>`) when Cerberus started.
@@ -1586,7 +1588,7 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
         None => {
             let mut found = steam::installed_games();
             found.extend(epic::installed_games());
-            found.into_iter().find(|g| g.id == id).ok_or("Esse jogo não está mais na biblioteca.")?
+            found.into_iter().find(|g| g.id == id).ok_or(tr!("Esse jogo não está mais na biblioteca."))?
         }
     };
     let icon = match &game.source {
@@ -1595,7 +1597,7 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
     };
     let desktop = app.path().desktop_dir().map_err(|e| e.to_string())?;
     let link = shortcut::create(&desktop, &game.name, &game.id, icon.as_deref())?;
-    trail::note(&app, &game.id, "Atalho", &Ok(link.display().to_string()));
+    trail::note(&app, &game.id, tk!("Atalho"), &Ok(link.display().to_string()));
     Ok(link.display().to_string())
 }
 
@@ -1606,7 +1608,7 @@ fn any_game(library: &LocalLibrary, id: &str) -> Result<Game, String> {
     }
     let mut found = steam::installed_games();
     found.extend(epic::installed_games());
-    found.into_iter().find(|g| g.id == id).ok_or_else(|| "Esse jogo não está mais na biblioteca.".to_string())
+    found.into_iter().find(|g| g.id == id).ok_or_else(|| tr!("Esse jogo não está mais na biblioteca.").to_string())
 }
 
 /// The folder a game's DLSS files are looked for in; none for recomps (they don't carry DLSS).
@@ -1630,22 +1632,22 @@ async fn dlss_list(app: AppHandle, id: String) -> Result<Vec<cerberus_shared::Dl
 #[tauri::command]
 async fn dlss_swap(app: AppHandle, id: String, path: String) -> Result<Option<String>, String> {
     let game = any_game(&app.state::<LocalLibrary>(), &id)?;
-    let dir = dlss_dir(&game).ok_or("Esse jogo não tem DLSS.")?;
+    let dir = dlss_dir(&game).ok_or(tr!("Esse jogo não tem DLSS."))?;
     let name = Path::new(&path).file_name().unwrap_or_default().to_string_lossy().into_owned();
-    let dialog = app.dialog().file().set_title(format!("Escolha o {name} da versão que quer usar")).add_filter("DLSS", &["dll"]);
+    let dialog = app.dialog().file().set_title(tr!("Escolha o {} da versão que quer usar", name)).add_filter("DLSS", &["dll"]);
     let Some(picked) = pick_one(dialog).await? else { return Ok(None) };
     let data = app.state::<DataDir>().0.clone();
     let result = dlss::swap(&data, &id, &dir, &path, &picked);
-    trail::note(&app, &id, "Trocar DLSS", &result.as_ref().map(|v| format!("{name} agora na versão {v}")).map_err(|e| e.clone()));
+    trail::note(&app, &id, tk!("Trocar DLSS"), &result.as_ref().map(|v| tr!("{} agora na versão {}", name, v)).map_err(|e| e.clone()));
     result.map(Some)
 }
 
 #[tauri::command]
 fn dlss_restore(app: AppHandle, id: String, path: String) -> Result<(), String> {
     let game = any_game(&app.state::<LocalLibrary>(), &id)?;
-    let dir = dlss_dir(&game).ok_or("Esse jogo não tem DLSS.")?;
+    let dir = dlss_dir(&game).ok_or(tr!("Esse jogo não tem DLSS."))?;
     let result = dlss::restore(&app.state::<DataDir>().0, &id, &dir, &path);
-    trail::note(&app, &id, "DLSS original de volta", &result.as_ref().map(|_| path.clone()).map_err(|e| e.clone()));
+    trail::note(&app, &id, tk!("DLSS original de volta"), &result.as_ref().map(|_| path.clone()).map_err(|e| e.clone()));
     result
 }
 
@@ -1653,20 +1655,20 @@ fn dlss_restore(app: AppHandle, id: String, path: String) -> Result<(), String> 
 fn game_for_steam(library: &LocalLibrary, id: &str) -> Result<Game, String> {
     let game = match library.get(id)? {
         Some(game) => game,
-        None => epic::installed_games().into_iter().find(|g| g.id == id).ok_or("Esse jogo não está mais na biblioteca.")?,
+        None => epic::installed_games().into_iter().find(|g| g.id == id).ok_or(tr!("Esse jogo não está mais na biblioteca."))?,
     };
     if matches!(game.source, Source::Steam { .. }) {
-        return Err("Esse jogo já é da Steam.".into());
+        return Err(tr!("Esse jogo já é da Steam.").into());
     }
     Ok(game)
 }
 
 /// Steam rewrites its list of games when it closes, undoing any change made meanwhile.
 fn steam_closed() -> Result<PathBuf, String> {
-    let steam = steam::root().ok_or("A Steam não está instalada neste PC.")?;
+    let steam = steam::root().ok_or(tr!("A Steam não está instalada neste PC."))?;
     let running = store_time::running_programs().iter().any(|p| Path::new(p).file_name().is_some_and(|n| n.eq_ignore_ascii_case("steam.exe")));
     if running {
-        return Err("Feche a Steam primeiro (Steam › Sair): ela regrava a lista de jogos quando fecha e desfaria a mudança.".into());
+        return Err(tr!("Feche a Steam primeiro (Steam › Sair): ela regrava a lista de jogos quando fecha e desfaria a mudança.").into());
     }
     Ok(steam)
 }
@@ -1692,7 +1694,7 @@ async fn add_to_steam(app: AppHandle, http: State<'_, reqwest::Client>, id: Stri
     let steam = steam_closed()?;
     let configs = steam_shortcuts::config_dirs(&steam);
     if configs.is_empty() {
-        return Err("Entre na Steam uma vez antes: ela ainda não tem uma conta neste PC.".into());
+        return Err(tr!("Entre na Steam uma vez antes: ela ainda não tem uma conta neste PC.").into());
     }
     let icon = match &game.source {
         Source::Recomp { exe, .. } | Source::Local { exe } => Some(PathBuf::from(exe)),
@@ -1709,8 +1711,8 @@ async fn add_to_steam(app: AppHandle, http: State<'_, reqwest::Client>, id: Stri
         steam_shortcuts::save(config, &list)?;
         steam_shortcuts::place_art(config, shortcut.app_id(), cover.as_deref(), hero.as_deref());
     }
-    trail::note(&app, &game.id, "Steam", &Ok("Adicionado à Steam".to_string()));
-    Ok(format!("{} está na Steam. Ele aparece na biblioteca quando a Steam abrir.", game.name))
+    trail::note(&app, &game.id, tk!("Steam"), &Ok(tr!("Adicionado à Steam").to_string()));
+    Ok(tr!("{} está na Steam. Ele aparece na biblioteca quando a Steam abrir.", game.name))
 }
 
 #[tauri::command]
@@ -1726,7 +1728,7 @@ fn remove_from_steam(app: AppHandle, id: String) -> Result<(), String> {
             }
         }
     }
-    trail::note(&app, &id, "Steam", &Ok("Tirado da Steam".to_string()));
+    trail::note(&app, &id, tk!("Steam"), &Ok(tr!("Tirado da Steam").to_string()));
     Ok(())
 }
 
@@ -1754,7 +1756,7 @@ fn pc_status() -> cerberus_shared::PcStatus {
 async fn install_vc(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::PcStatus, String> {
     let downloads = app.state::<DataDir>().0.join("downloads");
     let installed = runtimes::install_vc(&http, &downloads).await;
-    trail::note(&app, "pc", "Visual C++", &installed.clone().map(|v| v.unwrap_or_else(|| "Instalado".into())));
+    trail::note(&app, "pc", tk!("Visual C++"), &installed.clone().map(|v| v.unwrap_or_else(|| tr!("Instalado").into())));
     installed?;
     Ok(pc_now())
 }
@@ -1764,7 +1766,7 @@ async fn install_vc(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
 async fn install_dx(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::PcStatus, String> {
     let downloads = app.state::<DataDir>().0.join("downloads");
     let installed = runtimes::install_dx(&http, &downloads).await;
-    trail::note(&app, "pc", "DirectX", &installed.clone().map(|still| if still.is_empty() { "Instalado".into() } else { format!("Ainda falta: {}", still.join(", ")) }));
+    trail::note(&app, "pc", tk!("DirectX"), &installed.clone().map(|still| if still.is_empty() { tr!("Instalado").into() } else { tr!("Ainda falta: {}", still.join(", ")) }));
     installed?;
     Ok(pc_now())
 }
@@ -1790,24 +1792,24 @@ fn list_screenshots(app: AppHandle, id: String) -> Vec<cerberus_shared::Screensh
 #[tauri::command]
 fn open_screenshot(app: AppHandle, path: String) -> Result<(), String> {
     if !screenshots::is_ours(&app.state::<DataDir>().0, Path::new(&path)) {
-        return Err("Essa foto não é do Cerberus.".into());
+        return Err(tr!("Essa foto não é do Cerberus.").into());
     }
-    app.opener().open_path(path, None::<&str>).map_err(|e| format!("Não foi possível abrir a foto: {e}"))
+    app.opener().open_path(path, None::<&str>).map_err(|e| tr!("Não foi possível abrir a foto: {}", e))
 }
 
 #[tauri::command]
 fn open_screenshots_folder(app: AppHandle, id: String) -> Result<(), String> {
     let dir = screenshots::dir_of(&app.state::<DataDir>().0, &id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
 #[tauri::command]
 fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<(), String> {
-    let game = library.get(&id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     app.opener()
         .open_path(game.install_dir, None::<&str>)
-        .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
+        .map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
 #[tauri::command]
@@ -1817,7 +1819,7 @@ fn open_backups(app: AppHandle, library: State<'_, LocalLibrary>, folders: State
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     app.opener()
         .open_path(dir.to_string_lossy(), None::<&str>)
-        .map_err(|e| format!("Não foi possível abrir a pasta: {e}"))
+        .map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
 /// The native file dialog blocks until closed, so it must not run on an async worker.
@@ -1843,7 +1845,7 @@ fn copy_cover(folder: &Path, id: &str, source: &Path) -> Result<String, String> 
     // A new name on every change, so the webview does not show the old image from its cache.
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
     let target = folder.join(format!("{}-{stamp}.{ext}", short_hash(id)));
-    fs::copy(source, &target).map_err(|e| format!("Não foi possível copiar a imagem: {e}"))?;
+    fs::copy(source, &target).map_err(|e| tr!("Não foi possível copiar a imagem: {}", e))?;
     Ok(target.to_string_lossy().into_owned())
 }
 
@@ -1880,7 +1882,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         // Started by Windows, Cerberus is told so, to start in the tray when asked to.
-        .plugin(tauri_plugin_autostart::Builder::new().arg("--autostart").app_name("Cerberus Launcher").build())
+        .plugin(tauri_plugin_autostart::Builder::new().arg("--autostart").app_name(tr!("Cerberus Launcher")).build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;

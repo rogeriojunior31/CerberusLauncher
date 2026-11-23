@@ -7,6 +7,7 @@
 //! entries: left and right child offsets (in 4-byte units), the entry's first
 //! sector and size, its attributes, and its name.
 
+use cerberus_shared::tr;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -52,7 +53,7 @@ fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
 /// Unpacks every file of the disc image into `to`. Returns how many were written.
 pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
     let mut file = crate::disc_image::open(image).map_err(|e| e.to_string())?;
-    let start = partition(&mut *file).ok_or("Esse arquivo não é uma imagem de disco de Xbox ou Xbox 360.")?;
+    let start = partition(&mut *file).ok_or(tr!("Esse arquivo não é uma imagem de disco de Xbox ou Xbox 360."))?;
     let mut header = [0u8; 28];
     file.seek(SeekFrom::Start(start + 32 * SECTOR)).map_err(|e| e.to_string())?;
     file.read_exact(&mut header).map_err(|e| e.to_string())?;
@@ -61,7 +62,7 @@ pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
     fs::create_dir_all(to).map_err(|e| e.to_string())?;
     let mut written = 0;
     let mut seen = HashSet::new();
-    walk(&mut *file, start, root_sector, root_size, to, 0, &mut seen, &mut written).map_err(|e| format!("Não foi possível ler a imagem de disco: {e}"))?;
+    walk(&mut *file, start, root_sector, root_size, to, 0, &mut seen, &mut written).map_err(|e| tr!("Não foi possível ler a imagem de disco: {}", e))?;
     Ok(written)
 }
 
@@ -70,7 +71,7 @@ fn walk(file: &mut dyn Disc, start: u64, sector: u64, size: u64, to: &Path, dept
     let bad = |what: &str| io::Error::new(io::ErrorKind::InvalidData, what.to_string());
     // A directory read twice means the image points in a circle.
     if depth > MAX_DEPTH || size == 0 || size > 64 * 1024 * 1024 || !seen.insert(sector) {
-        return if size == 0 { Ok(()) } else { Err(bad("estrutura de pastas inválida")) };
+        return if size == 0 { Ok(()) } else { Err(bad(tr!("estrutura de pastas inválida"))) };
     }
     let mut table = vec![0u8; size as usize];
     file.seek(SeekFrom::Start(start + sector * SECTOR))?;
@@ -98,7 +99,7 @@ fn walk(file: &mut dyn Disc, start: u64, sector: u64, size: u64, to: &Path, dept
         // A name is one plain part: nothing that climbs out of the folder.
         let plain = Path::new(&name).components().count() == 1 && matches!(Path::new(&name).components().next(), Some(Component::Normal(_)));
         if !plain {
-            return Err(bad("nome de arquivo inseguro"));
+            return Err(bad(tr!("nome de arquivo inseguro")));
         }
         let target = to.join(&name);
         if attributes & DIRECTORY != 0 {

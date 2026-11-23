@@ -10,6 +10,7 @@
 //! Project sources use the Cerberus or RecompLauncher formats. Hydra lists contribute
 //! searchable publication metadata in Settings. Only project sources feed the installer.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Write;
@@ -82,7 +83,7 @@ pub struct CatalogSource {
 
 impl CatalogSource {
     pub fn listings(&self, query: &str, offset: usize) -> Result<SourcePage, String> {
-        let Entries::Hydra(entries) = &self.entries else { return Err("Escolha uma fonte Hydra.".into()) };
+        let Entries::Hydra(entries) = &self.entries else { return Err(tr!("Escolha uma fonte Hydra.").into()) };
         let query = query.trim().to_lowercase();
         let mut items = Vec::new();
         let mut total = 0;
@@ -97,7 +98,7 @@ impl CatalogSource {
 }
 
 fn parse(text: &str) -> Result<CatalogSource, String> {
-    let value: Value = serde_json::from_str(text).map_err(|_| "Isso não é um JSON válido.".to_string())?;
+    let value: Value = serde_json::from_str(text).map_err(|_| tr!("Isso não é um JSON válido.").to_string())?;
     let (name, entries) = if value.get("games").is_none() && value.get("apps").is_none()
         && let Some(downloads) = value.get("downloads").and_then(Value::as_array) {
         let mut items = Vec::new();
@@ -111,7 +112,7 @@ fn parse(text: &str) -> Result<CatalogSource, String> {
                 });
             }
         }
-        if items.is_empty() && !downloads.is_empty() { return Err("A fonte Hydra não contém títulos legíveis.".into()); }
+        if items.is_empty() && !downloads.is_empty() { return Err(tr!("A fonte Hydra não contém títulos legíveis.").into()); }
         let name = value.get("name").and_then(Value::as_str).unwrap_or("").to_owned();
         (name, Entries::Hydra(items))
     } else {
@@ -124,9 +125,9 @@ fn parse(text: &str) -> Result<CatalogSource, String> {
 fn parse_projects(text: &str, value: Value) -> Result<(String, Vec<CatalogEntry>), String> {
     if value.get("apps").is_some() {
         let list = catalog::from_recomplauncher(text)?;
-        return Ok(("Catálogo no formato do RecompLauncher".into(), list));
+        return Ok((tr!("Catálogo no formato do RecompLauncher").into(), list));
     }
-    let source: SourceFile = serde_json::from_value(value).map_err(|_| "Formato desconhecido: esperava {\"name\", \"games\": [...]}.".to_string())?;
+    let source: SourceFile = serde_json::from_value(value).map_err(|_| tr!("Formato desconhecido: esperava {\"name\", \"games\": [...]}.").to_string())?;
     let mut list = Vec::new();
     for game in source.games {
         let own_links = [&game.uris, &game.magnet, &game.url, &game.download].iter().any(|v| !v.is_null());
@@ -156,7 +157,7 @@ fn parse_projects(text: &str, value: Value) -> Result<(String, Vec<CatalogEntry>
         });
     }
     if list.is_empty() {
-        return Err("Nenhum jogo utilizável: cada um precisa de \"id\", \"name\" e \"repo\" (dono/projeto no GitHub).".into());
+        return Err(tr!("Nenhum jogo utilizável: cada um precisa de \"id\", \"name\" e \"repo\" (dono/projeto no GitHub).").into());
     }
     Ok((source.name, list))
 }
@@ -169,23 +170,23 @@ fn cache_file(cache_dir: &Path, url: &str) -> PathBuf {
 /// Fetches a source and keeps its copy; errors leave the old copy in use.
 pub async fn fetch(client: &Client, cache_dir: &Path, url: &str) -> Result<CatalogSource, String> {
     if !url.starts_with("https://") {
-        return Err("Use um endereço https://.".into());
+        return Err(tr!("Use um endereço https://.").into());
     }
-    let reply = client.get(url).timeout(Duration::from_secs(30)).send().await.map_err(|_| "Não foi possível baixar a fonte.".to_string())?;
+    let reply = client.get(url).timeout(Duration::from_secs(30)).send().await.map_err(|_| tr!("Não foi possível baixar a fonte.").to_string())?;
     if reply.status().as_u16() == 451 {
-        return Err("HTTP 451 · Acesso indisponível por restrição legal informada pelo servidor.".into());
+        return Err(tr!("HTTP 451 · Acesso indisponível por restrição legal informada pelo servidor.").into());
     }
     if !reply.status().is_success() {
-        return Err(format!("A fonte respondeu {}.", reply.status().as_u16()));
+        return Err(tr!("A fonte respondeu {}.", reply.status().as_u16()));
     }
     let mut bytes = Vec::new();
     let mut stream = reply.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| e.to_string())?;
-        if bytes.len() + chunk.len() > 64 * 1024 * 1024 { return Err("A fonte ultrapassou o limite de 64 MiB.".into()); }
+        if bytes.len() + chunk.len() > 64 * 1024 * 1024 { return Err(tr!("A fonte ultrapassou o limite de 64 MiB.").into()); }
         bytes.extend_from_slice(&chunk);
     }
-    let text = std::str::from_utf8(&bytes).map_err(|_| "A fonte precisa usar UTF-8.")?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| tr!("A fonte precisa usar UTF-8."))?;
     store(cache_dir, url, text.trim_start_matches('\u{feff}'))
 }
 
@@ -203,7 +204,7 @@ fn store(cache_dir: &Path, url: &str, text: &str) -> Result<CatalogSource, Strin
             serde_json::to_writer(&mut temp, &Metadata { name: &parsed.name, downloads: items }).map_err(|e| e.to_string())?;
         }
     }
-    temp.persist(&file).map_err(|e| format!("Falha ao guardar a fonte: {e}"))?;
+    temp.persist(&file).map_err(|e| tr!("Falha ao guardar a fonte: {}", e))?;
     parsed.synced_at = modified(&file);
     Ok(parsed)
 }

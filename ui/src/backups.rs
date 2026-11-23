@@ -102,7 +102,7 @@ fn BackupRow(backup: Backup, game_id: String, refresh: RwSignal<u32>, busy: RwSi
     };
 
     let when = format::date_time(backup.created);
-    let detail = format!("{} · {} arquivo(s) · {}", backup.reason, backup.files, format::megabytes(backup.bytes));
+    let detail = tr!("{} · {} arquivo(s) · {}", cerberus_shared::i18n::translate(&backup.reason), backup.files, format::megabytes(backup.bytes));
     let label = move || if armed.get() { tr!("Confirmar: substituir os saves atuais") } else { tr!("Restaurar") };
 
     view! {

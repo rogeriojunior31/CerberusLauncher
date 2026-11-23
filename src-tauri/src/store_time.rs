@@ -4,6 +4,8 @@
 //! time is kept in `store-playtime.json` (those games are read from the stores
 //! each time, so the library can't hold it).
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -150,8 +152,8 @@ pub fn watch(app: AppHandle) {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };
                 let saved = add(&data, &id, seconds, now);
-                let minutes = if seconds < 60 { "Menos de 1 min jogado".to_string() } else { format!("{} min jogados", seconds / 60) };
-                crate::trail::note(&app, &id, "Partida", &saved.map(|_| minutes));
+                let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) };
+                crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
                 let _ = app.emit("playtime-updated", &id);
             }
             std::thread::sleep(Duration::from_secs(5));

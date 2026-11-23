@@ -6,6 +6,7 @@
 //! the first sector and size of the file or folder, whether it's a folder, and
 //! its name (`NAME.EXT;1`, the `;1` being a version number).
 
+use cerberus_shared::tr;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, SeekFrom, Write};
@@ -39,18 +40,18 @@ pub fn is_iso9660(path: &Path) -> bool {
 /// Unpacks every file of the image into `to`. Returns how many were written.
 pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
     let mut file = crate::disc_image::open(image).map_err(|e| e.to_string())?;
-    let (sector, size) = root(&mut *file).ok_or("Esse arquivo não é uma imagem de disco ISO.")?;
+    let (sector, size) = root(&mut *file).ok_or(tr!("Esse arquivo não é uma imagem de disco ISO."))?;
     fs::create_dir_all(to).map_err(|e| e.to_string())?;
     let mut written = 0;
     let mut seen = HashSet::new();
-    walk(&mut *file, sector, size, to, 0, &mut seen, &mut written).map_err(|e| format!("Não foi possível ler a imagem de disco: {e}"))?;
+    walk(&mut *file, sector, size, to, 0, &mut seen, &mut written).map_err(|e| tr!("Não foi possível ler a imagem de disco: {}", e))?;
     Ok(written)
 }
 
 fn walk(file: &mut dyn Disc, sector: u64, size: u64, to: &Path, depth: usize, seen: &mut HashSet<u64>, written: &mut usize) -> io::Result<()> {
     let bad = |what: &str| io::Error::new(io::ErrorKind::InvalidData, what.to_string());
     if depth > MAX_DEPTH || size > 64 * 1024 * 1024 || !seen.insert(sector) {
-        return Err(bad("estrutura de pastas inválida"));
+        return Err(bad(tr!("estrutura de pastas inválida")));
     }
     let mut table = vec![0u8; size as usize];
     file.seek(SeekFrom::Start(sector * SECTOR))?;
@@ -80,7 +81,7 @@ fn walk(file: &mut dyn Disc, sector: u64, size: u64, to: &Path, depth: usize, se
         let name = name.split(';').next().unwrap_or_default().trim_end_matches('.').to_string();
         let plain = Path::new(&name).components().count() == 1 && matches!(Path::new(&name).components().next(), Some(Component::Normal(_)));
         if !plain {
-            return Err(bad("nome de arquivo inseguro"));
+            return Err(bad(tr!("nome de arquivo inseguro")));
         }
         let target = to.join(&name);
         if is_dir {

@@ -8,6 +8,7 @@
 //! it loads by itself are put in place, and the launcher remembers which, so
 //! removing a mod takes exactly those out.
 
+use cerberus_shared::tr;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
@@ -85,9 +86,9 @@ fn age(file: &Path) -> Option<Duration> {
 }
 
 async fn get_json(client: &Client, url: &str) -> Result<Value, String> {
-    let reply = client.get(url).timeout(Duration::from_secs(60)).send().await.map_err(|_| "Sem conexão com o Thunderstore.".to_string())?;
+    let reply = client.get(url).timeout(Duration::from_secs(60)).send().await.map_err(|_| tr!("Sem conexão com o Thunderstore.").to_string())?;
     if !reply.status().is_success() {
-        return Err(format!("O Thunderstore respondeu {}.", reply.status().as_u16()));
+        return Err(tr!("O Thunderstore respondeu {}.", reply.status().as_u16()));
     }
     reply.json().await.map_err(|e| e.to_string())
 }
@@ -179,7 +180,7 @@ fn parse_packages(list: &Value) -> Vec<Package> {
 /// Every mod in a community, most downloaded first; kept on disk for an hour.
 pub async fn packages(client: &Client, cache: &Path, community: &str) -> Result<Vec<Package>, String> {
     if !plain(community) {
-        return Err("Comunidade de mods inválida.".into());
+        return Err(tr!("Comunidade de mods inválida.").into());
     }
     let file = cache.join(format!("{community}.json"));
     let fresh = age(&file).is_some_and(|a| a < LIST_FRESH);
@@ -233,7 +234,7 @@ fn loads_itself(name: &str) -> bool {
 
 /// Puts a mod zip's files the game reads into its mods folder; returns their names.
 pub fn unpack(zip_bytes: &[u8], mods: &Path) -> Result<Vec<String>, String> {
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(|e| format!("O mod está corrompido: {e}"))?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(|e| tr!("O mod está corrompido: {}", e))?;
     fs::create_dir_all(mods).map_err(|e| e.to_string())?;
     let mut placed = Vec::new();
     for index in 0..zip.len() {
@@ -256,7 +257,7 @@ pub fn unpack(zip_bytes: &[u8], mods: &Path) -> Result<Vec<String>, String> {
         placed.push(name);
     }
     if placed.is_empty() {
-        return Err("Esse mod não tem arquivos que o jogo carregue sozinho; a página dele explica como instalar.".into());
+        return Err(tr!("Esse mod não tem arquivos que o jogo carregue sozinho; a página dele explica como instalar.").into());
     }
     Ok(placed)
 }
@@ -264,14 +265,14 @@ pub fn unpack(zip_bytes: &[u8], mods: &Path) -> Result<Vec<String>, String> {
 /// Downloads a mod, at most `MAX_MOD_BYTES`.
 pub async fn download(client: &Client, url: &str) -> Result<Vec<u8>, String> {
     if !url.starts_with("https://") {
-        return Err("Endereço de download inválido.".into());
+        return Err(tr!("Endereço de download inválido.").into());
     }
-    let reply = client.get(url).timeout(Duration::from_secs(30 * 60)).send().await.map_err(|_| "Sem conexão com o Thunderstore.".to_string())?;
+    let reply = client.get(url).timeout(Duration::from_secs(30 * 60)).send().await.map_err(|_| tr!("Sem conexão com o Thunderstore.").to_string())?;
     if !reply.status().is_success() {
-        return Err(format!("O Thunderstore respondeu {}.", reply.status().as_u16()));
+        return Err(tr!("O Thunderstore respondeu {}.", reply.status().as_u16()));
     }
     if reply.content_length().is_some_and(|n| n > MAX_MOD_BYTES) {
-        return Err("Esse mod é grande demais.".into());
+        return Err(tr!("Esse mod é grande demais.").into());
     }
     let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
     Ok(bytes.to_vec())

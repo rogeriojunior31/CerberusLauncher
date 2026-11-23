@@ -8,6 +8,7 @@
 //!   sector's data is cut out of its frame, by the first track's type;
 //! - a CSO (PSP, PS2) is the ISO cut in blocks, each deflated or stored.
 
+use cerberus_shared::tr;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -53,17 +54,17 @@ pub fn open(path: &Path) -> io::Result<Box<dyn Disc>> {
 }
 
 fn chd(path: &Path) -> io::Result<Box<dyn Disc>> {
-    let fail = |e: chd::Error| bad(&format!("CHD ilegível: {e}"));
+    let fail = |e: chd::Error| bad(&tr!("CHD ilegível: {}", e));
     let mut chd = chd::Chd::open(BufReader::new(File::open(path)?), None).map_err(fail)?;
     if chd.header().has_parent() {
-        return Err(bad("Esse CHD depende de outro (é um CHD \"filho\"); use o CHD completo."));
+        return Err(bad(tr!("Esse CHD depende de outro (é um CHD \"filho\"); use o CHD completo.")));
     }
     let refs: Vec<chd::metadata::MetadataRef> = chd.metadata_refs().collect::<Result<_, _>>().map_err(fail)?;
     let mut first_track = None;
     for r in refs {
         let meta = r.read(chd.inner()).map_err(fail)?;
         if meta.metatag == chd::metadata::KnownMetadata::GdRomTrack as u32 {
-            return Err(bad("Imagens de GD-ROM (Dreamcast) não têm como ser abertas assim."));
+            return Err(bad(tr!("Imagens de GD-ROM (Dreamcast) não têm como ser abertas assim.")));
         }
         let cd = [chd::metadata::KnownMetadata::CdRomTrack2 as u32, chd::metadata::KnownMetadata::CdRomTrack as u32];
         if cd.contains(&meta.metatag) {
@@ -78,7 +79,7 @@ fn chd(path: &Path) -> io::Result<Box<dyn Disc>> {
         // No CD tracks: a DVD (or hard disk) image, already plain sectors.
         return Ok(Box::new(reader));
     };
-    let start = data_start(&track).ok_or_else(|| bad("A primeira faixa desse CD não é de dados."))?;
+    let start = data_start(&track).ok_or_else(|| bad(tr!("A primeira faixa desse CD não é de dados.")))?;
     let frames = field(&track, "FRAMES").and_then(|f| f.parse::<u64>().ok()).unwrap_or(0);
     Ok(Box::new(CdSectors { inner: reader, start, len: frames * SECTOR, position: 0 }))
 }
@@ -142,7 +143,7 @@ fn seek_to(pos: SeekFrom, current: u64, len: u64) -> io::Result<u64> {
         SeekFrom::End(by) => len.checked_add_signed(by),
         SeekFrom::Current(by) => current.checked_add_signed(by),
     }
-    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "posição inválida"))
+    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, tr!("posição inválida")))
 }
 
 /// A CSO image: a header, a table of where each block starts, then the blocks.
@@ -171,7 +172,7 @@ impl<R: Read + Seek> Cso<R> {
         let align = header[21] as u32;
         let sane = block.is_power_of_two() && (512..=1 << 20).contains(&block) && len <= 64 << 30 && align < 32 && version <= 2;
         if !sane {
-            return Err(bad("Esse CSO tem um cabeçalho que o Cerberus não entende."));
+            return Err(bad(tr!("Esse CSO tem um cabeçalho que o Cerberus não entende.")));
         }
         let blocks = len.div_ceil(block) as usize;
         let mut table = vec![0u8; (blocks + 1) * 4];
@@ -186,13 +187,13 @@ impl<R: Read + Seek> Cso<R> {
         }
         self.loaded = None;
         let (Some(&here), Some(&next)) = (self.index.get(n as usize), self.index.get(n as usize + 1)) else {
-            return Err(bad("Bloco fora do CSO."));
+            return Err(bad(tr!("Bloco fora do CSO.")));
         };
         let at = ((here & 0x7fff_ffff) as u64) << self.align;
         let end = ((next & 0x7fff_ffff) as u64) << self.align;
-        let size = end.checked_sub(at).ok_or_else(|| bad("CSO corrompido."))?;
+        let size = end.checked_sub(at).ok_or_else(|| bad(tr!("CSO corrompido.")))?;
         if size > self.block * 2 + 64 {
-            return Err(bad("CSO corrompido."));
+            return Err(bad(tr!("CSO corrompido.")));
         }
         let flagged = here & 0x8000_0000 != 0;
         self.packed.resize(size as usize, 0);
@@ -205,7 +206,7 @@ impl<R: Read + Seek> Cso<R> {
         if stored {
             self.data.extend_from_slice(&self.packed[..(self.block as usize).min(self.packed.len())]);
         } else if self.version >= 2 && flagged {
-            return Err(bad("Esse CSO usa LZ4, que o Cerberus ainda não abre."));
+            return Err(bad(tr!("Esse CSO usa LZ4, que o Cerberus ainda não abre.")));
         } else {
             flate2::read::DeflateDecoder::new(&self.packed[..]).take(self.block).read_to_end(&mut self.data)?;
         }
@@ -240,7 +241,7 @@ impl<R> Seek for Cso<R> {
 /// Writes the disc's plain data to `to` (an ISO), for a recomp that wants the
 /// image itself. Returns the bytes written.
 pub fn write_iso(image: &Path, to: &Path) -> Result<u64, String> {
-    let mut disc = open(image).map_err(|e| format!("Não foi possível abrir a imagem de disco: {e}"))?;
+    let mut disc = open(image).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
     let part = to.with_extension("iso.part");
     let result = File::create(&part).and_then(|mut out| io::copy(&mut disc, &mut out));
     match result {
@@ -250,7 +251,7 @@ pub fn write_iso(image: &Path, to: &Path) -> Result<u64, String> {
         }
         Err(e) => {
             let _ = std::fs::remove_file(&part);
-            Err(format!("Não foi possível converter a imagem de disco: {e}"))
+            Err(tr!("Não foi possível converter a imagem de disco: {}", e))
         }
     }
 }

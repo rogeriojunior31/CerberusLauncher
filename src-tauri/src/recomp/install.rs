@@ -1,5 +1,7 @@
 //! Download, checksum, unpack, and find the game's program.
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -15,7 +17,7 @@ use tokio::io::AsyncWriteExt;
 use super::CatalogEntry;
 use super::assets::{Asset, Kind, kind, words};
 
-pub const CANCELLED: &str = "Instalação cancelada.";
+pub const CANCELLED: &str = tk!("Instalação cancelada.");
 pub use cerberus_shared::PAUSED;
 
 /// Stops a download: cancelled (its bytes are thrown away) or paused (they are
@@ -102,7 +104,7 @@ pub async fn download(
     let wrong = asset.sha256.as_ref().is_some_and(|expected| *expected != got);
     if wrong {
         let _ = fs::remove_file(&part);
-        return Err("O arquivo baixado não bate com o checksum do GitHub, então foi descartado. Tente de novo.".into());
+        return Err(tr!("O arquivo baixado não bate com o checksum do GitHub, então foi descartado. Tente de novo.").into());
     }
     fs::rename(&part, &target).map_err(|e| e.to_string())?;
     Ok(target)
@@ -170,7 +172,7 @@ async fn fetch_into(
         return Ok(());
     }
     let request = || client.get(&asset.url).timeout(Duration::from_secs(6 * 60 * 60));
-    let dropped = || Stop::Retry("A conexão caiu durante o download. Tente de novo; ele continua de onde parou.".into());
+    let dropped = || Stop::Retry(tr!("A conexão caiu durante o download. Tente de novo; ele continua de onde parou.").into());
     let mut get = request();
     if *done > 0 {
         get = get.header(header::RANGE, format!("bytes={done}-"));
@@ -193,22 +195,22 @@ async fn fetch_into(
     }
     let status = reply.status();
     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
-        return Err(Stop::Retry(format!("O GitHub está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
+        return Err(Stop::Retry(tr!("O GitHub está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
     }
     let continuing = !restart && status == StatusCode::PARTIAL_CONTENT;
     let response_end = if continuing {
-        let (end, size) = partial.ok_or_else(|| Stop::Fatal("O servidor enviou um intervalo inválido.".into()))?;
+        let (end, size) = partial.ok_or_else(|| Stop::Fatal(tr!("O servidor enviou um intervalo inválido.").into()))?;
         *total = size;
         end
     } else if status == StatusCode::OK {
         let length = reply.content_length();
         if asset.size > 0 && length.is_some_and(|n| n != asset.size) {
-            return Err(Stop::Fatal("O tamanho da release mudou. Atualize o catálogo e tente de novo.".into()));
+            return Err(Stop::Fatal(tr!("O tamanho da release mudou. Atualize o catálogo e tente de novo.").into()));
         }
         *total = length.unwrap_or(asset.size);
         *total
     } else {
-        return Err(Stop::Fatal(format!("O GitHub respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
+        return Err(Stop::Fatal(tr!("O GitHub respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
     };
     crate::disk::require(part.parent().unwrap_or(part), total.saturating_sub(*done)).map_err(Stop::Fatal)?;
     if !continuing {
@@ -225,7 +227,7 @@ async fn fetch_into(
     while let Some(chunk) = until_cancelled(stream.next(), cancel).await? {
         let chunk = chunk.map_err(|_| dropped())?;
         if response_end > 0 && chunk.len() as u64 > response_end.saturating_sub(*done) {
-            return Err(Stop::Fatal("A resposta excede o tamanho anunciado pela release.".into()));
+            return Err(Stop::Fatal(tr!("A resposta excede o tamanho anunciado pela release.").into()));
         }
         out.write_all(&chunk).await.map_err(|e| Stop::Fatal(e.to_string()))?;
         hash.update(&chunk);
@@ -252,7 +254,7 @@ fn partial_range(value: &str, offset: u64, expected: u64) -> Option<(u64, u64)> 
 pub fn unpack_over(archive: &Path, staging: &Path, target: &Path, entry: &CatalogEntry) -> Result<PathBuf, String> {
     if let Err(e) = fs::remove_dir_all(staging) {
         if e.kind() != io::ErrorKind::NotFound {
-            return Err(format!("Não foi possível limpar a pasta temporária: {e}"));
+            return Err(tr!("Não foi possível limpar a pasta temporária: {}", e));
         }
     }
     fs::create_dir_all(staging).map_err(|e| e.to_string())?;
@@ -272,24 +274,24 @@ fn install_staged(archive: &Path, staging: &Path, target: &Path, entry: &Catalog
             crate::disk::require(staging, fs::metadata(archive).map_err(|e| e.to_string())?.len())?;
             fs::copy(archive, staging.join(name.as_ref())).map_err(|e| e.to_string())?;
         }
-        None => return Err(format!("{name} não é um formato que o Cerberus saiba instalar.")),
+        None => return Err(tr!("{} não é um formato que o Cerberus saiba instalar.", name)),
     }
     let root = single_top_folder(staging);
     let program = if entry.kind == "installer" {
-        installer_in(&root).ok_or("O instalador não foi encontrado na release.")?
+        installer_in(&root).ok_or(tr!("O instalador não foi encontrado na release."))?
     } else {
         let named = entry.start.as_deref().map(Path::new)
             .filter(|path| path.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)))
             .map(|path| root.join(path)).filter(|path| path.is_file());
         named.or_else(|| find_program(&root, &[&entry.name, &entry.repo]))
-            .ok_or("A release não contém o programa do jogo.")?
+            .ok_or(tr!("A release não contém o programa do jogo."))?
     };
     let resolved = program.canonicalize().map_err(|e| e.to_string())?;
     if !resolved.starts_with(staging.canonicalize().map_err(|e| e.to_string())?) {
-        return Err("O programa escolhido está fora da release.".into());
+        return Err(tr!("O programa escolhido está fora da release.").into());
     }
     let relative = program.strip_prefix(&root).map_err(|e| e.to_string())?;
-    overlay(&root, target).map_err(|e| format!("Não foi possível instalar os arquivos: {e}"))?;
+    overlay(&root, target).map_err(|e| tr!("Não foi possível instalar os arquivos: {}", e))?;
     Ok(target.join(relative))
 }
 
@@ -302,7 +304,7 @@ fn installer_in(dir: &Path) -> Option<PathBuf> {
 }
 
 pub(super) fn unzip(file: &Path, to: &Path) -> Result<(), String> {
-    let broken = |e: zip::result::ZipError| format!("O arquivo baixado está corrompido: {e}");
+    let broken = |e: zip::result::ZipError| tr!("O arquivo baixado está corrompido: {}", e);
     let reader = fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(reader).map_err(broken)?;
     if let Some(size) = archive.decompressed_size() {
@@ -312,7 +314,7 @@ pub(super) fn unzip(file: &Path, to: &Path) -> Result<(), String> {
         let mut entry = archive.by_index(index).map_err(broken)?;
         // A name like "../../x" would write outside the game's folder.
         let Some(relative) = entry.enclosed_name() else {
-            return Err(format!("O arquivo tem um caminho inseguro: {}", entry.name()));
+            return Err(tr!("O arquivo tem um caminho inseguro: {}", entry.name()));
         };
         let path = to.join(relative);
         if entry.is_dir() {
@@ -338,14 +340,14 @@ pub(super) fn un7z(file: &Path, to: &Path) -> Result<(), String> {
     let archive = sevenz_rust2::Archive::open(file).map_err(|e| e.to_string())?;
     let size = archive.files.iter().fold(0u64, |sum, item| sum.saturating_add(item.size()));
     crate::disk::require(to, size)?;
-    sevenz_rust2::decompress_file(file, to).map_err(|e| format!("O arquivo baixado está corrompido: {e}"))
+    sevenz_rust2::decompress_file(file, to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))
 }
 
 /// `tar` refuses entries that would land outside `to`, and keeps Unix permissions.
 fn untar_gz(file: &Path, to: &Path) -> Result<(), String> {
     let reader = fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(reader));
-    archive.unpack(to).map_err(|e| format!("O arquivo baixado está corrompido: {e}"))
+    archive.unpack(to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))
 }
 
 /// Many archives hold everything inside one `Game-v1.2/` folder; the game's files

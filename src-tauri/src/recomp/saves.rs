@@ -9,6 +9,8 @@
 //! `cerberus-backup.json` naming the places as templates, so a copy goes back to
 //! the right folder even if the game was reinstalled somewhere else.
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -20,7 +22,7 @@ use sha2::{Digest, Sha256};
 
 /// Newest copies kept per game.
 const KEEP: usize = 10;
-pub(super) const BEFORE_CLOUD: &str = "Antes de trazer da nuvem";
+pub(super) const BEFORE_CLOUD: &str = tk!("Antes de trazer da nuvem");
 /// Nothing bigger than this is a save: it's a disc image, a video, an asset pack.
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 /// The most a guess at the game's whole folder may add up to.
@@ -221,12 +223,12 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
         bytes,
         fingerprint,
     };
-    write_zip(temp.as_file(), &found, &manifest).map_err(|e| format!("Não foi possível criar o backup: {e}"))?;
+    write_zip(temp.as_file(), &found, &manifest).map_err(|e| tr!("Não foi possível criar o backup: {}", e))?;
     temp.as_file().sync_all().map_err(|e| e.to_string())?;
     let queued = cloud.map(|destination| super::cloud::queue(&target, destination)).transpose();
     temp.persist_noclobber(&target).map_err(|e| e.to_string())?;
     prune(backups);
-    queued.map_err(|e| format!("Backup local guardado. Falha ao agendar o envio: {e}"))?;
+    queued.map_err(|e| tr!("Backup local guardado. Falha ao agendar o envio: {}", e))?;
     Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes }))
 }
 

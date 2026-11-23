@@ -7,6 +7,7 @@
 //! window in front belongs to that game's folder. Windows keeps F12 for
 //! debuggers, so it can't be registered as a hotkey: its state is read instead.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -99,11 +100,11 @@ pub fn game_in_front(app: &AppHandle) -> Option<(win::Window, Game)> {
 
 /// A picture of the game's window, saved and announced.
 pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), String> {
-    let (width, height, pixels) = win::grab(window).ok_or("O jogo está minimizado ou em tela cheia exclusiva; a foto não saiu.")?;
+    let (width, height, pixels) = win::grab(window).ok_or(tr!("O jogo está minimizado ou em tela cheia exclusiva; a foto não saiu."))?;
     let data = &app.state::<crate::DataDir>().0;
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or_default();
     let file = dir_of(data, &game.id).join(format!("{now}.png"));
-    save_png(&file, width, height, &pixels).map_err(|e| format!("Não foi possível salvar a foto: {e}"))?;
+    save_png(&file, width, height, &pixels).map_err(|e| tr!("Não foi possível salvar a foto: {}", e))?;
     let _ = app.emit(EVENT, game.id.clone());
     Ok(())
 }
@@ -112,8 +113,8 @@ pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), St
 fn take(app: &AppHandle) {
     let Some((window, game)) = game_in_front(app) else { return };
     match shoot(app, window, &game) {
-        Ok(()) => crate::notify::tell(app, "Foto salva", &format!("{} › Fotos", game.name)),
-        Err(e) => crate::notify::tell(app, "Não foi possível tirar a foto", &e),
+        Ok(()) => crate::notify::tell(app, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
+        Err(e) => crate::notify::tell(app, tr!("Não foi possível tirar a foto"), &e),
     }
 }
 

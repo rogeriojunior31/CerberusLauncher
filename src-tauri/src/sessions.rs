@@ -7,6 +7,8 @@
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use windows::spawn_game;
 
 use std::collections::HashMap;
@@ -55,7 +57,7 @@ impl Sessions {
 
     fn reserve(&self, game: &Game) -> Result<(), String> {
         let mut active = self.lock();
-        if active.contains_key(&game.id) { return Err(format!("{} já está aberto.", game.name)); }
+        if active.contains_key(&game.id) { return Err(tr!("{} já está aberto.", game.name)); }
         active.insert(game.id.clone(), None);
         Ok(())
     }
@@ -77,7 +79,7 @@ impl Sessions {
 
     fn close_round(&self, library: &LocalLibrary, id: &str, seconds: u64, closed_at: u64) -> Result<Game, String> {
         let mut active = self.lock();
-        let slot = active.get_mut(id).ok_or("A sessão já foi encerrada.")?;
+        let slot = active.get_mut(id).ok_or(tr!("A sessão já foi encerrada."))?;
         let credited = slot.take().map_or(0, |round| round.credited);
         library.record_session(id, credited, seconds, Some(closed_at))
     }
@@ -97,8 +99,8 @@ pub fn tracking_mode(game: &Game) -> Option<String> {
         Some(match &game.tracking_exe {
             Some(path) => path.clone(),
             None => windows::runtime_for(Path::new(exe)).map_or_else(
-                || "Automático · jogo e processos iniciados por ele".into(),
-                |name| format!("Automático · {}", name.display())),
+                || tr!("Automático · jogo e processos iniciados por ele").into(),
+                |name| tr!("Automático · {}", name.display())),
         })
     }
     #[cfg(not(windows))]
@@ -134,14 +136,14 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         let folders = app.state::<recomp::Folders>();
         match recomp::pull_from_cloud(&folders, recomp_id, Path::new(&game.install_dir)) {
             Ok(Some(message)) => {
-                crate::trail::note(app, &game.id, "Saves da nuvem", &Ok(message.clone()));
+                crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Ok(message.clone()));
                 let _ = app.emit("toast", message);
             }
             Ok(None) => {}
             // Playing matters more than syncing; say so and carry on.
             Err(error) => {
-                crate::trail::note(app, &game.id, "Saves da nuvem", &Err(error.clone()));
-                let _ = app.emit("toast", format!("Não foi possível conferir os saves da nuvem: {error}"));
+                crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Err(error.clone()));
+                let _ = app.emit("toast", tr!("Não foi possível conferir os saves da nuvem: {}", error));
             }
         }
     }
@@ -159,15 +161,15 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
                 command.envs(prepared.env);
             }
             Err(error) => {
-                crate::trail::note(app, &game.id, "Filtro", &Err(error.clone()));
-                let _ = app.emit("toast", format!("Filtro desligado nesta partida: {error}"));
+                crate::trail::note(app, &game.id, tk!("Filtro"), &Err(error.clone()));
+                let _ = app.emit("toast", tr!("Filtro desligado nesta partida: {}", error));
             }
         }
     }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
         sessions.lock().remove(&game.id);
-        let message = format!("Não foi possível abrir {}: {e}", exe.display());
-        crate::trail::note(app, &game.id, "Abrir o jogo", &Err(message.clone()));
+        let message = tr!("Não foi possível abrir {0}: {1}", exe.display(), e);
+        crate::trail::note(app, &game.id, tk!("Abrir o jogo"), &Err(message.clone()));
         message
     })?;
     notify(app, &game.id, true);
@@ -189,8 +191,8 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
             }
         });
         if let Err(e) = result {
-            let message = format!("Não foi possível acompanhar a sessão de {}: {e}", game.name);
-            crate::trail::note(&app, &game.id, "Partida", &Err(message.clone()));
+            let message = tr!("Não foi possível acompanhar a sessão de {0}: {1}", game.name, e);
+            crate::trail::note(&app, &game.id, tk!("Partida"), &Err(message.clone()));
             let _ = app.emit("toast", message);
         }
         release(&app, &game.id);
@@ -237,11 +239,11 @@ fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
     let since = SystemTime::now() - played - Duration::from_secs(5);
     let log = crate::crash::newest_log(Path::new(&game.install_dir), since);
     let detail = match &log {
-        Some(path) => format!("{why} Log do jogo: {}", path.display()),
+        Some(path) => tr!("{1} Log do jogo: {0}", path.display(), why),
         None => why.clone(),
     };
-    crate::trail::note(app, &game.id, "O jogo fechou com erro", &Err(detail));
-    crate::notify::tell(app, &format!("{} fechou com erro", game.name), &why);
+    crate::trail::note(app, &game.id, tk!("O jogo fechou com erro"), &Err(detail));
+    crate::notify::tell(app, &tr!("{} fechou com erro", game.name), &why);
 }
 
 fn record(app: &AppHandle, game: &Game, seconds: u64) {
@@ -269,15 +271,15 @@ fn close_session(
     let mut notices = Vec::new();
     let saved = sessions.close_round(library, &game.id, seconds, closed_at);
     let played = format!("{} jogados", duration_text(seconds));
-    trail.note(&game.id, "Partida", &saved.as_ref().map(|_| played).map_err(|e| format!("Tempo não gravado: {e}")));
+    trail.note(&game.id, tk!("Partida"), &saved.as_ref().map(|_| played).map_err(|e| tr!("Tempo não gravado: {}", e)));
     if let Err(e) = saved {
-        notices.push(format!("Não foi possível gravar o tempo de {}: {e}", game.name));
+        notices.push(tr!("Não foi possível gravar o tempo de {0}: {1}", game.name, e));
     }
     if let Source::Recomp { recomp_id, .. } = &game.source {
-        let result = recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), "Depois de jogar");
-        trail.note(&game.id, "Backup depois de jogar", &backup_outcome(&result));
+        let result = recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"));
+        trail.note(&game.id, tk!("Backup depois de jogar"), &backup_outcome(&result));
         if let Err(e) = result {
-            notices.push(format!("Falha no backup de {}: {e}", game.name));
+            notices.push(tr!("Falha no backup de {0}: {1}", game.name, e));
         }
     }
     notices
@@ -296,7 +298,7 @@ fn duration_text(seconds: u64) -> String {
 pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shared::Backup>, E>) -> Result<String, String> {
     match result {
         Ok(Some(backup)) => Ok(format!("{} arquivos copiados", backup.files)),
-        Ok(None) => Ok("Nada novo para copiar".into()),
+        Ok(None) => Ok(tr!("Nada novo para copiar").into()),
         Err(e) => Err(e.to_string()),
     }
 }

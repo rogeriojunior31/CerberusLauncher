@@ -8,6 +8,7 @@
 //! at retroachievements.org and writes the token into RetroArch's settings, so
 //! the password is never kept. The settings file is backed up first.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -92,10 +93,10 @@ pub fn import_bios(exe: &Path, from: &Path) -> Result<(usize, usize), String> {
             continue;
         };
         fs::create_dir_all(&target).map_err(|e| e.to_string())?;
-        fs::copy(&path, target.join(&name)).map_err(|e| format!("Não foi possível copiar {}: {e}", name.to_string_lossy()))?;
+        fs::copy(&path, target.join(&name)).map_err(|e| tr!("Não foi possível copiar {0}: {1}", name.to_string_lossy(), e))?;
     }
     if ps1 == 0 && ps2 == 0 {
-        return Err("Nenhuma BIOS de PlayStation (512 KB) ou PlayStation 2 (4 MB) nessa pasta.".into());
+        return Err(tr!("Nenhuma BIOS de PlayStation (512 KB) ou PlayStation 2 (4 MB) nessa pasta.").into());
     }
     Ok((ps1, ps2))
 }
@@ -217,7 +218,7 @@ async fn latest_version(http: &reqwest::Client) -> Result<String, String> {
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("Não foi possível ver a versão do RetroArch: {e}"))?
+        .map_err(|e| tr!("Não foi possível ver a versão do RetroArch: {}", e))?
         .text()
         .await
         .map_err(|e| e.to_string())?;
@@ -231,14 +232,14 @@ async fn latest_version(http: &reqwest::Client) -> Result<String, String> {
         })
         .collect();
     versions.sort();
-    versions.pop().map(|(_, v)| v).ok_or_else(|| "Não foi possível ver a versão do RetroArch.".to_string())
+    versions.pop().map(|(_, v)| v).ok_or_else(|| tr!("Não foi possível ver a versão do RetroArch.").to_string())
 }
 
 /// Installs RetroArch from libretro's site into Cerberus's data folder.
 pub async fn install(http: &reqwest::Client, data: &Path, report: impl Fn(u64, u64) + Send) -> Result<PathBuf, String> {
     let version = latest_version(http).await?;
     let asset = crate::recomp::Asset {
-        name: format!("RetroArch-{version}.7z"),
+        name: format!("RetroArch-{}.7z", version),
         size: 0,
         url: format!("{STABLE}/{version}/windows/x86_64/RetroArch.7z"),
         sha256: None,
@@ -263,12 +264,12 @@ pub async fn install(http: &reqwest::Client, data: &Path, report: impl Fn(u64, u
     let target = managed_dir(data);
     let _ = fs::remove_dir_all(&target);
     fs::create_dir_all(target.parent().unwrap_or(data)).map_err(|e| e.to_string())?;
-    fs::rename(&inner, &target).map_err(|e| format!("Não foi possível instalar o RetroArch: {e}"))?;
+    fs::rename(&inner, &target).map_err(|e| tr!("Não foi possível instalar o RetroArch: {}", e))?;
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&archive);
     let exe = target.join("retroarch.exe");
     if !exe.is_file() {
-        return Err("O pacote do RetroArch veio diferente do esperado.".into());
+        return Err(tr!("O pacote do RetroArch veio diferente do esperado.").into());
     }
     Ok(exe)
 }
@@ -276,7 +277,7 @@ pub async fn install(http: &reqwest::Client, data: &Path, report: impl Fn(u64, u
 /// Fetches one core into RetroArch's cores folder.
 pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Result<(), String> {
     if !CORES.iter().any(|(_, c, _)| *c == core) {
-        return Err("Núcleo desconhecido.".into());
+        return Err(tr!("Núcleo desconhecido.").into());
     }
     let url = format!("{NIGHTLY_CORES}/{core}_libretro.dll.zip");
     let bytes = http
@@ -285,21 +286,21 @@ pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Res
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("Não foi possível baixar o núcleo: {e}"))?
+        .map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e))?
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "O núcleo baixado veio corrompido.".to_string())?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| tr!("O núcleo baixado veio corrompido.").to_string())?;
     let name = format!("{core}_libretro.dll");
-    let mut file = zip.by_name(&name).map_err(|_| "O núcleo baixado veio diferente do esperado.".to_string())?;
+    let mut file = zip.by_name(&name).map_err(|_| tr!("O núcleo baixado veio diferente do esperado.").to_string())?;
     let mut dll = Vec::new();
     std::io::Read::read_to_end(&mut file, &mut dll).map_err(|e| e.to_string())?;
     if !dll.starts_with(b"MZ") {
-        return Err("O núcleo baixado veio diferente do esperado.".into());
+        return Err(tr!("O núcleo baixado veio diferente do esperado.").into());
     }
     let target = core_file(exe, core);
     fs::create_dir_all(target.parent().unwrap_or(Path::new("."))).map_err(|e| e.to_string())?;
-    fs::write(&target, dll).map_err(|e| format!("Não foi possível guardar o núcleo: {e}"))?;
+    fs::write(&target, dll).map_err(|e| tr!("Não foi possível guardar o núcleo: {}", e))?;
     if let Some(pack) = system_files(core) {
         install_system_files(http, exe, pack).await?;
     }
@@ -314,12 +315,12 @@ async fn install_system_files(http: &reqwest::Client, exe: &Path, pack: &str) ->
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("Não foi possível baixar os arquivos do núcleo: {e}"))?
+        .map_err(|e| tr!("Não foi possível baixar os arquivos do núcleo: {}", e))?
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
     let system = exe.parent().unwrap_or(Path::new(".")).join("system");
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| "Os arquivos do núcleo vieram corrompidos.".to_string())?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| tr!("Os arquivos do núcleo vieram corrompidos.").to_string())?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
         // Only names that stay inside the system folder.
@@ -357,23 +358,23 @@ pub fn disc_list(data: &Path, rom: &Path, discs: &[PathBuf], console: &str) -> R
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let list = dir.join(format!("{:08x}.m3u", crc32fast::hash(rom.to_string_lossy().as_bytes())));
     let text: String = discs.iter().map(|d| format!("{}\n", d.display())).collect();
-    fs::write(&list, text).map_err(|e| format!("Não foi possível preparar a lista de discos: {e}"))?;
+    fs::write(&list, text).map_err(|e| tr!("Não foi possível preparar a lista de discos: {}", e))?;
     Ok(list)
 }
 
 /// Starts a classic in RetroArch with its console's core. With `log`, RetroArch
 /// writes what happens (achievements unlocked among it) to that file.
 pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Result<std::process::Child, String> {
-    let core = core_for(console).ok_or("Esse console ainda não tem emulação no Cerberus.")?;
+    let core = core_for(console).ok_or(tr!("Esse console ainda não tem emulação no Cerberus."))?;
     if console == "ps2" && !bios_status(exe).1 {
-        return Err("O PlayStation 2 precisa da BIOS do seu console. Adicione em Configurações › Emulação › BIOS.".into());
+        return Err(tr!("O PlayStation 2 precisa da BIOS do seu console. Adicione em Configurações › Emulação › BIOS.").into());
     }
     let core_path = core_file(exe, core);
     if !core_path.is_file() {
-        return Err("O núcleo desse console não está instalado. Instale em Configurações › Emulação.".into());
+        return Err(tr!("O núcleo desse console não está instalado. Instale em Configurações › Emulação.").into());
     }
     if !rom.is_file() {
-        return Err(format!("{} não existe mais.", rom.display()));
+        return Err(tr!("{} não existe mais.", rom.display()));
     }
     let mut command = Command::new(exe);
     command.current_dir(exe.parent().unwrap_or(Path::new("."))).arg("-L").arg(&core_path);
@@ -384,7 +385,7 @@ pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Resu
     command
         .arg(rom)
         .spawn()
-        .map_err(|e| format!("Não foi possível abrir o RetroArch: {e}"))
+        .map_err(|e| tr!("Não foi possível abrir o RetroArch: {}", e))
 }
 
 /// Trades the player's password for RetroAchievements' connect token and
@@ -397,13 +398,13 @@ pub async fn link_retroachievements(http: &reqwest::Client, exe: &Path, user: &s
         .timeout(Duration::from_secs(20))
         .send()
         .await
-        .map_err(|_| "Não foi possível falar com o RetroAchievements.".to_string())?;
-    let body: serde_json::Value = reply.json().await.map_err(|_| "O RetroAchievements respondeu algo inesperado.".to_string())?;
+        .map_err(|_| tr!("Não foi possível falar com o RetroAchievements.").to_string())?;
+    let body: serde_json::Value = reply.json().await.map_err(|_| tr!("O RetroAchievements respondeu algo inesperado.").to_string())?;
     if body.get("Success").and_then(serde_json::Value::as_bool) != Some(true) {
-        let why = body.get("Error").and_then(serde_json::Value::as_str).unwrap_or("usuário ou senha incorretos");
-        return Err(format!("O RetroAchievements recusou: {why}."));
+        let why = body.get("Error").and_then(serde_json::Value::as_str).unwrap_or(tr!("usuário ou senha incorretos"));
+        return Err(tr!("O RetroAchievements recusou: {}.", why));
     }
-    let token = body.get("Token").and_then(serde_json::Value::as_str).filter(|t| !t.is_empty()).ok_or("O RetroAchievements não mandou o código de acesso.")?;
+    let token = body.get("Token").and_then(serde_json::Value::as_str).filter(|t| !t.is_empty()).ok_or(tr!("O RetroAchievements não mandou o código de acesso."))?;
     let name = body.get("User").and_then(serde_json::Value::as_str).unwrap_or(user).to_string();
     let cfg = config_file(exe);
     let text = fs::read_to_string(&cfg).unwrap_or_default();
@@ -411,7 +412,7 @@ pub async fn link_retroachievements(http: &reqwest::Client, exe: &Path, user: &s
         let _ = fs::copy(&cfg, cfg.with_extension("cfg.cerberus-bak"));
     }
     let updated = with_values(&text, &[("cheevos_enable", "true"), ("cheevos_username", &name), ("cheevos_token", token), ("cheevos_password", "")]);
-    fs::write(&cfg, updated).map_err(|e| format!("Não foi possível gravar as configurações do RetroArch: {e}"))?;
+    fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))?;
     Ok(name)
 }
 

@@ -82,7 +82,7 @@ pub fn retitle_tray(app: &AppHandle) {
 pub fn tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = tray_menu(app)?;
     let mut tray = TrayIconBuilder::with_id("cerberus")
-        .tooltip("Cerberus Launcher")
+        .tooltip(tr!("Cerberus Launcher"))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

@@ -6,6 +6,7 @@
 //! `LauncherInstalled.dat`. Names and covers come from the launcher's own
 //! catalog cache, so no network request is needed.
 
+use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,7 +31,7 @@ pub fn installed_games() -> Vec<Game> {
     let Some(program_data) = program_data() else {
         return Vec::new();
     };
-    let epic = program_data.join("Epic");
+    let epic = program_data.join(tr!("Epic"));
     let catalog_file = epic.join(r"EpicGamesLauncher\Data\Catalog\catcache.bin");
     let catalog = fs::read_to_string(catalog_file).map(|t| parse_catalog(&t)).unwrap_or_default();
 
@@ -70,9 +71,9 @@ pub fn launch_url(namespace: &str, item_id: &str, app_name: &str) -> String {
     // The full form picks the right game when one app name exists in several
     // namespaces; the short one is all we have when the ids are unknown.
     if namespace.is_empty() || item_id.is_empty() {
-        return format!("com.epicgames.launcher://apps/{app_name}?action=launch&silent=true");
+        return format!("com.epicgames.launcher://apps/{}?action=launch&silent=true", app_name);
     }
-    format!("com.epicgames.launcher://apps/{namespace}%3A{item_id}%3A{app_name}?action=launch&silent=true")
+    format!("com.epicgames.launcher://apps/{}%3A{}%3A{}?action=launch&silent=true", namespace, item_id, app_name)
 }
 
 fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {

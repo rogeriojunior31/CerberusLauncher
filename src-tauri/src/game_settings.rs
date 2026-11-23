@@ -8,6 +8,7 @@
 //! in INI and TOML files, and a path through nested objects in JSON. A choice
 //! can also be options on the game's command line (`"in": "args"`), kept per game.
 
+use cerberus_shared::tr;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -344,7 +345,7 @@ impl ConfigFile {
         }
         let temp = self.path.with_extension("cerberus-tmp");
         fs::write(&temp, text).map_err(|e| format!("{}: {e}", temp.display()))?;
-        fs::rename(&temp, &self.path).map_err(|e| format!("Não foi possível gravar {}: {e}", self.path.display()))
+        fs::rename(&temp, &self.path).map_err(|e| tr!("Não foi possível gravar {0}: {1}", self.path.display(), e))
     }
 }
 
@@ -420,14 +421,14 @@ impl Offer {
     /// Puts a setting on one of its choices. File settings are written to the
     /// game's file; command-line ones go into `picks`, kept with the game.
     pub fn choose(&self, install: &Path, picks: &mut BTreeMap<String, usize>, setting: &str, choice: usize) -> Result<(), String> {
-        let spec = self.settings.iter().find(|s| s.id == setting).ok_or("Essa opção não existe mais no catálogo.")?;
-        let picked = spec.choices.get(choice).ok_or("Essa escolha não existe mais.")?;
+        let spec = self.settings.iter().find(|s| s.id == setting).ok_or(tr!("Essa opção não existe mais no catálogo."))?;
+        let picked = spec.choices.get(choice).ok_or(tr!("Essa escolha não existe mais."))?;
         if spec.target == "args" {
             picks.insert(spec.id.clone(), choice);
             return Ok(());
         }
-        let config = self.configs.iter().find(|c| c.id == spec.target).ok_or("O arquivo de configuração dessa opção não está no catálogo.")?;
-        let path = self.path_of(config, install).ok_or("A pasta de configuração desse jogo não existe neste sistema.")?;
+        let config = self.configs.iter().find(|c| c.id == spec.target).ok_or(tr!("O arquivo de configuração dessa opção não está no catálogo."))?;
+        let path = self.path_of(config, install).ok_or(tr!("A pasta de configuração desse jogo não existe neste sistema."))?;
         let mut file = ConfigFile::open(path, &config.format);
         for (key, value) in &picked.set {
             file.set(key, value);
@@ -438,13 +439,13 @@ impl Offer {
     /// Moves a slider: the number, on a step and written the game's way, goes
     /// into its file, quoted when the file had it quoted.
     pub fn set_number(&self, install: &Path, setting: &str, value: f64) -> Result<(), String> {
-        let spec = self.settings.iter().find(|s| s.id == setting).ok_or("Essa opção não existe mais no catálogo.")?;
-        let slider = spec.slider.as_ref().ok_or("Essa opção não é um controle deslizante.")?;
+        let spec = self.settings.iter().find(|s| s.id == setting).ok_or(tr!("Essa opção não existe mais no catálogo."))?;
+        let slider = spec.slider.as_ref().ok_or(tr!("Essa opção não é um controle deslizante."))?;
         if !value.is_finite() {
-            return Err("Esse valor não é um número.".into());
+            return Err(tr!("Esse valor não é um número.").into());
         }
-        let config = self.configs.iter().find(|c| c.id == spec.target).ok_or("O arquivo de configuração dessa opção não está no catálogo.")?;
-        let path = self.path_of(config, install).ok_or("A pasta de configuração desse jogo não existe neste sistema.")?;
+        let config = self.configs.iter().find(|c| c.id == spec.target).ok_or(tr!("O arquivo de configuração dessa opção não está no catálogo."))?;
+        let path = self.path_of(config, install).ok_or(tr!("A pasta de configuração desse jogo não existe neste sistema."))?;
         let key = if slider.key.is_empty() { spec.id.as_str() } else { slider.key.as_str() };
         let mut file = ConfigFile::open(path, &config.format);
         let text = slider.text(slider.snap(value));

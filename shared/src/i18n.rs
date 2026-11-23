@@ -52,8 +52,23 @@ pub fn set_lang(lang: Lang) {
     CURRENT.store(lang as u8, Ordering::Relaxed);
 }
 
+thread_local! {
+    static ONLY_HERE: std::cell::Cell<Option<Lang>> = const { std::cell::Cell::new(None) };
+}
+
 pub fn lang() -> Lang {
+    if let Some(lang) = ONLY_HERE.with(|l| l.get()) {
+        return lang;
+    }
     if CURRENT.load(Ordering::Relaxed) == Lang::En as u8 { Lang::En } else { Lang::Pt }
+}
+
+/// Runs `f` in another language on this thread only (for tests, which run side by side).
+pub fn with_lang<T>(lang: Lang, f: impl FnOnce() -> T) -> T {
+    let before = ONLY_HERE.with(|l| l.replace(Some(lang)));
+    let out = f();
+    ONLY_HERE.with(|l| l.set(before));
+    out
 }
 
 const EN_JSON: &str = include_str!("../locales/en.json");
