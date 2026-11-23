@@ -26,6 +26,8 @@ pub struct TileInfo {
     recomp_id: Option<String>,
     /// Owned but not on this PC: the cover is dimmed.
     pub absent: bool,
+    /// Achievements unlocked and in all, for a bar on the cover.
+    pub progress: Option<(u32, u32)>,
 }
 
 pub fn source_name(source: &Source) -> &'static str {
@@ -80,6 +82,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         open: Route::Game(game.id.clone()),
         recomp_id: None,
         absent: game.next_step == cerberus_shared::NextStep::Install,
+        progress: None,
     }
 }
 
@@ -105,6 +108,7 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         open: Route::Game(format!("recomp:{}", entry.id)),
         recomp_id: Some(entry.id.clone()),
         absent: false,
+        progress: None,
     }
 }
 
@@ -161,6 +165,15 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
                     {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
+                    {info.progress.filter(|(_, total)| *total > 0).map(|(got, total)| {
+                        let pct = got * 100 / total;
+                        let tip = tr!("{} de {} conquistas", got, total);
+                        view! {
+                            <span class="ach-mini" class:done=got == total title=tip.clone() aria-label=tip>
+                                <i style=format!("width: {pct}%")></i>
+                            </span>
+                        }
+                    })}
                     {overlay}
                 </div>
                 <span class="t">{info.title.clone()}</span>

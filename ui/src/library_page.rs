@@ -246,6 +246,21 @@ pub fn LibraryPage() -> impl IntoView {
         library.games.refetch();
     }
     let picking = RwSignal::new(false);
+    // Achievement progress for the covers, from what's already kept on this PC (no internet).
+    let achievements = LocalResource::new(|| crate::api::achievements_hub(false));
+    let progress_of = move || -> std::collections::HashMap<String, (u32, u32)> {
+        achievements
+            .get()
+            .and_then(Result::ok)
+            .map(|hub| {
+                hub.games
+                    .into_iter()
+                    .filter(|g| g.source == cerberus_shared::AchievementSource::Steam)
+                    .map(|g| (format!("steam:{}", g.key), (g.unlocked, g.total)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     // The games on screen, for "Play something" to pick from.
     let shown = StoredValue::new(Vec::<Game>::new());
     let is_absent = |g: &Game| g.next_step == cerberus_shared::NextStep::Install;
@@ -433,8 +448,10 @@ pub fn LibraryPage() -> impl IntoView {
         shown.set_value(games.clone());
         let count = games.len();
         let list = compact.get();
+        let progress = progress_of();
         let items = games.iter().map(|g| {
-            let info = game_tile(g, library);
+            let mut info = game_tile(g, library);
+            info.progress = progress.get(&g.id).copied();
             if !list {
                 return view! { <Tile info /> }.into_any();
             }
