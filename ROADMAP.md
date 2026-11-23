@@ -518,12 +518,12 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 
 ### 6.1 Conquistas, a continuação do hub (prioridade 1)
 
-- [ ] **Aviso de conquista na tela durante o jogo** [H]: janela transparente, sem foco e por cima de tudo, em 6
+- [x] **Aviso de conquista na tela durante o jogo** [H]: janela transparente, sem foco e por cima de tudo, em 6
       posições; versões normal, rara (até 10%), secreta e platina (a que completa o jogo); "N conquistas em M jogos"
       quando vierem várias; som e volume próprios e botão de teste. — M
-- [ ] **Conquista da Steam na hora** [H]: durante a partida, olhar `userdata/<conta>/config/librarycache/<app>.json`
+- [x] **Conquista da Steam na hora** [H]: durante a partida, olhar `userdata/<conta>/config/librarycache/<app>.json`
       a cada 2 s e avisar o que mudou; reler a Steam 10 s e 30 s depois que o jogo fecha. — M
-- [ ] **Aba Conquistas na página do jogo da Biblioteca** (o que faltou da 5.1). — P
+- [x] **Aba Conquistas na página do jogo da Biblioteca** (o que faltou da 5.1). — P
 - [ ] **Steam sem chave** [H]: entrar na loja da Steam numa janela do app e usar o token que a própria página já tem
       (`webapi_token`) no lugar da chave da Web API; a chave continua como alternativa. — M
 - [ ] **Biblioteca da família Steam** [H] (`IFamilyGroupsService`): jogos compartilhados, com o tempo de jogo. — M
