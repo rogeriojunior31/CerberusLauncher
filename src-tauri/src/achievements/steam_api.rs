@@ -34,16 +34,39 @@ async fn get(http: &reqwest::Client, path: &str, query: &str) -> Result<Value, S
         .send()
         .await
         .map_err(|_| tr!("Não foi possível falar com a Steam. Confira a internet.").to_string())?;
-    match reply.status().as_u16() {
-        401 | 403 => return Err(tr!("A Steam não aceitou essa chave da Web API.").into()),
-        429 => return Err(tr!("A Steam pediu para esperar um pouco. Tente de novo em instantes.").into()),
-        // Asking for a game without stats answers 400 with a JSON body; read it.
-        400 => {}
-        s if !(200..300).contains(&s) => return Err(tr!("A Steam respondeu {}.", s)),
-        _ => {}
-    }
-    reply.json().await.map_err(|_| tr!("A Steam respondeu algo inesperado.").to_string())
+    let status = reply.status().as_u16();
+    let body = reply.text().await.unwrap_or_default();
+    read_reply(status, &body)
 }
+
+/// What a reply means. Steam answers 403 for three different things: game
+/// details that aren't public (JSON saying so), too many questions in a row
+/// (an HTML page from its edge servers) and a key it doesn't accept.
+fn read_reply(status: u16, body: &str) -> Result<Value, String> {
+    let json: Option<Value> = serde_json::from_str(body).ok();
+    let not_public = json
+        .as_ref()
+        .and_then(|v| v.pointer("/playerstats/error"))
+        .and_then(Value::as_str)
+        .is_some_and(|e| e.to_lowercase().contains("not public"));
+    if not_public {
+        return Err(cerberus_shared::i18n::t(NOT_PUBLIC).into());
+    }
+    match status {
+        403 if body.trim_start().starts_with('<') => Err(cerberus_shared::i18n::t(BUSY).into()),
+        401 | 403 => Err(tr!("A Steam não aceitou essa chave da Web API.").into()),
+        429 => Err(cerberus_shared::i18n::t(BUSY).into()),
+        // Asking for a game without stats answers 400 with a JSON body; read it.
+        400 => json.ok_or(tr!("A Steam respondeu algo inesperado.").into()),
+        s if !(200..300).contains(&s) => Err(tr!("A Steam respondeu {}.", s)),
+        _ => json.ok_or(tr!("A Steam respondeu algo inesperado.").into()),
+    }
+}
+
+/// Game details hidden in the player's privacy settings.
+pub const NOT_PUBLIC: &str = cerberus_shared::tk!("Os detalhes de jogo do seu perfil da Steam estão privados. Em Privacidade, deixe \"Detalhes de jogo\" como Público para o Cerberus ler suas conquistas.");
+/// Steam's edge servers turned questions away for a moment.
+pub const BUSY: &str = cerberus_shared::tk!("A Steam recusou consultas por um momento, por serem muitas seguidas. Tente de novo em alguns minutos.");
 
 fn encode(text: &str) -> String {
     text.bytes()
@@ -97,13 +120,25 @@ pub async fn account(http: &reqwest::Client, key: &str, steamid: &str) -> Result
     let v = get(http, "ISteamUser/GetPlayerSummaries/v2/", &format!("key={}&steamids={}", encode(key), encode(steamid))).await?;
     let p = v.pointer("/response/players/0").ok_or(tr!("A Steam não encontrou esse perfil."))?;
     let owned = owned_raw(http, key, steamid).await?;
+    // The owner's own key gets the game list even with game details private;
+    // achievements are what privacy hides, so ask for one played game's.
+    let games_public = match owned.as_ref().and_then(|list| list.iter().filter(|o| o.stats).max_by_key(|o| o.minutes)) {
+        Some(probe) => {
+            let q = format!("key={}&steamid={}&appid={}", encode(key), encode(steamid), probe.app);
+            match get(http, "ISteamUserStats/GetPlayerAchievements/v1/", &q).await {
+                Err(e) if e == cerberus_shared::i18n::t(NOT_PUBLIC) => false,
+                _ => true,
+            }
+        }
+        None => owned.is_some(),
+    };
     Ok(SteamAccount {
         steamid: steamid.to_string(),
         name: p.get("personaname").and_then(Value::as_str).unwrap_or_default().to_string(),
         avatar: p.get("avatarfull").and_then(Value::as_str).map(str::to_string),
         url: p.get("profileurl").and_then(Value::as_str).unwrap_or_default().to_string(),
         profile_public: p.get("communityvisibilitystate").and_then(Value::as_i64) == Some(3),
-        games_public: owned.is_some(),
+        games_public,
         games: owned.map(|o| o.len() as u32).unwrap_or(0),
     })
 }
@@ -162,7 +197,7 @@ pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: 
     }
     let list = owned_raw(http, key, steamid)
         .await?
-        .ok_or(tr!("Os detalhes de jogo do seu perfil da Steam estão privados. Deixe-os públicos para o Cerberus ler todos os seus jogos."))?;
+        .ok_or_else(|| cerberus_shared::i18n::t(NOT_PUBLIC).to_string())?;
     let _ = fs::create_dir_all(cache_dir(data_dir));
     let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
     Ok(list)
@@ -201,14 +236,9 @@ pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
         &format!("key={}&steamid={}&appid={app}&l={lang_now}", encode(key), encode(steamid)),
     )
     .await?;
+    // A game without stats answers success false ("Requested app has no stats"):
+    // it has no achievements. Private game details were already turned into an error.
     let stats = v.get("playerstats").ok_or(tr!("A Steam respondeu algo inesperado."))?;
-    if stats.get("success").and_then(Value::as_bool) == Some(false) {
-        let error = stats.get("error").and_then(Value::as_str).unwrap_or_default();
-        if error.to_lowercase().contains("not public") {
-            return Err(tr!("Os detalhes de jogo do seu perfil da Steam estão privados. Deixe-os públicos para o Cerberus ler todos os seus jogos.").into());
-        }
-        // "Requested app has no stats": a game without achievements.
-    }
     let list: Vec<Mine> = stats
         .get("achievements")
         .and_then(Value::as_array)
@@ -296,6 +326,16 @@ mod tests {
         .unwrap();
         assert_eq!(local_account(dir.path()), Some(("76561198000000002".into(), "Player".into())));
         assert_eq!(account_number("76561198000000002").as_deref(), Some("39734274"));
+    }
+
+    #[test]
+    fn steam_403s_are_told_apart() {
+        let private = r#"{"playerstats":{"error":"Profile is not public","success":false}}"#;
+        assert_eq!(read_reply(403, private).unwrap_err(), cerberus_shared::i18n::t(NOT_PUBLIC));
+        assert_eq!(read_reply(403, "<HTML><HEAD><TITLE>Access Denied</TITLE>").unwrap_err(), cerberus_shared::i18n::t(BUSY));
+        assert!(read_reply(403, "").unwrap_err().contains("chave") || read_reply(403, "").unwrap_err().contains("key"));
+        let no_stats = r#"{"playerstats":{"error":"Requested app has no stats","success":false}}"#;
+        assert!(read_reply(400, no_stats).is_ok());
     }
 
     #[test]

@@ -102,7 +102,8 @@ async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [Achiev
 }
 
 /// How many games' achievements are asked of Steam's API at once.
-const AT_ONCE: usize = 8;
+/// Steam's edge servers turn the key away for a while when asked too fast.
+const AT_ONCE: usize = 2;
 
 /// Steam's part from the Web API: every owned game with achievements. Games the
 /// API has are taken from it (it knows unlocks made on other PCs); the local
@@ -137,7 +138,13 @@ async fn steam_api_part(
         let list = match list {
             Ok(list) => list,
             Err(e) => {
+                // Private game details or Steam turning us away: every next
+                // question would fail the same way, so stop asking.
+                let stop = e == cerberus_shared::i18n::t(steam_api::NOT_PUBLIC) || e == cerberus_shared::i18n::t(steam_api::BUSY);
                 first_error.get_or_insert(e);
+                if stop {
+                    break;
+                }
                 continue;
             }
         };
@@ -193,7 +200,7 @@ async fn steam_api_part(
     }
     // Nothing came back at all: a private profile or a key problem; say so.
     if games.is_empty() {
-        if let Some(e) = first_error {
+        if let Some(e) = first_error.take() {
             return Err(e);
         }
     }
