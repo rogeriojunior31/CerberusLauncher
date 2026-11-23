@@ -602,6 +602,37 @@ pub async fn ra_connect(user: String, key: String) -> Result<cerberus_shared::Ra
     call("ra_connect", &RaArgs { user, key }).await
 }
 
+/// The Steam account on this PC: SteamID64 and name.
+pub async fn steam_local_account() -> Result<Option<(String, String)>, String> {
+    call("steam_local_account", &()).await
+}
+
+pub async fn steam_account() -> Result<Option<cerberus_shared::SteamAccount>, String> {
+    call("steam_account", &()).await
+}
+
+pub async fn steam_connect(key: String, profile: Option<String>) -> Result<cerberus_shared::SteamAccount, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        key: String,
+        profile: Option<String>,
+    }
+    call("steam_connect", &Arg { key, profile }).await
+}
+
+pub async fn steam_disconnect() -> Result<(), String> {
+    call("steam_disconnect", &()).await
+}
+
+/// "key", "privacy" or "profile".
+pub async fn steam_open(page: &str) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        page: &'a str,
+    }
+    call("steam_open", &Arg { page }).await
+}
+
 pub async fn achievements_hub() -> Result<cerberus_shared::AchievementsHub, String> {
     call("achievements_hub", &()).await
 }

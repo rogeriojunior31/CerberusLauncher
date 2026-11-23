@@ -621,6 +621,68 @@ fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     Ok(settings_view(&app))
 }
 
+fn steam_api_account(app: &AppHandle) -> Option<(String, String)> {
+    let chosen = settings::load(&app.state::<DataDir>().0);
+    chosen.steam_key.zip(chosen.steam_id)
+}
+
+/// The Steam account on this PC (the last to sign in), to offer it when connecting.
+#[tauri::command]
+fn steam_local_account() -> Option<(String, String)> {
+    steam::root().and_then(|root| achievements::steam_api::local_account(&root))
+}
+
+/// The connected Steam account, read again from Steam.
+#[tauri::command]
+async fn steam_account(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<Option<cerberus_shared::SteamAccount>, String> {
+    let Some((key, id)) = steam_api_account(&app) else { return Ok(None) };
+    achievements::steam_api::account(&http, &key, &id).await.map(Some)
+}
+
+/// Turns on Steam's Web API with the player's key. `profile` (number or link) is
+/// only needed when the account on this PC isn't the one to read.
+#[tauri::command]
+async fn steam_connect(app: AppHandle, http: State<'_, reqwest::Client>, key: String, profile: Option<String>) -> Result<cerberus_shared::SteamAccount, String> {
+    let key = key.trim().to_string();
+    if key.len() != 32 || !key.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(tr!("A chave da Web API da Steam tem 32 letras e números. Copie de novo da página da Steam.").into());
+    }
+    let id = match profile.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(typed) => achievements::steam_api::resolve(&http, &key, typed).await?,
+        None => steam_local_account().map(|(id, _)| id).ok_or(tr!("Nenhuma conta da Steam encontrada neste PC. Informe o seu perfil."))?,
+    };
+    let account = achievements::steam_api::account(&http, &key, &id).await?;
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.steam_key = Some(key);
+    chosen.steam_id = Some(id);
+    settings::save(&data.0, &chosen)?;
+    Ok(account)
+}
+
+#[tauri::command]
+fn steam_disconnect(app: AppHandle) -> Result<(), String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.steam_key = None;
+    chosen.steam_id = None;
+    settings::save(&data.0, &chosen)
+}
+
+/// Opens Steam's page for the key, the privacy settings, or the profile.
+#[tauri::command]
+fn steam_open(app: AppHandle, page: String) -> Result<(), String> {
+    let url = match page.as_str() {
+        "key" => "https://steamcommunity.com/dev/apikey".to_string(),
+        "privacy" => "https://steamcommunity.com/my/edit/settings".to_string(),
+        _ => match settings::load(&app.state::<DataDir>().0).steam_id {
+            Some(id) => format!("https://steamcommunity.com/profiles/{id}"),
+            None => "https://steamcommunity.com/my".to_string(),
+        },
+    };
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
 fn retro_account(app: &AppHandle) -> Option<(String, String)> {
     let chosen = settings::load(&app.state::<DataDir>().0);
     chosen.ra_user.zip(chosen.ra_key)
@@ -630,7 +692,7 @@ fn retro_account(app: &AppHandle) -> Option<(String, String)> {
 #[tauri::command]
 async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::AchievementsHub, String> {
     let data = app.state::<DataDir>().0.clone();
-    Ok(achievements::hub(&http, &data, retro_account(&app)).await)
+    Ok(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app)).await)
 }
 
 /// One game's achievements for its page in the hub.
@@ -638,7 +700,7 @@ async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>) -> R
 async fn game_achievements(app: AppHandle, http: State<'_, reqwest::Client>, source: String, key: String) -> Result<cerberus_shared::GameAchievements, String> {
     let source = cerberus_shared::AchievementSource::from_code(&source).ok_or(tr!("Jogo inválido."))?;
     let data = app.state::<DataDir>().0.clone();
-    achievements::game(&http, &data, source, &key, retro_account(&app)).await
+    achievements::game(&http, &data, source, &key, retro_account(&app), steam_api_account(&app)).await
 }
 
 /// The monitors plugged in.
@@ -2056,6 +2118,11 @@ fn main() {
             set_monitor,
             set_language,
             achievements_hub,
+            steam_local_account,
+            steam_account,
+            steam_connect,
+            steam_disconnect,
+            steam_open,
             game_achievements,
             to_chosen_monitor,
             set_autostart,

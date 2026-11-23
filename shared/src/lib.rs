@@ -373,6 +373,21 @@ pub struct OverlayView {
     pub shots: Vec<Screenshot>,
 }
 
+/// The player's Steam account, when they turned on Steam's Web API.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SteamAccount {
+    pub steamid: String,
+    pub name: String,
+    pub avatar: Option<String>,
+    pub url: String,
+    /// The profile itself is public.
+    pub profile_public: bool,
+    /// Game details (owned games, play time, achievements) are public: needed to read them.
+    pub games_public: bool,
+    /// Owned games, when they can be read.
+    pub games: u32,
+}
+
 /// Where a game's achievements come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

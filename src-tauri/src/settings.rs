@@ -38,6 +38,11 @@ pub struct Settings {
     pub ra_user: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
+    /// Steam's Web API, turned on by the player: their own key and their SteamID64.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_id: Option<String>,
     /// recomplauncher.com's catalog is used besides Cerberus's own (on unless turned off).
     #[serde(default = "yes")]
     pub site_catalog: bool,

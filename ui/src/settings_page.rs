@@ -21,6 +21,7 @@ enum Section {
     Art,
     Catalog,
     Emulation,
+    Steam,
     Retro,
     Pc,
     Storage,
@@ -40,7 +41,7 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
         ],
     ),
     (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Gamepad)]),
-    (tk!("Contas"), &[(Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
     (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Check), (Section::Storage, tk!("Armazenamento"), Icon::Folder), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
@@ -152,6 +153,7 @@ pub fn SettingsPage() -> impl IntoView {
             }
             .into_any(),
             Section::Emulation => emulation(s).into_any(),
+            Section::Steam => view! { <SteamAccountCard /> }.into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
             Section::Storage => storage(s, busy, apply).into_any(),
@@ -674,6 +676,102 @@ fn about(s: SettingsView, _busy: RwSignal<bool>, _apply: impl Fn(Task, &'static 
 }
 
 /// Linking a RetroAchievements account and showing its progress.
+/// Steam's Web API, optional: with the player's own key, the achievements hub
+/// reads every owned game and the achievements unlocked on other PCs.
+#[component]
+fn SteamAccountCard() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let account = LocalResource::new(api::steam_account);
+    let local = LocalResource::new(api::steam_local_account);
+    let key = RwSignal::new(String::new());
+    let profile = RwSignal::new(String::new());
+    let other = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let open = move |page: &'static str| spawn_local(async move { library.report(api::steam_open(page).await); });
+    let connect = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        busy.set(true);
+        spawn_local(async move {
+            let typed = profile.get_untracked();
+            let chosen = (other.get_untracked() && !typed.trim().is_empty()).then_some(typed);
+            let got = library.report(api::steam_connect(key.get_untracked(), chosen).await);
+            busy.set(false);
+            if let Some(a) = got {
+                key.set(String::new());
+                library.toast(tr!("Steam conectada como {}.", a.name));
+                account.refetch();
+            }
+        });
+    };
+    let disconnect = move |_| {
+        spawn_local(async move {
+            if library.report(api::steam_disconnect().await).is_some() {
+                library.toast(tr!("Steam desconectada. As conquistas voltam a vir só do cache deste PC."));
+                account.refetch();
+            }
+        });
+    };
+    move || {
+        let state = account.get();
+        let body = match state {
+            None => view! { <p class="muted">{tr!("Lendo sua conta...")}</p> }.into_any(),
+            Some(Ok(Some(a))) => {
+                let warn = (!a.games_public).then(|| view! {
+                    <div class="ach-note">
+                        <Svg icon=Icon::Info size=18 />
+                        <span>{tr!("Os detalhes de jogo do seu perfil estão privados, então a Steam não entrega seus jogos nem suas conquistas. Em Privacidade, deixe \"Detalhes de jogo\" como Público.")}</span>
+                        <button type="button" class="btn sm" on:click=move |_| open("privacy")>{tr!("Abrir privacidade")}</button>
+                    </div>
+                });
+                view! {
+                    <div class="ra-head">
+                        {a.avatar.clone().map(|src| view! { <img class="ra-avatar" src=src alt="" /> })}
+                        <div class="ra-who">
+                            <b>{a.name.clone()}</b>
+                            <small>{if a.games_public { tr!("{} jogos na conta · detalhes de jogo públicos", a.games) } else { tr!("Detalhes de jogo privados").to_string() }}</small>
+                        </div>
+                        <div class="row">
+                            <button type="button" class="btn sm" on:click=move |_| open("profile")><Svg icon=Icon::External size=16 />{tr!("Ver perfil")}</button>
+                            <button type="button" class="btn sm" on:click=disconnect>{tr!("Desconectar")}</button>
+                        </div>
+                    </div>
+                    {warn}
+                    <p class="muted small">{tr!("Com a Web API, o hub de conquistas mostra todos os seus jogos da Steam, com as conquistas e o tempo de jogo de qualquer PC. A chave fica só neste PC.")}</p>
+                }
+                .into_any()
+            }
+            Some(result) => {
+                let problem = result.err().map(|e| view! { <p class="problem">{e}</p> });
+                let here = local.get().and_then(Result::ok).flatten();
+                let here_text = here.clone().map(|(_, name)| tr!("Conta da Steam neste PC: {}", name));
+                view! {
+                    {problem}
+                    <p class="muted small">{tr!("Opcional. Sem isso, as conquistas da Steam vêm do cache deste PC, só dos jogos que a Steam já sincronizou aqui. Com a sua chave da Web API (gratuita), vêm todos os seus jogos e as conquistas feitas em qualquer PC. O seu perfil precisa ter os detalhes de jogo públicos.")}</p>
+                    {here_text.map(|t| view! { <p class="small"><b>{t}</b></p> })}
+                    <form class="ra-form" on:submit=connect>
+                        <input class="input" type="password" placeholder=tr!("Chave da Web API da Steam") autocomplete="off"
+                            prop:value=move || key.get() on:input=move |e| key.set(event_target_value(&e)) />
+                        <Show when=move || other.get() || here.is_none()>
+                            <input class="input" placeholder=tr!("Seu perfil: link ou SteamID64")
+                                prop:value=move || profile.get() on:input=move |e| profile.set(event_target_value(&e)) />
+                        </Show>
+                        <button type="submit" class="btn sm main" disabled=move || busy.get() || key.get().trim().is_empty()>
+                            {move || if busy.get() { tr!("Conectando...") } else { tr!("Conectar") }}
+                        </button>
+                    </form>
+                    <div class="row">
+                        <button type="button" class="link" on:click=move |_| open("key")>{tr!("Pegar minha chave na Steam")}</button>
+                        <button type="button" class="link" on:click=move |_| open("privacy")>{tr!("Privacidade do perfil")}</button>
+                        <button type="button" class="link" on:click=move |_| other.update(|o| *o = !*o)>{tr!("Usar outra conta")}</button>
+                    </div>
+                }
+                .into_any()
+            }
+        };
+        view! { <section class="card set"><h3>"Steam"</h3>{body}</section> }
+    }
+}
+
 #[component]
 fn RetroAchievements(linked: Option<String>) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -743,7 +841,7 @@ fn RetroAchievements(linked: Option<String>) -> impl IntoView {
                             {p.picture.clone().map(|src| view! { <img class="ra-avatar" src=src alt="" /> })}
                             <div class="ra-who">
                                 <b>{p.user.clone()}</b>
-                                <small>{format!("{} pontos hardcore · {} softcore · {} pontos reais", format::count(p.points), format::count(p.softcore_points), format::count(p.true_points))}</small>
+                                <small>{tr!("{} pontos hardcore · {} softcore · {} pontos reais", format::count(p.points), format::count(p.softcore_points), format::count(p.true_points))}</small>
                                 {now}
                             </div>
                             <div class="row">
