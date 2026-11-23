@@ -49,6 +49,100 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
     (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Check), (Section::Storage, tk!("Armazenamento"), Icon::Folder), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
+/// What the search finds: each section's options, by the titles their rows show.
+const FIND: &[(Section, &[&str])] = &[
+    (Section::General, &[tk!("Página inicial"), "Monitor", tk!("Configuração inicial"), tk!("Abrir com o Windows"), tk!("Começar escondido na bandeja"), tk!("Continuar na bandeja")]),
+    (Section::Appearance, &[tk!("Idioma"), tk!("Tamanho"), tk!("Menos animações")]),
+    (Section::InGame, &[tk!("Menu sobre o jogo"), tk!("Fotos com F12"), tk!("Sair da frente enquanto joga"), tk!("Aviso de conquista"), tk!("Mostrar sobre o jogo"), tk!("Canto da tela")]),
+    (Section::Notices, &[tk!("Jogo pronto para jogar"), tk!("Jogo fechou com erro"), tk!("Foto salva"), tk!("Avisos do Windows"), tk!("Conquistas")]),
+    (Section::BigPicture, &[tk!("Abrir no Big Picture Mode"), tk!("Sons de navegação"), tk!("Entrar e sair pelo controle")]),
+    (Section::Controllers, &[tk!("Controles conectados"), tk!("No Big Picture Mode")]),
+    (Section::Library, &[tk!("Pastas de ROMs e jogos")]),
+    (Section::Install, &[tk!("Pasta dos recomps"), tk!("Limite de velocidade"), tk!("Mais devagar enquanto você joga")]),
+    (Section::Saves, &[tk!("Saves na nuvem"), tk!("Backups neste PC")]),
+    (Section::Art, &[tk!("Chave do SteamGridDB"), tk!("Capas e fundos")]),
+    (Section::Catalog, &[tk!("Catálogo do recomplauncher.com"), tk!("Fontes de catálogo"), tk!("Adicionar por URL")]),
+    (Section::Emulation, &[tk!("Núcleos"), tk!("Conquistas no RetroArch"), tk!("Seus clássicos")]),
+    (Section::Steam, &[tk!("Chave da Web API da Steam"), tk!("Privacidade do perfil")]),
+    (Section::Retro, &[]),
+    (Section::Pc, &[tk!("Visual C++ 2015-2022 (64 bits)")]),
+    (Section::Storage, &[tk!("Dados do Cerberus"), tk!("Copiar meus dados"), tk!("Restaurar de uma cópia")]),
+    (Section::About, &[tk!("Atualizações"), tk!("Pedir um recomp")]),
+];
+
+/// Lower case and without accents, so "notificacao" finds "Notificações".
+fn plain(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            c => c,
+        })
+        .collect()
+}
+
+/// A search hit: the section, its menu label and icon, and the option's title (none: the section itself).
+type Hit = (Section, &'static str, Icon, Option<&'static str>);
+
+/// The options whose title, or section, has every word typed, in the current
+/// language or in Portuguese.
+fn search(query: &str) -> Vec<Hit> {
+    let words: Vec<String> = plain(query).split_whitespace().map(str::to_string).collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let t = cerberus_shared::i18n::t;
+    let has = |text: String| words.iter().all(|w| text.contains(w.as_str()));
+    let mut hits = Vec::new();
+    for (_, items) in MENU {
+        for (which, label, icon) in items.iter() {
+            let section_words = format!("{} {}", plain(t(label)), plain(label));
+            if has(section_words.clone()) {
+                hits.push((*which, *label, *icon, None));
+            }
+            let titles = FIND.iter().find(|(s, _)| s == which).map(|(_, t)| *t).unwrap_or_default();
+            for title in titles {
+                if has(format!("{} {} {}", plain(t(title)), plain(title), section_words)) {
+                    hits.push((*which, *label, *icon, Some(*title)));
+                }
+            }
+        }
+    }
+    hits
+}
+
+/// After a section opens from the search: brings the option into view and marks it for a moment.
+fn point_at(title: &'static str) {
+    set_timeout(
+        move || {
+            let Some(doc) = web_sys::window().and_then(|w| w.document()) else { return };
+            let Ok(all) = doc.query_selector_all(".settings .set-row b, .settings h3") else { return };
+            let wanted = cerberus_shared::i18n::t(title);
+            for i in 0..all.length() {
+                let Some(node) = all.item(i) else { continue };
+                if node.text_content().is_some_and(|t| t.trim() == wanted) {
+                    let el: web_sys::Element = wasm_bindgen::JsCast::unchecked_into(node);
+                    let target = el.closest(".set-row").ok().flatten().unwrap_or(el);
+                    let opts = web_sys::ScrollIntoViewOptions::new();
+                    opts.set_block(web_sys::ScrollLogicalPosition::Center);
+                    opts.set_behavior(web_sys::ScrollBehavior::Smooth);
+                    target.scroll_into_view_with_scroll_into_view_options(&opts);
+                    let _ = target.class_list().add_1("found");
+                    set_timeout(move || { let _ = target.class_list().remove_1("found"); }, std::time::Duration::from_millis(1800));
+                    return;
+                }
+            }
+        },
+        std::time::Duration::from_millis(80),
+    );
+}
+
 type Task = std::pin::Pin<Box<dyn std::future::Future<Output = Result<SettingsView, String>>>>;
 
 /// A switch for an on/off setting.
@@ -127,6 +221,7 @@ pub fn SettingsPage() -> impl IntoView {
     let view_state: RwSignal<Option<SettingsView>> = RwSignal::new(None);
     let busy = RwSignal::new(false);
     let section = RwSignal::new(Section::General);
+    let query = RwSignal::new(String::new());
 
     spawn_local(async move {
         view_state.set(library.report(api::get_settings().await));
@@ -163,6 +258,49 @@ pub fn SettingsPage() -> impl IntoView {
             view! { <div class="set-group-label">{cerberus_shared::i18n::t(group)}</div>{links} }
         })
         .collect_view();
+
+    let open_hit = move |(which, _, _, title): Hit| {
+        section.set(which);
+        query.set(String::new());
+        if let Some(title) = title {
+            point_at(title);
+        }
+    };
+    let hits = Memo::new(move |_| query.with(|q| search(q)));
+    let results = move || {
+        let list = hits.get();
+        if list.is_empty() {
+            return view! { <p class="muted small set-none">{tr!("Nada com esse nome.")}</p> }.into_any();
+        }
+        list.into_iter()
+            .take(14)
+            .map(|hit| {
+                let (_, label, icon, title) = hit;
+                let t = cerberus_shared::i18n::t;
+                view! {
+                    <button type="button" class="set-link set-hit" on:click=move |_| open_hit(hit)>
+                        <Svg icon=icon size=18 />
+                        <span>{t(title.unwrap_or(label))}{title.map(|_| view! { <small>{t(label)}</small> })}</span>
+                    </button>
+                }
+            })
+            .collect_view()
+            .into_any()
+    };
+    let find = view! {
+        <input class="input set-find" type="search" aria-label=tr!("Buscar nas configurações") placeholder=tr!("Buscar nas configurações")
+            prop:value=move || query.get()
+            on:input=move |e| query.set(event_target_value(&e))
+            on:keydown=move |e| match e.key().as_str() {
+                "Enter" => {
+                    if let Some(first) = hits.get_untracked().into_iter().next() {
+                        open_hit(first);
+                    }
+                }
+                "Escape" => query.set(String::new()),
+                _ => {}
+            } />
+    };
 
     let body = move || {
         let Some(s) = view_state.get() else {
@@ -201,7 +339,13 @@ pub fn SettingsPage() -> impl IntoView {
         <div class="page">
             <header class="page-h"><div><h1>{tr!("Configurações")}</h1></div></header>
             <div class="set-layout">
-                <nav class="set-nav" aria-label=tr!("Seções")>{menu}</nav>
+                <nav class="set-nav" aria-label=tr!("Seções")>
+                    {find}
+                    <div class="set-menu" class:hidden=move || !query.with(|q| q.trim().is_empty())>{menu}</div>
+                    <Show when=move || !query.with(|q| q.trim().is_empty())>
+                        <div class="set-hits">{results}</div>
+                    </Show>
+                </nav>
                 <div class="settings">{body}</div>
             </div>
         </div>
@@ -1375,5 +1519,25 @@ fn SteamGridDbKey(has: bool) -> impl IntoView {
                 <button type="submit" class="btn sm main" disabled=move || busy.get() || input.get().trim().is_empty()>{tr!("Guardar")}</button>
             </form>
         </section>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_search_finds_options_with_or_without_accents() {
+        assert!(search("  ").is_empty());
+        let canto = search("canto");
+        assert!(canto.iter().any(|h| h.0 == Section::InGame && h.3 == Some("Canto da tela")));
+        let plain_words = search("notificacoes");
+        assert!(plain_words.iter().any(|h| h.0 == Section::Notices && h.3.is_none()), "the section itself");
+        assert!(search("bandeja windows").iter().all(|h| h.0 == Section::General));
+        assert!(search("zzzz").is_empty());
+        // Every option points at a section the menu has.
+        for (section, _) in FIND {
+            assert!(MENU.iter().any(|(_, items)| items.iter().any(|(s, _, _)| s == section)));
+        }
     }
 }
