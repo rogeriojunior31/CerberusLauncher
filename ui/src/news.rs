@@ -71,6 +71,71 @@ fn page_of(id: &str, games: &[Game]) -> Option<Route> {
     id.starts_with("recomp:").then(|| Route::Game(id.to_string()))
 }
 
+/// The Steam games to ask news for: the ones played most lately first, then by play time.
+fn news_games(games: &[Game]) -> Vec<(u32, String)> {
+    let mut steam: Vec<&Game> = games.iter().filter(|g| !g.hidden && matches!(g.source, Source::Steam { .. })).collect();
+    steam.sort_by(|a, b| b.last_played.cmp(&a.last_played).then(b.playtime_secs.cmp(&a.playtime_secs)));
+    steam
+        .into_iter()
+        .filter_map(|g| match g.source {
+            Source::Steam { app_id } => Some((app_id, g.name.clone())),
+            _ => None,
+        })
+        .take(12)
+        .collect()
+}
+
+/// Posts by the developers of the player's Steam games.
+#[component]
+fn SteamNews() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let wanted = Memo::new(move |_| library.games.get().and_then(Result::ok).map(|g| news_games(&g)));
+    let news = LocalResource::new(move || {
+        let games = wanted.get();
+        async move {
+            match games {
+                Some(list) if !list.is_empty() => api::steam_news(list).await.ok(),
+                Some(_) => Some(Vec::new()),
+                None => None,
+            }
+        }
+    });
+    move || {
+        let Some(list) = news.get().flatten() else {
+            return view! { <p class="muted" role="status">{tr!("Procurando notícias…")}</p> }.into_any();
+        };
+        if list.is_empty() {
+            return view! { <p class="muted">{tr!("Nenhuma notícia recente dos seus jogos da Steam.")}</p> }.into_any();
+        }
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let cards = list
+            .into_iter()
+            .map(|n| {
+                let game = games.iter().find(|g| matches!(g.source, Source::Steam { app_id } if app_id == n.app_id)).cloned();
+                let art = game.as_ref().map(cover_sources).unwrap_or_default();
+                let url = n.url.clone();
+                let open = move |_| {
+                    let url = url.clone();
+                    leptos::task::spawn_local(async move {
+                        library.report(api::open_news(url).await);
+                    });
+                };
+                view! {
+                    <button type="button" class="news-card" on:click=open title=tr!("Abrir no navegador")>
+                        <div class="news-art"><Poster sources=art title=n.game.clone() /></div>
+                        <div class="news-t">
+                            <small>{n.game.clone()}" · "{format::ago(n.date)}</small>
+                            <b>{n.title.clone()}</b>
+                            <span>{n.summary.clone()}</span>
+                        </div>
+                    </button>
+                }
+            })
+            .collect_view();
+        view! { <div class="news-grid">{cards}</div> }.into_any()
+    }
+}
+
 #[component]
 pub fn NewsPage() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -158,6 +223,10 @@ pub fn NewsPage() -> impl IntoView {
             <section class="news-sec">
                 <h2><Svg icon=Icon::Download />{tr!("Atualizações disponíveis")}</h2>
                 {waiting}
+            </section>
+            <section class="news-sec">
+                <h2><Svg icon=Icon::Bell />{tr!("Notícias dos seus jogos")}</h2>
+                <SteamNews />
             </section>
             <section class="news-sec">
                 <h2><Svg icon=Icon::Clock />{tr!("Atividade recente")}</h2>

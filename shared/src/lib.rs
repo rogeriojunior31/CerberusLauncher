@@ -485,6 +485,20 @@ pub struct StoreLanguage {
     pub audio: bool,
 }
 
+/// A post by a Steam game's developers, for Novidades. Plain text only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewsItem {
+    pub app_id: u32,
+    pub game: String,
+    pub title: String,
+    /// The start of the post.
+    pub summary: String,
+    /// The post on Steam.
+    pub url: String,
+    /// Unix seconds.
+    pub date: u64,
+}
+
 /// A game's page on the Steam store, as Cerberus shows it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoreDetails {

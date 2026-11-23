@@ -37,6 +37,7 @@ mod steam;
 mod steam_shortcuts;
 mod steam_store;
 mod steam_details;
+mod steam_news;
 mod trail;
 mod self_update;
 mod play_log;
@@ -834,6 +835,22 @@ fn game_sessions(app: AppHandle, id: String) -> Vec<cerberus_shared::PlaySession
 async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id: u32) -> Result<cerberus_shared::StoreDetails, String> {
     let data = app.state::<DataDir>().0.clone();
     steam_details::details(&http, &data, app_id).await
+}
+
+/// What the developers of these Steam games (app id, name) posted lately.
+#[tauri::command]
+async fn steam_news(app: AppHandle, http: State<'_, reqwest::Client>, games: Vec<(u32, String)>) -> Result<Vec<cerberus_shared::NewsItem>, String> {
+    let data = app.state::<DataDir>().0.clone();
+    Ok(steam_news::latest(&http, &data, games).await)
+}
+
+/// Opens a post from Novidades in the browser; only Steam's own links.
+#[tauri::command]
+fn open_news(app: AppHandle, url: String) -> Result<(), String> {
+    if !steam_news::steam_link(&url) {
+        return Err(tr!("Esse link não é da Steam.").into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 /// One game's achievements for its page in the hub.
@@ -2451,6 +2468,8 @@ fn main() {
             set_language,
             achievements_hub,
             steam_details,
+            steam_news,
+            open_news,
             game_sessions,
             set_game_note,
             set_updates_paused,

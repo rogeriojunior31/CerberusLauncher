@@ -1041,3 +1041,20 @@ pub async fn export_data() -> Result<Option<usize>, String> {
 pub async fn import_data() -> Result<Option<usize>, String> {
     call("import_data", &()).await
 }
+
+/// Developers' posts for these Steam games (app id, name), newest first.
+pub async fn steam_news(games: Vec<(u32, String)>) -> Result<Vec<cerberus_shared::NewsItem>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        games: Vec<(u32, String)>,
+    }
+    call("steam_news", &Arg { games }).await
+}
+
+pub async fn open_news(url: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        url: String,
+    }
+    call("open_news", &Arg { url }).await
+}
