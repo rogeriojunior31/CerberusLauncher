@@ -690,9 +690,9 @@ fn retro_account(app: &AppHandle) -> Option<(String, String)> {
 
 /// The achievements hub: Steam and RetroAchievements together.
 #[tauri::command]
-async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::AchievementsHub, String> {
+async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>, online: Option<bool>) -> Result<cerberus_shared::AchievementsHub, String> {
     let data = app.state::<DataDir>().0.clone();
-    Ok(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app)).await)
+    Ok(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app), online.unwrap_or(true)).await)
 }
 
 /// One game's achievements for its page in the hub.

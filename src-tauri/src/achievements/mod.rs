@@ -70,11 +70,11 @@ fn steam_part() -> Option<SteamPart> {
 }
 
 /// Names Steam's cache doesn't have, asked once of the Steam store and kept on disk.
-async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [AchievementGame], recent: &mut [RecentUnlock]) {
+async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [AchievementGame], recent: &mut [RecentUnlock], online: bool) {
     let file = data_dir.join("cache").join("achievements").join("steam-names.json");
     let mut known: HashMap<String, String> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let nameless = |g: &AchievementGame| g.source == AchievementSource::Steam && g.name == format!("App {}", g.key);
-    let missing: Vec<String> = games.iter().filter(|g| nameless(g) && !known.contains_key(&g.key)).map(|g| g.key.clone()).collect();
+    let missing: Vec<String> = if online { games.iter().filter(|g| nameless(g) && !known.contains_key(&g.key)).map(|g| g.key.clone()).collect() } else { Vec::new() };
     let mut learned = false;
     for chunk in missing.chunks(6) {
         let asks = chunk.iter().map(|app| steam::store_name(http, app));
@@ -115,13 +115,35 @@ async fn steam_api_part(
     id: &str,
     local: Vec<AchievementGame>,
     local_recent: Vec<RecentUnlock>,
-) -> Result<(Vec<AchievementGame>, Vec<RecentUnlock>), String> {
+    online: bool,
+) -> Result<(Vec<AchievementGame>, Vec<RecentUnlock>, Option<String>), String> {
     use futures_util::StreamExt;
-    let owned = steam_api::owned(http, data_dir, key, id).await?;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let owned = match steam_api::owned(http, data_dir, key, id, online).await {
+        Ok(list) => list,
+        // Steam busy: last hour's list on disk still beats nothing.
+        Err(e) if online && e != cerberus_shared::i18n::t(steam_api::NOT_PUBLIC) => match steam_api::owned(http, data_dir, key, id, false).await {
+            Ok(list) => list,
+            Err(_) => return Err(e),
+        },
+        Err(e) => return Err(e),
+    };
+    // Once Steam says no (private details, too many questions), the rest is read
+    // from the disk only, instead of asking again and again.
+    let blocked = AtomicBool::new(!online);
+    let blocked = &blocked;
     let local_keys: std::collections::HashSet<String> = local.iter().map(|g| g.key.clone()).collect();
     let wanted: Vec<steam_api::Owned> = owned.into_iter().filter(|o| o.stats && (o.minutes > 0 || local_keys.contains(&o.app.to_string()))).collect();
     let mut asks = futures_util::stream::iter(wanted.into_iter().map(|o| async move {
-        let list = steam_api::mine(http, data_dir, key, id, o.app, o.last_played).await;
+        let ask = !blocked.load(Ordering::Relaxed);
+        let mut list = steam_api::mine(http, data_dir, key, id, o.app, o.last_played, ask).await;
+        if let Err(e) = &list {
+            if ask && e != steam_api::OFFLINE {
+                blocked.store(true, Ordering::Relaxed);
+                let refused = e.clone();
+                list = steam_api::mine(http, data_dir, key, id, o.app, o.last_played, false).await.map_err(|_| refused);
+            }
+        }
         (o, list)
     }))
     .buffer_unordered(AT_ONCE);
@@ -138,12 +160,8 @@ async fn steam_api_part(
         let list = match list {
             Ok(list) => list,
             Err(e) => {
-                // Private game details or Steam turning us away: every next
-                // question would fail the same way, so stop asking.
-                let stop = e == cerberus_shared::i18n::t(steam_api::NOT_PUBLIC) || e == cerberus_shared::i18n::t(steam_api::BUSY);
-                first_error.get_or_insert(e);
-                if stop {
-                    break;
+                if e != steam_api::OFFLINE {
+                    first_error.get_or_insert(e);
                 }
                 continue;
             }
@@ -203,21 +221,24 @@ async fn steam_api_part(
         if let Some(e) = first_error.take() {
             return Err(e);
         }
+        if !online {
+            return Err(steam_api::OFFLINE.into());
+        }
     }
     // Games only the local cache knows (family sharing, a game the API skipped).
     games.extend(local.into_iter().filter(|g| !from_api.contains(&g.key)));
     recent.extend(local_recent.into_iter().filter(|r| !from_api.contains(&r.game_key)));
-    Ok((games, recent))
+    Ok((games, recent, first_error))
 }
 
 /// Icons for recent Steam unlocks the local cache didn't have, from the game's
 /// schema (asked once per game and kept).
-async fn fill_recent_icons(http: &reqwest::Client, data_dir: &Path, key: &str, recent: &mut [RecentUnlock]) {
+async fn fill_recent_icons(http: &reqwest::Client, data_dir: &Path, key: &str, recent: &mut [RecentUnlock], online: bool) {
     let games: std::collections::BTreeSet<String> =
         recent.iter().filter(|r| r.source == AchievementSource::Steam && r.achievement.icon.is_none()).map(|r| r.game_key.clone()).collect();
     for game in games {
         let Ok(app) = game.parse::<u32>() else { continue };
-        let Ok(schema) = steam_api::schema(http, data_dir, key, app).await else { continue };
+        let Ok(schema) = steam_api::schema(http, data_dir, key, app, online).await else { continue };
         for r in recent.iter_mut().filter(|r| r.source == AchievementSource::Steam && r.game_key == game) {
             if let Some(s) = schema.iter().find(|s| s.api == r.achievement.id) {
                 r.achievement.icon = s.icon.clone();
@@ -227,12 +248,28 @@ async fn fill_recent_icons(http: &reqwest::Client, data_dir: &Path, key: &str, r
     }
 }
 
+/// What RetroAchievements answered last, kept to show at once next time.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RetroKept {
+    games: Vec<AchievementGame>,
+    recent: Vec<RecentUnlock>,
+    points: (u64, u64),
+}
+
+fn retro_file(data_dir: &Path, user: &str) -> std::path::PathBuf {
+    let safe: String = user.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+    data_dir.join("cache").join("achievements").join(format!("retro-{safe}.json"))
+}
+
 /// Everything the hub shows. A source that can't be read leaves a note in `problems`.
+/// With `online` off nothing is asked of the internet: the hub opens at once with
+/// what's on disk, and the page asks again with `online` on to bring it up to date.
 pub async fn hub(
     http: &reqwest::Client,
     data_dir: &Path,
     retro_account: Option<(String, String)>,
     steam_api_account: Option<(String, String)>,
+    online: bool,
 ) -> AchievementsHub {
     let mut hub = AchievementsHub::default();
     let (mut games, mut recent) = match tauri::async_runtime::spawn_blocking(steam_part).await {
@@ -244,39 +281,52 @@ pub async fn hub(
     };
     if let Some((key, id)) = &steam_api_account {
         hub.steam = true;
-        match steam_api_part(http, data_dir, key, id, games.clone(), recent.clone()).await {
-            Ok((g, r)) => {
+        match steam_api_part(http, data_dir, key, id, games.clone(), recent.clone(), online).await {
+            Ok((g, r, warning)) => {
                 games = g;
                 recent = r;
+                if let Some(e) = warning {
+                    hub.problems.push(tr!("Steam: {}", e));
+                }
             }
+            Err(e) if e == steam_api::OFFLINE => {}
             Err(e) => hub.problems.push(tr!("Steam: {}", e)),
         }
     }
-    fill_names(http, data_dir, &mut games, &mut recent).await;
+    fill_names(http, data_dir, &mut games, &mut recent, online).await;
     hub.games.extend(games);
     hub.recent.extend(recent);
     if let Some((user, key)) = retro_account {
         hub.retro = true;
-        let (games, recent, points) = futures_util::join!(retro::games(http, &user, &key), retro::recent(http, &user, &key), retro::points(http, &user, &key));
-        match games {
-            Ok(list) => hub.games.extend(list),
-            Err(e) => hub.problems.push(tr!("RetroAchievements: {}", e)),
-        }
-        if let Ok(list) = recent {
-            hub.recent.extend(list);
-        }
-        match points {
-            Ok((hardcore, softcore)) => {
-                hub.retro_points = hardcore;
-                hub.retro_softcore = softcore;
+        let file = retro_file(data_dir, &user);
+        let kept: Option<RetroKept> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok());
+        let fresh = if online {
+            let (games, recent, points) = futures_util::join!(retro::games(http, &user, &key), retro::recent(http, &user, &key), retro::points(http, &user, &key));
+            match (games, points) {
+                (Ok(games), Ok(points)) => {
+                    let got = RetroKept { games, recent: recent.unwrap_or_default(), points };
+                    let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
+                    let _ = std::fs::write(&file, serde_json::to_string(&got).unwrap_or_default());
+                    Some(got)
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    hub.problems.push(tr!("RetroAchievements: {}", e));
+                    None
+                }
             }
-            Err(e) => hub.problems.push(tr!("RetroAchievements: {}", e)),
+        } else {
+            None
+        };
+        if let Some(r) = fresh.or(kept) {
+            hub.games.extend(r.games);
+            hub.recent.extend(r.recent);
+            (hub.retro_points, hub.retro_softcore) = r.points;
         }
     }
     hub.recent.sort_by(|a, b| b.achievement.unlocked_at.cmp(&a.achievement.unlocked_at));
     hub.recent.truncate(RECENT);
     if let Some((key, _)) = &steam_api_account {
-        fill_recent_icons(http, data_dir, key, &mut hub.recent).await;
+        fill_recent_icons(http, data_dir, key, &mut hub.recent, online).await;
     }
     hub
 }
@@ -284,10 +334,13 @@ pub async fn hub(
 /// A Steam game's achievements from the Web API: the player's unlocks with the
 /// game's icons and secret flags.
 async fn steam_api_game(http: &reqwest::Client, data_dir: &Path, key: &str, id: &str, app: u32) -> Result<Option<(String, Vec<cerberus_shared::Achievement>, Option<steam_api::Owned>)>, String> {
-    let owned = steam_api::owned(http, data_dir, key, id).await.ok().and_then(|list| list.into_iter().find(|o| o.app == app));
+    let owned = steam_api::owned(http, data_dir, key, id, true).await.ok().and_then(|list| list.into_iter().find(|o| o.app == app));
     let last_played = owned.as_ref().map(|o| o.last_played).unwrap_or(u64::MAX);
-    let (mine, schema) = futures_util::join!(steam_api::mine(http, data_dir, key, id, app, last_played), steam_api::schema(http, data_dir, key, app));
-    let mine = mine?;
+    let (mine, schema) = futures_util::join!(steam_api::mine(http, data_dir, key, id, app, last_played, true), steam_api::schema(http, data_dir, key, app, true));
+    let mine = match mine {
+        Ok(list) => list,
+        Err(_) => steam_api::mine(http, data_dir, key, id, app, last_played, false).await?,
+    };
     let schema = schema.unwrap_or_default();
     if mine.is_empty() && schema.is_empty() {
         return Ok(None);

@@ -633,8 +633,13 @@ pub async fn steam_open(page: &str) -> Result<(), String> {
     call("steam_open", &Arg { page }).await
 }
 
-pub async fn achievements_hub() -> Result<cerberus_shared::AchievementsHub, String> {
-    call("achievements_hub", &()).await
+/// `online` off: only what's on this PC, at once; on: asks Steam and RetroAchievements too.
+pub async fn achievements_hub(online: bool) -> Result<cerberus_shared::AchievementsHub, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        online: bool,
+    }
+    call("achievements_hub", &Arg { online }).await
 }
 
 pub async fn game_achievements(source: &str, key: &str) -> Result<cerberus_shared::GameAchievements, String> {

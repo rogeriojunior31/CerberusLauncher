@@ -20,6 +20,7 @@ use super::steam::Kv;
 
 const API: &str = "https://api.steampowered.com";
 /// SteamID64 of account number 0; a SteamID64 is this plus the account number.
+#[cfg(test)]
 const ID_BASE: u64 = 76_561_197_960_265_728;
 
 fn steam_lang() -> &'static str {
@@ -65,6 +66,9 @@ fn read_reply(status: u16, body: &str) -> Result<Value, String> {
 
 /// Game details hidden in the player's privacy settings.
 pub const NOT_PUBLIC: &str = cerberus_shared::tk!("Os detalhes de jogo do seu perfil da Steam estão privados. Em Privacidade, deixe \"Detalhes de jogo\" como Público para o Cerberus ler suas conquistas.");
+/// Not a message for the player: asked from the disk only, and the disk had nothing.
+pub const OFFLINE: &str = "offline";
+
 /// Steam's edge servers turned questions away for a moment.
 pub const BUSY: &str = cerberus_shared::tk!("A Steam recusou consultas por um momento, por serem muitas seguidas. Tente de novo em alguns minutos.");
 
@@ -188,8 +192,13 @@ fn age(file: &Path) -> Option<Duration> {
 }
 
 /// Every owned game, kept for an hour.
-pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str) -> Result<Vec<Owned>, String> {
+/// With `online` off only the disk is read, however old (the hub shows that at
+/// once and asks Steam right after).
+pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, online: bool) -> Result<Vec<Owned>, String> {
     let file = cache_dir(data_dir).join(format!("owned-{steamid}.json"));
+    if !online {
+        return fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or(OFFLINE.to_string());
+    }
     if age(&file).is_some_and(|a| a < Duration::from_secs(3600)) {
         if let Some(list) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()) {
             return Ok(list);
@@ -222,13 +231,15 @@ struct MineFile {
 
 /// The player's achievements in a game (empty when it has none), kept until
 /// the game is played again.
-pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, app: u32, last_played: u64) -> Result<Vec<Mine>, String> {
+pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, app: u32, last_played: u64, online: bool) -> Result<Vec<Mine>, String> {
     let file = cache_dir(data_dir).join(format!("mine-{steamid}-{app}.json"));
     let lang_now = steam_lang();
     if let Some(kept) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<MineFile>(&t).ok()) {
-        if kept.last_played >= last_played && kept.lang == lang_now {
+        if !online || (kept.last_played >= last_played && kept.lang == lang_now) {
             return Ok(kept.list);
         }
+    } else if !online {
+        return Err(OFFLINE.into());
     }
     let v = get(
         http,
@@ -271,9 +282,12 @@ pub struct SchemaEntry {
     pub hidden: bool,
 }
 
-pub async fn schema(http: &reqwest::Client, data_dir: &Path, key: &str, app: u32) -> Result<Vec<SchemaEntry>, String> {
+pub async fn schema(http: &reqwest::Client, data_dir: &Path, key: &str, app: u32, online: bool) -> Result<Vec<SchemaEntry>, String> {
     let lang_now = steam_lang();
     let file = cache_dir(data_dir).join(format!("schema-{app}-{lang_now}.json"));
+    if !online {
+        return fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or(OFFLINE.to_string());
+    }
     if age(&file).is_some_and(|a| a < Duration::from_secs(30 * 24 * 3600)) {
         if let Some(list) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()) {
             return Ok(list);
@@ -302,6 +316,7 @@ pub async fn schema(http: &reqwest::Client, data_dir: &Path, key: &str, app: u32
 }
 
 /// The account number in Steam's files (`userdata/<n>`) for a SteamID64.
+#[cfg(test)]
 pub fn account_number(steamid: &str) -> Option<String> {
     steamid.parse::<u64>().ok().and_then(|id| id.checked_sub(ID_BASE)).map(|n| n.to_string())
 }

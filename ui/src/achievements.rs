@@ -86,28 +86,56 @@ fn progress(unlocked: u32, total: u32) -> impl IntoView {
 
 #[component]
 pub fn AchievementsPage() -> impl IntoView {
-    let hub = LocalResource::new(api::achievements_hub);
+    // What's on this PC shows at once; Steam and RetroAchievements are asked
+    // right after, and their answer replaces it.
+    let hub = RwSignal::new(None::<Result<AchievementsHub, String>>);
+    let refreshing = RwSignal::new(false);
     let search = RwSignal::new(String::new());
     let platform = RwSignal::new(Platform::All);
     let state = RwSignal::new(State::All);
     let order = RwSignal::new(Order::Recent);
-    let recent_open = RwSignal::new(false);
+    let refresh = move || {
+        if refreshing.get_untracked() {
+            return;
+        }
+        refreshing.set(true);
+        leptos::task::spawn_local(async move {
+            let got = api::achievements_hub(true).await;
+            // A failed refresh keeps what's already on screen.
+            if got.is_ok() || hub.get_untracked().is_none() {
+                hub.set(Some(got));
+            }
+            refreshing.set(false);
+        });
+    };
+    leptos::task::spawn_local(async move {
+        let got = api::achievements_hub(false).await;
+        if hub.get_untracked().is_none() {
+            hub.set(Some(got));
+        }
+        refresh();
+    });
 
     let body = move || match hub.get() {
-        None => view! { <p class="muted" role="status">{tr!("Lendo suas conquistas…")}</p> }.into_any(),
+        None => view! {
+            <div class="ach-loading" role="status"><span class="spin"></span>{tr!("Lendo suas conquistas…")}</div>
+        }
+        .into_any(),
         Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
-        Some(Ok(h)) => view! { <HubBody hub=h search platform state order recent_open /> }.into_any(),
+        Some(Ok(h)) => view! { <HubBody hub=h search platform state order /> }.into_any(),
     };
     view! {
-        <div class="page">
+        <div class="page ach-page">
             <header class="page-h">
-                <div>
-                    <h1>{tr!("Conquistas")}</h1>
-                    <p class="muted">{tr!("Steam e RetroAchievements num lugar só. As da Steam vêm do próprio cliente da Steam neste PC.")}</p>
+                <h1>{tr!("Conquistas")}</h1>
+                <div class="ach-top-a">
+                    <Show when=move || refreshing.get()>
+                        <span class="ach-sync" role="status"><span class="spin"></span>{tr!("Atualizando")}</span>
+                    </Show>
+                    <button type="button" class="btn" disabled=move || refreshing.get() on:click=move |_| refresh()>
+                        <Svg icon=Icon::Refresh size=16 />{tr!("Atualizar")}
+                    </button>
                 </div>
-                <button type="button" class="btn" on:click=move |_| hub.refetch()>
-                    <Svg icon=Icon::Download size=16 />{tr!("Atualizar")}
-                </button>
             </header>
             {body}
         </div>
@@ -115,15 +143,40 @@ pub fn AchievementsPage() -> impl IntoView {
 }
 
 #[component]
-fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Platform>, state: RwSignal<State>, order: RwSignal<Order>, recent_open: RwSignal<bool>) -> impl IntoView {
+fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Platform>, state: RwSignal<State>, order: RwSignal<Order>) -> impl IntoView {
     let library = expect_context::<Library>();
     let unlocked: u32 = hub.games.iter().map(|g| g.unlocked).sum();
     let total: u32 = hub.games.iter().map(|g| g.total).sum();
     let complete = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
-    let beaten = hub.games.iter().filter(|g| g.award.is_some()).count();
+    let beaten = hub.games.iter().filter(|g| g.award.is_some_and(|a| !a.full())).count();
     let hardcore_awards = hub.games.iter().filter(|g| g.award.is_some_and(GameAward::hardcore)).count();
-    let started: Vec<&AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0).collect();
-    let average = if started.is_empty() { 0 } else { started.iter().map(|g| g.percent()).sum::<u32>() / started.len() as u32 };
+
+    // One line of numbers instead of a wall of boxes.
+    let mut facts = vec![
+        tr!("{} de {} conquistas", format::count(unlocked as u64), format::count(total as u64)),
+        if hub.games.len() == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", hub.games.len()) },
+    ];
+    if complete > 0 {
+        facts.push(tr!("{} com 100%", complete));
+    }
+    if beaten > 0 {
+        facts.push(if beaten == 1 { tr!("1 zerado").to_string() } else { tr!("{} zerados", beaten) });
+    }
+    if hardcore_awards > 0 {
+        facts.push(tr!("{} no hardcore", hardcore_awards));
+    }
+    if hub.retro && hub.retro_points + hub.retro_softcore > 0 {
+        facts.push(tr!("{} pontos no RetroAchievements", format::count(hub.retro_points + hub.retro_softcore)));
+    }
+    let pct = if total == 0 { 0 } else { (unlocked as u64 * 100 / total as u64) as u32 };
+    let summary = view! {
+        <section class="ach-sum" aria-label=tr!("Resumo")>
+            <p>{facts.into_iter().enumerate().map(|(i, f)| view! { {(i > 0).then(|| view! { <i aria-hidden="true">"·"</i> })}<span>{f}</span> }).collect_view()}</p>
+            <div class="ach-sum-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=pct.to_string()>
+                <i style=format!("width: {}%", pct.max(1))></i>
+            </div>
+        </section>
+    };
 
     let notes = view! {
         {(!hub.steam).then(|| view! {
@@ -136,61 +189,40 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 <button type="button" class="btn sm" on:click=move |_| library.go(Route::Settings)>{tr!("Conectar")}</button>
             </div>
         })}
-        {hub.problems.iter().map(|p| view! { <p class="problem">{p.clone()}</p> }).collect_view()}
+        {hub.problems.iter().map(|p| view! {
+            <div class="ach-note warn" role="alert"><Svg icon=Icon::Info size=18 /><span>{p.clone()}</span></div>
+        }).collect_view()}
     };
 
-    let stats = view! {
-        <div class="stats">
-            <div class="stat"><span>{tr!("Desbloqueadas")}</span><b>{format!("{} / {}", format::count(unlocked as u64), format::count(total as u64))}</b></div>
-            <div class="stat"><span>{tr!("Zerados")}</span><b>{beaten}</b>
-                {(hardcore_awards > 0).then(|| view! { <small class="muted">{tr!("{} no hardcore", hardcore_awards)}</small> })}</div>
-            <div class="stat"><span>{tr!("100% das conquistas")}</span><b>{complete}</b></div>
-            <div class="stat"><span>{tr!("Média nos jogos começados")}</span><b>{format!("{average}%")}</b></div>
-            <div class="stat"><span>{tr!("Jogos com conquistas")}</span><b>{hub.games.len()}</b></div>
-            {hub.retro.then(|| view! {
-                <div class="stat">
-                    <span>{tr!("Pontos no RetroAchievements")}</span>
-                    <b>{format::count(hub.retro_points + hub.retro_softcore)}</b>
-                    <small class="muted">{tr!("{} no hardcore", format::count(hub.retro_points))}</small>
-                </div>
-            })}
-        </div>
-    };
+    // The games closest to 100%: what's worth playing next.
+    let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 40).cloned().collect();
+    near.sort_by(|a, b| b.percent().cmp(&a.percent()).then_with(|| (a.total - a.unlocked).cmp(&(b.total - b.unlocked))));
+    near.truncate(4);
+    let near = (!near.is_empty()).then(|| view! {
+        <section class="shelf">
+            <div class="shelf-h"><h2>{tr!("Perto dos 100%")}</h2></div>
+            <div class="ach-near">{near.into_iter().map(|g| view! { <NearCard g /> }).collect_view()}</div>
+        </section>
+    });
 
-    let recent = hub.recent.clone();
-    let timeline = (!recent.is_empty()).then(|| {
-        let rows = move || {
-            let shown = if recent_open.get() { recent.len() } else { recent.len().min(6) };
-            recent.iter().take(shown).map(|r| {
-                let a = r.achievement.clone();
-                let route = Route::AchievementGame(r.source.code().to_string(), r.game_key.clone());
-                view! {
-                    <button type="button" class="ach-recent" on:click=move |_| library.go(route.clone())>
-                        <AchIcon a=a.clone() unlocked=true />
-                        <span class="ach-recent-t">
-                            <b>{a.name.clone()}</b>
-                            <small>{r.game_name.clone()}</small>
-                        </span>
-                        <span class="ach-recent-m">
-                            {platform_chip(r.source)}
-                            <small>{a.unlocked_at.map(format::ago).unwrap_or_default()}</small>
-                        </span>
-                    </button>
-                }
-            }).collect_view()
-        };
-        let more = hub.recent.len() > 6;
+    let recent = (!hub.recent.is_empty()).then(|| {
+        let items = hub.recent.iter().take(24).map(|r| {
+            let a = r.achievement.clone();
+            let route = Route::AchievementGame(r.source.code().to_string(), r.game_key.clone());
+            let title = a.description.clone();
+            view! {
+                <button type="button" class="ach-unlock" title=title on:click=move |_| library.go(route.clone())>
+                    <AchIcon a=a.clone() unlocked=true />
+                    <b>{a.name.clone()}</b>
+                    <small>{r.game_name.clone()}</small>
+                    <small class="ach-ago">{a.unlocked_at.map(format::ago).unwrap_or_default()}</small>
+                </button>
+            }
+        }).collect_view();
         view! {
-            <section class="card">
-                <div class="card-h">
-                    <h3>{tr!("Desbloqueadas recentemente")}</h3>
-                    {more.then(|| view! {
-                        <button type="button" class="btn sm" on:click=move |_| recent_open.update(|o| *o = !*o)>
-                            {move || if recent_open.get() { tr!("Mostrar menos") } else { tr!("Mostrar mais") }}
-                        </button>
-                    })}
-                </div>
-                <div class="ach-recents">{rows}</div>
+            <section class="shelf">
+                <div class="shelf-h"><h2>{tr!("Últimas conquistas")}</h2></div>
+                <div class="ach-strip">{items}</div>
             </section>
         }
     });
@@ -231,14 +263,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
             }
             .into_any();
         }
-        let count = shown.len();
-        view! {
-            <p class="muted small" role="status">{if count == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", count) }}</p>
-            <div class="ach-games">
-                {shown.into_iter().map(|g| view! { <GameRow g /> }).collect_view()}
-            </div>
-        }
-        .into_any()
+        view! { <div class="ach-lines" role="list">{shown.into_iter().map(|g| view! { <GameLine g /> }).collect_view()}</div> }.into_any()
     };
 
     let seg = |label: &'static str, on: Signal<bool>, set: Callback<()>| {
@@ -259,11 +284,15 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         .collect_view();
 
     view! {
+        {summary}
         {notes}
-        {stats}
-        {timeline}
-        <section class="catalog-filters" aria-label=tr!("Filtros das conquistas")>
-            <div class="toolbar">
+        {near}
+        {recent}
+        <section class="shelf">
+            <div class="shelf-h"><h2>{tr!("Todos os jogos")}</h2></div>
+            <div class="ach-tools" aria-label=tr!("Filtros das conquistas")>
+                <div class="segs" role="tablist" aria-label=tr!("Plataforma")>{platforms}</div>
+                <div class="chips" role="group" aria-label=tr!("Situação")>{states}</div>
                 <label class="search">
                     <Svg icon=Icon::Search size=18 />
                     <input type="search" placeholder=tr!("Buscar jogo") aria-label=tr!("Buscar jogo")
@@ -280,41 +309,56 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                     <option value="name">{tr!("A a Z")}</option>
                 </select>
             </div>
-            <div class="lib-tabs">
-                <div class="segs big" role="tablist" aria-label=tr!("Plataforma")>{platforms}</div>
-                <div class="chips" role="group" aria-label=tr!("Situação")>{states}</div>
-            </div>
+            {list}
         </section>
-        {list}
     }
 }
 
-/// A game in the hub's list.
+/// A game close to 100%, with what's left.
 #[component]
-fn GameRow(g: AchievementGame) -> impl IntoView {
+fn NearCard(g: AchievementGame) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
+    let left = g.total - g.unlocked;
+    let pct = g.percent();
+    view! {
+        <button type="button" class="ach-near-c" on:click=move |_| library.go(route.clone())>
+            <span class="ach-art"><Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() /></span>
+            <span class="ach-near-t">
+                <b>{g.name.clone()}</b>
+                <small>{if left == 1 { tr!("Falta 1 conquista").to_string() } else { tr!("Faltam {} conquistas", left) }}</small>
+                <span class="ach-near-p"><em>{pct}</em>"%"</span>
+                <span class="ach-bar"><i style=format!("width: {pct}%")></i></span>
+            </span>
+        </button>
+    }
+}
+
+/// A game in the hub's list: one line, scannable down the columns.
+#[component]
+fn GameLine(g: AchievementGame) -> impl IntoView {
     let library = expect_context::<Library>();
     let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
     let hard = g.award.is_some_and(GameAward::hardcore);
-    let detail = match (g.playtime_secs, g.last_unlock) {
-        (Some(t), Some(u)) => tr!("{} jogados · última conquista {}", format::playtime(t), format::ago(u)),
-        (Some(t), None) => tr!("{} jogados", format::playtime(t)),
-        (None, Some(u)) => tr!("Última conquista {}", format::ago(u)),
-        (None, None) => String::new(),
-    };
+    let pct = g.percent();
+    let done = g.total > 0 && g.unlocked == g.total;
+    let mut meta = vec![g.platform.clone()];
+    if let Some(t) = g.playtime_secs {
+        meta.push(tr!("{} jogados", format::playtime(t)));
+    }
     view! {
-        <button type="button" class="ach-game" class:award-hard=hard class:award-soft=g.award.is_some() && !hard on:click=move |_| library.go(route.clone())>
-            <span class="ach-art">
-                <Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() />
+        <button type="button" role="listitem" class="ach-line" class:award-hard=hard class:done=done
+            on:click=move |_| library.go(route.clone())>
+            <span class="ach-art"><Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() /></span>
+            <span class="ach-line-t">
+                <span class="ach-line-h"><b>{g.name.clone()}</b>{award_badge(g.award, g.award_at)}</span>
+                <small>{meta.join(" · ")}</small>
             </span>
-            <span class="ach-game-t">
-                <span class="ach-game-h">
-                    <b>{g.name.clone()}</b>
-                    {award_badge(g.award, g.award_at)}
-                </span>
-                <span class="ach-game-m">{platform_chip(g.source)}{platform_note(&g)}</span>
-                {progress(g.unlocked, g.total)}
-                <small class="muted">{detail}</small>
+            <span class="ach-line-p">
+                <span class="ach-bar"><i style=format!("width: {pct}%") class:done=pct == 100></i></span>
+                <span class="ach-line-n"><b>{format!("{pct}%")}</b><small>{format!("{}/{}", g.unlocked, g.total)}</small></span>
             </span>
+            <small class="ach-line-w">{g.last_unlock.map(format::ago).unwrap_or_default()}</small>
         </button>
     }
 }
