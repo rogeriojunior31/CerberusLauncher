@@ -49,7 +49,7 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
 
 /* ---------- frame ---------- */
 
-.app { display: flex; height: 100vh; }
+.app { display: flex; height: calc(100vh / var(--zoom, 1)); zoom: var(--zoom, 1); }
 
 .side {
   width: var(--side-w);

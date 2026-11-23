@@ -85,6 +85,34 @@ pub fn apply_calm(on: bool) {
     }
 }
 
+const SIZE_KEY: &str = "cerberus-size";
+/// The window's size choices, in percent.
+const SIZES: [u32; 4] = [90, 100, 110, 125];
+
+/// The size the player picked for everything in the window (Big Picture keeps its own).
+pub fn size_saved() -> u32 {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(SIZE_KEY).ok().flatten())
+        .and_then(|v| v.parse().ok())
+        .filter(|v| SIZES.contains(v))
+        .unwrap_or(100)
+}
+
+pub fn apply_size(percent: u32) {
+    if let Some(root) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.document_element()) {
+        let style = wasm_bindgen::JsCast::unchecked_ref::<web_sys::HtmlElement>(&root).style();
+        let _ = style.set_property("--zoom", &format!("{}", f64::from(percent) / 100.0));
+    }
+}
+
+fn save_size(percent: u32) {
+    if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = s.set_item(SIZE_KEY, &percent.to_string());
+    }
+    apply_size(percent);
+}
+
 fn save_calm(on: bool) {
     if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
         let _ = s.set_item(CALM_KEY, if on { "1" } else { "0" });
@@ -282,11 +310,23 @@ fn language_row() -> impl IntoView {
 
 fn appearance() -> impl IntoView {
     let calm = RwSignal::new(calm_saved());
+    let size = RwSignal::new(size_saved());
     let busy = RwSignal::new(false);
+    let sizes = SIZES
+        .into_iter()
+        .map(|p| {
+            view! {
+                <button type="button" class="seg" role="radio" class:on=move || size.get() == p aria-checked=move || (size.get() == p).to_string()
+                    on:click=move |_| { save_size(p); size.set(p); }>{format!("{p}%")}</button>
+            }
+        })
+        .collect_view();
     view! {
         <section class="card set">
             <h3>{tr!("Aparência")}</h3>
             {language_row()}
+            {row(tr!("Tamanho"), tr!("Textos, capas e botões da janela. O Big Picture Mode segue o tamanho da tela."),
+                view! { <div class="segs" role="radiogroup" aria-label=tr!("Tamanho")>{sizes}</div> })}
             {move || row(tr!("Menos animações"), tr!("Sem transições nem movimento, para PCs mais simples ou para quem prefere assim."),
                 switch(calm.get(), tr!("Menos animações"), busy, move || { let on = !calm.get_untracked(); save_calm(on); calm.set(on); }))}
         </section>

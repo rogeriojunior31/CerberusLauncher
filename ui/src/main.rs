@@ -294,6 +294,7 @@ fn App() -> impl IntoView {
     api::on_toast(move |text| library.toast(text));
     tv::watch_for_tv(library);
     settings_page::apply_calm(settings_page::calm_saved());
+    settings_page::apply_size(settings_page::size_saved());
 
     // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
     let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
