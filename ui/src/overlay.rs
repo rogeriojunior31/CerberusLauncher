@@ -1,6 +1,7 @@
 //! The menu over a game (Ctrl+F12): its own see-through window, laid over the
 //! game's. Esc or Ctrl+F12 gives the game back.
 
+use cerberus_shared::tr;
 use cerberus_shared::OverlayView;
 use wasm_bindgen::JsCast;
 use leptos::prelude::*;
@@ -126,11 +127,11 @@ pub fn OverlayMenu() -> impl IntoView {
     view! {
         <div class="gm">
             {move || match state.get() {
-                None => view! { <p class="gm-wait">"Carregando..."</p> }.into_any(),
+                None => view! { <p class="gm-wait">{tr!("Carregando...")}</p> }.into_any(),
                 Some(Err(e)) => view! {
                     <div class="gm-panel">
                         <p class="problem">{e}</p>
-                        <button type="button" class="btn" node_ref=back_ref on:click=move |_| back()>"Voltar"</button>
+                        <button type="button" class="btn" node_ref=back_ref on:click=move |_| back()>{tr!("Voltar")}</button>
                     </div>
                 }.into_any(),
                 Some(Ok(OverlayView { game, session_secs, shots })) => {
@@ -143,8 +144,8 @@ pub fn OverlayMenu() -> impl IntoView {
                                 <div>
                                     <h1>{name.clone()}</h1>
                                     <p class="muted">
-                                        {move || format!("Jogando há {}", format::session_duration(session_secs + ticks.get()))}
-                                        {(total > 0).then(|| format!(" · {} no total", format::playtime(total)))}
+                                        {move || tr!("Jogando há {}", format::session_duration(session_secs + ticks.get()))}
+                                        {(total > 0).then(|| tr!(" · {} no total", format::playtime(total)))}
                                     </p>
                                 </div>
                             </div>
@@ -152,44 +153,44 @@ pub fn OverlayMenu() -> impl IntoView {
                         </header>
                         <div class="gm-panel">
                             <Show when=move || !quitting.get() fallback=move || view! {
-                                <div class="gm-confirm" role="alertdialog" aria-label="Fechar o jogo">
-                                    <p>"Fechar o jogo? O que não foi salvo nele se perde."</p>
+                                <div class="gm-confirm" role="alertdialog" aria-label=tr!("Fechar o jogo")>
+                                    <p>{tr!("Fechar o jogo? O que não foi salvo nele se perde.")}</p>
                                     <div class="gm-row">
                                         <button type="button" class="btn warn" disabled=move || busy.get()
                                             on:click=move |_| run(Box::pin(api::overlay_quit_game()))>
-                                            <Svg icon=Icon::Close size=18 />"Fechar o jogo"
+                                            <Svg icon=Icon::Close size=18 />{tr!("Fechar o jogo")}
                                         </button>
-                                        <button type="button" class="btn" node_ref=cancel_ref on:click=move |_| quitting.set(false)>"Cancelar"</button>
+                                        <button type="button" class="btn" node_ref=cancel_ref on:click=move |_| quitting.set(false)>{tr!("Cancelar")}</button>
                                     </div>
                                 </div>
                             }>
                                 <div class="gm-actions">
                                     <button type="button" class="gm-act primary" node_ref=back_ref on:click=move |_| back()>
-                                        <Svg icon=Icon::Play size=26 /><span>"Voltar ao jogo"</span>
+                                        <Svg icon=Icon::Play size=26 /><span>{tr!("Voltar ao jogo")}</span>
                                     </button>
                                     <button type="button" class="gm-act" disabled=move || busy.get()
                                         on:click=move |_| run(Box::pin(api::overlay_screenshot()))>
-                                        <Svg icon=Icon::Photo size=26 /><span>"Tirar foto"</span>
+                                        <Svg icon=Icon::Photo size=26 /><span>{tr!("Tirar foto")}</span>
                                     </button>
                                     <button type="button" class="gm-act" disabled=move || busy.get()
                                         on:click=move |_| run(Box::pin(api::overlay_open_launcher()))>
-                                        <Svg icon=Icon::External size=26 /><span>"Abrir no Cerberus"</span>
+                                        <Svg icon=Icon::External size=26 /><span>{tr!("Abrir no Cerberus")}</span>
                                     </button>
                                     <button type="button" class="gm-act" on:click=move |_| quitting.set(true)>
-                                        <Svg icon=Icon::Close size=26 /><span>"Fechar o jogo"</span>
+                                        <Svg icon=Icon::Close size=26 /><span>{tr!("Fechar o jogo")}</span>
                                     </button>
                                 </div>
                             </Show>
                             {move || problem.get().map(|e| view! { <p class="problem">{e}</p> })}
                             {(!shots.is_empty()).then(|| view! {
-                                <div class="gm-shots" aria-label="Últimas fotos">
+                                <div class="gm-shots" aria-label=tr!("Últimas fotos")>
                                     {shots.iter().map(|s| view! {
-                                        <img src=api::convert_file_src(&s.path) alt=format!("Foto de {}", format::ago(s.taken)) />
+                                        <img src=api::convert_file_src(&s.path) alt=tr!("Foto de {}", format::ago(s.taken)) />
                                     }).collect_view()}
                                 </div>
                             })}
                         </div>
-                        <p class="gm-hint">"Esc, B ou Ctrl+F12 volta ao jogo · View+Menu no controle abre e fecha · F12 tira foto sem abrir o menu"</p>
+                        <p class="gm-hint">{tr!("Esc, B ou Ctrl+F12 volta ao jogo · View+Menu no controle abre e fecha · F12 tira foto sem abrir o menu")}</p>
                     }.into_any()
                 }
             }}

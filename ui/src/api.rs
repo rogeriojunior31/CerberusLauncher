@@ -547,6 +547,14 @@ pub async fn list_monitors() -> Result<Vec<cerberus_shared::MonitorView>, String
     call("list_monitors", &()).await
 }
 
+pub async fn set_language(code: Option<String>) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        code: Option<String>,
+    }
+    call("set_language", &Arg { code }).await
+}
+
 pub async fn set_monitor(name: Option<String>) -> Result<SettingsView, String> {
     #[derive(serde::Serialize)]
     struct Arg {

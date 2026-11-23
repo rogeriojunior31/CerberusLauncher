@@ -1,5 +1,6 @@
 //! The TV screen's sections: Início, Biblioteca, Descobrir, Downloads, Configurações.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, InstallStep, RecompEntry, Source};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -88,13 +89,13 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
         let item = item.clone();
         move || {
             if library.running.with(|r| r.contains(&id)) {
-                return Some("Jogando");
+                return Some(tr!("Jogando"));
             }
             match &item {
-                Item::Game(g) if g.next_step != cerberus_shared::NextStep::Play => Some("Configurar"),
-                Item::Entry(e) if e.installed.is_some() => Some("Instalado"),
-                Item::Classic(..) => Some("Clássico"),
-                Item::Entry(e) if e.owned_copy.is_some() => Some("Você tem"),
+                Item::Game(g) if g.next_step != cerberus_shared::NextStep::Play => Some(tr!("Configurar")),
+                Item::Entry(e) if e.installed.is_some() => Some(tr!("Instalado")),
+                Item::Classic(..) => Some(tr!("Clássico")),
+                Item::Entry(e) if e.owned_copy.is_some() => Some(tr!("Você tem")),
                 _ => None,
             }
         }
@@ -189,13 +190,13 @@ pub fn Home() -> impl IntoView {
         fresh.sort_by(|a, b| b.released.cmp(&a.released));
         let entries = |list: Vec<RecompEntry>| list.into_iter().take(14).map(Item::Entry).collect::<Vec<_>>();
         vec![
-            ("Jogados recentemente", dock),
-            ("Favoritos", favorites),
-            ("Sua biblioteca", rest),
-            ("Seus clássicos", classic_items.into_iter().take(14).collect()),
-            ("Você já tem o jogo", entries(owned)),
-            ("Populares", entries(popular)),
-            ("Atualizados recentemente", entries(fresh)),
+            (tr!("Jogados recentemente"), dock),
+            (tr!("Favoritos"), favorites),
+            (tr!("Sua biblioteca"), rest),
+            (tr!("Seus clássicos"), classic_items.into_iter().take(14).collect()),
+            (tr!("Você já tem o jogo"), entries(owned)),
+            (tr!("Populares"), entries(popular)),
+            (tr!("Atualizados recentemente"), entries(fresh)),
         ]
     });
     let rows = move || shelves.with(|s| s.iter().map(|(_, items)| items.len()).collect::<Vec<_>>());
@@ -211,7 +212,7 @@ pub fn Home() -> impl IntoView {
         }
     });
 
-    tv.hints.set(vec![(Btn::A, "Jogar"), (Btn::Y, "Página do jogo"), (Btn::X, "Opções")]);
+    tv.hints.set(vec![(Btn::A, tr!("Jogar")), (Btn::Y, tr!("Página do jogo")), (Btn::X, tr!("Opções"))]);
     tv.handle_page(move |btn| {
         let item = focused();
         match btn {
@@ -256,16 +257,16 @@ pub fn Home() -> impl IntoView {
     let hero = move || {
         let item = focused()?;
         let status = match &item {
-            Item::Game(g) if library.running.with(|r| r.contains(&g.id)) => "Jogando agora".to_string(),
+            Item::Game(g) if library.running.with(|r| r.contains(&g.id)) => tr!("Jogando agora").to_string(),
             Item::Game(g) => match g.last_played {
-                Some(t) => format!("Jogado {} · {}", format::ago(t), format::playtime(g.playtime_secs)),
-                None => "Na sua biblioteca".to_string(),
+                Some(t) => tr!("Jogado {} · {}", format::ago(t), format::playtime(g.playtime_secs)),
+                None => tr!("Na sua biblioteca").to_string(),
             },
-            Item::Entry(e) if e.owned_copy.is_some() => "Você já tem o jogo".to_string(),
+            Item::Entry(e) if e.owned_copy.is_some() => tr!("Você já tem o jogo").to_string(),
             Item::Entry(e) => format!("{} downloads", format::count(e.downloads)),
             Item::Classic(r, c) => match r.last_played {
                 Some(t) => format!("{} · jogado {} · {}", crate::classics::console_name(c), format::ago(t), format::playtime(r.playtime_secs)),
-                None => format!("Clássico · {}", crate::classics::console_name(c)),
+                None => tr!("Clássico · {}", crate::classics::console_name(c)),
             },
         };
         let entry = match &item {
@@ -273,7 +274,7 @@ pub fn Home() -> impl IntoView {
             Item::Entry(e) => Some(e.clone()),
             Item::Classic(..) => None,
         };
-        let based = entry.clone().filter(|e| !e.game.is_empty()).map(|e| format!("Baseado em {} · {}", e.game, e.console));
+        let based = entry.clone().filter(|e| !e.game.is_empty()).map(|e| tr!("Baseado em {} · {}", e.game, e.console));
         let logo = match &item {
             Item::Game(g) => g.logo_path.clone().or_else(|| entry.as_ref().and_then(|e| e.logo.clone())),
             Item::Entry(e) => e.logo.clone(),
@@ -285,9 +286,9 @@ pub fn Home() -> impl IntoView {
         };
         let action = match &item {
             Item::Game(g) if focus.row.get() == 0 => crate::launch_action(g).0,
-            Item::Game(_) => "Abrir",
-            Item::Entry(_) => "Ver e instalar",
-            Item::Classic(..) => "Jogar",
+            Item::Game(_) => tr!("Abrir"),
+            Item::Entry(_) => tr!("Ver e instalar"),
+            Item::Classic(..) => tr!("Jogar"),
         };
         let kind = tv.pad.get();
         Some(view! {
@@ -297,7 +298,7 @@ pub fn Home() -> impl IntoView {
                 {based.map(|b| view! { <p class="tv-based">{b}</p> })}
                 <div class="tv-hero-actions">
                     <span>{glyph(Btn::A, kind)}{action}</span>
-                    <span>{glyph(Btn::Y, kind)}"Página do jogo"</span>
+                    <span>{glyph(Btn::Y, kind)}{tr!("Página do jogo")}</span>
                 </div>
             </div>
         })
@@ -306,7 +307,7 @@ pub fn Home() -> impl IntoView {
     let body = move || {
         let all = shelves.get();
         if all.iter().all(|(_, items)| items.is_empty()) {
-            return view! { <p class="tv-empty">"Carregando sua biblioteca..."</p> }.into_any();
+            return view! { <p class="tv-empty">{tr!("Carregando sua biblioteca...")}</p> }.into_any();
         }
         all.into_iter()
             .enumerate()
@@ -364,7 +365,7 @@ pub fn LibraryGrid() -> impl IntoView {
             tv.show_backdrop(Item::Game(g).heroes());
         }
     });
-    tv.hints.set(vec![(Btn::A, "Abrir"), (Btn::Y, "Jogar"), (Btn::X, "Opções")]);
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Jogar")), (Btn::X, tr!("Opções"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
             if focus.step(btn, &rows()) {
@@ -397,7 +398,7 @@ pub fn LibraryGrid() -> impl IntoView {
     let grid = move || {
         let list = games.get();
         if list.is_empty() {
-            return view! { <p class="tv-empty">"Sua biblioteca está vazia. Instale um recomp no Descobrir."</p> }.into_any();
+            return view! { <p class="tv-empty">{tr!("Sua biblioteca está vazia. Instale um recomp no Descobrir.")}</p> }.into_any();
         }
         list.into_iter()
             .enumerate()
@@ -410,7 +411,7 @@ pub fn LibraryGrid() -> impl IntoView {
     };
     view! {
         <div class="tv-page">
-            <h1 class="tv-title">"Biblioteca"<small>{move || format!("{} jogos", games.with(Vec::len))}</small></h1>
+            <h1 class="tv-title">{tr!("Biblioteca")}<small>{move || tr!("{} jogos", games.with(Vec::len))}</small></h1>
             <div class="tv-grid">{grid}</div>
         </div>
     }
@@ -478,7 +479,7 @@ pub fn Discover() -> impl IntoView {
             tv.show_backdrop(Item::Entry(e).heroes());
         }
     });
-    tv.hints.set(vec![(Btn::A, "Abrir"), (Btn::Y, "Buscar")]);
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Buscar"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
             if focus.step(btn, &rows()) {
@@ -539,14 +540,14 @@ pub fn Discover() -> impl IntoView {
     };
     view! {
         <div class="tv-page">
-            <h1 class="tv-title">"Descobrir"<small>{move || format!("{} jogos", results.with(Vec::len))}</small></h1>
+            <h1 class="tv-title">{tr!("Descobrir")}<small>{move || tr!("{} jogos", results.with(Vec::len))}</small></h1>
             <div class="tv-chips">
-                {chip(0, Box::new(move || { let q = tv.search.get(); if q.is_empty() { "Buscar".to_string() } else { format!("Buscar: {q}") } }))}
-                {chip(1, Box::new(move || if owned_only.get() { "✓ Tenho o jogo".to_string() } else { "Tenho o jogo".to_string() }))}
-                {chip(2, Box::new(move || match order.get() { Order::Popular => "Ordem: populares", Order::Newest => "Ordem: novos", Order::Name => "Ordem: A a Z" }.to_string()))}
+                {chip(0, Box::new(move || { let q = tv.search.get(); if q.is_empty() { tr!("Buscar").to_string() } else { tr!("Buscar: {}", q) } }))}
+                {chip(1, Box::new(move || if owned_only.get() { tr!("✓ Tenho o jogo").to_string() } else { tr!("Tenho o jogo").to_string() }))}
+                {chip(2, Box::new(move || match order.get() { Order::Popular => tr!("Ordem: populares"), Order::Newest => tr!("Ordem: novos"), Order::Name => tr!("Ordem: A a Z") }.to_string()))}
             </div>
             <div class="tv-grid">{grid}</div>
-            {move || results.with(Vec::is_empty).then(|| view! { <p class="tv-empty">"Nenhum jogo encontrado."</p> })}
+            {move || results.with(Vec::is_empty).then(|| view! { <p class="tv-empty">{tr!("Nenhum jogo encontrado.")}</p> })}
         </div>
     }
 }
@@ -581,7 +582,7 @@ pub fn Downloads() -> impl IntoView {
     };
     let rows = move || vec![1; list().len()];
     Effect::new(move |_| focus.clamp(&rows()));
-    tv.hints.set(vec![(Btn::A, "Abrir / atualizar")]);
+    tv.hints.set(vec![(Btn::A, tr!("Abrir / atualizar"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down => {
             if focus.step(btn, &rows()) {
@@ -605,7 +606,7 @@ pub fn Downloads() -> impl IntoView {
     let body = move || {
         let items = list();
         if items.is_empty() {
-            return view! { <p class="tv-empty">"Nada baixando agora e nenhuma atualização pendente."</p> }.into_any();
+            return view! { <p class="tv-empty">{tr!("Nada baixando agora e nenhuma atualização pendente.")}</p> }.into_any();
         }
         items
             .into_iter()
@@ -616,11 +617,11 @@ pub fn Downloads() -> impl IntoView {
                 let detail = move || {
                     if running {
                         match library.progress.with(|p| p.get(&rid).cloned()) {
-                            Some(InstallStep::Downloading { done, total }) if total > 0 => format!("Baixando · {} de {}", format::megabytes(done), format::megabytes(total)),
-                            Some(InstallStep::Unpacking) => "Preparando arquivos".to_string(),
-                            Some(InstallStep::Paused { done, total }) => format!("Pausado · {} de {}", format::megabytes(done), format::megabytes(total)),
-                            Some(InstallStep::Failed { message }) => format!("Falhou · {message}"),
-                            _ => "Começando".to_string(),
+                            Some(InstallStep::Downloading { done, total }) if total > 0 => tr!("Baixando · {} de {}", format::megabytes(done), format::megabytes(total)),
+                            Some(InstallStep::Unpacking) => tr!("Preparando arquivos").to_string(),
+                            Some(InstallStep::Paused { done, total }) => tr!("Pausado · {} de {}", format::megabytes(done), format::megabytes(total)),
+                            Some(InstallStep::Failed { message }) => tr!("Falhou · {}", message),
+                            _ => tr!("Começando").to_string(),
                         }
                     } else {
                         from_to.clone()
@@ -632,7 +633,7 @@ pub fn Downloads() -> impl IntoView {
                     <div class="tv-line" class:on=move || focus.is(r, 0) data-tvf=focus.key(r, 0)>
                         <div class="tv-line-cover"><Poster sources=recomp_covers(&e) title=e.name.clone() /></div>
                         <div class="tv-line-text"><b>{e.name.clone()}</b><span>{detail}</span>{bar}</div>
-                        <span class="tv-line-act">{if running { "Abrir" } else { "Atualizar" }}</span>
+                        <span class="tv-line-act">{if running { tr!("Abrir") } else { tr!("Atualizar") }}</span>
                     </div>
                 }
             })
@@ -641,7 +642,7 @@ pub fn Downloads() -> impl IntoView {
     };
     view! {
         <div class="tv-page">
-            <h1 class="tv-title">"Downloads"</h1>
+            <h1 class="tv-title">{tr!("Downloads")}</h1>
             <div class="tv-list">{body}</div>
         </div>
     }
@@ -662,7 +663,7 @@ pub fn Settings() -> impl IntoView {
         }
     });
     const ROWS: usize = 4;
-    tv.hints.set(vec![(Btn::A, "Escolher")]);
+    tv.hints.set(vec![(Btn::A, tr!("Escolher"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down => {
             if focus.step(btn, &[1; ROWS]) {
@@ -705,14 +706,14 @@ pub fn Settings() -> impl IntoView {
     let on_off = |s: RwSignal<bool>| -> Box<dyn Fn() -> String + Send + Sync> { Box::new(move || if s.get() { "◀ Ligado ▶".into() } else { "◀ Desligado ▶".into() }) };
     view! {
         <div class="tv-page">
-            <h1 class="tv-title">"Configurações"</h1>
+            <h1 class="tv-title">{tr!("Configurações")}</h1>
             <div class="tv-list">
-                {row(0, "Abrir o Cerberus no Big Picture Mode", "Toda vez que o Cerberus abrir, em tela cheia para o controle.", on_off(start_in_tv))}
-                {row(1, "Sons de navegação", "Um toque curto ao mover, escolher e voltar.", on_off(sounds))}
-                {row(2, "Sair do Big Picture Mode", "Volta para a janela normal. Segurar o botão Menu também sai.", Box::new(|| "Sair".into()))}
-                {row(3, "Fechar o Cerberus", "Fecha o launcher.", Box::new(|| "Fechar".into()))}
+                {row(0, tr!("Abrir o Cerberus no Big Picture Mode"), tr!("Toda vez que o Cerberus abrir, em tela cheia para o controle."), on_off(start_in_tv))}
+                {row(1, tr!("Sons de navegação"), tr!("Um toque curto ao mover, escolher e voltar."), on_off(sounds))}
+                {row(2, tr!("Sair do Big Picture Mode"), tr!("Volta para a janela normal. Segurar o botão Menu também sai."), Box::new(|| tr!("Sair").into()))}
+                {row(3, tr!("Fechar o Cerberus"), tr!("Fecha o launcher."), Box::new(|| tr!("Fechar").into()))}
             </div>
-            <p class="tv-note">{move || format!("Controle: {}", match tv.pad.get() { super::PadKind::Xbox => "Xbox (ou compatível)", super::PadKind::PlayStation => "PlayStation", super::PadKind::Nintendo => "Nintendo" })}</p>
+            <p class="tv-note">{move || tr!("Controle: {}", match tv.pad.get() { super::PadKind::Xbox => tr!("Xbox (ou compatível)"), super::PadKind::PlayStation => "PlayStation", super::PadKind::Nintendo => tr!("Nintendo") })}</p>
         </div>
     }
     .into_any()

@@ -4,6 +4,7 @@
 //! counted by this program, so it must outlive the window. Hidden only for a
 //! game, it quits by itself once the last game closes.
 
+use cerberus_shared::tr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use tauri::menu::{Menu, MenuItem};
@@ -65,10 +66,21 @@ pub fn show(app: &AppHandle) {
 }
 
 /// The tray icon: a click opens the window; its menu opens or quits.
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let open = MenuItem::with_id(app, "open", tr!("Abrir Cerberus"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", tr!("Sair"), true, None::<&str>)?;
+    Menu::with_items(app, &[&open, &quit])
+}
+
+/// The tray menu again, in the language just picked.
+pub fn retitle_tray(app: &AppHandle) {
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id("cerberus"), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
 pub fn tray(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Abrir Cerberus", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let menu = tray_menu(app)?;
     let mut tray = TrayIconBuilder::with_id("cerberus")
         .tooltip("Cerberus Launcher")
         .menu(&menu)

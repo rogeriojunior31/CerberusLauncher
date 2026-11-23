@@ -1,5 +1,6 @@
 //! The frame around every page: sidebar, title bar, and toasts.
 
+use cerberus_shared::tr;
 use leptos::prelude::*;
 
 use crate::icons::{Icon, Svg};
@@ -30,16 +31,16 @@ pub fn Sidebar() -> impl IntoView {
     view! {
         <aside class="side">
             <div class="brand" data-tauri-drag-region>
-                <img class="mark" src="brand/cerberus-pixel-icone.svg" alt="Cerberus Launcher" draggable="false" />
+                <img class="mark" src="brand/cerberus-pixel-icone.svg" alt=tr!("Cerberus Launcher") draggable="false" />
                 <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt="" draggable="false" />
             </div>
-            <nav class="navs" aria-label="Seções">
-                {item(Route::Home, Icon::Home, "Início")}
-                {item(Route::Library, Icon::Library, "Biblioteca")}
-                {item(Route::Discover, Icon::Discover, "Descobrir")}
-                {item(Route::Downloads, Icon::Download, "Downloads")}
-                {item(Route::Saves, Icon::Saves, "Saves")}
-                {item(Route::News, Icon::Bell, "Novidades")}
+            <nav class="navs" aria-label=tr!("Seções")>
+                {item(Route::Home, Icon::Home, tr!("Início"))}
+                {item(Route::Library, Icon::Library, tr!("Biblioteca"))}
+                {item(Route::Discover, Icon::Discover, tr!("Descobrir"))}
+                {item(Route::Downloads, Icon::Download, tr!("Downloads"))}
+                {item(Route::Saves, Icon::Saves, tr!("Saves"))}
+                {item(Route::News, Icon::Bell, tr!("Novidades"))}
             </nav>
             {move || {
                 let mut favorites: Vec<cerberus_shared::Game> = library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.favorite && !g.hidden).collect();
@@ -58,7 +59,7 @@ pub fn Sidebar() -> impl IntoView {
                     }).collect_view();
                     view! {
                         <div class="side-favs">
-                            <span class="side-h"><Svg icon=Icon::HeartFill size=12 />"Favoritos"</span>
+                            <span class="side-h"><Svg icon=Icon::HeartFill size=12 />{tr!("Favoritos")}</span>
                             {rows}
                         </div>
                     }
@@ -67,10 +68,10 @@ pub fn Sidebar() -> impl IntoView {
             <div class="side-foot">
                 <button type="button" class="nav" on:click=move |_| library.add_game()>
                     <Svg icon=Icon::Plus />
-                    <span>"Adicionar jogo"</span>
+                    <span>{tr!("Adicionar jogo")}</span>
                 </button>
-                {item(Route::BigPicture, Icon::Tv, "Big Picture Mode")}
-                {item(Route::Settings, Icon::Settings, "Configurações")}
+                {item(Route::BigPicture, Icon::Tv, tr!("Big Picture Mode"))}
+                {item(Route::Settings, Icon::Settings, tr!("Configurações"))}
             </div>
         </aside>
     }
@@ -81,13 +82,13 @@ pub fn TitleBar() -> impl IntoView {
     view! {
         <div class="topbar" data-tauri-drag-region>
             <div class="win">
-                <button type="button" aria-label="Minimizar" on:click=|_| api::window_action("minimize")>
+                <button type="button" aria-label=tr!("Minimizar") on:click=|_| api::window_action("minimize")>
                     <Svg icon=Icon::Minimize size=14 />
                 </button>
-                <button type="button" aria-label="Maximizar" on:click=|_| api::window_action("toggleMaximize")>
+                <button type="button" aria-label=tr!("Maximizar") on:click=|_| api::window_action("toggleMaximize")>
                     <Svg icon=Icon::Maximize size=14 />
                 </button>
-                <button type="button" class="close" aria-label="Fechar" on:click=|_| api::window_action("close")>
+                <button type="button" class="close" aria-label=tr!("Fechar") on:click=|_| api::window_action("close")>
                     <Svg icon=Icon::Close size=14 />
                 </button>
             </div>
@@ -109,7 +110,7 @@ pub fn Toasts() -> impl IntoView {
                 view! {
                     <div class="toast" class:bad=toast.error role=if toast.error { "alert" } else { "status" }>
                         <span>{toast.text}</span>
-                        <button type="button" aria-label="Fechar" on:click=dismiss><Svg icon=Icon::Close size=14 /></button>
+                        <button type="button" aria-label=tr!("Fechar") on:click=dismiss><Svg icon=Icon::Close size=14 /></button>
                     </div>
                 }
             })

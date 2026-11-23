@@ -2,6 +2,7 @@
 //! SteamGridDB (with the player's own free key) or from a file, and framed here
 //! by dragging and zooming inside a frame of the shape it is shown in.
 
+use cerberus_shared::tr;
 use cerberus_shared::{ArtGame, ArtOptions, ArtPic, Game};
 use leptos::html;
 use leptos::prelude::*;
@@ -29,9 +30,9 @@ impl Kind {
     }
     fn label(self) -> &'static str {
         match self {
-            Kind::Cover => "Capa",
-            Kind::Hero => "Fundo",
-            Kind::Logo => "Logo",
+            Kind::Cover => tr!("Capa"),
+            Kind::Hero => tr!("Fundo"),
+            Kind::Logo => tr!("Logo"),
         }
     }
     /// The picture's finished size; its shape is the frame's.
@@ -75,8 +76,8 @@ fn place(kind: Kind, natural: (f64, f64), zoom: f64, offset: (f64, f64), w: f64,
 /// The framed picture at its finished size, as a `data:` address.
 fn render(kind: Kind, img: &web_sys::HtmlImageElement, natural: (f64, f64), zoom: f64, offset: (f64, f64)) -> Result<String, String> {
     let (w, h) = kind.size();
-    let document = web_sys::window().and_then(|w| w.document()).ok_or("Sem janela.")?;
-    let canvas: web_sys::HtmlCanvasElement = document.create_element("canvas").map_err(|_| "Sem canvas.")?.dyn_into().map_err(|_| "Sem canvas.")?;
+    let document = web_sys::window().and_then(|w| w.document()).ok_or(tr!("Sem janela."))?;
+    let canvas: web_sys::HtmlCanvasElement = document.create_element("canvas").map_err(|_| tr!("Sem canvas."))?.dyn_into().map_err(|_| tr!("Sem canvas."))?;
     canvas.set_width(w as u32);
     canvas.set_height(h as u32);
     let ctx: web_sys::CanvasRenderingContext2d = canvas
@@ -84,17 +85,17 @@ fn render(kind: Kind, img: &web_sys::HtmlImageElement, natural: (f64, f64), zoom
         .ok()
         .flatten()
         .and_then(|c| c.dyn_into().ok())
-        .ok_or("Sem canvas.")?;
+        .ok_or(tr!("Sem canvas."))?;
     if kind.fills() {
         ctx.set_fill_style_str("#000");
         ctx.fill_rect(0.0, 0.0, w, h);
     }
     let (x, y, dw, dh) = place(kind, natural, zoom, offset, w, h);
-    ctx.draw_image_with_html_image_element_and_dw_and_dh(img, x, y, dw, dh).map_err(|_| "Não foi possível desenhar a imagem.")?;
+    ctx.draw_image_with_html_image_element_and_dw_and_dh(img, x, y, dw, dh).map_err(|_| tr!("Não foi possível desenhar a imagem."))?;
     let (mime, quality) = if kind.fills() { ("image/jpeg", 0.92) } else { ("image/png", 1.0) };
     canvas
         .to_data_url_with_type_and_encoder_options(mime, &wasm_bindgen::JsValue::from_f64(quality))
-        .map_err(|_| "Não foi possível gerar a imagem.".to_string())
+        .map_err(|_| tr!("Não foi possível gerar a imagem.").to_string())
 }
 
 #[component]
@@ -202,7 +203,7 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
             if done.is_some() {
                 picture.set(None);
                 library.games.refetch();
-                library.toast("Arte original de volta.");
+                library.toast(tr!("Arte original de volta."));
             }
         });
     };
@@ -272,7 +273,7 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
             .into_any(),
             None => match kind_now.current(&current_game.get()) {
                 Some(url) => view! { <img class="cz-now" class:fit=!kind_now.fills() src=url alt="" draggable="false" /> }.into_any(),
-                None => view! { <p class="cz-empty">"Sem imagem. Escolha uma ao lado."</p> }.into_any(),
+                None => view! { <p class="cz-empty">{tr!("Sem imagem. Escolha uma ao lado.")}</p> }.into_any(),
             },
         }
     };
@@ -284,7 +285,7 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
     };
 
     let sgdb = move || match has_key.get() {
-        None => view! { <p class="muted small">"Carregando..."</p> }.into_any(),
+        None => view! { <p class="muted small">{tr!("Carregando...")}</p> }.into_any(),
         Some(false) => {
             let save_key = move |e: leptos::ev::SubmitEvent| {
                 e.prevent_default();
@@ -294,22 +295,22 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
                     busy.set(false);
                     if saved.is_some() {
                         has_key.set(Some(true));
-                        library.toast("Chave do SteamGridDB guardada.");
+                        library.toast(tr!("Chave do SteamGridDB guardada."));
                         search();
                     }
                 });
             };
             view! {
                 <div class="cz-key">
-                    <b>"Arte da comunidade, do SteamGridDB"</b>
-                    <p class="muted small">"Milhares de capas, fundos e logos feitos por fãs. Crie uma conta gratuita lá, gere sua chave de API e cole aqui. Ela fica só no seu PC."</p>
+                    <b>{tr!("Arte da comunidade, do SteamGridDB")}</b>
+                    <p class="muted small">{tr!("Milhares de capas, fundos e logos feitos por fãs. Crie uma conta gratuita lá, gere sua chave de API e cole aqui. Ela fica só no seu PC.")}</p>
                     <button type="button" class="link" on:click=move |_| spawn_local(async move { library.report(api::open_steamgriddb_keys().await); })>
-                        "Pegar minha chave no SteamGridDB"
+                        {tr!("Pegar minha chave no SteamGridDB")}
                     </button>
                     <form class="row" on:submit=save_key>
-                        <input class="input" type="password" placeholder="Chave de API" prop:value=move || key_input.get()
+                        <input class="input" type="password" placeholder=tr!("Chave de API") prop:value=move || key_input.get()
                             on:input=move |e| key_input.set(event_target_value(&e)) />
-                        <button type="submit" class="btn sm main" disabled=move || busy.get() || key_input.get().trim().is_empty()>"Guardar"</button>
+                        <button type="submit" class="btn sm main" disabled=move || busy.get() || key_input.get().trim().is_empty()>{tr!("Guardar")}</button>
                     </form>
                 </div>
             }
@@ -333,14 +334,14 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
             let pics = move || {
                 let Some(all) = options.get() else {
                     return if looking.get() {
-                        view! { <p class="fr-status"><span class="spin"></span>"Buscando no SteamGridDB..."</p> }.into_any()
+                        view! { <p class="fr-status"><span class="spin"></span>{tr!("Buscando no SteamGridDB...")}</p> }.into_any()
                     } else {
                         ().into_any()
                     };
                 };
                 let list = kind.get().options(&all);
                 if list.is_empty() {
-                    return view! { <p class="muted small">"O SteamGridDB não tem esse tipo de imagem para esse jogo."</p> }.into_any();
+                    return view! { <p class="muted small">{tr!("O SteamGridDB não tem esse tipo de imagem para esse jogo.")}</p> }.into_any();
                 }
                 let tiles = list
                     .into_iter()
@@ -357,8 +358,8 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
             };
             view! {
                 <form class="row cz-search" on:submit=move |e: leptos::ev::SubmitEvent| { e.prevent_default(); search(); }>
-                    <input class="input" placeholder="Nome do jogo" prop:value=move || term.get() on:input=move |e| term.set(event_target_value(&e)) />
-                    <button type="submit" class="btn sm" disabled=move || looking.get()><Svg icon=Icon::Search size=16 />"Buscar"</button>
+                    <input class="input" placeholder=tr!("Nome do jogo") prop:value=move || term.get() on:input=move |e| term.set(event_target_value(&e)) />
+                    <button type="submit" class="btn sm" disabled=move || looking.get()><Svg icon=Icon::Search size=16 />{tr!("Buscar")}</button>
                 </form>
                 <div class="row cz-games">{games}</div>
                 {pics}
@@ -369,9 +370,9 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
 
     view! {
         <div class="backdrop-dim">
-            <div class="dialog cz" role="dialog" aria-modal="true" aria-label="Personalizar arte">
+            <div class="dialog cz" role="dialog" aria-modal="true" aria-label=tr!("Personalizar arte")>
                 <div class="cz-head">
-                    <h2>{format!("Personalizar arte · {}", game.name)}</h2>
+                    <h2>{tr!("Personalizar arte · {}", game.name)}</h2>
                     <nav class="tabs">{tab(Kind::Cover)}{tab(Kind::Hero)}{tab(Kind::Logo)}</nav>
                 </div>
                 <div class="cz-body">
@@ -382,25 +383,25 @@ pub fn CustomizeDialog(game: Game) -> impl IntoView {
                         </div>
                         <Show when=move || picture.get().is_some()>
                             <label class="cz-zoom">
-                                <span>"Zoom"</span>
+                                <span>{tr!("Zoom")}</span>
                                 <input type="range" min="0.2" max="5" step="0.01" prop:value=move || zoom.get().to_string()
                                     on:input=move |e| { if let Ok(z) = event_target_value(&e).parse::<f64>() { zoom.set(z) } } />
                             </label>
-                            <p class="muted small">"Arraste a imagem para posicionar. A roda do mouse também dá zoom."</p>
+                            <p class="muted small">{tr!("Arraste a imagem para posicionar. A roda do mouse também dá zoom.")}</p>
                         </Show>
                         <div class="row">
                             <button type="button" class="btn sm" on:click=pick_file disabled=move || busy.get()>
-                                <Svg icon=Icon::Folder size=16 />"Escolher arquivo..."
+                                <Svg icon=Icon::Folder size=16 />{tr!("Escolher arquivo...")}
                             </button>
-                            <button type="button" class="btn sm" on:click=reset disabled=move || busy.get()>"Restaurar original"</button>
+                            <button type="button" class="btn sm" on:click=reset disabled=move || busy.get()>{tr!("Restaurar original")}</button>
                         </div>
                     </div>
                     <div class="cz-right">{sgdb}</div>
                 </div>
                 <div class="dialog-footer">
-                    <button type="button" class="btn" on:click=move |_| close()>"Fechar"</button>
+                    <button type="button" class="btn" on:click=move |_| close()>{tr!("Fechar")}</button>
                     <button type="button" class="btn main" disabled=move || busy.get() || picture.get().is_none() on:click=save>
-                        {move || format!("Salvar {}", kind.get().label().to_lowercase())}
+                        {move || tr!("Salvar {}", kind.get().label().to_lowercase())}
                     </button>
                 </div>
             </div>

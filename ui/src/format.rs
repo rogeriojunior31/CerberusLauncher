@@ -1,6 +1,13 @@
 //! Numbers and dates the way people read them.
 
+use cerberus_shared::i18n::{Lang, lang};
+use cerberus_shared::tr;
 use wasm_bindgen::JsValue;
+
+/// A decimal number with the language's separator: "7,7" or "7.7".
+pub fn decimal(text: String) -> String {
+    if lang() == Lang::Pt { text.replace('.', ",") } else { text }
+}
 
 pub fn megabytes(bytes: u64) -> String {
     let mb = bytes as f64 / (1024.0 * 1024.0);
@@ -16,11 +23,19 @@ pub fn disk_size(bytes: u64) -> String {
     if gb < 1.0 {
         return megabytes(bytes);
     }
-    format!("{gb:.1} GB").replace('.', ",")
+    decimal(format!("{gb:.1} GB"))
 }
 
-/// 401060 -> "401 mil", 7730 -> "7,7 mil", 527 -> "527".
+/// 401060 -> "401 mil" ("401K"), 7730 -> "7,7 mil" ("7.7K"), 527 -> "527".
 pub fn count(n: u64) -> String {
+    if lang() == Lang::En {
+        return match n {
+            0..1_000 => n.to_string(),
+            1_000..10_000 => format!("{:.1}K", n as f64 / 1000.0),
+            10_000..1_000_000 => format!("{}K", n / 1000),
+            _ => format!("{:.1}M", n as f64 / 1_000_000.0),
+        };
+    }
     match n {
         0..1_000 => n.to_string(),
         1_000..10_000 => format!("{:.1} mil", n as f64 / 1000.0).replace('.', ","),
@@ -40,7 +55,7 @@ pub fn session_duration(seconds: u64) -> String {
 pub fn playtime(seconds: u64) -> String {
     let minutes = seconds / 60;
     match (minutes / 60, minutes % 60) {
-        (0, 0) => "menos de 1 min".to_string(),
+        (0, 0) => tr!("menos de 1 min").to_string(),
         (0, m) => format!("{m} min"),
         (h, 0) => format!("{h} h"),
         (h, m) => format!("{h} h {m} min"),
@@ -52,10 +67,10 @@ pub fn ago(seconds: u64) -> String {
     let now = (js_sys::Date::now() / 1000.0) as u64;
     let elapsed = now.saturating_sub(seconds);
     match elapsed {
-        0..3_600 => "agora há pouco".to_string(),
-        3_600..86_400 => format!("há {} h", elapsed / 3_600),
-        86_400..172_800 => "ontem".to_string(),
-        172_800..2_592_000 => format!("há {} dias", elapsed / 86_400),
+        0..3_600 => tr!("agora há pouco").to_string(),
+        3_600..86_400 => tr!("há {} h", elapsed / 3_600),
+        86_400..172_800 => tr!("ontem").to_string(),
+        172_800..2_592_000 => tr!("há {} dias", elapsed / 86_400),
         _ => date_time(seconds).split(',').next().unwrap_or_default().to_string(),
     }
 }
@@ -67,5 +82,5 @@ pub fn date_time(seconds: u64) -> String {
     let set = |key: &str, value: &str| js_sys::Reflect::set(&options, &key.into(), &value.into());
     let _ = set("dateStyle", "short");
     let _ = set("timeStyle", "short");
-    date.to_locale_string("pt-BR", &options).into()
+    date.to_locale_string(if lang() == Lang::En { "en-US" } else { "pt-BR" }, &options).into()
 }

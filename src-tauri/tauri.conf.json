@@ -50,14 +50,14 @@
       "webviewInstallMode": { "type": "embedBootstrapper" },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["PortugueseBR"],
+        "languages": ["English", "PortugueseBR"],
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico",
         "headerImage": "installer/header.bmp",
         "sidebarImage": "installer/sidebar.bmp",
         "startMenuFolder": "Cerberus Launcher",
         "installerHooks": "installer/hooks.nsh",
-        "customLanguageFiles": { "PortugueseBR": "installer/PortugueseBR.nsh" }
+        "customLanguageFiles": { "English": "installer/English.nsh", "PortugueseBR": "installer/PortugueseBR.nsh" }
       }
     }
   }

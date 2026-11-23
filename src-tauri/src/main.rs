@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod language;
 mod dlss;
 mod overlay;
 mod disc_image;
@@ -121,6 +122,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         },
         start_hidden: chosen.start_hidden,
         monitor: chosen.monitor.clone(),
+        language: chosen.language.clone(),
         ra_user: chosen.ra_user.clone(),
         roms: {
             let played = emulation::played(&data.0);
@@ -620,6 +622,18 @@ fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
 #[tauri::command]
 fn list_monitors(app: AppHandle) -> Vec<cerberus_shared::MonitorView> {
     app.get_webview_window("main").map(|w| monitors::list(&w)).unwrap_or_default()
+}
+
+/// Picks the app's language (none: Windows'). The window reloads itself to show it.
+#[tauri::command]
+fn set_language(app: AppHandle, code: Option<String>) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.language = code.filter(|c| !c.is_empty());
+    settings::save(&data.0, &chosen)?;
+    language::apply(chosen.language.as_deref());
+    background::retitle_tray(&app);
+    Ok(settings_view(&app))
 }
 
 /// Picks the monitor Cerberus opens on (none: where Windows puts it) and moves there now.
@@ -1871,6 +1885,7 @@ fn main() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let chosen = settings::load(&data_dir);
+            language::apply(chosen.language.as_deref());
             app.manage(LocalLibrary::load(&data_dir));
             // Filters left beside a game by a crash or a forced close go now.
             looks::take_back_all(&data_dir);
@@ -2016,6 +2031,7 @@ fn main() {
             open_screenshots_folder,
             list_monitors,
             set_monitor,
+            set_language,
             to_chosen_monitor,
             set_autostart,
             set_start_hidden,

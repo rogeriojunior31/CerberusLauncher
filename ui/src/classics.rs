@@ -4,6 +4,7 @@
 //! recomp opens that recomp's page (which plays the original too); the others
 //! have their own page, played in RetroArch.
 
+use cerberus_shared::tr;
 use cerberus_shared::{RecompEntry, RomView};
 use leptos::prelude::*;
 
@@ -97,7 +98,7 @@ fn system_of(path: &str) -> &'static str {
 pub fn play_original(library: Library, path: String, console: String) {
     leptos::task::spawn_local(async move {
         if library.report(crate::api::play_classic(path, console).await).is_some() {
-            library.toast("Abrindo no RetroArch...");
+            library.toast(tr!("Abrindo no RetroArch..."));
         }
     });
 }
@@ -128,7 +129,7 @@ pub fn console_name(console: &str) -> &'static str {
         "wiiu" => "Wii U",
         "dc" => "Dreamcast",
         "saturn" => "Saturn",
-        _ => "Console",
+        _ => tr!("Console"),
     }
 }
 
@@ -185,7 +186,7 @@ pub fn box_art(rom: &RomView, console: &str) -> Vec<String> {
             other => format!("%{other:02X}"),
         })
         .collect();
-    vec![format!("https://raw.githubusercontent.com/libretro-thumbnails/{repo}/master/Named_Boxarts/{encoded}.png")]
+    vec![format!("https://raw.githubusercontent.com/libretro-thumbnails/{}/master/Named_Boxarts/{}.png", repo, encoded)]
 }
 
 #[component]
@@ -194,7 +195,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
     let roms = LocalResource::new(move || async move { crate::api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
     let grid = move || {
         let Some(list) = roms.get() else {
-            return view! { <p class="muted" role="status">"Procurando seus clássicos…"</p> }.into_any();
+            return view! { <p class="muted" role="status">{tr!("Procurando seus clássicos…")}</p> }.into_any();
         };
         let recomps: Vec<RecompEntry> = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let mut list: Vec<RomView> = list.into_iter().filter(|r| needle.is_empty() || display_name(r).to_lowercase().contains(&needle)).collect();
@@ -202,9 +203,9 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
         if list.is_empty() {
             return view! {
                 <div class="empty">
-                    <h2>"Nenhum clássico encontrado"</h2>
-                    <p class="muted">"Adicione as pastas onde você guarda ROMs e imagens de disco em Configurações › Biblioteca e ROMs."</p>
-                    <button type="button" class="btn" on:click=move |_| library.go(Route::Settings)>"Abrir Configurações"</button>
+                    <h2>{tr!("Nenhum clássico encontrado")}</h2>
+                    <p class="muted">{tr!("Adicione as pastas onde você guarda ROMs e imagens de disco em Configurações › Biblioteca e ROMs.")}</p>
+                    <button type="button" class="btn" on:click=move |_| library.go(Route::Settings)>{tr!("Abrir Configurações")}</button>
                 </div>
             }
             .into_any();
@@ -219,7 +220,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 let (hover, alt) = (title.clone(), title.clone());
                 let emulated = EMULATED.contains(&console);
                 let sub = match &recomp {
-                    Some(e) if emulated => format!("{} · recomp ou RetroArch", console_name(console)),
+                    Some(e) if emulated => tr!("{} · recomp ou RetroArch", console_name(console)),
                     Some(e) => format!("{} · tem recomp: {}", console_name(console), e.name),
                     None if emulated => match rom.last_played {
                         Some(t) => format!("{} · jogado {} · {}", console_name(console), crate::format::ago(t), crate::format::playtime(rom.playtime_secs)),
@@ -227,7 +228,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                     },
                     None => console_name(console).to_string(),
                 };
-                let badge = recomp.as_ref().map(|_| view! { <span class="chip">"Tem recomp"</span> });
+                let badge = recomp.as_ref().map(|_| view! { <span class="chip">{tr!("Tem recomp")}</span> });
                 let open = recomp.map(|e| e.id);
                 let path = rom.path.clone();
                 // A classic with a recomp opens the recomp's page, which offers both ways to play.
@@ -252,7 +253,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
             .collect_view();
         view! {
             <section class="catalog-results">
-                <h2>{if count == 1 { "1 clássico".to_string() } else { format!("{count} clássicos") }}</h2>
+                <h2>{if count == 1 { tr!("1 clássico").to_string() } else { tr!("{} clássicos", count) }}</h2>
                 <div class="grid">{tiles}</div>
             </section>
         }

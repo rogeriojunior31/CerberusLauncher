@@ -1,6 +1,8 @@
 //! Types the backend and the UI both use. Keeping them in one crate means a field
 //! renamed on one side fails to compile on the other, instead of breaking at runtime.
 
+pub mod i18n;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -344,6 +346,9 @@ pub struct SettingsView {
     /// The monitor Cerberus opens on; none: where Windows puts it.
     #[serde(default)]
     pub monitor: Option<String>,
+    /// The language picked in the settings ("pt-BR", "en"); none: the system's.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 /// A DLSS file inside a game's folder.

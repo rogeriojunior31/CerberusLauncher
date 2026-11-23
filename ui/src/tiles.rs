@@ -1,5 +1,6 @@
 //! Game tiles (poster, title, one line under it) and shelves of them.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, InstallStep, RecompEntry, Source};
 use leptos::html;
 use leptos::prelude::*;
@@ -27,10 +28,10 @@ pub struct TileInfo {
 
 pub fn source_name(source: &Source) -> &'static str {
     match source {
-        Source::Steam { .. } => "Steam",
-        Source::Epic { .. } => "Epic Games",
-        Source::Local { .. } => "Adicionado à mão",
-        Source::Recomp { .. } => "Recomp",
+        Source::Steam { .. } => tr!("Steam"),
+        Source::Epic { .. } => tr!("Epic Games"),
+        Source::Local { .. } => tr!("Adicionado à mão"),
+        Source::Recomp { .. } => tr!("Recomp"),
     }
 }
 
@@ -54,16 +55,16 @@ fn has_update(game: &Game, library: Library) -> bool {
 pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     let running = library.running.with_untracked(|all| all.contains(&game.id));
     let sub = match game.last_played {
-        _ if running => "Jogando agora".to_string(),
-        Some(when) => format!("Jogado {}", format::ago(when)),
+        _ if running => tr!("Jogando agora").to_string(),
+        Some(when) => tr!("Jogado {}", format::ago(when)),
         None => source_name(&game.source).to_string(),
     };
     let badge = if running {
-        Some("Jogando".to_string())
+        Some(tr!("Jogando").to_string())
     } else if let Some(waiting) = waiting_for(game) {
         Some(waiting.to_string())
     } else if has_update(game, library) {
-        Some("Atualização".to_string())
+        Some(tr!("Atualização").to_string())
     } else {
         None
     };
@@ -85,9 +86,9 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         _ => false,
     };
     let badge = if update {
-        Some("Atualização".to_string())
+        Some(tr!("Atualização").to_string())
     } else if entry.installed.is_some() {
-        Some("Instalado".to_string())
+        Some(tr!("Instalado").to_string())
     } else {
         None
     };
@@ -121,9 +122,9 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
     let overlay = move || {
         let step = step.get();
         let text = match step {
-            Some(InstallStep::Downloading { .. }) => Some("Baixando"),
-            Some(InstallStep::Unpacking) => Some("Preparando"),
-            Some(InstallStep::Paused { .. }) => Some("Pausado"),
+            Some(InstallStep::Downloading { .. }) => Some(tr!("Baixando")),
+            Some(InstallStep::Unpacking) => Some(tr!("Preparando")),
+            Some(InstallStep::Paused { .. }) => Some(tr!("Pausado")),
             _ => info.badge.as_deref(),
         };
         let badge = text.map(|text| view! { <span class="chip">{text.to_owned()}</span> });
@@ -141,7 +142,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             <button type="button" class="tile-b" on:click=on_open on:contextmenu=on_menu title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
-                    {info.favorite.then(|| view! { <span class="fav-mark" title="Favorito"><Svg icon=Icon::HeartFill size=16 /></span> })}
+                    {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
                     {overlay}
                 </div>
                 <span class="t">{info.title.clone()}</span>
@@ -169,7 +170,7 @@ pub fn Shelf(
         row.scroll_by_with_x_and_y(direction * step, 0.0);
     };
     let see = see_all.map(|route| {
-        view! { <button type="button" class="link" on:click=move |_| library.go(route.clone())>"Ver tudo"</button> }
+        view! { <button type="button" class="link" on:click=move |_| library.go(route.clone())>{tr!("Ver tudo")}</button> }
     });
     let note = note.map(|text| view! { <p>{text}</p> });
     let cards = tiles.into_iter().map(|info| view! { <Tile info /> }).collect_view();
@@ -183,10 +184,10 @@ pub fn Shelf(
                 </div>
                 <div class="pager">
                     {see}
-                    <button type="button" class="round" aria-label="Anterior" on:click=move |_| scroll(-1.0)>
+                    <button type="button" class="round" aria-label=tr!("Anterior") on:click=move |_| scroll(-1.0)>
                         <Svg icon=Icon::Left size=18 />
                     </button>
-                    <button type="button" class="round" aria-label="Próximo" on:click=move |_| scroll(1.0)>
+                    <button type="button" class="round" aria-label=tr!("Próximo") on:click=move |_| scroll(1.0)>
                         <Svg icon=Icon::Right size=18 />
                     </button>
                 </div>
@@ -200,8 +201,8 @@ pub fn Shelf(
 fn waiting_for(game: &Game) -> Option<&'static str> {
     match game.next_step {
         cerberus_shared::NextStep::Play => None,
-        cerberus_shared::NextStep::RunInstaller => Some("Instalação pendente"),
-        cerberus_shared::NextStep::ChooseCopy { .. } => Some("Falta sua cópia"),
-        cerberus_shared::NextStep::Locate { .. } => Some("Programa não encontrado"),
+        cerberus_shared::NextStep::RunInstaller => Some(tr!("Instalação pendente")),
+        cerberus_shared::NextStep::ChooseCopy { .. } => Some(tr!("Falta sua cópia")),
+        cerberus_shared::NextStep::Locate { .. } => Some(tr!("Programa não encontrado")),
     }
 }

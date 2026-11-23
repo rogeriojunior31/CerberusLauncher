@@ -1,5 +1,6 @@
 //! Home: a rotating banner, then shelves of what to play next.
 
+use cerberus_shared::tr;
 use std::time::Duration;
 
 use cerberus_shared::{Game, RecompEntry, Source};
@@ -29,7 +30,7 @@ struct Feature {
 
 fn game_feature(game: &Game) -> Feature {
     Feature {
-        kicker: "Continue jogando".to_string(),
+        kicker: tr!("Continue jogando").to_string(),
         title: game.name.clone(),
         based: source_name(&game.source).to_string(),
         about: String::new(),
@@ -43,9 +44,9 @@ fn game_feature(game: &Game) -> Feature {
 
 fn recomp_feature(entry: &RecompEntry) -> Feature {
     Feature {
-        kicker: format!("Recomp · {}", entry.console),
+        kicker: tr!("Recomp · {}", entry.console),
         title: entry.name.clone(),
-        based: format!("Baseado em {}", entry.game),
+        based: tr!("Baseado em {}", entry.game),
         about: entry.about.clone(),
         heroes: recomp_heroes(entry),
         soft: entry.hero.as_deref().is_some_and(is_low_res),
@@ -101,12 +102,12 @@ pub fn Home() -> impl IntoView {
         let everything: Vec<TileInfo> = games.iter().take(24).map(|g| game_tile(g, library)).collect();
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
-        let recent = (!recent.is_empty()).then(|| view! { <Shelf title="Jogue de novo".to_string() tiles=recent /> });
+        let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });
         let found = (!found.is_empty()).then(|| {
             view! {
                 <Shelf
-                    title="Encontrado nas suas pastas".to_string()
-                    note="Você já tem esses jogos; cada um tem uma versão nativa para PC.".to_string()
+                    title=tr!("Encontrado nas suas pastas").to_string()
+                    note=tr!("Você já tem esses jogos; cada um tem uma versão nativa para PC.").to_string()
                     tiles=found
                 />
             }
@@ -114,26 +115,26 @@ pub fn Home() -> impl IntoView {
         let popular = (!popular.is_empty()).then(|| {
             view! {
                 <Shelf
-                    title="Populares agora".to_string()
-                    note="Versões nativas para PC de jogos de console. Você precisa da sua própria cópia do jogo.".to_string()
+                    title=tr!("Populares agora").to_string()
+                    note=tr!("Versões nativas para PC de jogos de console. Você precisa da sua própria cópia do jogo.").to_string()
                     tiles=popular
                     see_all=Route::Discover
                 />
             }
         });
         let newest = (!newest.is_empty()).then(|| {
-            view! { <Shelf title="Adicionados recentemente".to_string() tiles=newest see_all=Route::Discover /> }
+            view! { <Shelf title=tr!("Adicionados recentemente").to_string() tiles=newest see_all=Route::Discover /> }
         });
         let everything = (!everything.is_empty()).then(|| {
-            view! { <Shelf title="Na sua biblioteca".to_string() tiles=everything see_all=Route::Library /> }
+            view! { <Shelf title=tr!("Na sua biblioteca").to_string() tiles=everything see_all=Route::Library /> }
         });
         let error = read_error.as_ref().map(|message| view! {
             <div class="card" role="alert">
                 <p>{message.clone()}</p>
-                <button type="button" class="btn" on:click=move |_| library.go(Route::Library)>"Abrir biblioteca"</button>
+                <button type="button" class="btn" on:click=move |_| library.go(Route::Library)>{tr!("Abrir biblioteca")}</button>
             </div>
         });
-        let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">"Carregando..."</p> });
+        let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">{tr!("Carregando...")}</p> });
 
         view! { <div class="page home">{error}{loading}{slider}{recent}{found}{popular}{newest}{everything}</div> }
     }
@@ -162,7 +163,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
     }
 
     let dots = features.iter().enumerate().map(|(index, feature)| {
-        let name = format!("Destaque {} de {count} · {}", index + 1, feature.title);
+        let name = tr!("Destaque {} de {} · {}", index + 1, count, feature.title);
         view! {
             <input type="radio" name="home-highlight" class="dot" aria-label=name.clone() title=name
                 prop:checked=move || current.get() == index on:focus=move |_| rotating.set(false) on:change=move |_| current.set(index) />
@@ -192,7 +193,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                     let open = open.clone();
                     view! {
                         <button type="button" class="btn main big" on:click=move |_| library.go(open.clone())>
-                            "Ver e instalar"
+                            {tr!("Ver e instalar")}
                         </button>
                     }
                     .into_any()
@@ -210,7 +211,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                         <div class="acts">
                             {primary}
                             {installed.then(|| view! {
-                                <button type="button" class="btn big glass" on:click=move |_| library.go(open.clone())>"Detalhes"</button>
+                                <button type="button" class="btn big glass" on:click=move |_| library.go(open.clone())>{tr!("Detalhes")}</button>
                             })}
                         </div>
                     </div>
@@ -222,19 +223,19 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
         })
         .collect_view();
 
-    let rotation_label = move || if rotating.get() { "Pausar rotação" } else { "Retomar rotação" };
+    let rotation_label = move || if rotating.get() { tr!("Pausar rotação") } else { tr!("Retomar rotação") };
     let controls = (count > 1).then(|| view! {
         <div class="sl-controls">
-            <div class="sl-dots" role="radiogroup" aria-label="Escolher destaque">{dots}</div>
+            <div class="sl-dots" role="radiogroup" aria-label=tr!("Escolher destaque")>{dots}</div>
             <div class="sl-arrows">
                 <button type="button" class="round glass" aria-label=rotation_label title=rotation_label
                     on:click=move |_| rotating.update(|value| *value = !*value)>
                     {move || view! { <Svg icon=if rotating.get() { Icon::Pause } else { Icon::Play } size=16 /> }}
                 </button>
-                <button type="button" class="round glass" aria-label="Destaque anterior" on:focus=move |_| rotating.set(false) on:click=move |_| step(-1)>
+                <button type="button" class="round glass" aria-label=tr!("Destaque anterior") on:focus=move |_| rotating.set(false) on:click=move |_| step(-1)>
                     <Svg icon=Icon::Left size=18 />
                 </button>
-                <button type="button" class="round glass" aria-label="Próximo destaque" on:focus=move |_| rotating.set(false) on:click=move |_| step(1)>
+                <button type="button" class="round glass" aria-label=tr!("Próximo destaque") on:focus=move |_| rotating.set(false) on:click=move |_| step(1)>
                     <Svg icon=Icon::Right size=18 />
                 </button>
             </div>
@@ -242,7 +243,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
     });
 
     view! {
-        <section node_ref=slider class="slider" class:multiple=(count > 1) aria-label="Destaques" aria-roledescription="carrossel">
+        <section node_ref=slider class="slider" class:multiple=(count > 1) aria-label=tr!("Destaques") aria-roledescription=tr!("carrossel")>
             <div on:focusin=move |_| rotating.set(false)>{slides}</div>
             {controls}
         </section>

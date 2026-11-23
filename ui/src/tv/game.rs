@@ -2,6 +2,7 @@
 //! of buttons led by the one thing to do now (play, install, update, the
 //! download's progress), and the details beside it.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, RecompEntry, Source};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -29,19 +30,19 @@ enum Act {
 fn label(act: &Act, library: Library, entry: &Option<RecompEntry>) -> String {
     match act {
         Act::Play(g) => crate::launch_action(g).0.to_string(),
-        Act::Running => "Jogando".into(),
+        Act::Running => tr!("Jogando").into(),
         Act::Install(_) => match entry.as_ref().and_then(|e| e.latest.clone()) {
-            Some(r) if r.size > 0 => format!("Instalar · {}", format::megabytes(r.size)),
-            _ => "Instalar".into(),
+            Some(r) if r.size > 0 => tr!("Instalar · {}", format::megabytes(r.size)),
+            _ => tr!("Instalar").into(),
         },
-        Act::Cancel(rid) if crate::discover::is_paused(library, rid) => "Cancelar download".into(),
-        Act::Cancel(rid) => format!("Baixando {}% · cancelar", progress_of(library, rid).unwrap_or(0)),
-        Act::Pause(_) => "Pausar download".into(),
-        Act::Resume(rid) => format!("Continuar download · {}%", progress_of(library, rid).unwrap_or(0)),
-        Act::Update(_) => format!("Atualizar para {}", entry.as_ref().and_then(|e| e.latest.as_ref()).map(|l| l.version.clone()).unwrap_or_default()),
-        Act::Backup(_) => "Fazer backup dos saves".into(),
-        Act::Options => "Opções".into(),
-        Act::Unavailable => "Indisponível".into(),
+        Act::Cancel(rid) if crate::discover::is_paused(library, rid) => tr!("Cancelar download").into(),
+        Act::Cancel(rid) => tr!("Baixando {}% · cancelar", progress_of(library, rid).unwrap_or(0)),
+        Act::Pause(_) => tr!("Pausar download").into(),
+        Act::Resume(rid) => tr!("Continuar download · {}%", progress_of(library, rid).unwrap_or(0)),
+        Act::Update(_) => tr!("Atualizar para {}", entry.as_ref().and_then(|e| e.latest.as_ref()).map(|l| l.version.clone()).unwrap_or_default()),
+        Act::Backup(_) => tr!("Fazer backup dos saves").into(),
+        Act::Options => tr!("Opções").into(),
+        Act::Unavailable => tr!("Indisponível").into(),
     }
 }
 
@@ -113,7 +114,7 @@ pub fn GamePage(id: String) -> impl IntoView {
     let rows = move || vec![actions().len()];
     Effect::new(move |_| focus.clamp(&rows()));
 
-    tv.hints.set(vec![(Btn::A, "Escolher"), (Btn::X, "Opções"), (Btn::B, "Voltar")]);
+    tv.hints.set(vec![(Btn::A, tr!("Escolher")), (Btn::X, tr!("Opções")), (Btn::B, tr!("Voltar"))]);
     let run = move |act: Act| match act {
         Act::Play(g) => {
             play(Sound::Select);
@@ -135,8 +136,8 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             spawn_local(async move {
                 match library.report(api::backup_now(&gid).await) {
-                    Some(Some(b)) => library.toast(format!("Backup feito: {} arquivos.", b.files)),
-                    Some(None) => library.toast("Nada novo para copiar: o backup mais recente já tem esses saves."),
+                    Some(Some(b)) => library.toast(tr!("Backup feito: {} arquivos.", b.files)),
+                    Some(None) => library.toast(tr!("Nada novo para copiar: o backup mais recente já tem esses saves.")),
                     None => {}
                 }
             });
@@ -196,15 +197,15 @@ pub fn GamePage(id: String) -> impl IntoView {
         let e = entry.get();
         let g = game.get();
         let kicker = match &e {
-            Some(e) => format!("Recomp · {}", e.console),
+            Some(e) => tr!("Recomp · {}", e.console),
             None => g.as_ref().map(|g| crate::tiles::source_name(&g.source).to_string()).unwrap_or_default(),
         };
         let title = match g.as_ref().and_then(|g| g.logo_path.clone()).or_else(|| e.as_ref().and_then(|e| e.logo.clone())) {
             Some(path) => view! { <img class="tv-logo" src=crate::art::src(&path) alt=i.name() /> }.into_any(),
             None => view! { <h1>{i.name()}</h1> }.into_any(),
         };
-        let based = e.as_ref().filter(|e| !e.game.is_empty()).map(|e| view! { <p class="tv-based">"Baseado em "<b>{e.game.clone()}</b></p> });
-        let note = e.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|n| view! { <p class="tv-note-box"><b>"Como começar"</b>{n}</p> });
+        let based = e.as_ref().filter(|e| !e.game.is_empty()).map(|e| view! { <p class="tv-based">{tr!("Baseado em ")}<b>{e.game.clone()}</b></p> });
+        let note = e.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|n| view! { <p class="tv-note-box"><b>{tr!("Como começar")}</b>{n}</p> });
         let about = e.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|a| view! { <p class="tv-about">{a}</p> });
         Some(view! {
             <div class="tv-game-main">
@@ -221,24 +222,24 @@ pub fn GamePage(id: String) -> impl IntoView {
     let details = move || {
         let mut facts: Vec<(&'static str, String)> = Vec::new();
         if let Some(g) = game.get() {
-            facts.push(("Tempo de jogo", if g.playtime_secs == 0 { "Nunca jogado".into() } else { format::playtime(g.playtime_secs) }));
+            facts.push((tr!("Tempo de jogo"), if g.playtime_secs == 0 { tr!("Nunca jogado").into() } else { format::playtime(g.playtime_secs) }));
             if let Some(t) = g.last_played {
-                facts.push(("Última vez", format::ago(t)));
+                facts.push((tr!("Última vez"), format::ago(t)));
             }
             if let Source::Recomp { version, .. } = &g.source {
-                facts.push(("Versão", if version.is_empty() { "Instalado por você".into() } else { version.clone() }));
+                facts.push((tr!("Versão"), if version.is_empty() { tr!("Instalado por você").into() } else { version.clone() }));
             }
         }
         if let Some(e) = entry.get() {
-            facts.push(("Console", e.console.clone()));
+            facts.push((tr!("Console"), e.console.clone()));
             if e.downloads > 0 {
-                facts.push(("Downloads", format::count(e.downloads)));
+                facts.push((tr!("Downloads"), format::count(e.downloads)));
             }
             if e.stars > 0 {
-                facts.push(("Estrelas", format::count(e.stars)));
+                facts.push((tr!("Estrelas"), format::count(e.stars)));
             }
             if let Some(copy) = e.owned_copy.clone() {
-                facts.push(("Sua cópia", copy.rsplit(['\\', '/']).next().unwrap_or_default().to_string()));
+                facts.push((tr!("Sua cópia"), copy.rsplit(['\\', '/']).next().unwrap_or_default().to_string()));
             }
         }
         let cover = item().map(|i| view! { <div class="tv-side-cover"><Poster sources=i.covers() title=i.name() /></div> });
@@ -251,7 +252,7 @@ pub fn GamePage(id: String) -> impl IntoView {
             {move || if item().is_some() {
                 view! { {head} {details} }.into_any()
             } else {
-                view! { <p class="tv-empty">"Esse jogo não está mais aqui."</p> }.into_any()
+                view! { <p class="tv-empty">{tr!("Esse jogo não está mais aqui.")}</p> }.into_any()
             }}
         </div>
     }

@@ -13,6 +13,7 @@ mod pages;
 mod sheets;
 mod sound;
 
+use cerberus_shared::{tk, tr};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -37,11 +38,11 @@ pub enum Tab {
 }
 
 const TABS: [(Tab, &str, Icon); 5] = [
-    (Tab::Home, "Início", Icon::Home),
-    (Tab::Library, "Biblioteca", Icon::Library),
-    (Tab::Discover, "Descobrir", Icon::Discover),
-    (Tab::Downloads, "Downloads", Icon::Download),
-    (Tab::Settings, "Configurações", Icon::Settings),
+    (Tab::Home, tk!("Início"), Icon::Home),
+    (Tab::Library, tk!("Biblioteca"), Icon::Library),
+    (Tab::Discover, tk!("Descobrir"), Icon::Discover),
+    (Tab::Downloads, tk!("Downloads"), Icon::Download),
+    (Tab::Settings, tk!("Configurações"), Icon::Settings),
 ];
 
 #[derive(Clone, PartialEq, Debug)]
@@ -305,7 +306,7 @@ pub fn TvMode() -> impl IntoView {
         let current = tv.view.get();
         match current {
             View::Game(_) => view! {
-                <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>"Voltar"</span></div>
+                <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>{tr!("Voltar")}</span></div>
             }
             .into_any(),
             View::Tab(now) => {
@@ -320,7 +321,7 @@ pub fn TvMode() -> impl IntoView {
                             }
                         });
                         let target = *tab;
-                        view! { <span class="tv-tab" class:on=on on:click=move |_| tv.tab(target)><Svg icon=*icon size=22 />{*label}{badge}</span> }
+                        view! { <span class="tv-tab" class:on=on on:click=move |_| tv.tab(target)><Svg icon=*icon size=22 />{cerberus_shared::i18n::t(label)}{badge}</span> }
                     })
                     .collect_view();
                 view! {
@@ -348,10 +349,10 @@ pub fn TvMode() -> impl IntoView {
         let list = if tv.sheet.get().is_some() { tv.sheet_hints.get() } else { tv.hints.get() };
         let kind = tv.pad.get();
         let sections = (tv.sheet.get().is_none() && matches!(tv.view.get(), View::Tab(_))).then(|| {
-            view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>"Seções"</b></span> }
+            view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>{tr!("Seções")}</b></span> }
         });
         let items = list.into_iter().map(|(btn, label)| view! { <span class="tv-hint">{glyph(btn, kind)}<b>{label}</b></span> }).collect_view();
-        let held = (!library.running.with(|r| r.is_empty())).then(|| view! { <span class="tv-hint dim end">"Jogando agora"</span> });
+        let held = (!library.running.with(|r| r.is_empty())).then(|| view! { <span class="tv-hint dim end">{tr!("Jogando agora")}</span> });
         view! { {items}{sections}{held} }
     };
 
@@ -364,7 +365,7 @@ pub fn TvMode() -> impl IntoView {
             <header class="tv-top">
                 <div class="tv-brand">
                     <img class="mark" src="brand/cerberus-pixel-icone.svg" alt="" draggable="false" />
-                    <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt="Cerberus Launcher" draggable="false" />
+                    <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt=tr!("Cerberus Launcher") draggable="false" />
                 </div>
                 {tabs}
                 <div class="tv-clock">{move || time.get()}</div>

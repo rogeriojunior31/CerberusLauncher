@@ -30,7 +30,7 @@ $g.DrawString("Cerberus", $title, (New-Object System.Drawing.SolidBrush $ink), (
 $g.DrawString("Launcher", $title, (New-Object System.Drawing.SolidBrush $ink), (New-Object System.Drawing.RectangleF 0, 204, 164, 30), $center)
 $bar = New-Object System.Drawing.Drawing2D.LinearGradientBrush (New-Object System.Drawing.Point 52, 0), (New-Object System.Drawing.Point 112, 0), $orange, $red
 $g.FillRectangle($bar, 52, 242, 60, 3)
-$g.DrawString("versão $Version", $small, (New-Object System.Drawing.SolidBrush $muted), (New-Object System.Drawing.RectangleF 0, 256, 164, 20), $center)
+$g.DrawString("v$Version", $small, (New-Object System.Drawing.SolidBrush $muted), (New-Object System.Drawing.RectangleF 0, 256, 164, 20), $center)
 $g.Dispose(); $bmp.Save((Join-Path $here "sidebar.bmp"), [System.Drawing.Imaging.ImageFormat]::Bmp); $bmp.Dispose()
 
 # Header of the other pages: 150 x 57, on white like the rest of the page.

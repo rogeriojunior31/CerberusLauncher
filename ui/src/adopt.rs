@@ -1,6 +1,7 @@
 //! "Trazer seus recomps": recomps the player installed without Cerberus,
 //! found in a folder they pick and brought into the library where they are.
 
+use cerberus_shared::tr;
 use cerberus_shared::AdoptFound;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -61,8 +62,8 @@ pub fn AdoptDialog() -> impl IntoView {
             close();
             match brought {
                 0 => {}
-                1 => library.toast("1 recomp trazido para a Biblioteca."),
-                n => library.toast(format!("{n} recomps trazidos para a Biblioteca.")),
+                1 => library.toast(tr!("1 recomp trazido para a Biblioteca.")),
+                n => library.toast(tr!("{} recomps trazidos para a Biblioteca.", n)),
             }
             if brought > 0 {
                 library.go(crate::Route::Library);
@@ -71,10 +72,10 @@ pub fn AdoptDialog() -> impl IntoView {
     };
 
     let body = move || match stage.get() {
-        Stage::Looking => view! { <p class="fr-status"><span class="spin"></span>"Procurando recomps na pasta..."</p> }.into_any(),
-        Stage::Bringing => view! { <p class="fr-status"><span class="spin"></span>"Trazendo para a Biblioteca..."</p> }.into_any(),
+        Stage::Looking => view! { <p class="fr-status"><span class="spin"></span>{tr!("Procurando recomps na pasta...")}</p> }.into_any(),
+        Stage::Bringing => view! { <p class="fr-status"><span class="spin"></span>{tr!("Trazendo para a Biblioteca...")}</p> }.into_any(),
         Stage::Found(found) if found.is_empty() => view! {
-            <p class="muted">"Nenhum recomp do catálogo nessa pasta. Se um jogo seu não apareceu, abra a página dele no Descobrir e use \"Já tenho instalado\"."</p>
+            <p class="muted">{tr!("Nenhum recomp do catálogo nessa pasta. Se um jogo seu não apareceu, abra a página dele no Descobrir e use \"Já tenho instalado\".")}</p>
         }
         .into_any(),
         Stage::Found(found) => {
@@ -100,7 +101,7 @@ pub fn AdoptDialog() -> impl IntoView {
                                 <b>{f.name.clone()}</b>
                                 <small>{format!("{} · {}", f.game, f.console)}</small>
                                 <small class="path">{f.program.clone()}</small>
-                                {(!f.sure).then(|| view! { <small class="adopt-maybe">"Nome parecido: confira se é esse mesmo"</small> })}
+                                {(!f.sure).then(|| view! { <small class="adopt-maybe">{tr!("Nome parecido: confira se é esse mesmo")}</small> })}
                             </div>
                             <span class="adopt-check"><Svg icon=Icon::Check size=16 /></span>
                         </button>
@@ -116,17 +117,17 @@ pub fn AdoptDialog() -> impl IntoView {
     view! {
         <div class="backdrop-dim">
             <div class="dialog adopt">
-                <h2>"Trazer seus recomps"</h2>
-                <p class="muted">"Recomps que você instalou sem o Cerberus entram na Biblioteca onde estão, sem baixar nada. A pasta continua sua: o Cerberus nunca apaga nem atualiza esses arquivos."</p>
+                <h2>{tr!("Trazer seus recomps")}</h2>
+                <p class="muted">{tr!("Recomps que você instalou sem o Cerberus entram na Biblioteca onde estão, sem baixar nada. A pasta continua sua: o Cerberus nunca apaga nem atualiza esses arquivos.")}</p>
                 <Show when=move || !folder.get().is_empty()>
                     <p class="adopt-folder"><Svg icon=Icon::Folder size=16 /><span>{move || folder.get()}</span></p>
                 </Show>
                 {body}
                 <div class="dialog-footer">
-                    <button type="button" class="btn" on:click=move |_| close()>"Cancelar"</button>
+                    <button type="button" class="btn" on:click=move |_| close()>{tr!("Cancelar")}</button>
                     <Show when=can_bring>
                         <button type="button" class="btn main" on:click=move |_| bring()>
-                            {move || if count() == 1 { "Trazer 1 recomp".to_string() } else { format!("Trazer {} recomps", count()) }}
+                            {move || if count() == 1 { tr!("Trazer 1 recomp").to_string() } else { tr!("Trazer {} recomps", count()) }}
                         </button>
                     </Show>
                 </div>

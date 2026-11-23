@@ -21,8 +21,10 @@ mod tiles;
 mod news;
 mod game_menu;
 mod versions;
+mod i18n;
 mod overlay;
 
+use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
@@ -34,6 +36,7 @@ use art::{Poster, cover_sources};
 
 fn main() {
     console_error_panic_hook::set_once();
+    i18n::init();
     if overlay::is_overlay() {
         leptos::mount::mount_to_body(overlay::OverlayMenu);
         return;
@@ -75,7 +78,7 @@ pub fn toggle_favorite(library: Library, id: String, on: bool) {
     leptos::task::spawn_local(async move {
         if library.report(api::set_favorite(id, on).await).is_some() {
             library.games.refetch();
-            library.toast(if on { "Adicionado aos favoritos." } else { "Tirado dos favoritos." });
+            library.toast(if on { tr!("Adicionado aos favoritos.") } else { tr!("Tirado dos favoritos.") });
         }
     });
 }
@@ -166,11 +169,11 @@ impl Library {
 /// The main button's label and icon: the step the backend says comes next.
 pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
     match &game.next_step {
-        NextStep::Play => ("Jogar", icons::Icon::Play),
-        NextStep::RunInstaller => ("Abrir instalador", icons::Icon::External),
-        NextStep::ChooseCopy { found: Some(_) } => ("Usar minha cópia", icons::Icon::Check),
-        NextStep::ChooseCopy { found: None } => ("Escolher cópia do jogo", icons::Icon::Folder),
-        NextStep::Locate { .. } => ("Localizar programa", icons::Icon::Search),
+        NextStep::Play => (tr!("Jogar"), icons::Icon::Play),
+        NextStep::RunInstaller => (tr!("Abrir instalador"), icons::Icon::External),
+        NextStep::ChooseCopy { found: Some(_) } => (tr!("Usar minha cópia"), icons::Icon::Check),
+        NextStep::ChooseCopy { found: None } => (tr!("Escolher cópia do jogo"), icons::Icon::Folder),
+        NextStep::Locate { .. } => (tr!("Localizar programa"), icons::Icon::Search),
     }
 }
 
@@ -184,7 +187,7 @@ pub fn play_game(library: Library, game: Game) {
                 library.games.refetch();
                 library.recomps.refetch();
                 if set.is_some() {
-                    library.toast(format!("Cópia de {} configurada.", game.name));
+                    library.toast(tr!("Cópia de {} configurada.", game.name));
                 }
                 // Plays right away; Play itself refuses if anything is still missing.
                 set
@@ -194,7 +197,7 @@ pub fn play_game(library: Library, game: Game) {
                 let found = library.report(api::locate_game(&game.id).await).flatten();
                 library.games.refetch();
                 if let Some(found) = &found {
-                    library.toast(format!("{} está pronto para jogar.", found.name));
+                    library.toast(tr!("{} está pronto para jogar.", found.name));
                 }
                 None
             }
@@ -255,6 +258,7 @@ fn App() -> impl IntoView {
     let first_run_open = RwSignal::new(false);
     spawn_local(async move {
         let Ok(settings) = api::get_settings().await else { return };
+        i18n::follow(settings.language.as_deref());
         if !settings.setup_done {
             first_run_open.set(true);
             first_run.set(Some(settings));
@@ -324,7 +328,7 @@ fn App() -> impl IntoView {
                 library.go(Route::Game(game.id.clone()));
                 play_game(library, game);
             }
-            None => library.toast("O jogo desse atalho não está mais na biblioteca."),
+            None => library.toast(tr!("O jogo desse atalho não está mais na biblioteca.")),
         }
     });
     let editor = move || library.editing.get().map(|game| view! { <EditDialog game /> });
@@ -336,18 +340,18 @@ fn App() -> impl IntoView {
                 if library.report(api::locate_game(&id).await).flatten().is_some() {
                     locating.set(None);
                     library.games.refetch();
-                    library.toast("Pronto: o jogo está na biblioteca e abre pelo Cerberus.");
+                    library.toast(tr!("Pronto: o jogo está na biblioteca e abre pelo Cerberus."));
                 }
             });
         };
         Some(view! {
             <div class="backdrop-dim">
                 <div class="dialog">
-                    <h2>"Onde o jogo foi instalado?"</h2>
-                    <p class="muted">"O instalador terminou, mas o Cerberus não achou o jogo sozinho. Escolha o programa do jogo (o .exe) na pasta onde o instalador o colocou."</p>
+                    <h2>{tr!("Onde o jogo foi instalado?")}</h2>
+                    <p class="muted">{tr!("O instalador terminou, mas o Cerberus não achou o jogo sozinho. Escolha o programa do jogo (o .exe) na pasta onde o instalador o colocou.")}</p>
                     <div class="dialog-footer">
-                        <button type="button" class="btn" on:click=move |_| locating.set(None)>"Depois"</button>
-                        <button type="button" class="btn main" on:click=pick>"Escolher programa..."</button>
+                        <button type="button" class="btn" on:click=move |_| locating.set(None)>{tr!("Depois")}</button>
+                        <button type="button" class="btn main" on:click=pick>{tr!("Escolher programa...")}</button>
                     </div>
                 </div>
             </div>
@@ -432,11 +436,11 @@ fn EditDialog(game: Game) -> impl IntoView {
     view! {
         <div class="backdrop-dim" on:click=move |_| close()>
             <form class="dialog" on:click=|event| event.stop_propagation() on:submit=on_save>
-                <h2>"Editar jogo"</h2>
+                <h2>{tr!("Editar jogo")}</h2>
                 <div class="dialog-body">
                     <div class="preview">{preview}</div>
                     <div class="fields">
-                        <label for="game-name">"Nome"</label>
+                        <label for="game-name">{tr!("Nome")}</label>
                         <input
                             id="game-name"
                             class="input"
@@ -445,18 +449,18 @@ fn EditDialog(game: Game) -> impl IntoView {
                         />
                         <div class="row">
                             <button type="button" class="btn sm" on:click=on_find disabled=move || busy.get()>
-                                "Buscar capa na Steam"
+                                {tr!("Buscar capa na Steam")}
                             </button>
                             <button type="button" class="btn sm" on:click=on_pick disabled=move || busy.get()>
-                                "Escolher imagem..."
+                                {tr!("Escolher imagem...")}
                             </button>
                         </div>
-                        <p class="muted small">"A busca usa o nome acima. Mude o nome e busque de novo se a capa vier errada."</p>
+                        <p class="muted small">{tr!("A busca usa o nome acima. Mude o nome e busque de novo se a capa vier errada.")}</p>
                     </div>
                 </div>
                 <div class="dialog-footer">
-                    <button type="button" class="btn" on:click=move |_| close()>"Cancelar"</button>
-                    <button type="submit" class="btn main" disabled=move || busy.get()>"Salvar"</button>
+                    <button type="button" class="btn" on:click=move |_| close()>{tr!("Cancelar")}</button>
+                    <button type="submit" class="btn main" disabled=move || busy.get()>{tr!("Salvar")}</button>
                 </div>
             </form>
         </div>

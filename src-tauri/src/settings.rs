@@ -44,6 +44,9 @@ pub struct Settings {
     /// Closing the window keeps Cerberus in the notification area (tray).
     #[serde(default)]
     pub close_to_tray: bool,
+    /// The app's language ("pt-BR", "en"); none: Windows' language.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// The monitor Cerberus opens on, by Windows' name for it; none: where Windows puts it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor: Option<String>,

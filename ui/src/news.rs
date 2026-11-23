@@ -3,6 +3,7 @@
 //! sessions, achievements, problems), from the same history each game's page
 //! shows.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, RecompEntry, Source, TrailEntry};
 use leptos::prelude::*;
 
@@ -80,7 +81,7 @@ pub fn NewsPage() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let list = updates(&games, &recomps);
         if list.is_empty() {
-            return view! { <p class="muted">"Todos os seus recomps estão na versão mais nova."</p> }.into_any();
+            return view! { <p class="muted">{tr!("Todos os seus recomps estão na versão mais nova.")}</p> }.into_any();
         }
         let rows = list
             .into_iter()
@@ -97,10 +98,10 @@ pub fn NewsPage() -> impl IntoView {
                             <span class="muted">{format!("{} → {}", u.from, u.to)}</span>
                         </div>
                         <div class="row">
-                            <button type="button" class="btn sm" on:click=move |_| library.go(route.clone())>"Ver o que mudou"</button>
+                            <button type="button" class="btn sm" on:click=move |_| library.go(route.clone())>{tr!("Ver o que mudou")}</button>
                             <button type="button" class="btn sm main" disabled=busy
                                 on:click=move |_| crate::discover::start_install(library, rid.clone())>
-                                {move || if busy() { "Atualizando..." } else { "Atualizar" }}
+                                {move || if busy() { tr!("Atualizando...") } else { tr!("Atualizar") }}
                             </button>
                         </div>
                     </div>
@@ -112,10 +113,10 @@ pub fn NewsPage() -> impl IntoView {
 
     let lately = move || {
         let Some(list) = activity.get() else {
-            return view! { <p class="muted" role="status">"Carregando..."</p> }.into_any();
+            return view! { <p class="muted" role="status">{tr!("Carregando...")}</p> }.into_any();
         };
         if list.is_empty() {
-            return view! { <p class="muted">"Nada por aqui ainda. Instalações, partidas e conquistas aparecem aqui."</p> }.into_any();
+            return view! { <p class="muted">{tr!("Nada por aqui ainda. Instalações, partidas e conquistas aparecem aqui.")}</p> }.into_any();
         }
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
@@ -135,7 +136,7 @@ pub fn NewsPage() -> impl IntoView {
                     <li class="act" class:bad=!e.ok class:clickable=clickable on:click=go>
                         <Svg icon size=18 />
                         <div>
-                            <b>{format!("{} · {}", name, e.step)}</b>
+                            <b>{format!("{} · {}", name, cerberus_shared::i18n::translate(&e.step))}</b>
                             <span>{e.message.clone()}</span>
                         </div>
                         <time>{format::ago(e.at)}</time>
@@ -150,16 +151,16 @@ pub fn NewsPage() -> impl IntoView {
         <div class="page">
             <header class="page-h">
                 <div>
-                    <h1>"Novidades"</h1>
-                    <p class="muted">"Atualizações dos seus recomps e o que aconteceu com os seus jogos."</p>
+                    <h1>{tr!("Novidades")}</h1>
+                    <p class="muted">{tr!("Atualizações dos seus recomps e o que aconteceu com os seus jogos.")}</p>
                 </div>
             </header>
             <section class="news-sec">
-                <h2><Svg icon=Icon::Download />"Atualizações disponíveis"</h2>
+                <h2><Svg icon=Icon::Download />{tr!("Atualizações disponíveis")}</h2>
                 {waiting}
             </section>
             <section class="news-sec">
-                <h2><Svg icon=Icon::Clock />"Atividade recente"</h2>
+                <h2><Svg icon=Icon::Clock />{tr!("Atividade recente")}</h2>
                 {lately}
             </section>
         </div>

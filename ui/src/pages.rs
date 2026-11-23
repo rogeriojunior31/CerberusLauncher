@@ -1,5 +1,6 @@
 //! Downloads and Saves: the two lists the sidebar gives a page of their own.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, Source};
 use leptos::prelude::*;
 
@@ -17,9 +18,9 @@ pub fn DownloadsPage() -> impl IntoView {
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Download size=40 />
-                    <h2>"Nada baixando agora"</h2>
-                    <p class="muted">"Instale um recomp em Descobrir e o download aparece aqui."</p>
-                    <button type="button" class="btn main" on:click=move |_| library.go(Route::Discover)>"Ir para Descobrir"</button>
+                    <h2>{tr!("Nada baixando agora")}</h2>
+                    <p class="muted">{tr!("Instale um recomp em Descobrir e o download aparece aqui.")}</p>
+                    <button type="button" class="btn main" on:click=move |_| library.go(Route::Discover)>{tr!("Ir para Descobrir")}</button>
                 </div>
             }
             .into_any();
@@ -46,7 +47,7 @@ pub fn DownloadsPage() -> impl IntoView {
     };
     view! {
         <div class="page">
-            <header class="page-h"><div><h1>"Downloads"</h1></div></header>
+            <header class="page-h"><div><h1>{tr!("Downloads")}</h1></div></header>
             {rows}
         </div>
     }
@@ -62,8 +63,8 @@ pub fn SavesPage() -> impl IntoView {
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Saves size=40 />
-                    <h2>"Nenhum recomp instalado"</h2>
-                    <p class="muted">"Os saves dos recomps são copiados sozinhos: quando você fecha o jogo, antes de atualizar e antes de desinstalar."</p>
+                    <h2>{tr!("Nenhum recomp instalado")}</h2>
+                    <p class="muted">{tr!("Os saves dos recomps são copiados sozinhos: quando você fecha o jogo, antes de atualizar e antes de desinstalar.")}</p>
                 </div>
             }
             .into_any();
@@ -75,8 +76,8 @@ pub fn SavesPage() -> impl IntoView {
         <div class="page">
             <header class="page-h">
                 <div>
-                    <h1>"Saves"</h1>
-                    <p class="muted">"Backups automáticos dos recomps. Os 10 mais recentes de cada jogo ficam guardados."</p>
+                    <h1>{tr!("Saves")}</h1>
+                    <p class="muted">{tr!("Backups automáticos dos recomps. Os 10 mais recentes de cada jogo ficam guardados.")}</p>
                 </div>
             </header>
             {rows}
@@ -93,11 +94,11 @@ fn SaveRow(game: Game) -> impl IntoView {
         async move { api::list_backups(&id).await }
     });
     let summary = move || match backups.get() {
-        None => "Carregando...".to_string(),
+        None => tr!("Carregando...").to_string(),
         Some(Err(error)) => error,
         Some(Ok(list)) => match list.first() {
-            None => "Nenhum backup ainda".to_string(),
-            Some(newest) => format!("{} backup(s) · último {}", list.len(), format::ago(newest.created)),
+            None => tr!("Nenhum backup ainda").to_string(),
+            Some(newest) => tr!("{} backup(s) · último {}", list.len(), format::ago(newest.created)),
         },
     };
     let route = Route::Game(game.id.clone());
