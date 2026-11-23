@@ -40,6 +40,7 @@ pub fn Sidebar() -> impl IntoView {
                 {item(Route::Discover, Icon::Discover, tr!("Descobrir"))}
                 {item(Route::Downloads, Icon::Download, tr!("Downloads"))}
                 {item(Route::Saves, Icon::Saves, tr!("Saves"))}
+                {item(Route::Achievements, Icon::Trophy, tr!("Conquistas"))}
                 {item(Route::News, Icon::Bell, tr!("Novidades"))}
             </nav>
             {move || {

@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod achievements;
 mod language;
 mod dlss;
 mod overlay;
@@ -618,6 +619,26 @@ fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     chosen.start_hidden = on;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
+}
+
+fn retro_account(app: &AppHandle) -> Option<(String, String)> {
+    let chosen = settings::load(&app.state::<DataDir>().0);
+    chosen.ra_user.zip(chosen.ra_key)
+}
+
+/// The achievements hub: Steam and RetroAchievements together.
+#[tauri::command]
+async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<cerberus_shared::AchievementsHub, String> {
+    let data = app.state::<DataDir>().0.clone();
+    Ok(achievements::hub(&http, &data, retro_account(&app)).await)
+}
+
+/// One game's achievements for its page in the hub.
+#[tauri::command]
+async fn game_achievements(app: AppHandle, http: State<'_, reqwest::Client>, source: String, key: String) -> Result<cerberus_shared::GameAchievements, String> {
+    let source = cerberus_shared::AchievementSource::from_code(&source).ok_or(tr!("Jogo inválido."))?;
+    let data = app.state::<DataDir>().0.clone();
+    achievements::game(&http, &data, source, &key, retro_account(&app)).await
 }
 
 /// The monitors plugged in.
@@ -2034,6 +2055,8 @@ fn main() {
             list_monitors,
             set_monitor,
             set_language,
+            achievements_hub,
+            game_achievements,
             to_chosen_monitor,
             set_autostart,
             set_start_hidden,

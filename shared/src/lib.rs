@@ -373,6 +373,123 @@ pub struct OverlayView {
     pub shots: Vec<Screenshot>,
 }
 
+/// Where a game's achievements come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AchievementSource {
+    Steam,
+    Retro,
+}
+
+impl AchievementSource {
+    /// The id used in routes: "steam", "retro".
+    pub fn code(self) -> &'static str {
+        match self {
+            AchievementSource::Steam => "steam",
+            AchievementSource::Retro => "retro",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "steam" => Some(AchievementSource::Steam),
+            "retro" => Some(AchievementSource::Retro),
+            _ => None,
+        }
+    }
+}
+
+/// A game with achievements, as the hub lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AchievementGame {
+    pub source: AchievementSource,
+    /// Steam's app id or RetroAchievements' game id.
+    pub key: String,
+    pub name: String,
+    /// Pictures to try in order: a tall cover (Steam: the copy on disk, then
+    /// online) or the game's square icon (RetroAchievements).
+    pub art: Vec<String>,
+    /// "Steam", or the console for RetroAchievements.
+    pub platform: String,
+    pub total: u32,
+    pub unlocked: u32,
+    /// RetroAchievements' hardcore unlocks.
+    #[serde(default)]
+    pub hardcore: u32,
+    /// RetroAchievements' points: earned and possible (0 when unknown).
+    #[serde(default)]
+    pub points: u32,
+    #[serde(default)]
+    pub points_total: u32,
+    /// The latest unlock, in Unix seconds.
+    pub last_unlock: Option<u64>,
+    /// Steam's own play time and last played, from the client's files.
+    pub playtime_secs: Option<u64>,
+    pub last_played: Option<u64>,
+}
+
+impl AchievementGame {
+    pub fn percent(&self) -> u32 {
+        if self.total == 0 { 0 } else { self.unlocked * 100 / self.total }
+    }
+}
+
+/// One achievement of a game.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Achievement {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    /// The grey picture shown while it's locked.
+    pub icon_locked: Option<String>,
+    /// Secret until unlocked.
+    pub hidden: bool,
+    pub unlocked_at: Option<u64>,
+    /// RetroAchievements' hardcore unlock.
+    #[serde(default)]
+    pub hardcore_at: Option<u64>,
+    /// RetroAchievements' points (0 for Steam).
+    #[serde(default)]
+    pub points: u32,
+    /// How many players have it, in percent, when known.
+    pub rarity: Option<f32>,
+}
+
+/// An achievement unlocked lately, for the hub's timeline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecentUnlock {
+    pub source: AchievementSource,
+    pub game_key: String,
+    pub game_name: String,
+    pub achievement: Achievement,
+}
+
+/// Everything the hub shows.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct AchievementsHub {
+    pub games: Vec<AchievementGame>,
+    /// Newest first.
+    pub recent: Vec<RecentUnlock>,
+    /// Steam is installed and has achievement data on this PC.
+    pub steam: bool,
+    /// A RetroAchievements account is connected.
+    pub retro: bool,
+    /// RetroAchievements' points, when connected: hardcore and softcore.
+    pub retro_points: u64,
+    #[serde(default)]
+    pub retro_softcore: u64,
+    /// Why a source couldn't be read this time (offline, key refused...).
+    pub problems: Vec<String>,
+}
+
+/// One game's achievements, for its page in the hub.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GameAchievements {
+    pub game: AchievementGame,
+    pub achievements: Vec<Achievement>,
+}
+
 /// A picture taken of a game (F12 while it runs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Screenshot {

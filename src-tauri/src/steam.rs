@@ -56,6 +56,12 @@ pub fn root() -> Option<PathBuf> {
 /// Art from Steam's local cache, the first of `names` found. Older games keep it
 /// as `<appid>/library_600x900.jpg`; newer ones put it in a hash-named
 /// subfolder, and name the tall cover `library_capsule.jpg`.
+/// The tall cover Steam keeps on disk for a game, if any.
+pub fn local_cover(app_id: u32) -> Option<String> {
+    let root = root()?;
+    local_art(&cover_cache_dir(&root), app_id, &["library_600x900.jpg", "library_capsule.jpg"])
+}
+
 fn local_art(covers: &Path, app_id: u32, names: &[&str]) -> Option<String> {
     let dir = covers.join(app_id.to_string());
     for name in names {

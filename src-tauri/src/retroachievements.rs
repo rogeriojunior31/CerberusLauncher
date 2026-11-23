@@ -19,7 +19,7 @@ fn user_agent() -> String {
     format!("CerberusLauncher/{}", env!("CARGO_PKG_VERSION"))
 }
 
-async fn get(http: &reqwest::Client, endpoint: &str, user: &str, key: &str, extra: &str) -> Result<Value, String> {
+pub(crate) async fn get(http: &reqwest::Client, endpoint: &str, user: &str, key: &str, extra: &str) -> Result<Value, String> {
     let url = format!("{API}/{endpoint}?u={}&y={}{extra}", encode(user), encode(key));
     let reply = http
         .get(&url)
@@ -48,7 +48,7 @@ fn encode(text: &str) -> String {
         .collect()
 }
 
-fn text(v: &Value, key: &str) -> String {
+pub(crate) fn text(v: &Value, key: &str) -> String {
     match v.get(key) {
         Some(Value::String(s)) => s.clone(),
         Some(Value::Number(n)) => n.to_string(),
@@ -56,7 +56,7 @@ fn text(v: &Value, key: &str) -> String {
     }
 }
 
-fn number(v: &Value, key: &str) -> u64 {
+pub(crate) fn number(v: &Value, key: &str) -> u64 {
     match v.get(key) {
         Some(Value::Number(n)) => n.as_u64().unwrap_or(0),
         Some(Value::String(s)) => s.parse().unwrap_or(0),
@@ -64,7 +64,7 @@ fn number(v: &Value, key: &str) -> u64 {
     }
 }
 
-fn picture(path: &str) -> Option<String> {
+pub(crate) fn picture(path: &str) -> Option<String> {
     let path = path.trim();
     if path.is_empty() {
         return None;

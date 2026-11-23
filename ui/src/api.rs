@@ -602,6 +602,19 @@ pub async fn ra_connect(user: String, key: String) -> Result<cerberus_shared::Ra
     call("ra_connect", &RaArgs { user, key }).await
 }
 
+pub async fn achievements_hub() -> Result<cerberus_shared::AchievementsHub, String> {
+    call("achievements_hub", &()).await
+}
+
+pub async fn game_achievements(source: &str, key: &str) -> Result<cerberus_shared::GameAchievements, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        source: &'a str,
+        key: &'a str,
+    }
+    call("game_achievements", &Arg { source, key }).await
+}
+
 pub async fn ra_profile() -> Result<Option<cerberus_shared::RaProfile>, String> {
     call("ra_profile", &()).await
 }

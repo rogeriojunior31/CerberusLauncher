@@ -21,6 +21,7 @@ mod tiles;
 mod news;
 mod game_menu;
 mod versions;
+mod achievements;
 mod i18n;
 mod overlay;
 
@@ -60,6 +61,10 @@ pub enum Route {
     Game(String),
     /// A classic from the ROM folders, by its file.
     Classic(String),
+    /// The achievements hub.
+    Achievements,
+    /// One game's achievements: its source ("steam", "retro") and id there.
+    AchievementGame(String, String),
 }
 
 impl Route {
@@ -68,6 +73,7 @@ impl Route {
         match self {
             Route::Game(id) if id.starts_with("recomp:") => Route::Discover,
             Route::Game(_) | Route::Classic(_) => Route::Library,
+            Route::AchievementGame(..) => Route::Achievements,
             other => other.clone(),
         }
     }
@@ -298,6 +304,8 @@ fn App() -> impl IntoView {
         Route::Downloads => view! { <pages::DownloadsPage /> }.into_any(),
         Route::Saves => view! { <pages::SavesPage /> }.into_any(),
         Route::News => view! { <news::NewsPage /> }.into_any(),
+        Route::Achievements => view! { <achievements::AchievementsPage /> }.into_any(),
+        Route::AchievementGame(source, key) => view! { <achievements::AchievementGamePage source key /> }.into_any(),
         Route::Classic(path) => view! { <classics::ClassicPage path /> }.into_any(),
         Route::Settings => view! { <settings_page::SettingsPage /> }.into_any(),
         // Drawn over the whole window instead, below.
