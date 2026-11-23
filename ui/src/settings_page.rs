@@ -853,6 +853,7 @@ fn YourPc() -> impl IntoView {
 }
 
 fn storage(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let restoring = RwSignal::new(false);
     let library = expect_context::<Library>();
     let free = s.download_free_bytes.map(|free| tr!(" Espaço livre para downloads: {} GiB.", format::decimal(format!("{:.1}", free as f64 / 1073741824.0)))).unwrap_or_default();
     view! {
@@ -860,6 +861,28 @@ fn storage(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             <h3>{tr!("Armazenamento")}</h3>
             {row(tr!("Dados do Cerberus"), view! { <span class="path">{s.data_dir.clone()}</span><br/>{tr!("Biblioteca, backups de saves e caches.{}", free)} },
                 view! { <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::open_data_dir().await); })>{tr!("Abrir pasta")}</button> })}
+            {row(tr!("Copiar meus dados"), tr!("Um arquivo .zip com a biblioteca, favoritos, coleções, notas, tempo de jogo, capas que você escolheu e configurações. Suas chaves e senhas ficam de fora. Os saves têm os próprios backups."),
+                view! { <button type="button" class="btn sm" on:click=move |_| spawn_local(async move {
+                    if let Some(Some(n)) = library.report(api::export_data().await) {
+                        library.toast(tr!("Cópia salva com {} arquivos.", n));
+                    }
+                })>{tr!("Salvar cópia")}</button> })}
+            {move || row(tr!("Restaurar de uma cópia"), tr!("Traz os dados de uma cópia, por exemplo de outro PC. Os dados de agora são guardados antes, e as chaves, contas e pastas deste PC ficam. O Cerberus abre de novo no fim."),
+                if restoring.get() {
+                    view! {
+                        <div class="row nowrap">
+                            <button type="button" class="btn sm" on:click=move |_| restoring.set(false)>{tr!("Cancelar")}</button>
+                            <button type="button" class="btn sm main" on:click=move |_| spawn_local(async move {
+                                restoring.set(false);
+                                if let Some(Some(n)) = library.report(api::import_data().await) {
+                                    library.toast(tr!("{} arquivos restaurados. O Cerberus vai abrir de novo.", n));
+                                }
+                            })>{tr!("Escolher a cópia")}</button>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! { <button type="button" class="btn sm" on:click=move |_| restoring.set(true)>{tr!("Restaurar")}</button> }.into_any()
+                })}
         </section>
         {art_cache(s, busy, apply)}
     }

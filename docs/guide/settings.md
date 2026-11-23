@@ -118,6 +118,10 @@ Checks what games need from Windows, and installs it from Microsoft's website wi
 
 **Cerberus data**: opens the data folder and shows the free space for downloads.
 
+**Copy my data** saves one `.zip` with the library, favorites, collections, notes, play time, the covers you picked and your settings. Keys, tokens and passwords never go into it. Saves aren't in it: they have their own [backups](saves.md).
+
+**Restore from a copy** brings that data back, on this PC or another one. What's here is saved first in a `before-restore-<time>` folder inside the data folder, and this PC's keys, accounts and folders (recomps, ROMs, cloud, RetroArch, monitor) stay as they are. Only the files a copy can have are read from the zip. Cerberus opens again at the end.
+
 ### About
 
 The version, the license, and **Request a recomp**.

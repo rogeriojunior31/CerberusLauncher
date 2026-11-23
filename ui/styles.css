@@ -1747,3 +1747,4 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .pad-guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 18px; margin-top: 12px; }
 .pad-key { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
 .pad-key kbd { min-width: 44px; padding: 4px 9px; border-radius: 8px; background: var(--card2); border: 1px solid var(--line2); color: var(--ink); font: inherit; font-weight: 700; font-size: 12.5px; text-align: center; }
+.row.nowrap { flex-wrap: nowrap; white-space: nowrap; }

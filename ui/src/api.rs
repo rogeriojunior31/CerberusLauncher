@@ -1031,3 +1031,13 @@ pub async fn epic_status() -> Result<(bool, usize), String> {
 pub async fn epic_open() -> Result<(), String> {
     call("epic_open", &()).await
 }
+
+/// A copy of the player's data, saved where they choose; how many files (None: cancelled).
+pub async fn export_data() -> Result<Option<usize>, String> {
+    call("export_data", &()).await
+}
+
+/// Restores a copy; Cerberus starts again after it. How many files (None: cancelled).
+pub async fn import_data() -> Result<Option<usize>, String> {
+    call("import_data", &()).await
+}

@@ -22,6 +22,7 @@ mod language;
 mod dlss;
 mod overlay;
 mod in_game;
+mod data_backup;
 mod unlock_toast;
 mod disc_image;
 mod screenshots;
@@ -990,6 +991,55 @@ fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Resu
     settings::save(&data.0, &chosen)?;
     recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
     Ok(settings_view(&app))
+}
+
+/// Saves a copy of the player's Cerberus data where they choose. `None`: they cancelled.
+#[tauri::command]
+async fn export_data(app: AppHandle) -> Result<Option<usize>, String> {
+    let day = chrono_day();
+    let dialog = app.dialog().file().set_title(tr!("Salvar cópia dos dados")).set_file_name(format!("cerberus-{day}.zip")).add_filter(tr!("Cópia do Cerberus"), &["zip"]);
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_save_file()).await.map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    let out = picked.into_path().map_err(|e| e.to_string())?;
+    let data = app.state::<DataDir>().0.clone();
+    tauri::async_runtime::spawn_blocking(move || data_backup::export(&data, &out)).await.map_err(|e| e.to_string())?.map(Some)
+}
+
+/// Puts a copy back, then starts Cerberus again so everything reads it. `None`: they cancelled.
+#[tauri::command]
+async fn import_data(app: AppHandle) -> Result<Option<usize>, String> {
+    let dialog = app.dialog().file().set_title(tr!("Escolha uma cópia do Cerberus")).add_filter(tr!("Cópia do Cerberus"), &["zip"]);
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    let from = picked.into_path().map_err(|e| e.to_string())?;
+    let data = app.state::<DataDir>().0.clone();
+    let (count, _) = tauri::async_runtime::spawn_blocking(move || data_backup::restore(&data, &from)).await.map_err(|e| e.to_string())??;
+    let again = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        again.restart();
+    });
+    Ok(Some(count))
+}
+
+/// Today as YYYY-MM-DD (UTC), for file names.
+fn chrono_day() -> String {
+    day_of(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default())
+}
+
+fn day_of(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    // Civil date from days since 1970 (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Whether the Epic Games Launcher is here, and how many of its games are installed.
@@ -2408,6 +2458,8 @@ fn main() {
             set_in_game,
             set_notices,
             epic_status,
+            export_data,
+            import_data,
             epic_open,
             update_check,
             update_found,
@@ -2485,4 +2537,12 @@ fn main() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) { sessions::checkpoint(app); }
         });
+}
+
+#[cfg(test)]
+#[test]
+fn days_are_named_as_on_the_calendar() {
+    assert_eq!(day_of(0), "1970-01-01");
+    assert_eq!(day_of(951_782_400), "2000-02-29");
+    assert_eq!(day_of(1_795_392_000), "2026-11-23");
 }
