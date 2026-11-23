@@ -96,7 +96,7 @@ Na primeira vez, uma configuração rápida pergunta algumas coisas. Tudo pode s
 
 ### Adicionar qualquer outro jogo
 
-Clique em **Adicionar jogo** e escolha o `.exe`. O Cerberus busca o nome e a capa, e você pode editar os dois.
+Clique no **+** (Adicionar jogo), no fim do menu lateral, e escolha o `.exe`. O Cerberus busca o nome e a capa, e você pode editar os dois.
 
 Alguns jogos abrem um launcher antes do jogo. Nesses, escolha qual programa conta como jogando em **Gerenciar → Processo acompanhado**.
 
