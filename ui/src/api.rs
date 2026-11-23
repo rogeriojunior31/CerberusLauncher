@@ -618,6 +618,32 @@ pub async fn ra_connect(user: String, key: String, password: Option<String>) -> 
     call("ra_connect", &RaArgs { user, key, password }).await
 }
 
+/// A game's play sessions, oldest first.
+pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>, String> {
+    call("game_sessions", &Id { id }).await
+}
+
+/// Opens a page about a Steam game in the browser: "store", "steamdb", "pcgw" or "site".
+pub async fn open_store_link(app_id: u32, kind: &str) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg<'a> {
+        app_id: u32,
+        kind: &'a str,
+    }
+    call("open_store_link", &Arg { app_id, kind }).await
+}
+
+/// A Steam game's store page: description, pictures, trailers, requirements, languages.
+pub async fn steam_details(app_id: u32) -> Result<cerberus_shared::StoreDetails, String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg {
+        app_id: u32,
+    }
+    call("steam_details", &Arg { app_id }).await
+}
+
 /// The Steam account on this PC: SteamID64 and name.
 pub async fn steam_local_account() -> Result<Option<(String, String)>, String> {
     call("steam_local_account", &()).await

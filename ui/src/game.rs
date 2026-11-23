@@ -67,7 +67,8 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         (Some(g), None) => source_name(&g.source).to_string(),
         (None, None) => String::new(),
     };
-    let based = entry.as_ref().map(|e| view! { <span class="based">{tr!("Baseado em ")} <b>{e.game.clone()}</b></span> });
+    // "Based on Crash Bandicoot" under "Crash Bandicoot PC" says nothing new.
+    let based = entry.as_ref().filter(|e| !e.name.to_lowercase().contains(&e.game.to_lowercase())).map(|e| view! { <span class="based">{tr!("Baseado em ")} <b>{e.game.clone()}</b></span> });
     let library = expect_context::<Library>();
     let siblings = entry.as_ref().map_or(0, |e| {
         library.recomps.with_untracked(|list| match list {
@@ -80,12 +81,30 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         let (id, on) = (g.id.clone(), g.favorite);
         let label = if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") };
         view! {
-            <button type="button" class="btn glass fav-btn" class:on=on title=label aria-label=label aria-pressed=on.to_string()
+            <button type="button" class="btn glass icon-btn fav-btn" class:on=on title=label aria-label=label aria-pressed=on.to_string()
                 on:click=move |_| crate::toggle_favorite(library, id.clone(), !on)>
-                <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=18 />
-                {if on { tr!("Favorito") } else { tr!("Favoritar") }}
+                <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=20 />
             </button>
         }
+    });
+    // Everything the right-click menu has (folder, collections, hide...), from the page too.
+    let more = game.clone().map(|g| {
+        let menu = expect_context::<crate::game_menu::GameMenu>();
+        view! {
+            <button type="button" class="btn glass icon-btn" title=tr!("Mais opções") aria-label=tr!("Mais opções")
+                on:click=move |e| menu.open(g.clone(), &e)>
+                <Svg icon=Icon::More size=22 />
+            </button>
+        }
+    });
+    // Your time with the game, under the title: Steam's count for Steam games.
+    let played = game.as_ref().map(|g| {
+        let text = match (g.playtime_secs, g.last_played) {
+            (0, None) => tr!("Você ainda não jogou").to_string(),
+            (t, Some(last)) => tr!("Jogou por {} · última vez {}", format::playtime(t), format::ago(last)),
+            (t, None) => tr!("Jogou por {}", format::playtime(t)),
+        };
+        view! { <span class="gp-played"><Svg icon=Icon::Clock size=15 />{text}</span> }
     });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
     // Every game Cerberus starts gets the tab: picture filters, and the catalog's settings when it has some.
@@ -136,7 +155,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let body_game = game.clone();
     let body_entry = entry.clone();
     let body = move || match tab.get() {
-        Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() /> }.into_any(),
+        Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() tab /> }.into_any(),
         Tab::Achievements => match &steam_app {
             Some(app) => view! { <crate::achievements::AchievementsTab source="steam".to_string() key=app.clone() /> }.into_any(),
             None => ().into_any(),
@@ -185,9 +204,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                         None => view! { <h1>{title.clone()}</h1> }.into_any(),
                     }}
                     {based}
-                    <div class="gp-tags">{pill}{heart}</div>
+                    {played}
+                    {pill.map(|p| view! { <div class="gp-tags">{p}</div> })}
                 </div>
-                <div class="gp-act">{action}</div>
+                <div class="gp-act">{heart}{more}{action}</div>
             </section>
             {tabs}
             {body}
@@ -261,56 +281,53 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
 }
 
 #[component]
-fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
-    let mut stats: Vec<(&'static str, String)> = Vec::new();
+fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> impl IntoView {
+    // Project facts go to the side rail; the player's own numbers live in the play card.
+    let mut facts: Vec<(String, String)> = Vec::new();
     if let Some(g) = &game {
-        // Steam and Epic games count too, once Cerberus has seen them played.
-        if g.is_tracked() || g.last_played.is_some() {
-            let played = if g.last_played.is_none() && g.playtime_secs == 0 { tr!("Nunca jogado").to_string() } else { format::playtime(g.playtime_secs) };
-            stats.push((tr!("Tempo de jogo"), played));
-            if let Some(seconds) = g.last_session_secs {
-                stats.push((tr!("Última sessão"), format::session_duration(seconds)));
-            }
-            stats.push((tr!("Última vez"), g.last_played.map(format::ago).unwrap_or_else(|| "—".to_string())));
-        }
         if let Source::Recomp { version, .. } = &g.source {
             let shown = if g.external && version.is_empty() { tr!("Instalado por você").to_string() } else { version.clone() };
-            stats.push((tr!("Versão"), shown));
+            facts.push((tr!("Versão").to_string(), shown));
         }
-        stats.push((tr!("Fonte"), source_name(&g.source).to_string()));
-    } else if let Some(e) = &entry {
-        if let Some(release) = &e.latest {
-            stats.push((tr!("Última versão"), release.version.clone()));
-            if release.size > 0 {
-                stats.push((tr!("Tamanho"), megabytes(release.size)));
-            }
-        }
-        stats.push((tr!("Console"), e.console.clone()));
     }
     if let Some(e) = &entry {
+        if let Some(release) = &e.latest {
+            if game.is_none() {
+                facts.push((tr!("Última versão").to_string(), release.version.clone()));
+            }
+            if release.size > 0 {
+                facts.push((tr!("Tamanho").to_string(), megabytes(release.size)));
+            }
+        }
+        facts.push((tr!("Console").to_string(), e.console.clone()));
         if e.downloads > 0 {
-            stats.push((tr!("Downloads"), format::count(e.downloads)));
+            facts.push((tr!("Downloads").to_string(), format::count(e.downloads)));
         }
         if e.stars > 0 {
-            stats.push((tr!("Estrelas"), format::count(e.stars)));
+            facts.push((tr!("Estrelas").to_string(), format::count(e.stars)));
         }
         if e.players > 0 {
-            stats.push((tr!("Jogadores recentes"), format::count(e.players)));
+            facts.push((tr!("Jogadores recentes").to_string(), format::count(e.players)));
         }
         if e.releases > 0 {
-            stats.push((tr!("Versões lançadas"), e.releases.to_string()));
+            facts.push((tr!("Versões lançadas").to_string(), e.releases.to_string()));
         }
         if !e.first_release.is_empty() {
-            stats.push((tr!("Primeira versão"), day(&e.first_release)));
+            facts.push((tr!("Primeira versão").to_string(), day(&e.first_release)));
         }
     }
-    let cards = stats
-        .into_iter()
-        .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
-        .collect_view();
-    let untracked = game.as_ref().is_some_and(|g| !g.is_tracked()).then(|| {
-        view! { <p class="muted small">{tr!("O tempo dos jogos da Steam e da Epic é contado enquanto o Cerberus está aberto, mesmo escondido na bandeja.")}</p> }
+    let facts_card = (!facts.is_empty()).then(|| {
+        let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
+        view! { <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{rows}</dl></section> }
     });
+    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard game=g /> }.into_any());
+    let steam_app = game.as_ref().and_then(|g| match &g.source {
+        Source::Steam { app_id } => Some(*app_id),
+        _ => None,
+    });
+    if let Some(app) = steam_app {
+        return view! { <SteamOverview app play_card tab /> }.into_any();
+    }
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
     let problem = entry.as_ref().and_then(|e| e.problem.clone()).map(|text| view! { <p class="problem">{text}</p> });
@@ -389,8 +406,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     view! {
         <div class="ov">
             <div class="ov-main">
-                <div class="stats">{cards}</div>
-                {untracked}
+                {play_card}
                 {about}
                 {note}
                 {tags}
@@ -400,8 +416,56 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
                 {entry.clone().and_then(|e| e.original.clone().map(|o| view! { <OriginalGameCard original=o game=e.game.clone() /> }))}
                 {entry.clone().map(|e| view! { <SimilarGames entry=e /> })}
             </div>
-            {setup_card}
-            {needs}
+            <aside class="ov-rail">
+                {setup_card}
+                {needs}
+                {facts_card}
+            </aside>
+        </div>
+    }
+    .into_any()
+}
+
+/// A Steam game's Overview: your play time, the store's pictures and text, and
+/// the rail with achievements, details, controller, requirements, languages, links.
+#[component]
+fn SteamOverview(app: u32, play_card: Option<AnyView>, tab: RwSignal<Tab>) -> impl IntoView {
+    let details = LocalResource::new(move || async move { api::steam_details(app).await });
+    let on_all = Callback::new(move |_| tab.set(Tab::Achievements));
+    let store = move || match details.get() {
+        None => view! { <crate::game_overview::StoreSkeleton /> }.into_any(),
+        Some(Err(e)) => view! { <p class="muted small">{e}</p> }.into_any(),
+        Some(Ok(d)) => view! {
+            <crate::game_overview::Gallery details=d.clone() />
+            <crate::game_overview::About details=d />
+        }
+        .into_any(),
+    };
+    let rail = move || match details.get() {
+        Some(Ok(d)) => {
+            let site = d.website.is_some();
+            view! {
+                <crate::game_overview::StoreFacts details=d.clone() />
+                <crate::game_overview::Controller details=d.clone() />
+                <crate::game_overview::Requirements details=d.clone() />
+                <crate::game_overview::Languages details=d />
+                <crate::game_overview::Links app has_site=site />
+            }
+            .into_any()
+        }
+        None => view! { <div class="sk sk-card"></div> }.into_any(),
+        Some(Err(_)) => view! { <crate::game_overview::Links app has_site=false /> }.into_any(),
+    };
+    view! {
+        <div class="ov">
+            <div class="ov-main">
+                {play_card}
+                {store}
+            </div>
+            <aside class="ov-rail">
+                <crate::game_overview::AchievementsCard app on_all />
+                {rail}
+            </aside>
         </div>
     }
 }

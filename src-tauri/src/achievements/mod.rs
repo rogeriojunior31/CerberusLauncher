@@ -70,6 +70,29 @@ fn steam_part() -> Option<SteamPart> {
     Some(part)
 }
 
+/// Steam's own play time per game: this PC's (localconfig.vdf) and, with the
+/// Web API on, the whole account's from the last answer kept on disk; the
+/// larger wins. Unix seconds for when it was last played.
+pub fn steam_playtimes(data_dir: &Path, steam_id: Option<&str>) -> HashMap<u32, (u64, Option<u64>)> {
+    let mut all: HashMap<u32, (u64, Option<u64>)> = crate::steam::root()
+        .and_then(|root| steam::account(&root))
+        .and_then(|a| a.localconfig)
+        .map(|p| steam::playtimes(&p))
+        .unwrap_or_default();
+    if let Some(id) = steam_id {
+        let file = data_dir.join("cache").join("achievements").join("steam-api").join(format!("owned-{id}.json"));
+        let owned: Vec<steam_api::Owned> = std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        for o in owned {
+            let e = all.entry(o.app).or_insert((0, None));
+            e.0 = e.0.max(o.minutes * 60);
+            if o.last_played > 0 {
+                e.1 = Some(e.1.unwrap_or(0).max(o.last_played));
+            }
+        }
+    }
+    all
+}
+
 /// Names Steam's cache doesn't have, asked once of the Steam store and kept on disk.
 async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [AchievementGame], recent: &mut [RecentUnlock], online: bool) {
     let file = data_dir.join("cache").join("achievements").join("steam-names.json");

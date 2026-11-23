@@ -33,7 +33,9 @@ mod runtimes;
 mod steam;
 mod steam_shortcuts;
 mod steam_store;
+mod steam_details;
 mod trail;
+mod play_log;
 mod game_settings;
 mod art_custom;
 mod looks;
@@ -583,6 +585,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         let seconds = started.elapsed().as_secs();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
         let saved = emulation::add_played(&data, &path, seconds, now);
+        play_log::record(&data, &id, seconds, now);
         trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) }));
         let _ = app.emit("catalog-changed", ());
         background::classic_ended(&app);
@@ -720,6 +723,36 @@ fn retro_account(app: &AppHandle) -> Option<(String, String)> {
 async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>, online: Option<bool>) -> Result<cerberus_shared::AchievementsHub, String> {
     let data = app.state::<DataDir>().0.clone();
     Ok(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app), online.unwrap_or(true)).await)
+}
+
+/// Opens a page about a Steam game: the store, SteamDB, PCGamingWiki, or the
+/// site its store page lists. Only these addresses, built here from the app id.
+#[tauri::command]
+async fn open_store_link(app: AppHandle, http: State<'_, reqwest::Client>, app_id: u32, kind: String) -> Result<(), String> {
+    let url = match kind.as_str() {
+        "store" => format!("https://store.steampowered.com/app/{app_id}/"),
+        "steamdb" => format!("https://steamdb.info/app/{app_id}/"),
+        "pcgw" => format!("https://www.pcgamingwiki.com/api/appid.php?appid={app_id}"),
+        "site" => {
+            let data = app.state::<DataDir>().0.clone();
+            steam_details::details(&http, &data, app_id).await?.website.ok_or(tr!("Esse jogo não tem site na loja."))?
+        }
+        _ => return Err(tr!("Link inválido.").into()),
+    };
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// A game's play sessions, oldest first, for its play-time chart.
+#[tauri::command]
+fn game_sessions(app: AppHandle, id: String) -> Vec<cerberus_shared::PlaySession> {
+    play_log::of_game(&app.state::<DataDir>().0, &id)
+}
+
+/// A Steam game's store page (description, pictures, requirements...).
+#[tauri::command]
+async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id: u32) -> Result<cerberus_shared::StoreDetails, String> {
+    let data = app.state::<DataDir>().0.clone();
+    steam_details::details(&http, &data, app_id).await
 }
 
 /// One game's achievements for its page in the hub.
@@ -958,6 +991,20 @@ async fn list_games(
     let custom = app.state::<art_custom::CustomArt>();
     games.iter_mut().for_each(|game| custom.apply(game));
     store_time::apply(&app.state::<DataDir>().0, &mut games);
+    // Steam counts its games' time on every PC; that beats what Cerberus saw here.
+    let steam_id = settings::load(&app.state::<DataDir>().0).steam_id;
+    let data_dir = app.state::<DataDir>().0.clone();
+    let steam_time = tauri::async_runtime::spawn_blocking(move || achievements::steam_playtimes(&data_dir, steam_id.as_deref())).await.unwrap_or_default();
+    for game in games.iter_mut() {
+        let Source::Steam { app_id } = &game.source else { continue };
+        if let Some((secs, last)) = steam_time.get(app_id) {
+            game.playtime_secs = game.playtime_secs.max(*secs);
+            game.last_played = match (game.last_played, *last) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (a, b) => a.or(b),
+            };
+        }
+    }
     let favorite = favorites::load(&app.state::<DataDir>().0);
     games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
     collections::apply(&app.state::<DataDir>().0, &mut games);
@@ -2162,6 +2209,9 @@ fn main() {
             set_monitor,
             set_language,
             achievements_hub,
+            steam_details,
+            game_sessions,
+            open_store_link,
             steam_local_account,
             steam_account,
             steam_connect,

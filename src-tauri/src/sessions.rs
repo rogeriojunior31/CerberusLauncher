@@ -250,6 +250,9 @@ fn record(app: &AppHandle, game: &Game, seconds: u64) {
     let closed_at = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
     let trail = app.state::<crate::trail::Trail>();
     let notices = close_session(&app.state::<LocalLibrary>(), &app.state::<Sessions>(), &app.state::<recomp::Folders>(), &trail, game, seconds, closed_at);
+    if let Ok(data) = app.path().app_data_dir() {
+        crate::play_log::record(&data, &game.id, seconds, closed_at);
+    }
     for notice in notices {
         let _ = app.emit("toast", notice);
     }

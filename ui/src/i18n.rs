@@ -26,6 +26,11 @@ fn resolve(choice: Option<&str>) -> Lang {
 }
 
 /// Before anything is drawn: the language to draw in.
+/// The app is showing English.
+pub fn is_english() -> bool {
+    cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::En
+}
+
 pub fn init() {
     let lang = resolve(saved().as_deref());
     set_lang(lang);

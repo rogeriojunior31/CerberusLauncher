@@ -391,6 +391,73 @@ pub struct SteamAccount {
     pub games: u32,
 }
 
+/// One finished play session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaySession {
+    pub game_id: String,
+    /// Unix seconds when it ended.
+    pub ended: u64,
+    pub seconds: u64,
+}
+
+/// A piece of a store description: "h" heading, "p" paragraph, "li" list item, "img" picture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreBlock {
+    pub kind: String,
+    pub text: String,
+    pub src: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreShot {
+    pub thumb: String,
+    pub full: String,
+}
+
+/// A trailer: an MP4 when Steam still has one, otherwise its HLS stream.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreMovie {
+    pub name: String,
+    pub thumb: String,
+    pub mp4: Option<String>,
+    pub hls: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreLanguage {
+    pub name: String,
+    /// Full audio in this language, not just text.
+    pub audio: bool,
+}
+
+/// A game's page on the Steam store, as Cerberus shows it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreDetails {
+    pub app: u32,
+    pub name: String,
+    pub short: String,
+    pub about: Vec<StoreBlock>,
+    pub developers: Vec<String>,
+    pub publishers: Vec<String>,
+    pub released: String,
+    pub coming_soon: bool,
+    pub genres: Vec<String>,
+    /// Steam's categories: single-player, co-op, achievements, cloud...
+    pub features: Vec<String>,
+    pub metacritic: Option<u32>,
+    pub recommendations: Option<u64>,
+    /// "full", "partial" or empty.
+    pub controller: String,
+    pub languages: Vec<StoreLanguage>,
+    pub minimum: Vec<(String, String)>,
+    pub recommended: Vec<(String, String)>,
+    pub screenshots: Vec<StoreShot>,
+    pub movies: Vec<StoreMovie>,
+    pub website: Option<String>,
+    pub background: Option<String>,
+    pub is_free: bool,
+}
+
 /// What kind of achievement notice to draw over the game.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
