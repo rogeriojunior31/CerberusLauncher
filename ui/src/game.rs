@@ -973,7 +973,32 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             <p class="muted small">{tr!("Você trouxe esse recomp de uma pasta sua. O Cerberus abre, conta o tempo e faz backup dos saves, mas não atualiza nem apaga os arquivos dele.")}</p>
         </div>
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{dlss}{history}{folder}{relocate}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
+    // Recomps installed by Cerberus: stay on this version until the player says so.
+    let hold = game.as_ref().filter(|g| is_recomp && !g.external).map(|g| {
+        let id = StoredValue::new(g.id.clone());
+        let on = RwSignal::new(g.updates_paused);
+        let flip = move |_| {
+            let want = !on.get_untracked();
+            spawn_local(async move {
+                if library.report(api::set_updates_paused(&id.get_value(), want).await).is_some() {
+                    on.set(want);
+                    library.games.refetch();
+                    library.toast(if want { tr!("Atualizações pausadas. O jogo fica nesta versão.") } else { tr!("Atualizações retomadas.") });
+                }
+            });
+        };
+        view! {
+            <button type="button" class="row-btn" role="switch" aria-checked=move || on.get().to_string() on:click=flip>
+                <Svg icon=Icon::Pause />
+                <span>
+                    <b>{tr!("Pausar atualizações")}</b>
+                    <small>{move || if on.get() { tr!("Pausadas: o Cerberus não oferece versões novas até você retomar.") } else { tr!("Fica nesta versão, mesmo quando sair uma nova. Útil se a nova quebrar seus mods ou saves.") }}</small>
+                </span>
+                <span class="switch" class:on=move || on.get()><i></i></span>
+            </button>
+        }
+    });
+    view! { <div class="manage">{outside}{link}{program}{options}{dlss}{history}{folder}{relocate}{hold}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
 }
 
 #[component]

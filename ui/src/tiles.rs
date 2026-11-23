@@ -42,7 +42,7 @@ fn has_update(game: &Game, library: Library) -> bool {
     let Source::Recomp { recomp_id, version, .. } = &game.source else {
         return false;
     };
-    if game.external {
+    if game.external || game.updates_paused {
         return false;
     }
     library.recomps.with_untracked(|list| {

@@ -125,6 +125,10 @@ pub struct Library {
     adopting: RwSignal<bool>,
     /// The game whose art is being customized.
     customizing: RwSignal<Option<Game>>,
+    /// Installs that didn't finish this session: recomp id -> why.
+    failed: RwSignal<std::collections::BTreeMap<String, String>>,
+    /// Download speed samples (bytes per second), newest last, by recomp id.
+    speed: RwSignal<HashMap<String, Vec<f64>>>,
 }
 
 impl Library {
@@ -246,6 +250,8 @@ fn App() -> impl IntoView {
         toasts: RwSignal::new(Vec::new()),
         adopting: RwSignal::new(false),
         customizing: RwSignal::new(None),
+        failed: RwSignal::new(Default::default()),
+        speed: RwSignal::new(HashMap::new()),
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
@@ -304,7 +310,37 @@ fn App() -> impl IntoView {
     // An installer finished but its game wasn't found: ask where it went.
     let locating: RwSignal<Option<String>> = RwSignal::new(None);
     api::on_needs_location(move |id| locating.set(Some(id)));
+    // Speed from how many bytes arrived since the last sample, at most twice a second.
+    let last_sample = StoredValue::new(HashMap::<String, (f64, u64)>::new());
     api::on_install_progress(move |progress| {
+        if let InstallStep::Downloading { done, .. } = progress.step {
+            let now = js_sys::Date::now();
+            let id = progress.recomp_id.clone();
+            let before = last_sample.with_value(|m| m.get(&id).copied());
+            match before {
+                Some((t, d)) if now - t >= 500.0 => {
+                    let rate = done.saturating_sub(d) as f64 / ((now - t) / 1000.0);
+                    last_sample.update_value(|m| {
+                        m.insert(id.clone(), (now, done));
+                    });
+                    library.speed.update(|all| {
+                        let list = all.entry(id).or_default();
+                        list.push(rate);
+                        if list.len() > 60 {
+                            list.remove(0);
+                        }
+                    });
+                }
+                Some(_) => {}
+                None => last_sample.update_value(|m| {
+                    m.insert(id, (now, done));
+                }),
+            }
+        } else {
+            last_sample.update_value(|m| {
+                m.remove(&progress.recomp_id);
+            });
+        }
         library.progress.update(|all| match progress.step {
             InstallStep::Failed { .. } => {
                 all.remove(&progress.recomp_id);

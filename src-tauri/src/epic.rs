@@ -113,6 +113,7 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         status: None,
         rating: 0,
         notes: String::new(),
+        updates_paused: false,
     }
 }
 

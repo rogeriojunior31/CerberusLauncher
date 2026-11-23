@@ -1085,6 +1085,8 @@ async fn list_games(
     games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
     collections::apply(&app.state::<DataDir>().0, &mut games);
     game_notes::apply(&app.state::<DataDir>().0, &mut games);
+    let paused = settings::load(&app.state::<DataDir>().0).paused_updates;
+    games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
 }
@@ -1802,6 +1804,19 @@ fn set_game_setting(
 
 /// What the launcher did for a game lately, newest first.
 /// Marks or unmarks a game as a favorite.
+/// Pauses (or resumes) a recomp's updates: it stays on its version meanwhile.
+#[tauri::command]
+fn set_updates_paused(app: AppHandle, id: String, on: bool) -> Result<(), String> {
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    if on {
+        chosen.paused_updates.insert(id);
+    } else {
+        chosen.paused_updates.remove(&id);
+    }
+    settings::save(&data, &chosen)
+}
+
 /// The player's status, rating and notes for a game.
 #[tauri::command]
 fn set_game_note(app: AppHandle, id: String, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
@@ -2332,6 +2347,7 @@ fn main() {
             steam_details,
             game_sessions,
             set_game_note,
+            set_updates_paused,
             update_check,
             update_found,
             update_install,

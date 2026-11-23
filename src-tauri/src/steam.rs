@@ -118,6 +118,7 @@ pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
         status: None,
         rating: 0,
         notes: String::new(),
+        updates_paused: false,
     }
 }
 
@@ -159,6 +160,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         status: None,
         rating: 0,
         notes: String::new(),
+        updates_paused: false,
     })
 }
 

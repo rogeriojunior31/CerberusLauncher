@@ -812,6 +812,7 @@ fn register(
         status: None,
         rating: 0,
         notes: String::new(),
+        updates_paused: false,
     };
     apply_art(&mut game);
     library.add(game.clone())?;

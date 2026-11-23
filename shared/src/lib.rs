@@ -79,6 +79,9 @@ pub struct Game {
     /// The player's own notes about it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// A recomp whose updates the player paused: it stays on its version.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub updates_paused: bool,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -926,6 +929,8 @@ pub struct Release {
 
 /// The error an install ends with when the player pauses its download.
 pub const PAUSED: &str = "Download pausado.";
+/// What a cancelled install answers (in Portuguese, the text's key).
+pub const CANCELLED_INSTALL: &str = "Instalação cancelada.";
 
 /// Sent from the backend while a recomp installs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

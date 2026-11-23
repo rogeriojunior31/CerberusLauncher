@@ -12,6 +12,17 @@ use crate::{Library, api, format::megabytes};
 
 /// Starts installing (or updating) a recomp; progress fills in from the backend's events.
 pub fn start_install(library: Library, id: String) {
+    spawn_local(install_one(library, id));
+}
+
+/// Installs one recomp and waits for it: for "Update all", one after the other.
+pub async fn install_one(library: Library, id: String) {
+    library.failed.update(|all| {
+        all.remove(&id);
+    });
+    library.speed.update(|all| {
+        all.remove(&id);
+    });
     library.progress.update(|all| {
         // Carrying on from a pause starts where the bar stopped.
         let starting = match all.get(&id) {
@@ -20,25 +31,35 @@ pub fn start_install(library: Library, id: String) {
         };
         all.insert(id.clone(), starting);
     });
-    spawn_local(async move {
-        let result = api::install_recomp(&id).await;
-        // Paused: the bar stays, showing where it stopped, until it carries on.
-        if result.as_ref().is_err_and(|e| e == cerberus_shared::PAUSED) {
-            return;
-        }
-        library.progress.update(|all| {
-            all.remove(&id);
-        });
-        library.games.refetch();
-        library.recomps.refetch();
-        if let Some(game) = library.report(result) {
-            if game.setup_pending {
-                library.toast(tr!("Download de {} concluído. Abra o instalador na página do jogo.", game.name));
-            } else {
-                library.toast(format!("{} foi instalado.", game.name));
-            }
-        }
+    let result = api::install_recomp(&id).await;
+    // Paused: the bar stays, showing where it stopped, until it carries on.
+    if result.as_ref().is_err_and(|e| e == cerberus_shared::PAUSED) {
+        return;
+    }
+    library.progress.update(|all| {
+        all.remove(&id);
     });
+    library.speed.update(|all| {
+        all.remove(&id);
+    });
+    // Kept for the Downloads page's "Didn't finish"; a cancel isn't a failure.
+    if let Err(e) = &result {
+        let cancelled = e.as_str() == cerberus_shared::CANCELLED_INSTALL || e.as_str() == cerberus_shared::i18n::t(cerberus_shared::CANCELLED_INSTALL);
+        if !cancelled {
+            library.failed.update(|all| {
+                all.insert(id.clone(), e.clone());
+            });
+        }
+    }
+    library.games.refetch();
+    library.recomps.refetch();
+    if let Some(game) = library.report(result) {
+        if game.setup_pending {
+            library.toast(tr!("Download de {} concluído. Abra o instalador na página do jogo.", game.name));
+        } else {
+            library.toast(tr!("{} foi instalado.", game.name));
+        }
+    }
 }
 
 pub fn cancel_install(library: Library, id: String) {

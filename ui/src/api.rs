@@ -662,6 +662,16 @@ pub async fn whats_new_seen() -> Result<(), String> {
     call("whats_new_seen", &()).await
 }
 
+/// Pauses or resumes a recomp's updates.
+pub async fn set_updates_paused(id: &str, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        on: bool,
+    }
+    call("set_updates_paused", &Arg { id, on }).await
+}
+
 /// The player's status, rating and notes for a game.
 pub async fn set_game_note(id: &str, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
     #[derive(serde::Serialize)]
