@@ -12,6 +12,10 @@ For games that open a launcher first, go to **Manage → Tracked process** and c
 
 Steam and Epic games are tracked by watching their programs while Cerberus is running, even from the tray.
 
+## Achievement notifications
+
+While a Steam game runs, Cerberus tells you the moment an achievement unlocks, says when it's rare, and celebrates 100%. Achievements in RetroArch are announced too. See [Achievements](achievements.md#unlock-notifications).
+
 ## Screenshots
 
 Press <kbd>F12</kbd> while the game is in front. Cerberus takes a picture of **the game window only**, never the rest of the screen, and saves it as a PNG.

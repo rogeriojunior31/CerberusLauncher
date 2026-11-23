@@ -1,6 +1,6 @@
 # Cerberus Launcher documentation
 
-Cerberus is a free, open-source game launcher for Windows. It keeps your Steam, Epic and other PC games in one library, installs and updates recomps (native PC versions of console games), and plays your own ROMs through RetroArch.
+Cerberus is a free, open-source game launcher for Windows. It keeps your Steam, Epic and other PC games in one library, installs and updates recomps (native PC versions of console games), plays your own ROMs through RetroArch, and follows your achievements on Steam and RetroAchievements.
 
 > The documentation is in English for now. Other languages will follow.
 
@@ -19,6 +19,7 @@ Cerberus is a free, open-source game launcher for Windows. It keeps your Steam, 
 | [Recomps](guide/recomps.md) | Discover, installing, updates, versions, recomps you already have |
 | [Easy Setup](guide/easy-setup.md) | How Cerberus hands your copy of a game to a recomp |
 | [Classics](guide/classics.md) | ROM folders, RetroArch, cores, BIOS, multi-disc games, RetroAchievements |
+| [Achievements](guide/achievements.md) | The achievements hub: Steam and RetroAchievements, awards, unlock notifications |
 | [Saves](guide/saves.md) | Automatic backups, restoring, cloud saves |
 | [Mods](guide/mods.md) | Thunderstore and GameBanana mods |
 | [While you play](guide/in-game.md) | Screenshots, the in-game menu, visual filters, play time |

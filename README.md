@@ -28,6 +28,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 - **It brings your PC games together.** Games from Steam and Epic show up on their own, and any `.exe` can be added by hand.
 - **It installs and updates recomps.** A *recomp* is a native PC version of a console game that the community rebuilt from the original code (Zelda 64: Recompiled, Ship of Harkinian, Unleashed Recompiled and many more). Cerberus downloads each one straight from its developers' official releases and hands it **your own copy** of the game.
 - **It plays your classics.** ROMs from your folders open in RetroArch, which Cerberus installs and sets up for you, with RetroAchievements.
+- **It follows your achievements.** Steam and RetroAchievements on one page, with awards, rarity and a notice the moment one unlocks.
 
 > [!IMPORTANT]
 > **Cerberus never downloads game files.** Every recomp and every classic needs a copy of the game that you own.
@@ -46,6 +47,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 
 ### And also
 
+- **Achievements hub:** every game with achievements from Steam and RetroAchievements, the latest unlocks, the games closest to 100%, and each game's full list with rarity and secret achievements. RetroAchievements awards (beaten, completed, mastered) show as badges, hardcore ones in gold. Steam works straight from this PC; with your free Steam Web API key it covers your whole account. While you play a Steam game, Cerberus tells you when an achievement unlocks.
 - **Save backups:** after every session, before updates and before uninstalling. Cerberus keeps the 10 most recent backups, and can copy them to the cloud through any synced folder (OneDrive, Google Drive, Dropbox).
 - **Mods:** one-click mods from Thunderstore and GameBanana, including Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed and Marathon Recompiled.
 - **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game".
@@ -142,6 +144,12 @@ Cerberus keeps the game's own DLL and can put it back at any time. A game update
 </details>
 
 <details>
+<summary><b>Some of my Steam achievements are missing.</b></summary>
+
+Without a key, Cerberus reads only what Steam has synced on this PC. Connect your free Steam Web API key in **Settings → Accounts → Steam**, and set **Game details** to **Public** in Steam's privacy settings. See [Achievements](docs/guide/achievements.md).
+</details>
+
+<details>
 <summary><b>Can I use the RetroArch I already have?</b></summary>
 
 Yes: in **Settings → Emulation**, point Cerberus to your `retroarch.exe`.
@@ -158,7 +166,7 @@ Use **Request a recomp** in Discover, or [open an issue](https://github.com/roge
 The full documentation lives in **[docs/](docs/README.md)**:
 
 - **Getting started:** [Installation](docs/getting-started/installation.md) · [First launch](docs/getting-started/first-launch.md)
-- **User guide:** [Library](docs/guide/library.md) · [Recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [Classics](docs/guide/classics.md) · [Saves](docs/guide/saves.md) · [Mods](docs/guide/mods.md) · [While you play](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [Managing a game](docs/guide/managing-games.md) · [Settings](docs/guide/settings.md)
+- **User guide:** [Library](docs/guide/library.md) · [Recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [Classics](docs/guide/classics.md) · [Achievements](docs/guide/achievements.md) · [Saves](docs/guide/saves.md) · [Mods](docs/guide/mods.md) · [While you play](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [Managing a game](docs/guide/managing-games.md) · [Settings](docs/guide/settings.md)
 - **Help:** [Troubleshooting](docs/help/troubleshooting.md) · [FAQ](docs/help/faq.md) · [Data and privacy](docs/help/data-and-privacy.md)
 - **Development:** [Architecture](docs/development/architecture.md) · [Building](docs/development/building.md) · [Recomp catalog](docs/development/catalog.md) · [Catalog sources](docs/development/catalog-sources.md) · [Translations](docs/development/translations.md) · [Releasing](docs/development/releasing.md)
 

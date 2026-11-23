@@ -36,6 +36,7 @@ The UI calls the backend with Tauri commands (`ui/src/api.rs` → `#[tauri::comm
 | `roms.rs` | Scanning ROM folders, reading N64 headers, grouping multi-disc games |
 | `iso9660.rs`, `xdvdfs.rs`, `disc_image.rs` | Reading disc images, including CHD and CSO, for Easy Setup |
 | `emulation.rs`, `retroachievements.rs` | RetroArch, cores, BIOS, achievements |
+| `achievements/` | The achievements hub: `steam.rs` reads the Steam client's binary stats cache, `steam_api.rs` the optional Steam Web API (with a disk cache), `retro.rs` RetroAchievements, `live.rs` unlock notifications while a Steam game runs |
 | `mods.rs`, `gamebanana.rs`, `hedge.rs` | Thunderstore and GameBanana mods; the Hedge Mod Manager format |
 | `looks/` | Visual filters through ReShade |
 | `game_settings.rs` | The games' own settings files |
@@ -53,9 +54,10 @@ The UI calls the backend with Tauri commands (`ui/src/api.rs` → `#[tauri::comm
 | Module | Screen |
 |---|---|
 | `main.rs` | App shell, routing, the `Library` context, toasts |
-| `home.rs`, `library_page.rs`, `discover.rs`, `pages.rs`, `news.rs` | Home, Library, Discover, Downloads and Saves, What's new |
+| `shell.rs`, `home.rs`, `library_page.rs`, `discover.rs`, `pages.rs`, `news.rs` | Sidebar; Home, Library, Discover, Downloads and Saves, What's new |
 | `game.rs` and `backups.rs`, `game_settings.rs`, `looks.rs`, `versions.rs`, `customize.rs`, `game_menu.rs` | The game page and its tabs, the right-click menu |
 | `classics.rs` | Classics and their pages |
+| `achievements.rs` | The achievements hub, a game's achievement page, and the Achievements tab of a game page |
 | `settings_page.rs`, `first_run.rs` | Settings and the setup guide |
 | `tv/` | Big Picture Mode: pages, sheets, focus, controller input, sounds |
 | `overlay.rs` | The in-game menu, shown in its own transparent window |

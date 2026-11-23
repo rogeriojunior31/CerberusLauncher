@@ -28,6 +28,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 - **Junta os seus jogos de PC.** Os jogos da Steam e da Epic aparecem sozinhos, e você pode adicionar qualquer `.exe`.
 - **Instala e atualiza recomps.** *Recomp* é a versão nativa para PC de um jogo de console, refeita pela comunidade a partir do código original. Alguns exemplos são Zelda 64: Recompiled, Ship of Harkinian e Unleashed Recompiled. O Cerberus baixa cada um direto das releases oficiais dos desenvolvedores e entrega **a sua cópia** do jogo para ele.
 - **Roda os seus clássicos.** As ROMs das suas pastas abrem no RetroArch, que o Cerberus instala e configura, com RetroAchievements.
+- **Acompanha as suas conquistas.** Steam e RetroAchievements numa página só, com selos, raridade e aviso na hora em que uma conquista cai.
 
 > [!IMPORTANT]
 > **O Cerberus nunca baixa arquivos de jogo.** Cada recomp e cada clássico precisa de uma cópia do jogo que você tem.
@@ -43,6 +44,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 
 ### E mais
 
+- **Hub de conquistas:** todos os jogos com conquistas da Steam e do RetroAchievements, as últimas desbloqueadas, os jogos mais perto dos 100% e a lista completa de cada jogo, com raridade e conquistas secretas. Os selos do RetroAchievements (zerado, completo, dominado) aparecem no jogo, os do hardcore em dourado. A Steam funciona direto deste PC; com a sua chave gratuita da Web API da Steam, vem a conta inteira. Enquanto você joga um jogo da Steam, o Cerberus avisa quando uma conquista é desbloqueada.
 - **Backup dos saves** depois de cada partida, antes de atualizar e antes de desinstalar. O Cerberus guarda os 10 mais recentes, e eles podem ir para a nuvem por uma pasta sincronizada (OneDrive, Google Drive, Dropbox).
 - **Mods** com um clique, do Thunderstore e do GameBanana. Funciona com Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed e Marathon Recompiled.
 - **Durante o jogo:**
@@ -142,6 +144,12 @@ O Cerberus guarda a DLL original do jogo e volta com ela quando você quiser. Um
 </details>
 
 <details>
+<summary><b>Faltam conquistas da Steam.</b></summary>
+
+Sem chave, o Cerberus lê só o que a Steam já sincronizou neste PC. Conecte a sua chave gratuita da Web API da Steam em **Configurações → Contas → Steam** e deixe **Detalhes de jogo** como **Público** na privacidade da Steam. Veja [Conquistas](docs/guide/achievements.md) (em inglês).
+</details>
+
+<details>
 <summary><b>Posso usar o RetroArch que eu já tenho?</b></summary>
 
 Pode. Em **Configurações → Emulação**, aponte o seu `retroarch.exe`.
@@ -158,7 +166,7 @@ Use **Pedir um recomp** no Descobrir ou [abra uma issue](https://github.com/roge
 A documentação completa fica em **[docs/](docs/README.md)**. Por enquanto ela está só em inglês; as traduções vêm depois.
 
 - **Primeiros passos:** [instalação](docs/getting-started/installation.md) · [primeira abertura](docs/getting-started/first-launch.md)
-- **Guia:** [biblioteca](docs/guide/library.md) · [recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [clássicos](docs/guide/classics.md) · [saves](docs/guide/saves.md) · [mods](docs/guide/mods.md) · [durante o jogo](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [gerenciar um jogo](docs/guide/managing-games.md) · [configurações](docs/guide/settings.md)
+- **Guia:** [biblioteca](docs/guide/library.md) · [recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [clássicos](docs/guide/classics.md) · [conquistas](docs/guide/achievements.md) · [saves](docs/guide/saves.md) · [mods](docs/guide/mods.md) · [durante o jogo](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [gerenciar um jogo](docs/guide/managing-games.md) · [configurações](docs/guide/settings.md)
 - **Ajuda:** [solução de problemas](docs/help/troubleshooting.md) · [perguntas frequentes](docs/help/faq.md) · [dados e privacidade](docs/help/data-and-privacy.md)
 - **Desenvolvimento:** [arquitetura](docs/development/architecture.md) · [compilar](docs/development/building.md) · [catálogo de recomps](docs/development/catalog.md) · [fontes de catálogo](docs/development/catalog-sources.md) · [traduções](docs/development/translations.md) · [publicar versão](docs/development/releasing.md)
 

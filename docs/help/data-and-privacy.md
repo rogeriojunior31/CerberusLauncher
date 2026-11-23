@@ -23,6 +23,8 @@ Inside the data folder:
 | `favorites.json`, `collections.json` | Favorites, collections and hidden games |
 | `classics.json` | Play time of your classics |
 | `art.json`, `covers/`, `cache/` | Custom art and downloaded images |
+| `cache/achievements/` | Achievement answers from Steam and RetroAchievements, so the Achievements page opens at once |
+| `store-playtime.json` | Play time of Steam and Epic games |
 | `recomps/` | Recomps installed in the default folder |
 | `downloads/` | Downloads in progress |
 | `saves/` | Save backups |
@@ -32,7 +34,7 @@ Inside the data folder:
 
 ## Keys and passwords
 
-- **SteamGridDB and RetroAchievements keys** stay on this PC.
+- **SteamGridDB, Steam Web API and RetroAchievements keys** stay on this PC, in `settings.json`. They are only sent to the service they belong to.
 - **Your RetroAchievements password is never stored.** Cerberus trades it once for an access token, saves only the token in RetroArch's settings, and backs up that file first.
 
 ## Files outside the data folder
@@ -57,7 +59,9 @@ Cerberus changes files outside its own folder only when you ask, and backs them 
 | `www.steamgriddb.com` | Only with your key | Community art |
 | `thunderstore.io`, `gamebanana.com` | When you browse mods | Mods |
 | `buildbot.libretro.com` | When you install RetroArch or a core | RetroArch and cores |
-| `retroachievements.org` | When you connect or play with achievements | Profile and achievements |
+| `api.steampowered.com` | Only with your Steam Web API key, when the Achievements page updates | Your games, achievements and play time |
+| `api.steampowered.com` (no key), Steam CDN | When you open a game's achievements | How rare each achievement is, and icons. Kept for a week |
+| `retroachievements.org` | When you connect, open Achievements or play with achievements | Profile and achievements |
 | `reshade.me`, `api.github.com` | First visual filter | ReShade |
 | `aka.ms`, `download.microsoft.com` | Only when you ask | Visual C++ and DirectX installers |
 | `raw.githubusercontent.com/libretro-thumbnails` | When classics are listed | Box art |
