@@ -81,10 +81,11 @@ Na primeira vez, uma configuração rápida pergunta algumas coisas. Tudo pode s
 
 <img src="docs/screenshots/first-run.jpg" alt="Configuração inicial" width="700" />
 
-1. **Como você joga:** na mesa ou na TV. Quem escolhe TV abre direto no Big Picture Mode.
-2. **Suas pastas de ROMs:** o Cerberus procura nelas e mostra quais dos seus jogos já têm recomp.
-3. **Onde instalar os recomps**, com o espaço livre de cada disco.
-4. **Saves na nuvem:** uma pasta que o OneDrive, o Google Drive ou o Dropbox sincroniza.
+1. **Idioma:** automático (segue o Windows), Português (Brasil) ou English.
+2. **Como você joga:** na mesa ou na TV. Quem escolhe TV abre direto no Big Picture Mode.
+3. **Suas pastas de ROMs:** o Cerberus procura nelas e mostra quais dos seus jogos já têm recomp.
+4. **Onde instalar os recomps**, com o espaço livre de cada disco.
+5. **Saves na nuvem:** uma pasta que o OneDrive, o Google Drive ou o Dropbox sincroniza.
 
 ### Instalar um recomp
 

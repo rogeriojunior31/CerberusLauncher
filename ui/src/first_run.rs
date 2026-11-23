@@ -43,6 +43,31 @@ fn covers(list: Vec<RecompEntry>) -> impl IntoView {
     view! { <div class="fr-covers">{tiles}</div> }
 }
 
+/// The language first, so the rest of the setup reads right. Each language is
+/// written in itself; choosing one reloads the window in it.
+fn language_pick() -> impl IntoView {
+    use cerberus_shared::i18n::Lang;
+    let chosen = crate::i18n::choice().filter(|c| c != "auto");
+    let pick = |code: Option<&'static str>, label: String| {
+        let on = chosen.as_deref() == code;
+        view! {
+            <button type="button" role="radio" class="fr-lang" class:on=on aria-checked=on.to_string()
+                on:click=move |_| spawn_local(async move {
+                    let _ = api::set_language(code.map(str::to_string)).await;
+                    crate::i18n::choose(code);
+                })>{label}</button>
+        }
+    };
+    let auto = tr!("Automático ({})", crate::i18n::system().name());
+    view! {
+        <div class="fr-langs" role="radiogroup" aria-label=tr!("Idioma")>
+            <span class="fr-langs-h"><Svg icon=Icon::Discover size=16 />{tr!("Idioma")}</span>
+            {pick(None, auto)}
+            {Lang::ALL.iter().map(|l| pick(Some(l.code()), l.name().to_string())).collect_view()}
+        </div>
+    }
+}
+
 #[component]
 pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -96,6 +121,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
                 <div class="fr-card"><Svg icon=Icon::Download size=26 /><b>{tr!("Instala e atualiza")}</b><span>{tr!("Direto da página de cada projeto, conferindo cada arquivo.")}</span></div>
                 <div class="fr-card"><Svg icon=Icon::Settings size=26 /><b>{tr!("Do seu jeito")}</b><span>{tr!("Ajustes, mods e backups de saves para cada jogo, na mesa ou na TV.")}</span></div>
             </div>
+            {language_pick()}
         }
         .into_any(),
         1 => {

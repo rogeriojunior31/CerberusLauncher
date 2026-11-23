@@ -81,10 +81,11 @@ The first time Cerberus opens, a short setup guide asks a few questions. You can
 
 <img src="docs/screenshots/first-run.jpg" alt="First-run setup" width="700" />
 
-1. **How you play:** at a desk, or on a TV. If you pick TV, Cerberus starts straight in Big Picture Mode.
-2. **Your ROM folders:** Cerberus scans them and shows which of your games already have a recomp.
-3. **Where recomps are installed,** with the free space on each drive.
-4. **Saves in the cloud:** a folder that OneDrive, Google Drive or Dropbox keeps in sync.
+1. **Language:** automatic (follows Windows), Português (Brasil) or English.
+2. **How you play:** at a desk, or on a TV. If you pick TV, Cerberus starts straight in Big Picture Mode.
+3. **Your ROM folders:** Cerberus scans them and shows which of your games already have a recomp.
+4. **Where recomps are installed,** with the free space on each drive.
+5. **Saves in the cloud:** a folder that OneDrive, Google Drive or Dropbox keeps in sync.
 
 ### Install a recomp
 

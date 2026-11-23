@@ -1716,3 +1716,11 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 
 .ach-icon-none { width: 100%; height: 100%; display: grid; place-items: center; color: var(--dim); background: var(--fill2); }
 .corner-segs .seg:disabled { opacity: 0.4; cursor: default; }
+
+/* First run: language */
+.fr-langs { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 26px; }
+.fr-langs-h { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 600; font-size: 14px; margin-right: 6px; }
+.fr-lang { height: 36px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line2); background: var(--fill2); color: var(--muted); font-weight: 600; font-size: 14px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.fr-lang:hover { color: var(--ink); }
+.fr-lang.on { background: var(--grad); border-color: transparent; color: #fff; }

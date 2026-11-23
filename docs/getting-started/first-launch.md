@@ -6,7 +6,7 @@ The first time Cerberus opens, a short setup guide gets it ready. Every step can
 
 ## The steps
 
-1. **Welcome.** What Cerberus does, in three cards.
+1. **Welcome.** What Cerberus does, in three cards, and the **language**: Automatic (your Windows language), Português (Brasil) or English. Picking one redraws the guide in it right away.
 2. **How you'll play.**
    - **At a desk** opens a regular window, for mouse and keyboard.
    - **On a TV** opens [Big Picture Mode](../guide/big-picture.md) in full screen every time.
@@ -23,7 +23,7 @@ To see the setup guide again, go to **Settings → General → Initial setup →
 
 ## Language
 
-Cerberus speaks English and Brazilian Portuguese. It follows your Windows language. To change it, go to **Settings → Appearance → Language**.
+Cerberus speaks English and Brazilian Portuguese. It follows your Windows language unless you pick one on the first screen of the setup guide. To change it later, go to **Settings → Appearance → Language**.
 
 ## See also
 

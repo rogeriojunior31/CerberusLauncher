@@ -16,7 +16,7 @@ fn saved() -> Option<String> {
     storage().and_then(|s| s.get_item(KEY).ok().flatten()).filter(|c| !c.is_empty() && c != "auto")
 }
 
-fn system() -> Lang {
+pub fn system() -> Lang {
     let code = web_sys::window().and_then(|w| w.navigator().language()).unwrap_or_default();
     Lang::from_code(&code)
 }
