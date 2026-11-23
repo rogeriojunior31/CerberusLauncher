@@ -136,6 +136,11 @@ fn is_game(install: &Install, entry: Option<&CatalogItem>) -> bool {
     !is_dlc && paths.contains(&"games") && !paths.contains(&"addons")
 }
 
+/// The Epic Games Launcher is on this PC (it keeps its data under ProgramData).
+pub fn launcher_found() -> bool {
+    program_data().is_some_and(|d| d.join("Epic").join("EpicGamesLauncher").is_dir())
+}
+
 fn program_data() -> Option<PathBuf> {
     if !cfg!(windows) {
         return None;

@@ -25,6 +25,7 @@ enum Section {
     Catalog,
     Emulation,
     Steam,
+    Epic,
     Retro,
     Pc,
     Storage,
@@ -44,7 +45,7 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
         ],
     ),
     (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Gamepad)]),
-    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::Gamepad), (Section::Epic, "Epic Games", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
     (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Check), (Section::Storage, tk!("Armazenamento"), Icon::Folder), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
@@ -188,6 +189,7 @@ pub fn SettingsPage() -> impl IntoView {
             .into_any(),
             Section::Emulation => emulation(s).into_any(),
             Section::Steam => view! { <SteamAccountCard /> }.into_any(),
+            Section::Epic => view! { <EpicCard /> }.into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() retroarch=s.ra_retroarch /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
             Section::Storage => storage(s, busy, apply).into_any(),
@@ -916,6 +918,51 @@ fn update_row() -> impl IntoView {
 /// Linking a RetroAchievements account and showing its progress.
 /// Steam's Web API, optional: with the player's own key, the achievements hub
 /// reads every owned game and the achievements unlocked on other PCs.
+/// The Epic Games Launcher: found or not, and its installed games in the library.
+#[component]
+fn EpicCard() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let status = LocalResource::new(api::epic_status);
+    let body = move || match status.get() {
+        None => view! { <p class="muted small">{tr!("Procurando a Epic neste PC…")}</p> }.into_any(),
+        Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
+        Some(Ok((found, games))) => {
+            let (pill, text) = match (found, games) {
+                (false, 0) => (
+                    view! { <span class="pill">{tr!("Não encontrada")}</span> }.into_any(),
+                    tr!("A Epic Games Launcher não está neste PC. Quando estiver, os jogos instalados por ela entram sozinhos na Biblioteca.").to_string(),
+                ),
+                (_, 0) => (
+                    view! { <span class="pill ok">{tr!("Encontrada")}</span> }.into_any(),
+                    tr!("Nenhum jogo da Epic instalado. Os que você instalar por ela entram sozinhos na Biblioteca.").to_string(),
+                ),
+                (_, 1) => (view! { <span class="pill ok">{tr!("Encontrada")}</span> }.into_any(), tr!("1 jogo instalado pela Epic está na Biblioteca.").to_string()),
+                (_, n) => (view! { <span class="pill ok">{tr!("Encontrada")}</span> }.into_any(), tr!("{} jogos instalados pela Epic estão na Biblioteca.", n)),
+            };
+            view! {
+                <div class="set-row">
+                    <div><b>{tr!("Epic Games Launcher")}</b><p class="muted small">{text}</p></div>
+                    {pill}
+                </div>
+                <div class="row">
+                    <button type="button" class="btn sm" disabled=games == 0 on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
+                    <button type="button" class="btn sm" disabled=!found on:click=move |_| spawn_local(async move { library.report(api::epic_open().await); })>
+                        <Svg icon=Icon::External size=16 />{tr!("Abrir a Epic")}
+                    </button>
+                </div>
+                <p class="muted small">{tr!("Sem conta e sem senha: o Cerberus lê o que a Epic já guarda no PC. Os jogos abrem pela Epic, que precisa estar instalada. Tempo de jogo é contado; conquistas da Epic ainda não.")}</p>
+            }
+            .into_any()
+        }
+    };
+    view! {
+        <section class="card set">
+            <div class="card-h"><h3>"Epic Games"</h3></div>
+            {body}
+        </section>
+    }
+}
+
 #[component]
 fn SteamAccountCard() -> impl IntoView {
     let library = expect_context::<Library>();

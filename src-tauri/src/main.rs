@@ -992,6 +992,18 @@ fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Resu
     Ok(settings_view(&app))
 }
 
+/// Whether the Epic Games Launcher is here, and how many of its games are installed.
+#[tauri::command]
+async fn epic_status() -> Result<(bool, usize), String> {
+    tauri::async_runtime::spawn_blocking(|| (epic::launcher_found(), epic::installed_games().len())).await.map_err(|e| e.to_string())
+}
+
+/// Opens the Epic Games Launcher on its library.
+#[tauri::command]
+fn epic_open(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url("com.epicgames.launcher://store/library", None::<&str>).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn set_notices(app: AppHandle, choices: cerberus_shared::Notices) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
@@ -2395,6 +2407,8 @@ fn main() {
             set_download_limit,
             set_in_game,
             set_notices,
+            epic_status,
+            epic_open,
             update_check,
             update_found,
             update_install,

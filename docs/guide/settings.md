@@ -97,6 +97,10 @@ RetroArch (install or use yours), **Cores**, **BIOS** and **Achievements in Retr
 
 Optional. Connect your free Steam Web API key so the [Achievements](achievements.md) page shows every game on your account, with achievements earned on any PC. Cerberus finds the Steam account signed in on this PC; **Use another account** takes a profile link or SteamID64. Your profile's **Game details** must be public. **Get my key on Steam** and **Profile privacy** open the right Steam pages.
 
+### Epic Games
+
+Shows whether the Epic Games Launcher is on this PC and how many of its installed games are in the Library. No account or password: Cerberus reads what Epic already keeps on the PC. **Open Epic** opens the launcher. Play time is counted; Epic achievements aren't shown yet.
+
 ### RetroAchievements
 
 Connect with your username and Web API key to see your profile, points and recent games.

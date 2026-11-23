@@ -1022,3 +1022,12 @@ pub async fn set_notices(choices: cerberus_shared::Notices) -> Result<cerberus_s
     }
     call("set_notices", &Arg { choices }).await
 }
+
+/// Whether the Epic Games Launcher is on this PC, and how many of its games are installed.
+pub async fn epic_status() -> Result<(bool, usize), String> {
+    call("epic_status", &()).await
+}
+
+pub async fn epic_open() -> Result<(), String> {
+    call("epic_open", &()).await
+}
