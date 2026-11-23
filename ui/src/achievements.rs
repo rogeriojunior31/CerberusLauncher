@@ -436,9 +436,13 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
 fn AchIcon(a: Achievement, unlocked: bool) -> impl IntoView {
     let src = if unlocked { a.icon.clone() } else { a.icon_locked.clone().or(a.icon.clone()) };
     let hard = unlocked && a.hardcore_at.is_some();
+    let broken = RwSignal::new(false);
     view! {
         <span class="ach-icon" class:locked=!unlocked class:hard=hard title=hard.then(|| tr!("Desbloqueada no hardcore"))>
-            {src.map(|s| view! { <img src=s alt="" loading="lazy" /> })}
+            {move || match src.clone().filter(|_| !broken.get()) {
+                Some(s) => view! { <img src=s alt="" loading="lazy" on:error=move |_| broken.set(true) /> }.into_any(),
+                None => view! { <span class="ach-icon-none"><Svg icon=Icon::Trophy size=20 /></span> }.into_any(),
+            }}
         </span>
     }
 }

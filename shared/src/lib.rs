@@ -358,6 +358,8 @@ pub struct SettingsView {
     pub download_limit: u32,
     #[serde(default)]
     pub slow_while_playing: bool,
+    #[serde(default)]
+    pub in_game: InGame,
     /// The player's own SteamGridDB key, for picking art.
     #[serde(default)]
     pub steamgriddb_key: Option<String>,
@@ -953,4 +955,26 @@ pub enum InstallStep {
     Unpacking,
     Finished,
     Failed { message: String },
+}
+
+/// What Cerberus does while a game is open (Settings › While playing).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InGame {
+    /// Ctrl+F12 (or View+Menu on a controller) opens the menu over the game.
+    pub menu: bool,
+    /// F12 saves a picture of the game.
+    pub screenshots: bool,
+    /// A small notice over the game when an achievement unlocks.
+    pub unlock_notice: bool,
+    /// Where that notice shows: "br", "bl", "tr" or "tl".
+    pub corner: String,
+    /// Cerberus minimizes itself while a game runs and comes back when it closes.
+    pub minimize: bool,
+}
+
+impl Default for InGame {
+    fn default() -> Self {
+        Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false }
+    }
 }

@@ -77,6 +77,9 @@ pub struct Settings {
     /// A RetroArch the player picked, instead of Cerberus's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch: Option<PathBuf>,
+    /// What happens while a game is open.
+    #[serde(default)]
+    pub in_game: cerberus_shared::InGame,
 }
 
 fn yes() -> bool {

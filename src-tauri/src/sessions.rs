@@ -317,6 +317,7 @@ pub fn release(app: &AppHandle, id: &str) {
 }
 
 fn notify(app: &AppHandle, game_id: &str, running: bool) {
+    crate::in_game::session(app, running);
     let event = SessionEvent { game_id: game_id.to_string(), running };
     let _ = app.emit(EVENT, event);
 }

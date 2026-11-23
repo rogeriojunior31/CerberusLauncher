@@ -14,6 +14,7 @@ use crate::{Library, Route, api, format};
 enum Section {
     General,
     Appearance,
+    InGame,
     BigPicture,
     Library,
     Install,
@@ -29,7 +30,7 @@ enum Section {
 }
 
 const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
-    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv)]),
+    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv)]),
     (
         tk!("Jogos"),
         &[
@@ -139,6 +140,7 @@ pub fn SettingsPage() -> impl IntoView {
         match section.get() {
             Section::General => general(s, busy, apply).into_any(),
             Section::Appearance => appearance().into_any(),
+            Section::InGame => in_game(s, busy, apply).into_any(),
             Section::BigPicture => big_picture(s, busy, apply).into_any(),
             Section::Library => roms(s, busy, apply).into_any(),
             Section::Install => install(s, busy, apply).into_any(),
@@ -283,6 +285,52 @@ fn appearance() -> impl IntoView {
             {language_row()}
             {move || row(tr!("Menos animações"), tr!("Sem transições nem movimento, para PCs mais simples ou para quem prefere assim."),
                 switch(calm.get(), tr!("Menos animações"), busy, move || { let on = !calm.get_untracked(); save_calm(on); calm.set(on); }))}
+        </section>
+    }
+}
+
+/// What Cerberus does while a game is open.
+fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let now = s.in_game.clone();
+    // One switch changes one choice; the rest go back as they are.
+    let change = move |edit: fn(&mut cerberus_shared::InGame), done: &'static str| {
+        let mut next = now.clone();
+        edit(&mut next);
+        move || apply(Box::pin(api::set_in_game(next.clone())), done)
+    };
+    let c = s.in_game.clone();
+    let corners = [("tl", tr!("Em cima, à esquerda")), ("tr", tr!("Em cima, à direita")), ("bl", tr!("Embaixo, à esquerda")), ("br", tr!("Embaixo, à direita"))]
+        .into_iter()
+        .map(|(code, label)| {
+            let on = c.corner == code;
+            let mut next = c.clone();
+            next.corner = code.to_string();
+            view! {
+                <button type="button" class="seg" class:on=on role="radio" aria-checked=on.to_string() disabled=move || busy.get() || !next.unlock_notice
+                    on:click={ let next = next.clone(); move |_| apply(Box::pin(api::set_in_game(next.clone())), tr!("Canto do aviso trocado.")) }>{label}</button>
+            }
+        })
+        .collect_view();
+    view! {
+        <section class="card set">
+            <div class="card-h"><h3>{tr!("Durante o jogo")}</h3></div>
+            {row(tr!("Menu sobre o jogo"), tr!("Ctrl+F12, ou View + Menu no controle, abre o menu por cima do jogo: tempo jogado, fotos e fechar o jogo."),
+                switch(c.menu, tr!("Menu sobre o jogo"), busy, change(|g| g.menu = !g.menu, "")))}
+            {row(tr!("Fotos com F12"), tr!("F12 salva uma foto do jogo em Fotos, na página dele. O F12 da Steam continua funcionando."),
+                switch(c.screenshots, tr!("Fotos com F12"), busy, change(|g| g.screenshots = !g.screenshots, "")))}
+            {row(tr!("Sair da frente enquanto joga"), tr!("O Cerberus minimiza quando um jogo abre e volta quando ele fecha."),
+                switch(c.minimize, tr!("Sair da frente enquanto joga"), busy, change(|g| g.minimize = !g.minimize, "")))}
+        </section>
+        <section class="card set">
+            <div class="card-h">
+                <h3>{tr!("Aviso de conquista")}</h3>
+                <button type="button" class="btn sm" disabled=!c.unlock_notice
+                    on:click=move |_| spawn_local(async move { library.report(api::unlock_test().await); })>{tr!("Testar")}</button>
+            </div>
+            {row(tr!("Mostrar sobre o jogo"), tr!("Um aviso pequeno, sem tirar o foco do jogo, quando uma conquista é desbloqueada. Diz quando ela é rara."),
+                switch(c.unlock_notice, tr!("Mostrar sobre o jogo"), busy, change(|g| g.unlock_notice = !g.unlock_notice, "")))}
+            {row(tr!("Canto da tela"), (), view! { <div class="segs corner-segs" role="radiogroup" aria-label=tr!("Canto da tela")>{corners}</div> })}
         </section>
     }
 }

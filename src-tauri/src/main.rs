@@ -21,6 +21,7 @@ mod achievements;
 mod language;
 mod dlss;
 mod overlay;
+mod in_game;
 mod unlock_toast;
 mod disc_image;
 mod screenshots;
@@ -122,6 +123,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         start_in_tv: chosen.start_in_tv,
         download_limit: chosen.download_limit,
         slow_while_playing: chosen.slow_while_playing,
+        in_game: chosen.in_game.clone(),
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
@@ -986,6 +988,17 @@ fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Resu
     chosen.slow_while_playing = slow_while_playing;
     settings::save(&data.0, &chosen)?;
     recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+fn set_in_game(app: AppHandle, choices: cerberus_shared::InGame) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    let corner = if ["br", "bl", "tr", "tl"].contains(&choices.corner.as_str()) { choices.corner.clone() } else { "br".into() };
+    chosen.in_game = cerberus_shared::InGame { corner, ..choices };
+    settings::save(&data.0, &chosen)?;
+    in_game::set(chosen.in_game.clone());
     Ok(settings_view(&app))
 }
 
@@ -2224,6 +2237,7 @@ fn main() {
                 let chosen = settings::load(&data_dir);
                 recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
             }
+            in_game::set(chosen.in_game.clone());
             store_time::watch(app.handle().clone());
             self_update::watch(app.handle().clone());
             app.manage(overlay::Overlay::default());
@@ -2367,6 +2381,7 @@ fn main() {
             set_game_note,
             set_updates_paused,
             set_download_limit,
+            set_in_game,
             update_check,
             update_found,
             update_install,

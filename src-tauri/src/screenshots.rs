@@ -132,8 +132,9 @@ pub fn watch(app: AppHandle) {
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 continue;
             }
+            let choices = crate::in_game::get();
             let combo = pads.combo();
-            if combo && !combo_was {
+            if combo && !combo_was && choices.menu {
                 let menu = app.clone();
                 let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
             }
@@ -141,11 +142,16 @@ pub fn watch(app: AppHandle) {
             let down = win::f12_down();
             if down && !was_down {
                 if win::ctrl_down() {
+                    if !choices.menu {
+                        was_down = down;
+                        std::thread::sleep(std::time::Duration::from_millis(40));
+                        continue;
+                    }
                     let app = app.clone();
                     // Windows are made on the app's own thread.
                     let handle = app.clone();
                     let _ = handle.run_on_main_thread(move || crate::overlay::toggle(&app));
-                } else {
+                } else if choices.screenshots {
                     take(&app);
                 }
             }

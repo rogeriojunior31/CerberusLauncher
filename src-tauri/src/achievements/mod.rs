@@ -439,6 +439,35 @@ async fn steam_api_game(http: &reqwest::Client, data_dir: &Path, key: &str, id: 
     Ok(Some((name, list, owned)))
 }
 
+/// Achievements without a picture get Steam's local one, or the Web API's game
+/// list (asked again: it's the call that fails when Steam is busy).
+async fn fill_missing_icons(
+    http: &reqwest::Client,
+    data_dir: &Path,
+    app: u32,
+    list: &mut [cerberus_shared::Achievement],
+    local: &HashMap<String, (Option<String>, Option<String>)>,
+    api: Option<&(String, String)>,
+) {
+    for a in list.iter_mut().filter(|a| a.icon.is_none()) {
+        if let Some((icon, locked)) = local.get(&a.id) {
+            a.icon = icon.clone();
+            a.icon_locked = locked.clone();
+        }
+    }
+    let Some((key, _)) = api else { return };
+    if list.iter().all(|a| a.icon.is_some()) {
+        return;
+    }
+    let Ok(schema) = steam_api::schema(http, data_dir, key, app, true).await else { return };
+    for a in list.iter_mut().filter(|a| a.icon.is_none()) {
+        if let Some(s) = schema.iter().find(|s| s.api == a.id) {
+            a.icon = s.icon.clone();
+            a.icon_locked = s.icon_locked.clone();
+        }
+    }
+}
+
 /// One game's achievements, with how rare each one is.
 pub async fn game(
     http: &reqwest::Client,
@@ -465,6 +494,11 @@ pub async fn game(
                 Some((k, id)) => steam_api_game(http, data_dir, k, id, app).await.ok().flatten(),
                 None => None,
             };
+            // Pictures Steam keeps on this PC, for when the Web API answered without them.
+            let local_icons: HashMap<String, (Option<String>, Option<String>)> = read
+                .as_ref()
+                .map(|(_, l, _)| l.iter().map(|a| (a.id.clone(), (a.icon.clone(), a.icon_locked.clone()))).collect())
+                .unwrap_or_default();
             let (name, mut list, played) = match (from_api, read) {
                 (Some((api_name, list, owned)), local) => {
                     let name = if api_name.is_empty() { local.as_ref().map(|l| l.0.clone()).unwrap_or_default() } else { api_name };
@@ -476,6 +510,7 @@ pub async fn game(
                 (None, Some(local)) => local,
                 (None, None) => return Err(tr!("A Steam não tem as conquistas desse jogo neste PC.").into()),
             };
+            fill_missing_icons(http, data_dir, app, &mut list, &local_icons, steam_api_account.as_ref()).await;
             let rarity = steam::rarity(http, &data_dir.join("cache").join("achievements"), app).await;
             for a in &mut list {
                 a.rarity = rarity.get(&a.id).copied();

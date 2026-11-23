@@ -25,6 +25,10 @@ pub struct Queue(Mutex<VecDeque<UnlockNotice>>);
 /// notification says it instead. Never call it on the main thread (a sync
 /// command): making the window there waits on itself.
 pub fn show(app: &AppHandle, notice: UnlockNotice) {
+    // Turned off in Settings › While playing.
+    if !crate::in_game::get().unlock_notice {
+        return;
+    }
     let fallback = (notice.title.clone(), notice.name.clone());
     app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).push_back(notice);
     let window = match app.get_webview_window(LABEL) {
@@ -75,7 +79,10 @@ fn place(app: &AppHandle, window: &tauri::WebviewWindow) {
     let (mw, mh) = (area.size.width as i32, area.size.height as i32);
     let (w, h, margin) = ((WIDTH * scale) as i32, (HEIGHT * scale) as i32, (MARGIN * scale) as i32);
     let _ = window.set_size(PhysicalSize::new(w as u32, h as u32));
-    let _ = window.set_position(PhysicalPosition::new(mx + mw - w - margin, my + mh - h - margin));
+    let corner = crate::in_game::get().corner;
+    let x = if corner.ends_with('l') { mx + margin } else { mx + mw - w - margin };
+    let y = if corner.starts_with('t') { my + margin } else { my + mh - h - margin };
+    let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
 /// The next notice, for the window to show; `None` hides it.

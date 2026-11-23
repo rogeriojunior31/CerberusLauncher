@@ -1006,3 +1006,11 @@ pub fn window_toggle(action: &str, on: bool) {
         let _ = method.call1(&window, &JsValue::from_bool(on));
     }
 }
+
+pub async fn set_in_game(choices: cerberus_shared::InGame) -> Result<cerberus_shared::SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        choices: cerberus_shared::InGame,
+    }
+    call("set_in_game", &Arg { choices }).await
+}
