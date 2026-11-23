@@ -356,7 +356,6 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       erros do backend, bandeja e instalador). Automático segue o Windows; escolha em Configurações › Aparência.
       `tr!` com o texto em português como chave e `shared/locales/en.json`; teste garante que nada fica sem tradução.
       Conferido no app trocando para inglês e voltando.
-- [ ] Discord "Jogando...".
 
 ### 4.4 Transição
 
@@ -476,7 +475,6 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 ### 5.4 Durante o jogo e integração (prioridade 4)
 
-- [ ] **Discord "Jogando..."** (já listado em 4.3d): nome do jogo, capa e tempo da partida.
 - [ ] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
 - [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
 - [ ] Menu da bandeja com os jogos recentes.
