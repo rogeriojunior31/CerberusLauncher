@@ -24,6 +24,15 @@ While a game is running, closing the window always keeps Cerberus in the tray, s
 | **Language** | **Automatic** follows Windows: Portuguese for Portuguese speakers, English for everyone else. You can also pick one. The window reloads in the new language |
 | **Fewer animations** | No transitions or motion |
 
+### While playing
+
+| Setting | What it does |
+|---|---|
+| **Menu over the game** | <kbd>Ctrl</kbd>+<kbd>F12</kbd>, or View + Menu on a controller, opens the [in-game menu](in-game.md#the-in-game-menu). On by default |
+| **Pictures with F12** | <kbd>F12</kbd> saves a [screenshot](in-game.md#screenshots) of the game. On by default |
+| **Step aside while playing** | Cerberus minimizes when a game opens and comes back when it closes. Off by default |
+| **Achievement notice** | The small notice over the game when an achievement unlocks, the **screen corner** it shows in, and **Test** to see it now |
+
 ### Big Picture Mode
 
 | Setting | What it does |

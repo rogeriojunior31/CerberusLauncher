@@ -16,6 +16,8 @@ Steam and Epic games are tracked by watching their programs while Cerberus is ru
 
 While a Steam game runs, Cerberus tells you the moment an achievement unlocks, says when it's rare, and celebrates 100%. Achievements in RetroArch are announced too. See [Achievements](achievements.md#unlock-notifications).
 
+The notice, its corner, F12 and the menu can each be turned off in [Settings › While playing](settings.md#while-playing).
+
 ## Screenshots
 
 Press <kbd>F12</kbd> while the game is in front. Cerberus takes a picture of **the game window only**, never the rest of the screen, and saves it as a PNG.
