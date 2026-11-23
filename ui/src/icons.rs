@@ -40,6 +40,8 @@ pub enum Icon {
     Photo,
     Refresh,
     More,
+    Star,
+    Dice,
 }
 
 impl Icon {
@@ -70,6 +72,8 @@ impl Icon {
             Icon::Shelf => "M4 5h4v14H4zM10 5h4v14h-4zM16.5 6.2l3.8-1 3 13.3-3.8 1z",
             Icon::Heart | Icon::HeartFill => "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
             Icon::Bell => "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0",
+            Icon::Star => "M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z",
+            Icon::Dice => "M5 5h14v14H5zM9 9h.01M15 9h.01M12 12h.01M9 15h.01M15 15h.01",
             Icon::More => "M6 12h.01M12 12h.01M18 12h.01",
             Icon::Refresh => "M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4",
             Icon::Clock => "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",

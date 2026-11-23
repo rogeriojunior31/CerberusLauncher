@@ -558,19 +558,19 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 
 ### 6.3 Organizar a coleção (prioridade 3)
 
-- [ ] **Situação do jogo** [P]: Não jogado, Jogado, Jogando, Zerado, Completo, Abandonado, Em pausa, Quero jogar,
+- [x] **Situação do jogo** [P]: Não jogado, Jogado, Jogando, Zerado, Completo, Abandonado, Em pausa, Quero jogar,
       editáveis. Vira "Jogado" na primeira partida; os selos do hub (Zerado, Completo, Dominado) sugerem a situação. — P
-- [ ] Nota pessoal (0 a 100) e anotações por jogo [P]. — P
+- [x] Nota pessoal (0 a 100) e anotações por jogo [P]. — P
 - [ ] **Filtros salvos** com ordem e agrupamento [P]: prontos "Todos", "Jogados recentemente", "Favoritos" e
       "Mais jogados"; aparecem também no Big Picture. — M
 - [ ] **Agrupar** por plataforma, loja, situação, ano, disco, faixa de tempo de jogo (menos de 1 h, 1 a 10 h, 10 a
       100 h...) e última vez jogado (hoje, ontem, esta semana, este mês, este ano, nunca) [P]. — M
-- [ ] Mais ordens: adicionado em, nota, situação, tamanho, vezes jogado [P]. — P
+- [x] Mais ordens: adicionado em, nota, situação, tamanho, vezes jogado [P]. — P
 - [ ] Fixar jogos no topo e ordem manual por arrasto, também dentro das coleções [H][R]. — M
 - [ ] **Editar vários jogos de uma vez** (situação, coleção, ocultar) [P]. — M
 - [ ] **Página de estatísticas** [P]: total de jogos, instalados, tempo total e médio, os 50 mais jogados, quantos por
       situação e por loja, espaço ocupado, filtrável por loja ou plataforma. — M
-- [ ] **"Jogar algo aleatório"** dentro do filtro atual, com "sortear outro" e "jogar" [P][H]. — P
+- [x] **"Jogar algo aleatório"** dentro do filtro atual, com "sortear outro" e "jogar" [P][H]. — P
 - [ ] **Busca global (Ctrl+F)** [P]: aceita erro de digitação e siglas ("gta"), sem acento; vazia mostra os 20 últimos
       jogados; resultados abrem ou jogam. — M
 - [ ] Atalhos de teclado [P]: F5 atualizar biblioteca, F6 jogo aleatório, Ctrl+F busca, Enter jogar, Delete remover. — P

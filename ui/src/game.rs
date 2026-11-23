@@ -350,12 +350,13 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         view! { <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{rows}</dl></section> }
     });
     let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played /> }.into_any());
+    let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {
         Source::Steam { app_id } => Some(*app_id),
         _ => None,
     });
     if let Some(app) = steam_app {
-        return view! { <SteamOverview app play_card tab /> }.into_any();
+        return view! { <SteamOverview app play_card note_card tab /> }.into_any();
     }
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
@@ -446,6 +447,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
                 {entry.clone().map(|e| view! { <SimilarGames entry=e /> })}
             </div>
             <aside class="ov-rail">
+                {note_card}
                 {setup_card}
                 {needs}
                 {facts_card}
@@ -462,7 +464,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
 pub struct GameAchievementsData(pub Option<LocalResource<Result<cerberus_shared::GameAchievements, String>>>);
 
 #[component]
-fn SteamOverview(app: u32, play_card: Option<AnyView>, tab: RwSignal<Tab>) -> impl IntoView {
+fn SteamOverview(app: u32, play_card: Option<AnyView>, note_card: Option<AnyView>, tab: RwSignal<Tab>) -> impl IntoView {
     let details = LocalResource::new(move || async move { api::steam_details(app).await });
     let on_all = Callback::new(move |_| tab.set(Tab::Achievements));
     let store = move || match details.get() {
@@ -496,6 +498,7 @@ fn SteamOverview(app: u32, play_card: Option<AnyView>, tab: RwSignal<Tab>) -> im
                 {store}
             </div>
             <aside class="ov-rail">
+                {note_card}
                 {use_context::<GameAchievementsData>().and_then(|d| d.0).map(|data| view! { <crate::game_overview::AchievementsCard data on_all /> })}
                 {rail}
             </aside>

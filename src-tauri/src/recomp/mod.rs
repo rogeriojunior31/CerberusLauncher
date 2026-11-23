@@ -809,6 +809,9 @@ fn register(
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
     };
     apply_art(&mut game);
     library.add(game.clone())?;

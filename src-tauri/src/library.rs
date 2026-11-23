@@ -127,6 +127,9 @@ pub fn game_from_exe(exe: &Path) -> Game {
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
     }
 }
 

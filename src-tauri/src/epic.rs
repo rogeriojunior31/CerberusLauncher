@@ -110,6 +110,9 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
     }
 }
 

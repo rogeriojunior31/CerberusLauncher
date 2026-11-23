@@ -16,6 +16,7 @@ mod settings;
 mod setup_runner;
 mod background;
 mod favorites;
+mod game_notes;
 mod achievements;
 mod language;
 mod dlss;
@@ -1083,6 +1084,7 @@ async fn list_games(
     let favorite = favorites::load(&app.state::<DataDir>().0);
     games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
     collections::apply(&app.state::<DataDir>().0, &mut games);
+    game_notes::apply(&app.state::<DataDir>().0, &mut games);
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
 }
@@ -1800,6 +1802,12 @@ fn set_game_setting(
 
 /// What the launcher did for a game lately, newest first.
 /// Marks or unmarks a game as a favorite.
+/// The player's status, rating and notes for a game.
+#[tauri::command]
+fn set_game_note(app: AppHandle, id: String, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
+    game_notes::set(&app.state::<DataDir>().0, &id, game_notes::Note { status, rating, notes })
+}
+
 #[tauri::command]
 fn set_favorite(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     favorites::set(&app.state::<DataDir>().0, &id, on)
@@ -2323,6 +2331,7 @@ fn main() {
             achievements_hub,
             steam_details,
             game_sessions,
+            set_game_note,
             update_check,
             update_found,
             update_install,

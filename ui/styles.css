@@ -1497,3 +1497,31 @@ html.overlay-mode, html.overlay-mode body { background: transparent; }
 .upd-notes .about-body { font-size: 14px; gap: 8px; }
 .upd-progress { display: flex; flex-direction: column; gap: 6px; }
 .upd-progress .ach-bar { flex: none; height: 8px; }
+
+/* The player's status, rating and notes */
+.st-playing { --st: #4ade80; }
+.st-plan { --st: #60a5fa; }
+.st-beaten { --st: #fbbf24; }
+.st-completed { --st: #f59e0b; }
+.st-hold { --st: #a78bfa; }
+.st-dropped { --st: #94a3b8; }
+.st-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-chip { padding: 6px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; color: var(--muted); background: var(--fill); border: 1px solid var(--line);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease); }
+.st-chip:hover { color: var(--ink); border-color: color-mix(in srgb, var(--st) 45%, transparent); }
+.st-chip.on { color: var(--ink); background: color-mix(in srgb, var(--st) 20%, transparent); border-color: color-mix(in srgb, var(--st) 65%, transparent); }
+.chip-btn.st .st-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--st); margin-right: 7px; }
+.stars { display: flex; gap: 2px; }
+.star { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--fill3); transition: color 0.12s, transform 0.12s var(--ease); }
+.star svg { fill: currentColor; }
+.star:hover { transform: scale(1.12); }
+.star.lit { color: #fbbf24; }
+.note-text { width: 100%; height: auto; min-height: 76px; resize: vertical; font: inherit; font-size: 14px; line-height: 1.5; padding: 10px 12px; }
+.dialog.random-pick { width: min(560px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 14px; }
+.rp-body { display: flex; gap: 20px; align-items: center; }
+.rp-cover { width: 150px; flex: none; }
+.rp-cover .poster { box-shadow: 0 20px 40px -18px rgba(0, 0, 0, 0.9); animation: rp-in 0.35s var(--ease); }
+@keyframes rp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+.rp-info { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; min-width: 0; }
+.rp-info h2 { margin: 0; font-size: 26px; line-height: 1.1; }
+@media (prefers-reduced-motion: reduce) { .rp-cover .poster { animation: none; } }

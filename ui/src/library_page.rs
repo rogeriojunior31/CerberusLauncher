@@ -3,7 +3,7 @@
 //! store for PC games, and sorting.
 
 use cerberus_shared::tr;
-use cerberus_shared::{Game, Source};
+use cerberus_shared::{Game, GameStatus, Source};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -93,6 +93,7 @@ enum Sort {
     Name,
     Recent,
     Playtime,
+    Rating,
 }
 
 #[derive(Clone, Copy)]
@@ -106,6 +107,8 @@ pub struct LibraryView {
     shelf: RwSignal<Option<String>>,
     /// Installed games, or the account's games this PC doesn't have.
     absent: RwSignal<bool>,
+    /// Only games the player marked with this status.
+    status: RwSignal<Option<GameStatus>>,
 }
 
 impl Default for LibraryView {
@@ -118,6 +121,7 @@ impl Default for LibraryView {
             compact: RwSignal::new(false),
             shelf: RwSignal::new(None),
             absent: RwSignal::new(false),
+            status: RwSignal::new(None),
         }
     }
 }
@@ -236,7 +240,14 @@ fn navigate_rows(event: web_sys::KeyboardEvent) {
 #[component]
 pub fn LibraryPage() -> impl IntoView {
     let library = expect_context::<Library>();
-    let LibraryView { category, search, filter, sort, compact, shelf, absent } = expect_context();
+    let LibraryView { category, search, filter, sort, compact, shelf, absent, status } = expect_context();
+    // A status, rating or note changed on a game's page: list the games again.
+    if crate::game_notes::take_changed() {
+        library.games.refetch();
+    }
+    let picking = RwSignal::new(false);
+    // The games on screen, for "Play something" to pick from.
+    let shown = StoredValue::new(Vec::<Game>::new());
     let is_absent = |g: &Game| g.next_step == cerberus_shared::NextStep::Install;
     let shelves = LocalResource::new(move || {
         library.games.track();
@@ -256,6 +267,7 @@ pub fn LibraryPage() -> impl IntoView {
     let clear = move |_| {
         search.set(String::new());
         filter.set(Filter::All);
+        status.set(None);
         if let Some(input) = input.get_untracked() {
             let _ = input.focus();
         }
@@ -288,6 +300,30 @@ pub fn LibraryPage() -> impl IntoView {
             </button>
         }
     }).collect_view();
+    // Status chips: only the statuses some game in view has, with how many.
+    let statuses = move || {
+        let kind = category.get();
+        let away = absent.get();
+        let counts: Vec<(GameStatus, usize)> = library.games.with(|all| {
+            let all: Vec<&Game> = all.as_ref().and_then(|r| r.as_ref().ok()).into_iter().flatten().filter(|g| kind.keeps(g, None) && is_absent(g) == away).collect();
+            GameStatus::ALL.into_iter().map(|s| (s, all.iter().filter(|g| g.status == Some(s)).count())).filter(|(_, n)| *n > 0).collect()
+        });
+        (!counts.is_empty()).then(|| {
+            let chips = counts
+                .into_iter()
+                .map(|(s, n)| {
+                    view! {
+                        <button type="button" class=format!("chip-btn st {}", crate::game_notes::class(s)) class:on=move || status.get() == Some(s)
+                            aria-pressed=move || (status.get() == Some(s)).to_string()
+                            on:click=move |_| status.update(|cur| *cur = if *cur == Some(s) { None } else { Some(s) })>
+                            <i class="st-dot"></i>{crate::game_notes::label(s)}<span class="chip-n">{n}</span>
+                        </button>
+                    }
+                })
+                .collect_view();
+            view! { <div class="chips" role="group" aria-label=tr!("Situação")>{chips}</div> }
+        })
+    };
     let presence = move || {
         let (_, here, missing) = counts.get();
         (missing > 0).then(|| view! {
@@ -343,7 +379,14 @@ pub fn LibraryPage() -> impl IntoView {
             }.into_any();
         }
         let away = absent.get();
-        games.retain(|g| kind.keeps(g, open.as_deref()) && source.keeps(g) && is_absent(g) == away && (needle.is_empty() || g.name.to_lowercase().contains(&needle)));
+        let only = status.get();
+        games.retain(|g| {
+            kind.keeps(g, open.as_deref())
+                && source.keeps(g)
+                && is_absent(g) == away
+                && only.is_none_or(|s| g.status == Some(s))
+                && (needle.is_empty() || g.name.to_lowercase().contains(&needle))
+        });
         if games.is_empty() && kind == Category::Hidden && needle.is_empty() {
             return view! {
                 <div class="empty">
@@ -385,7 +428,9 @@ pub fn LibraryPage() -> impl IntoView {
             Sort::Name => {}
             Sort::Recent => games.sort_by_key(|g| std::cmp::Reverse(g.last_played)),
             Sort::Playtime => games.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
+            Sort::Rating => games.sort_by_key(|g| std::cmp::Reverse(g.rating)),
         }
+        shown.set_value(games.clone());
         let count = games.len();
         let list = compact.get();
         let items = games.iter().map(|g| {
@@ -432,10 +477,19 @@ pub fn LibraryPage() -> impl IntoView {
         <div class="page">
             <header class="page-h">
                 <h1>{tr!("Biblioteca")}</h1>
-                <button type="button" class="btn" on:click=move |_| library.add_game()>
-                    <Svg icon=Icon::Plus size=18 />{tr!("Adicionar jogo")}
-                </button>
+                <div class="row">
+                    <button type="button" class="btn" on:click=move |_| picking.set(true) title=tr!("Sorteia um dos jogos instalados que estão na tela")>
+                        <Svg icon=Icon::Dice size=18 />{tr!("Jogar algo aleatório")}
+                    </button>
+                    <button type="button" class="btn" on:click=move |_| library.add_game()>
+                        <Svg icon=Icon::Plus size=18 />{tr!("Adicionar jogo")}
+                    </button>
+                </div>
             </header>
+            {move || picking.get().then(|| {
+                let pool: Vec<Game> = shown.get_value().into_iter().filter(|g| !is_absent(g)).collect();
+                view! { <crate::game_notes::RandomPick pool open=picking /> }
+            })}
             {move || recovery.get().and_then(Result::ok).flatten().map(|text| view! {
                 <p class="card" role="status" style="overflow-wrap: anywhere">{text}</p>
             })}
@@ -448,11 +502,12 @@ pub fn LibraryPage() -> impl IntoView {
                     </label>
                     <select class="select" aria-label=tr!("Ordenar biblioteca")
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {
-                            "recent" => Sort::Recent, "time" => Sort::Playtime, _ => Sort::Name,
+                            "recent" => Sort::Recent, "time" => Sort::Playtime, "rating" => Sort::Rating, _ => Sort::Name,
                         })>
                         <option value="name" selected=move || sort.get() == Sort::Name>{tr!("A a Z")}</option>
                         <option value="recent" selected=move || sort.get() == Sort::Recent>{tr!("Jogados recentemente")}</option>
                         <option value="time" selected=move || sort.get() == Sort::Playtime>{tr!("Mais jogados")}</option>
+                        <option value="rating" selected=move || sort.get() == Sort::Rating>{tr!("Sua nota")}</option>
                     </select>
                     <div class="library-modes" role="group" aria-label=tr!("Visualização")>
                         {mode(false, Icon::Library, tr!("Ver em grade"))}
@@ -465,6 +520,7 @@ pub fn LibraryPage() -> impl IntoView {
                         <div class="chips" role="group" aria-label=tr!("Origem do jogo")>{chips.clone()}</div>
                         {presence}
                     </Show>
+                    {statuses}
                     <Show when=move || category.get() == Category::Collections>
                         <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
                     </Show>

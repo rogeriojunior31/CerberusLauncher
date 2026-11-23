@@ -21,6 +21,8 @@ Inside the data folder:
 | `library.json` | Games you added, recomps, play time |
 | `trail.jsonl` | Each game's history (up to 600 entries) |
 | `favorites.json`, `collections.json` | Favorites, collections and hidden games |
+| `game-notes.json` | Your status, rating and notes for each game |
+| `sessions.jsonl` | Each play session (when it ended and how long), for the play-time chart |
 | `classics.json` | Play time of your classics |
 | `art.json`, `covers/`, `cache/` | Custom art and downloaded images |
 | `cache/achievements/` | Achievement answers from Steam and RetroAchievements, so the Achievements page opens at once |

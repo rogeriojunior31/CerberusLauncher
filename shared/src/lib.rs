@@ -70,6 +70,35 @@ pub struct Game {
     /// The player's collections it is in (kept in collections.json, not here).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collections: Vec<String>,
+    /// Where the player is with it (kept in game-notes.json, not here).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<GameStatus>,
+    /// The player's rating, 1 to 5 stars; 0 when not rated.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub rating: u8,
+    /// The player's own notes about it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+}
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
+}
+
+/// Where the player is with a game, as they mark it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameStatus {
+    Playing,
+    PlanToPlay,
+    Beaten,
+    Completed,
+    OnHold,
+    Abandoned,
+}
+
+impl GameStatus {
+    pub const ALL: [GameStatus; 6] = [GameStatus::Playing, GameStatus::PlanToPlay, GameStatus::Beaten, GameStatus::Completed, GameStatus::OnHold, GameStatus::Abandoned];
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.

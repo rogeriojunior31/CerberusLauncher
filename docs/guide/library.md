@@ -14,14 +14,29 @@ Every game Cerberus knows about, in one place.
 | **Added** | Any `.exe` you add with **Add game**. Cerberus looks up the name and cover on Steam. |
 | **Classics** | ROMs and disc images found in your ROM folders. See [Classics](classics.md). |
 
-Steam and Epic games still start through their own launchers. Cerberus opens them and counts play time while it's running, even when it's minimized to the tray.
+Steam and Epic games still start through their own launchers. Cerberus opens them and counts play time while it's running, even when it's minimized to the tray. For Steam games, the play time Steam itself counts is shown too.
+
+With your Steam Web API key connected (see [Achievements](achievements.md)), the games on your Steam account that aren't on this PC show up under **Not installed**. **Install** opens Steam's own install window, and the game turns into **Play** once Steam finishes.
 
 ## Tabs and filters
 
 - **All**, **Favorites**, **Collections**, **Recomps**, **PC** and **Classics** split the library by kind.
 - **Hidden** shows up only when something is hidden.
-- The source chips (**All sources**, **Steam**, **Epic**, **Added**) filter the PC games.
-- Search by name, sort by **A to Z**, **Recently played** or **Most played**, and switch between grid and list view.
+- The source chips (**All sources**, **Steam**, **Epic**, **Added**) filter the PC games, with how many each one has.
+- **Installed** / **Not installed** separates what's on this PC from the rest of your Steam account.
+- The status chips (**Playing**, **Want to play**, **Beaten**...) show up once you mark a game.
+- Search by name, sort by **A to Z**, **Recently played**, **Most played** or **Your rating**, and switch between grid and list view.
+- **Play something random** picks one of the installed games on screen, with **Pick another** and **Play**.
+
+## Your status, rating and notes
+
+On a game's page, the **Your game** card keeps your own word on it:
+
+- **Status:** Playing, Want to play, Beaten, Completed, On hold or Dropped. Click it again to clear it.
+- **Rating:** 1 to 5 stars.
+- **Notes:** where you stopped, what's left, tips. Saved when you click out of the box.
+
+They stay on this PC in `game-notes.json` and work for every kind of game.
 
 ## Favorites, collections and hidden games
 

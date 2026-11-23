@@ -662,6 +662,18 @@ pub async fn whats_new_seen() -> Result<(), String> {
     call("whats_new_seen", &()).await
 }
 
+/// The player's status, rating and notes for a game.
+pub async fn set_game_note(id: &str, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        status: Option<cerberus_shared::GameStatus>,
+        rating: u8,
+        notes: String,
+    }
+    call("set_game_note", &Arg { id, status, rating, notes }).await
+}
+
 /// A game's play sessions, oldest first.
 pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>, String> {
     call("game_sessions", &Id { id }).await

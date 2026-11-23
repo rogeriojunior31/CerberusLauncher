@@ -2,6 +2,7 @@ mod api;
 mod art;
 mod backups;
 mod game_overview;
+mod game_notes;
 mod tv;
 mod discover;
 mod format;

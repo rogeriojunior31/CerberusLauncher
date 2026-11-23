@@ -115,6 +115,9 @@ pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
     }
 }
 
@@ -153,6 +156,9 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
     })
 }
 
