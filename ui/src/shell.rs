@@ -43,39 +43,96 @@ pub fn Sidebar() -> impl IntoView {
                 {item(Route::Saves, Icon::Saves, tr!("Saves"))}
                 {item(Route::News, Icon::Bell, tr!("Novidades"))}
             </nav>
-            {move || {
-                let mut favorites: Vec<cerberus_shared::Game> = library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.favorite && !g.hidden).collect();
-                favorites.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
-                (!favorites.is_empty()).then(|| {
-                    let rows = favorites.into_iter().take(8).map(|g| {
-                        let route = Route::Game(g.id.clone());
-                        let here = route.clone();
-                        let on = move || library.route.with(|now| *now == here);
-                        view! {
-                            <button type="button" class="fav-item" class:on=on title=g.name.clone() on:click=move |_| library.go(route.clone())>
-                                <span class="fav-thumb"><crate::art::Poster sources=crate::art::cover_sources(&g) title=g.name.clone() /></span>
-                                <span>{g.name.clone()}</span>
-                            </button>
-                        }
-                    }).collect_view();
-                    view! {
-                        <div class="side-favs">
-                            <span class="side-h"><Svg icon=Icon::HeartFill size=12 />{tr!("Favoritos")}</span>
-                            {rows}
-                        </div>
-                    }
-                })
-            }}
+            <SideGames />
             <div class="side-foot">
                 <crate::updates::UpdateNotice />
-                <button type="button" class="nav" on:click=move |_| library.add_game()>
-                    <Svg icon=Icon::Plus />
-                    <span>{tr!("Adicionar jogo")}</span>
-                </button>
-                {item(Route::BigPicture, Icon::Tv, tr!("Big Picture Mode"))}
-                {item(Route::Settings, Icon::Settings, tr!("Configurações"))}
+                <div class="foot-row">
+                    <button type="button" class="foot-add" on:click=move |_| library.add_game()>
+                        <Svg icon=Icon::Plus size=18 />
+                        <span>{tr!("Adicionar jogo")}</span>
+                    </button>
+                    <button type="button" class="foot-icon" title=tr!("Big Picture Mode") aria-label=tr!("Big Picture Mode")
+                        on:click=move |_| library.go(Route::BigPicture)>
+                        <Svg icon=Icon::Tv size=19 />
+                    </button>
+                    <button type="button" class="foot-icon" class:on=move || library.route.with(|r| r.section() == Route::Settings)
+                        title=tr!("Configurações") aria-label=tr!("Configurações") on:click=move |_| library.go(Route::Settings)>
+                        <Svg icon=Icon::Settings size=19 />
+                    </button>
+                </div>
             </div>
         </aside>
+    }
+}
+
+/// The games ready to play right now, under the sections: favorites first,
+/// then the ones played lately. A field narrows the list when it gets long.
+#[component]
+fn SideGames() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let query = RwSignal::new(String::new());
+    let ready = Memo::new(move |_| {
+        let mut list: Vec<cerberus_shared::Game> = library
+            .games
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|g| !g.hidden && matches!(g.next_step, cerberus_shared::NextStep::Play | cerberus_shared::NextStep::RunInstaller))
+            .collect();
+        list.sort_by_key(|g| (!g.favorite, std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
+        list
+    });
+    let shown = move || {
+        let q = query.get().to_lowercase();
+        ready.get().into_iter().filter(|g| q.is_empty() || g.name.to_lowercase().contains(&q)).collect::<Vec<_>>()
+    };
+    let rows = move || {
+        shown()
+            .into_iter()
+            .map(|g| {
+                let route = Route::Game(g.id.clone());
+                let here = route.clone();
+                let on = move || library.route.with(|now| *now == here);
+                let gid = g.id.clone();
+                let running = move || library.running.with(|r| r.contains(&gid));
+                let game = StoredValue::new(g.clone());
+                view! {
+                    <div class="sg-item" class:on=on>
+                        <button type="button" class="sg-open" title=g.name.clone() on:click=move |_| library.go(route.clone())>
+                            <span class="fav-thumb"><crate::art::Poster sources=crate::art::cover_sources(&g) title=g.name.clone() /></span>
+                            <span class="sg-name">{g.name.clone()}</span>
+                            {g.favorite.then(|| view! { <span class="sg-fav"><Svg icon=Icon::HeartFill size=11 /></span> })}
+                            <Show when=running><i class="sg-live" title=tr!("Jogando agora")></i></Show>
+                        </button>
+                        <button type="button" class="sg-play" title=tr!("Jogar") aria-label=tr!("Jogar")
+                            on:click=move |_| crate::play_game(library, game.get_value())>
+                            <Svg icon=Icon::Play size=13 />
+                        </button>
+                    </div>
+                }
+            })
+            .collect_view()
+    };
+    view! {
+        <Show when=move || ready.with(|r| !r.is_empty())>
+            <div class="side-games">
+                <div class="sg-head">
+                    <span class="side-h">{tr!("Prontos para jogar")}<b>{move || ready.with(Vec::len)}</b></span>
+                </div>
+                <Show when=move || ready.with(|r| r.len() > 8)>
+                    <label class="sg-search">
+                        <Svg icon=Icon::Search size=14 />
+                        <input type="search" placeholder=tr!("Filtrar jogos") prop:value=move || query.get()
+                            on:input=move |e| query.set(event_target_value(&e)) />
+                    </label>
+                </Show>
+                <div class="sg-list">
+                    {rows}
+                    <Show when=move || shown().is_empty()><p class="sg-none">{tr!("Nenhum jogo com esse nome.")}</p></Show>
+                </div>
+            </div>
+        </Show>
     }
 }
 
