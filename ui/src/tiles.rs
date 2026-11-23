@@ -167,7 +167,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
                     {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
                     {info.progress.filter(|(_, total)| *total > 0).map(|(got, total)| {
                         let pct = got * 100 / total;
-                        let tip = tr!("{} de {} conquistas", got, total);
+                        let tip = if got == total { tr!("Platinado · {} conquistas", total) } else { tr!("{} de {} conquistas", got, total) };
                         view! {
                             <span class="ach-mini" class:done=got == total title=tip.clone() aria-label=tip>
                                 <i style=format!("width: {pct}%")></i>

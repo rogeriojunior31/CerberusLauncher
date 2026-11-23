@@ -47,7 +47,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 
 ### And also
 
-- **Achievements hub:** every game with achievements from Steam and RetroAchievements, the latest unlocks, the games closest to 100%, and each game's full list with rarity and secret achievements. RetroAchievements awards (beaten, completed, mastered) show as badges, hardcore ones in gold. Steam works straight from this PC; with your free Steam Web API key it covers your whole account. While you play a Steam game, Cerberus tells you when an achievement unlocks.
+- **Achievements hub:** every game with achievements from Steam and RetroAchievements, the latest unlocks, your platinums (games at 100%), the games closest to it, and each game's full list with rarity and secret achievements. RetroAchievements awards (beaten, completed, mastered) show as badges, hardcore ones in gold. Steam works straight from this PC; with your free Steam Web API key it covers your whole account. While you play a Steam game, Cerberus tells you when an achievement unlocks.
 - **Save backups:** after every session, before updates and before uninstalling. Cerberus keeps the 10 most recent backups, and can copy them to the cloud through any synced folder (OneDrive, Google Drive, Dropbox).
 - **Mods:** one-click mods from Thunderstore and GameBanana, including Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed and Marathon Recompiled.
 - **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game".

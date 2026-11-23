@@ -44,7 +44,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 
 ### E mais
 
-- **Hub de conquistas:** todos os jogos com conquistas da Steam e do RetroAchievements, as últimas desbloqueadas, os jogos mais perto dos 100% e a lista completa de cada jogo, com raridade e conquistas secretas. Os selos do RetroAchievements (zerado, completo, dominado) aparecem no jogo, os do hardcore em dourado. A Steam funciona direto deste PC; com a sua chave gratuita da Web API da Steam, vem a conta inteira. Enquanto você joga um jogo da Steam, o Cerberus avisa quando uma conquista é desbloqueada.
+- **Hub de conquistas:** todos os jogos com conquistas da Steam e do RetroAchievements, as últimas desbloqueadas, os seus platinados (jogos com 100%), os mais perto disso e a lista completa de cada jogo, com raridade e conquistas secretas. Os selos do RetroAchievements (zerado, completo, dominado) aparecem no jogo, os do hardcore em dourado. A Steam funciona direto deste PC; com a sua chave gratuita da Web API da Steam, vem a conta inteira. Enquanto você joga um jogo da Steam, o Cerberus avisa quando uma conquista é desbloqueada.
 - **Backup dos saves** depois de cada partida, antes de atualizar e antes de desinstalar. O Cerberus guarda os 10 mais recentes, e eles podem ir para a nuvem por uma pasta sincronizada (OneDrive, Google Drive, Dropbox).
 - **Mods** com um clique, do Thunderstore e do GameBanana. Funciona com Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed e Marathon Recompiled.
 - **Durante o jogo:**

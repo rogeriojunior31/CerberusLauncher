@@ -26,10 +26,11 @@ To read another account, use **Use another account** and type its profile link o
 
 ## The page
 
-- **Summary:** unlocked achievements, games, games at 100%, beaten games, hardcore awards and RetroAchievements points, with an overall progress bar.
+- **Summary:** unlocked achievements, games, platinums (games at 100%), beaten games, hardcore awards and RetroAchievements points, with an overall progress bar.
+- **Platinums:** every game with all its achievements unlocked, newest first, with the date of the last one. Their rows in the list carry a gold **Platinum** badge, and so does the bar on the Library cover.
 - **Close to 100%:** the four games nearest to completion, with how many achievements are left.
 - **Latest achievements:** your most recent unlocks, newest first. Click one to open its game.
-- **All games:** search, sort (recent unlocks, closest to completion, most achievements, most played, A–Z), filter by platform (Steam, RetroAchievements) and by state (in progress, beaten, 100%, not started).
+- **All games:** search, sort (recent unlocks, closest to completion, most achievements, most played, A–Z), filter by platform (Steam, RetroAchievements) and by state (in progress, beaten, platinums, not started), each with how many games it holds.
 
 The page opens at once with what's already on this PC, then updates from Steam and RetroAchievements in the background. **Refresh** asks again. Answers are kept on disk, and a game's Steam achievements are asked again only after you play it.
 

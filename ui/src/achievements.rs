@@ -172,7 +172,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         if hub.games.len() == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", hub.games.len()) },
     ];
     if complete > 0 {
-        facts.push(tr!("{} com 100%", complete));
+        facts.push(if complete == 1 { tr!("1 platinado").to_string() } else { tr!("{} platinados", complete) });
     }
     if beaten > 0 {
         facts.push(if beaten == 1 { tr!("1 zerado").to_string() } else { tr!("{} zerados", beaten) });
@@ -208,6 +208,19 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
             <div class="ach-note warn" role="alert"><Svg icon=Icon::Info size=18 /><span>{p.clone()}</span></div>
         }).collect_view()}
     };
+
+    // Every achievement unlocked: the trophy shelf, newest platinum first.
+    let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).cloned().collect();
+    plats.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
+    let plats = (!plats.is_empty()).then(|| {
+        let n = plats.len();
+        view! {
+            <section class="shelf">
+                <div class="shelf-h"><h2>{tr!("Platinados")}<small class="plat-n">{n}</small></h2></div>
+                <div class="plat-row">{plats.into_iter().map(|g| view! { <PlatCard g /> }).collect_view()}</div>
+            </section>
+        }
+    });
 
     // The games closest to 100%: what's worth playing next.
     let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 40).cloned().collect();
@@ -252,13 +265,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
             })
-            .filter(|g| match state.get() {
-                State::All => true,
-                State::Started => g.unlocked > 0 && g.unlocked < g.total,
-                State::Beaten => g.award.is_some(),
-                State::Done => g.total > 0 && g.unlocked == g.total,
-                State::NotStarted => g.unlocked == 0,
-            })
+            .filter(|g| in_state(g, state.get()))
             .filter(|g| needle.is_empty() || g.name.to_lowercase().contains(&needle) || g.platform.to_lowercase().contains(&needle))
             .cloned()
             .collect();
@@ -288,12 +295,26 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         .into_iter()
         .map(|(p, label)| seg(label, Signal::derive(move || platform.get() == p), Callback::new(move |_| platform.set(p))))
         .collect_view();
-    let states = [(State::All, tr!("Todos")), (State::Started, tr!("Em andamento")), (State::Beaten, tr!("Zerados")), (State::Done, tr!("100%")), (State::NotStarted, tr!("Não começados"))]
+    // How many games each chip holds, on the chosen platform.
+    let counted = hub.games.clone();
+    let count_of = move |s: State| {
+        counted
+            .iter()
+            .filter(|g| match platform.get() {
+                Platform::All => true,
+                Platform::Steam => g.source == AchievementSource::Steam,
+                Platform::Retro => g.source == AchievementSource::Retro,
+            })
+            .filter(|g| in_state(g, s))
+            .count()
+    };
+    let states = [(State::All, tr!("Todos")), (State::Started, tr!("Em andamento")), (State::Beaten, tr!("Zerados")), (State::Done, tr!("Platinados")), (State::NotStarted, tr!("Não começados"))]
         .into_iter()
         .map(|(s, label)| {
+            let count_of = count_of.clone();
             view! {
                 <button type="button" class="chip-btn" class:on=move || state.get() == s aria-pressed=move || (state.get() == s).to_string()
-                    on:click=move |_| state.set(s)>{label}</button>
+                    on:click=move |_| state.set(s)>{label}<small class="chip-n">{move || count_of(s)}</small></button>
             }
         })
         .collect_view();
@@ -301,6 +322,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     view! {
         {summary}
         {notes}
+        {plats}
         {near}
         {recent}
         <section class="shelf">
@@ -326,6 +348,32 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
             </div>
             {list}
         </section>
+    }
+}
+
+fn in_state(g: &AchievementGame, s: State) -> bool {
+    match s {
+        State::All => true,
+        State::Started => g.unlocked > 0 && g.unlocked < g.total,
+        State::Beaten => g.award.is_some(),
+        State::Done => g.total > 0 && g.unlocked == g.total,
+        State::NotStarted => g.unlocked == 0,
+    }
+}
+
+/// A platinum: the cover with a gold edge, the name and when the last one came.
+#[component]
+fn PlatCard(g: AchievementGame) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
+    let when = g.last_unlock.map(|t| tr!("Platinado {}", format::ago(t))).unwrap_or_else(|| tr!("Platinado").to_string());
+    view! {
+        <button type="button" class="plat-c" title=format!("{} · {} {}", g.name, g.total, tr!("conquistas")) on:click=move |_| library.go(route.clone())>
+            <span class="plat-art"><Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() /></span>
+            <span class="plat-medal"><Svg icon=Icon::Trophy size=14 /></span>
+            <b>{g.name.clone()}</b>
+            <small>{when}</small>
+        </button>
     }
 }
 
@@ -366,7 +414,11 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
             on:click=move |_| library.go(route.clone())>
             <span class="ach-art"><Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() /></span>
             <span class="ach-line-t">
-                <span class="ach-line-h"><b>{g.name.clone()}</b>{award_badge(g.award, g.award_at)}</span>
+                <span class="ach-line-h">
+                    <b>{g.name.clone()}</b>
+                    {award_badge(g.award, g.award_at)}
+                    {(done && g.award.is_none()).then(|| view! { <span class="plat-badge"><Svg icon=Icon::Trophy size=12 />{tr!("Platinado")}</span> })}
+                </span>
                 <small>{meta.join(" · ")}</small>
             </span>
             <span class="ach-line-p">
