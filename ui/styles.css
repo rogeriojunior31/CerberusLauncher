@@ -1732,3 +1732,18 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .tv-ach-sum .tv-ach-bar { flex-basis: 100%; max-width: calc(900 * var(--u)); }
 .tv-cover.plat { box-shadow: 0 0 0 calc(3 * var(--u)) #f5c542; }
 .tv-bar.gold i { background: linear-gradient(90deg, #ffe08a, #f5b62a); }
+
+/* Settings: controllers */
+.pad-list { display: flex; flex-direction: column; gap: 8px; }
+.pad-empty { display: flex; gap: 14px; align-items: center; padding: 14px; border-radius: 12px; background: var(--fill2); color: var(--muted); }
+.pad-empty b { color: var(--ink); }
+.pad-empty p { margin: 4px 0 0; }
+.pad-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; background: var(--fill2); }
+.pad-ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--card2); color: var(--accent); flex: none; }
+.pad-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pad-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pad-held { font-size: 13px; color: var(--dim); min-width: 170px; text-align: right; }
+.pad-held.on { color: var(--ink); font-weight: 700; }
+.pad-guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 18px; margin-top: 12px; }
+.pad-key { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.pad-key kbd { min-width: 44px; padding: 4px 9px; border-radius: 8px; background: var(--card2); border: 1px solid var(--line2); color: var(--ink); font: inherit; font-weight: 700; font-size: 12.5px; text-align: center; }

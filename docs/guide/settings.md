@@ -51,6 +51,10 @@ Answers to something you just did, like the in-game menu failing to open, always
 | **Open in Big Picture Mode** | Start full screen, for the controller, every time |
 | **Navigation sounds** | A short sound when you move, select and go back |
 
+### Controllers
+
+Lists the controllers connected now, with their button layout (Xbox, PlayStation or Nintendo) and the button you're pressing, to check that each one works. Windows only shows a controller after its first button press. Below, what each button does in Big Picture Mode.
+
 ## Games
 
 ### Library and ROMs

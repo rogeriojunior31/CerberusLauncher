@@ -17,6 +17,7 @@ enum Section {
     InGame,
     Notices,
     BigPicture,
+    Controllers,
     Library,
     Install,
     Saves,
@@ -31,7 +32,7 @@ enum Section {
 }
 
 const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
-    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv)]),
+    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv), (Section::Controllers, tk!("Controles"), Icon::Gamepad)]),
     (
         tk!("Jogos"),
         &[
@@ -144,6 +145,7 @@ pub fn SettingsPage() -> impl IntoView {
             Section::InGame => in_game(s, busy, apply).into_any(),
             Section::Notices => notices(s, busy, apply).into_any(),
             Section::BigPicture => big_picture(s, busy, apply).into_any(),
+            Section::Controllers => controllers().into_any(),
             Section::Library => roms(s, busy, apply).into_any(),
             Section::Install => install(s, busy, apply).into_any(),
             Section::Saves => saves(s, busy, apply).into_any(),
@@ -287,6 +289,74 @@ fn appearance() -> impl IntoView {
             {language_row()}
             {move || row(tr!("Menos animações"), tr!("Sem transições nem movimento, para PCs mais simples ou para quem prefere assim."),
                 switch(calm.get(), tr!("Menos animações"), busy, move || { let on = !calm.get_untracked(); save_calm(on); calm.set(on); }))}
+        </section>
+    }
+}
+
+/// The controllers connected now, a live check of their buttons, and what each button does.
+fn controllers() -> impl IntoView {
+    use crate::tv::input::PadKind;
+    let pads = RwSignal::new(crate::tv::input::connected_pads());
+    let poll = set_interval_with_handle(move || pads.set(crate::tv::input::connected_pads()), std::time::Duration::from_millis(150)).ok();
+    on_cleanup(move || {
+        if let Some(p) = poll {
+            p.clear();
+        }
+    });
+    let list = move || {
+        let now = pads.get();
+        if now.is_empty() {
+            return view! {
+                <div class="pad-empty">
+                    <Svg icon=Icon::Gamepad size=30 />
+                    <div>
+                        <b>{tr!("Nenhum controle por aqui")}</b>
+                        <p class="muted small">{tr!("Conecte por cabo ou Bluetooth e aperte qualquer botão: o Windows só mostra o controle depois do primeiro botão. Xbox, PlayStation e Switch Pro funcionam.")}</p>
+                    </div>
+                </div>
+            }
+            .into_any();
+        }
+        now.into_iter()
+            .map(|(name, kind, held)| {
+                let brand = match kind {
+                    PadKind::Xbox => "Xbox",
+                    PadKind::PlayStation => "PlayStation",
+                    PadKind::Nintendo => "Nintendo",
+                };
+                view! {
+                    <div class="pad-row">
+                        <span class="pad-ico"><Svg icon=Icon::Gamepad size=22 /></span>
+                        <div class="pad-t"><b>{name}</b><small class="muted">{tr!("Botões no estilo {}", brand)}</small></div>
+                        <span class="pad-held" class:on=held.is_some()>{held.map(|h| tr!("Apertado: {}", h)).unwrap_or_else(|| tr!("Aperte um botão para testar").to_string())}</span>
+                        <span class="pill ok">{tr!("Conectado")}</span>
+                    </div>
+                }
+            })
+            .collect_view()
+            .into_any()
+    };
+    let guide = [
+        ("A", tr!("Escolher, jogar")),
+        ("B", tr!("Voltar")),
+        ("X", tr!("Opções do jogo")),
+        ("Y", tr!("Página do jogo")),
+        ("LB / RB", tr!("Trocar de seção")),
+        ("Menu", tr!("Configurações; segurado, sai do Big Picture")),
+        ("View + Menu", tr!("Menu sobre o jogo, durante a partida")),
+    ]
+    .into_iter()
+    .map(|(key, what)| view! { <div class="pad-key"><kbd>{key}</kbd><span>{what}</span></div> })
+    .collect_view();
+    view! {
+        <section class="card set">
+            <div class="card-h"><h3>{tr!("Controles conectados")}</h3></div>
+            <div class="pad-list">{list}</div>
+        </section>
+        <section class="card set">
+            <div class="card-h"><h3>{tr!("No Big Picture Mode")}</h3></div>
+            <p class="muted small">{tr!("O analógico esquerdo só começa a mover depois de ser visto parado, para um controle com drift não andar sozinho.")}</p>
+            <div class="pad-guide">{guide}</div>
         </section>
     }
 }
