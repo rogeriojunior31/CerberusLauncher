@@ -94,6 +94,8 @@ enum Sort {
     Recent,
     Playtime,
     Rating,
+    /// Closest to 100% first; games without achievements at the end.
+    Achievements,
 }
 
 #[derive(Clone, Copy)]
@@ -438,17 +440,22 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
             }.into_any();
         }
+        let progress = progress_of();
         // list_games already returns alphabetical order, including ties below.
         match sort.get() {
             Sort::Name => {}
             Sort::Recent => games.sort_by_key(|g| std::cmp::Reverse(g.last_played)),
             Sort::Playtime => games.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
             Sort::Rating => games.sort_by_key(|g| std::cmp::Reverse(g.rating)),
+            Sort::Achievements => games.sort_by_key(|g| {
+                // Per mille, so 3/4 and 75/100 rank the same; then more unlocked first.
+                let (unlocked, total) = progress.get(&g.id).copied().filter(|p| p.1 > 0).unwrap_or((0, 0));
+                std::cmp::Reverse((total > 0, if total > 0 { unlocked * 1000 / total } else { 0 }, unlocked))
+            }),
         }
         shown.set_value(games.clone());
         let count = games.len();
         let list = compact.get();
-        let progress = progress_of();
         let items = games.iter().map(|g| {
             let mut info = game_tile(g, library);
             info.progress = progress.get(&g.id).copied();
@@ -519,12 +526,13 @@ pub fn LibraryPage() -> impl IntoView {
                     </label>
                     <select class="select" aria-label=tr!("Ordenar biblioteca")
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {
-                            "recent" => Sort::Recent, "time" => Sort::Playtime, "rating" => Sort::Rating, _ => Sort::Name,
+                            "recent" => Sort::Recent, "time" => Sort::Playtime, "rating" => Sort::Rating, "achievements" => Sort::Achievements, _ => Sort::Name,
                         })>
                         <option value="name" selected=move || sort.get() == Sort::Name>{tr!("A a Z")}</option>
                         <option value="recent" selected=move || sort.get() == Sort::Recent>{tr!("Jogados recentemente")}</option>
                         <option value="time" selected=move || sort.get() == Sort::Playtime>{tr!("Mais jogados")}</option>
                         <option value="rating" selected=move || sort.get() == Sort::Rating>{tr!("Sua nota")}</option>
+                        <option value="achievements" selected=move || sort.get() == Sort::Achievements>{tr!("Conquistas")}</option>
                     </select>
                     <div class="library-modes" role="group" aria-label=tr!("Visualização")>
                         {mode(false, Icon::Library, tr!("Ver em grade"))}
