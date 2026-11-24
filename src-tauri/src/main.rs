@@ -632,7 +632,7 @@ fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, s
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
         let saved = emulation::add_played(&data, &path, seconds, now);
         play_log::record(&data, &id, seconds, now);
-        trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) }));
+        trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { sessions::played_text(seconds / 60 * 60) }));
         let _ = app.emit("catalog-changed", ());
         background::classic_ended(&app);
     });

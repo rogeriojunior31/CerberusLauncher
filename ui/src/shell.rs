@@ -137,6 +137,17 @@ fn SideGames() -> impl IntoView {
             })
             .collect::<Vec<_>>()
     };
+    // Names shown more than once (a recomp and its classic): those rows say which one they are.
+    let twice = Memo::new(move |_| {
+        let mut seen = std::collections::HashMap::<String, usize>::new();
+        for g in ready.get() {
+            *seen.entry(crate::tiles::game_names(&g, library).0.to_lowercase()).or_default() += 1;
+        }
+        for (r, _, _) in classics.get() {
+            *seen.entry(crate::classics::display_name(&r).to_lowercase()).or_default() += 1;
+        }
+        seen.into_iter().filter(|(_, n)| *n > 1).map(|(k, _)| k).collect::<std::collections::HashSet<String>>()
+    });
     let classic_rows = move || {
         let q = query.get().to_lowercase();
         classics
@@ -149,12 +160,13 @@ fn SideGames() -> impl IntoView {
                 let on = move || library.route.with(|now| *now == here);
                 let name = crate::classics::display_name(&rom);
                 let tip = format!("{name} · {} · {player}", crate::classics::console_name(console));
+                let which = twice.with(|t| t.contains(&name.to_lowercase())).then(|| format!("{} · {}", crate::classics::console_name(console), player));
                 let (path, console_id) = (rom.path.clone(), console.to_string());
                 view! {
                     <div class="sg-item" class:on=on>
                         <button type="button" class="sg-open" title=tip on:click=move |_| library.go(route.clone())>
                             <span class="fav-thumb"><crate::art::Poster sources=crate::classics::box_art(&rom, console) title=name.clone() /></span>
-                            <span class="sg-name">{name}</span>
+                            <span class="sg-name">{name}{which.map(|w| view! { <small>{w}</small> })}</span>
                         </button>
                         <button type="button" class="sg-play" title=tr!("Jogar no {}", player) aria-label=tr!("Jogar no {}", player)
                             on:click=move |_| crate::classics::play_original(library, path.clone(), console_id.clone())>
@@ -177,11 +189,12 @@ fn SideGames() -> impl IntoView {
                 let game = StoredValue::new(g.clone());
                 let (name, version) = crate::tiles::game_names(&g, library);
                 let tip = version.as_ref().map_or_else(|| name.clone(), |v| format!("{name} · {v}"));
+                let which = twice.with(|t| t.contains(&name.to_lowercase())).then(|| version.clone().unwrap_or_else(|| crate::tiles::source_name(&g.source).to_string()));
                 view! {
                     <div class="sg-item" class:on=on>
                         <button type="button" class="sg-open" title=tip on:click=move |_| library.go(route.clone())>
                             <span class="fav-thumb"><crate::art::Poster sources=crate::art::cover_sources(&g) title=name.clone() /></span>
-                            <span class="sg-name">{name}</span>
+                            <span class="sg-name">{name}{which.map(|w| view! { <small>{w}</small> })}</span>
                             {g.favorite.then(|| view! { <span class="sg-fav"><Svg icon=Icon::HeartFill size=11 /></span> })}
                             <Show when=running><i class="sg-live" title=tr!("Jogando agora")></i></Show>
                         </button>

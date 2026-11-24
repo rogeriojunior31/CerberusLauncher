@@ -378,7 +378,7 @@ pub fn DiscoverPage() -> impl IntoView {
                 <div>
                     <h1>{tr!("Descobrir")}</h1>
                     <p class="muted">
-                        {tr!("Jogue no PC com sua cópia original. Catálogo de recomplauncher.com.")}
+                        {tr!("Recomps são versões nativas para PC de jogos de console: você usa a sua cópia original e o jogo roda sem emulador. Catálogo de recomplauncher.com.")}
                     </p>
                 </div>
                 <div class="row">

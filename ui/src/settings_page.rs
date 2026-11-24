@@ -260,6 +260,12 @@ thread_local! {
 }
 
 /// Opens Configurações › Emulação.
+/// Settings › Biblioteca e ROMs, where the ROM folders are.
+pub fn open_rom_folders(library: Library) {
+    NEXT.with(|n| n.set(Some(Section::Library)));
+    library.go(crate::Route::Settings);
+}
+
 pub fn open_emulation(library: Library) {
     NEXT.with(|n| n.set(Some(Section::Emulation)));
     library.go(crate::Route::Settings);
@@ -854,7 +860,7 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             <h3>{tr!("Catálogo de recomps")}</h3>
             {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), tr!("Catálogo atualizado."))>{tr!("Atualizar agora")}</button> })}
-            {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com quase 1.900 recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes de projetos."),
+            {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes de projetos."),
                 switch(s.site_catalog, tr!("Catálogo do recomplauncher.com"), busy, move || {
                     let on = !s.site_catalog;
                     apply(Box::pin(api::set_site_catalog(on)), if on { tr!("Catálogo do recomplauncher.com ligado.") } else { tr!("Usando só o catálogo do Cerberus.") })

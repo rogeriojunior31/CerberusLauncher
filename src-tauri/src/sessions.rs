@@ -482,7 +482,7 @@ fn close_session(
 ) -> Vec<String> {
     let mut notices = Vec::new();
     let saved = sessions.close_round(library, &game.id, seconds, closed_at);
-    let played = format!("{} jogados", duration_text(seconds));
+    let played = played_text(seconds);
     trail.note(&game.id, tk!("Partida"), &saved.as_ref().map(|_| played).map_err(|e| tr!("Tempo não gravado: {}", e)));
     if let Err(e) = saved {
         notices.push(tr!("Não foi possível gravar o tempo de {0}: {1}", game.name, e));
@@ -498,6 +498,12 @@ fn close_session(
 }
 
 /// "1 h 5 min", "3 min", "40 s".
+/// "1 min jogado", "5 min jogados": what a session's history line says.
+pub fn played_text(seconds: u64) -> String {
+    let time = duration_text(seconds);
+    if time == "1 min" || time == "1 s" { format!("{time} jogado") } else { format!("{time} jogados") }
+}
+
 fn duration_text(seconds: u64) -> String {
     match seconds {
         0..60 => format!("{seconds} s"),
@@ -509,6 +515,7 @@ fn duration_text(seconds: u64) -> String {
 /// A backup's result as the history shows it.
 pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shared::Backup>, E>) -> Result<String, String> {
     match result {
+        Ok(Some(backup)) if backup.files == 1 => Ok("1 arquivo copiado".into()),
         Ok(Some(backup)) => Ok(format!("{} arquivos copiados", backup.files)),
         Ok(None) => Ok(tr!("Nada novo para copiar").into()),
         Err(e) => Err(e.to_string()),

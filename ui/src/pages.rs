@@ -456,6 +456,8 @@ pub fn SavesPage() -> impl IntoView {
 /// A game's saves in one line (status, last copy, size); opens into its history.
 #[component]
 fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let (title, version) = crate::tiles::game_names(&game, library);
     let id = game.id.clone();
     let backups = LocalResource::new(move || {
         let id = id.clone();
@@ -480,9 +482,9 @@ fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl I
         <div class="card sv-row" class:open=is_open>
             <button type="button" class="sv-head" aria-expanded=move || is_open().to_string()
                 on:click=move |_| open.update(|o| *o = if o.as_deref() == Some(gid.get_value().as_str()) { None } else { Some(gid.get_value()) })>
-                <div class="thumb"><Poster sources=cover_sources(&game) title=game.name.clone() /></div>
+                <div class="thumb"><Poster sources=cover_sources(&game) title=title.clone() /></div>
                 <div class="dl-info">
-                    <b>{game.name.clone()}</b>
+                    <b>{title.clone()}{version.map(|v| view! { <small class="sv-ver">{v}</small> })}</b>
                     {move || { let (text, tone, _) = summary(); view! { <span class=format!("sv-status {tone}")><i></i>{text}</span> } }}
                 </div>
                 <small class="muted">{move || summary().2}</small>

@@ -156,11 +156,16 @@ fn whose(id: &str, games: &[Game], recomps: &[RecompEntry]) -> String {
         let stem = file.rsplit_once('.').map_or(file, |(s, _)| s);
         return stem.split(" (").next().unwrap_or(stem).trim().to_string();
     }
-    if let Some(game) = games.iter().find(|g| g.id == id) {
-        return game.name.clone();
-    }
+    // A recomp goes by its game's name ("RollerCoaster Tycoon 2", not "OpenRCT2"), as in the library.
     let rid = id.strip_prefix("recomp:").unwrap_or(id);
-    recomps.iter().find(|e| e.id == rid).map(|e| e.name.clone()).unwrap_or_else(|| id.to_string())
+    let entry = recomps.iter().find(|e| e.id == rid);
+    if let Some(game) = games.iter().find(|g| g.id == id) {
+        return match game.source {
+            Source::Recomp { .. } => crate::tiles::names_of(&game.name, entry).0,
+            _ => game.name.clone(),
+        };
+    }
+    entry.map(|e| crate::tiles::entry_names(e).0).unwrap_or_else(|| id.to_string())
 }
 
 /// Where a history line leads: its game's page, when there is one.
@@ -280,7 +285,11 @@ fn clock(seconds: u64) -> String {
 /// One history line; `when` is its time ("14:05", or "há 3 h" outside a day group).
 fn activity_row(library: Library, row: Row, when: String, games: &[Game], recomps: &[RecompEntry]) -> impl IntoView {
     let e = row.entry;
-    let mut detail = e.message.clone();
+    // Lines written before the singular was fixed.
+    let mut detail = match e.message.strip_prefix("1 min jogados") {
+        Some(rest) => format!("1 min jogado{rest}"),
+        None => e.message.clone(),
+    };
     if let Some(b) = row.backup.as_ref().filter(|b| b.as_str() != NOTHING_NEW && b.as_str() != tr!("Nada novo para copiar")) {
         detail = tr!("{} · backup: {}", detail, b);
     }

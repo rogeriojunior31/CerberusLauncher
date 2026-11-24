@@ -1819,6 +1819,7 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .sg-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .sg-item:hover .sg-open, .sg-item.on .sg-open { color: var(--ink); }
 .sg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-name small { display: block; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 .sg-fav { color: #ff5470; display: grid; flex: none; }
 .sg-live { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80; }
 .sg-play { position: absolute; right: 6px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--grad); color: #fff;
@@ -1965,3 +1966,5 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .set-row.sub > div:first-child { min-width: 0; }
 .set-row.sub > div:first-child b { overflow-wrap: anywhere; }
 .set-row small.ref-only { color: var(--ink); }
+.sv-ver { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--dim); }
+.lang-note { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--dim); text-transform: none; letter-spacing: 0; }

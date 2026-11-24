@@ -171,7 +171,7 @@ pub fn watch(app: AppHandle) {
                 let Ok(data) = app.path().app_data_dir() else { continue };
                 let saved = add(&data, &id, seconds, now);
                 crate::play_log::record(&data, &id, seconds, now);
-                let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) };
+                let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { crate::sessions::played_text(seconds / 60 * 60) };
                 crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
                 let _ = app.emit("playtime-updated", &id);
             }

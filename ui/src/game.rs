@@ -400,6 +400,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool)
 
 #[component]
 fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> impl IntoView {
+    let lib = expect_context::<Library>();
     // Project facts go to the side rail; the player's own numbers live in the play card.
     let mut facts: Vec<(String, String)> = Vec::new();
     if let Some(g) = &game {
@@ -452,6 +453,9 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
     let problem = entry.as_ref().and_then(|e| e.problem.clone()).map(|text| view! { <p class="problem">{text}</p> });
+    // The developer's own words stay in English (a guessed translation would be worse); say so once.
+    let in_english = || (cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt)
+        .then(|| view! { <small class="lang-note">{tr!("em inglês, como o desenvolvedor escreveu")}</small> });
     let tags = entry.as_ref().filter(|e| !e.tags.is_empty() || !e.multiplayer.is_empty()).map(|e| {
         let players = match e.multiplayer.as_str() {
             "local" => Some(tr!("Multijogador local")),
@@ -467,21 +471,21 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         view! {
             <div class="note">
                 <Svg icon=Icon::Check size=18 />
-                <div><b>{tr!("Como começar")}</b><p>{text}</p></div>
+                <div><b>{tr!("Como começar")}{in_english()}</b><p lang="en">{text}</p></div>
             </div>
         }
     });
     let features = entry.as_ref().filter(|e| !e.features.is_empty()).map(|e| {
         let items = e.features.iter().map(|f| view! { <li><Svg icon=Icon::Check size=16 />{f.clone()}</li> }).collect_view();
-        view! { <div class="ver-part"><span class="ver-label">{tr!("O que esta versão faz")}</span><ul class="features">{items}</ul></div> }
+        view! { <div class="ver-part"><span class="ver-label">{tr!("O que esta versão faz")}{in_english()}</span><ul class="features" lang="en">{items}</ul></div> }
     });
     let setup = entry.as_ref().filter(|e| !e.setup_steps.is_empty()).map(|e| {
         let steps = e.setup_steps.iter().map(|s| view! { <li>{s.clone()}</li> }).collect_view();
         view! {
             <section class="card setup">
                 <h3>{tr!("Precisa de configuração")}</h3>
-                <p class="muted small">{tr!("Esse recomp precisa de alguns passos feitos à mão antes de jogar:")}</p>
-                <ol>{steps}</ol>
+                <p class="muted small">{tr!("Esse recomp precisa de alguns passos feitos à mão antes de jogar:")}{in_english()}</p>
+                <ol lang="en">{steps}</ol>
             </section>
         }
     });
@@ -519,7 +523,8 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             <aside class="card ready">
                 <h3>{tr!("Antes de jogar")}</h3>
                 {copy}
-                <p class="muted small">{tr!("O Cerberus nunca baixa arquivos de jogo. Aponte suas pastas de ROMs em Configurações e ele avisa quais jogos você já tem.")}</p>
+                <p class="muted small">{tr!("O Cerberus nunca baixa arquivos de jogo. Ele procura sua cópia nas suas pastas de ROMs.")}</p>
+                <button type="button" class="link" on:click=move |_| crate::settings_page::open_rom_folders(lib)>{tr!("Escolher pastas de ROMs")}</button>
             </aside>
         }
     });
@@ -1634,7 +1639,7 @@ fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> im
             }
             .into_any()
         }
-        None => (!igdb.is_empty()).then(|| view! { <p class="og-summary">{igdb.clone()}</p> }).into_any(),
+        None => (!igdb.is_empty()).then(|| view! { <p class="og-summary" lang="en">{igdb.clone()}</p> }).into_any(),
     };
     view! {
         <section class="card original">
