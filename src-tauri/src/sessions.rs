@@ -168,7 +168,7 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
         sessions.lock().remove(&game.id);
-        let message = tr!("Não foi possível abrir {0}: {1}", exe.display(), e);
+        let message = blocked_by_windows(e.raw_os_error()).map(str::to_string).unwrap_or_else(|| tr!("Não foi possível abrir {0}: {1}", exe.display(), e));
         crate::trail::note(app, &game.id, tk!("Abrir o jogo"), &Err(message.clone()));
         message
     })?;
@@ -202,6 +202,21 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
 
 #[cfg(not(windows))]
 struct GameProcess(std::process::Child, Instant);
+
+/// Why Windows itself refused to start a game, in words the player can act on.
+fn blocked_by_windows(code: Option<i32>) -> Option<&'static str> {
+    Some(match code? {
+        // ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION and its reputation variants: Smart App Control.
+        4551 | 4553 | 4580 => tr!("O Smart App Control do Windows bloqueou o jogo, porque o programa não é assinado. Ele não abre exceções: para jogar, é preciso desligar o Smart App Control em Segurança do Windows › Controle de aplicativos e navegador."),
+        // ERROR_VIRUS_INFECTED / ERROR_VIRUS_DELETED
+        225 | 226 => tr!("O antivírus bloqueou o jogo. Se você confia no recomp, libere a pasta dele no antivírus e use Reparar instalação na aba Gerenciar."),
+        // ERROR_ACCESS_DISABLED_BY_POLICY
+        1260 => tr!("Uma política do Windows (da empresa ou do AppLocker) bloqueia programas nessa pasta. Instale os recomps numa pasta permitida, em Configurações › Instalação."),
+        // ERROR_ELEVATION_REQUIRED
+        740 => tr!("Esse jogo pede para abrir como administrador. O Cerberus não abre jogos como administrador; veja se o projeto tem uma versão que não precise disso."),
+        _ => return None,
+    })
+}
 
 #[cfg(not(windows))]
 fn spawn_game(mut command: Command, _selected: Option<&Path>) -> std::io::Result<GameProcess> {
@@ -386,6 +401,13 @@ fn durations_read_as_people_say_them() {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_refusals_are_explained() {
+        assert!(blocked_by_windows(Some(4551)).unwrap().contains("Smart App Control"));
+        assert!(blocked_by_windows(Some(225)).is_some() && blocked_by_windows(Some(740)).is_some() && blocked_by_windows(Some(1260)).is_some());
+        assert!(blocked_by_windows(Some(2)).is_none() && blocked_by_windows(None).is_none());
+    }
 
     #[cfg(windows)]
     #[test]

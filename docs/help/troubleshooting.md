@@ -23,6 +23,15 @@ When a game Cerberus started closes with an error, the game page and **What's ne
 
 Older PC ports may need the legacy DirectX components, also in **Settings → Your PC**.
 
+## Windows won't let the game open
+
+Cerberus says which one stopped it:
+
+- **Smart App Control:** it blocks programs that aren't signed, and recomps usually aren't. It has no exceptions; to play, turn it off in **Windows Security → App & browser control**.
+- **Antivirus:** if you trust the recomp, allow its folder in the antivirus, then use **Repair installation** in the game's **Manage** tab, since the antivirus may have removed a file.
+- **A Windows policy** (from your company, or AppLocker): install recomps in a folder that's allowed, in **Settings → Installation**.
+- **Administrator rights:** Cerberus doesn't open games as administrator. See if the project has a version that doesn't need it.
+
 ## The game can't find my copy
 
 - Make sure the folder with your ROM or disc image is in **Settings → Library and ROMs**, then click **Scan again**.
@@ -33,7 +42,7 @@ Older PC ports may need the legacy DirectX components, also in **Settings → Yo
 
 - **The connection dropped:** try again. The download resumes where it stopped.
 - **The checksum doesn't match:** the file was discarded. Try again; if it keeps happening, the release may have changed. Use **Update now** in **Settings → Catalog and sources**.
-- **GitHub is busy or limiting requests:** wait a minute and try again.
+- **GitHub is busy or limiting requests:** wait a minute and try again. When a site fails or asks for a pause, Cerberus leaves it alone on its own for a while (30 seconds at first, doubling up to an hour, or what the site asks for) and tries again later, so it doesn't make things worse.
 
 ## Screenshots are black, or the in-game menu doesn't show
 
