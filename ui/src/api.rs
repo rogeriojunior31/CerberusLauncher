@@ -1089,3 +1089,48 @@ pub async fn open_wiki(url: String) -> Result<(), String> {
 pub async fn add_all_to_steam() -> Result<usize, String> {
     call("add_all_to_steam", &()).await
 }
+
+/// The standalone emulators, who plays each console, and their game folders.
+pub async fn standalone_status() -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("standalone_status", &()).await
+}
+
+#[derive(serde::Serialize)]
+struct EmulatorId<'a> {
+    id: &'a str,
+}
+
+/// Installs a standalone emulator; progress comes through `on_emu_progress`.
+pub async fn install_standalone(id: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("install_standalone", &EmulatorId { id }).await
+}
+
+pub async fn pick_standalone(id: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("pick_standalone", &EmulatorId { id }).await
+}
+
+pub async fn remove_standalone(id: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("remove_standalone", &EmulatorId { id }).await
+}
+
+pub async fn set_play_with(console: &str, who: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        console: &'a str,
+        who: &'a str,
+    }
+    call("set_play_with", &Arg { console, who }).await
+}
+
+pub async fn set_emulator_folders(on: bool) -> Result<cerberus_shared::StandaloneStatus, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_emulator_folders", &Arg { on }).await
+}
+
+/// Opens an emulator by itself, to set it up.
+pub async fn open_standalone(id: &str) -> Result<(), String> {
+    call("open_standalone", &EmulatorId { id }).await
+}

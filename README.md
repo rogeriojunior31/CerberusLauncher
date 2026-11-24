@@ -59,6 +59,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 - **Crash explanations:** when a game closes with an error, Cerberus tells you the cause and where the game's log is. The cause can be a missing DLL, an old Visual C++ runtime or a crash.
 - **DLSS:** Cerberus shows which DLSS version a game uses. You can swap it for a DLL you already have and go back to the original at any time.
 - **Steam integration:** add any game to Steam (for Steam Deck and Big Picture), or create a desktop shortcut that opens the game through Cerberus.
+- **Standalone emulators:** DuckStation, PCSX2, RPCS3, PPSSPP, Dolphin and Cemu, installed from their official releases or found on your PC, with a choice of who opens each console, and the games your emulators already know join your classics.
 - **Multi-disc classics:** games on several discs show up as one game, and you swap discs from RetroArch's menu.
 - **Windows integration:** tray icon, start with Windows, notifications you choose one by one, and only one copy of Cerberus running at a time.
 - **Controllers:** **Settings → Controllers** lists the connected controllers (Xbox, PlayStation, Nintendo) and lets you test every button.

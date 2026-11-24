@@ -36,6 +36,7 @@ mod store_time;
 mod shortcut;
 mod runtimes;
 mod steam;
+mod standalone;
 mod steam_shortcuts;
 mod steam_store;
 mod steam_details;
@@ -297,9 +298,24 @@ async fn retry_save_uploads(app: AppHandle) -> Result<SettingsView, String> {
     Ok(settings_view(&app))
 }
 
+/// The folders the classics come from: the player's, plus (unless turned off)
+/// the ones their emulators already list games from.
+fn classic_folders(data: &Path) -> Vec<PathBuf> {
+    let chosen = settings::load(data);
+    let mut dirs = chosen.rom_dirs.clone();
+    if chosen.emulator_folders {
+        for folder in standalone::game_folders(data, &chosen.emulators) {
+            if !dirs.iter().any(|d| folder.starts_with(d)) {
+                dirs.push(folder);
+            }
+        }
+    }
+    dirs
+}
+
 /// Looks through the ROM folders again, off the UI's thread, and tells the window.
 async fn rescan_roms(app: &AppHandle) {
-    let dirs = settings::load(&app.state::<DataDir>().0).rom_dirs;
+    let dirs = classic_folders(&app.state::<DataDir>().0);
     let found = tauri::async_runtime::spawn_blocking(move || roms::scan(&dirs)).await.unwrap_or_default();
     roms::save_index(&app.state::<DataDir>().rom_index(), &found);
     app.state::<RomIndex>().set(found);
@@ -549,12 +565,17 @@ async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, 
 #[tauri::command]
 fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
     let (data, picked) = retroarch_choice(&app);
-    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale o RetroArch em Configurações › Emulação para jogar os clássicos."))?;
     let rom = PathBuf::from(&path);
     // Only files from the player's own ROM folders are started.
     let Some(known) = app.state::<RomIndex>().get().into_iter().find(|r| r.path == rom) else {
         return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
     };
+    let chosen = settings::load(&data);
+    let retroarch = emulation::retroarch(&data, picked.as_deref());
+    if let Some((emulator, exe)) = standalone_for(&data, &chosen, &console, retroarch.is_some()) {
+        return play_standalone(app, path, rom, emulator, &exe);
+    }
+    let exe = retroarch.ok_or(tr!("Instale o RetroArch, ou um emulador para esse console, em Configurações › Emulação para jogar os clássicos."))?;
     let log = data.join("emulators").join("retroarch-session.log");
     connect_retroarch(&data, &exe);
     let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| emulation::launch(&exe, &opened, &console, Some(&log)));
@@ -603,6 +624,169 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         background::classic_ended(&app);
     });
     Ok(())
+}
+
+/// The standalone emulator that opens a console's games, when it's not RetroArch:
+/// the one the player chose, or the only way to play a console RetroArch can't.
+fn standalone_for(data: &Path, chosen: &settings::Settings, console: &str, have_retroarch: bool) -> Option<(&'static standalone::Emulator, PathBuf)> {
+    let found = |e: &'static standalone::Emulator| standalone::locate(data, chosen.emulators.get(e.id).map(PathBuf::as_path), e).map(|(p, _)| (e, p));
+    match chosen.play_with.get(console).map(String::as_str) {
+        Some("retroarch") => None,
+        Some(id) => standalone::find(id).filter(|e| e.consoles.contains(&console)).and_then(found),
+        None if have_retroarch && emulation::core_for(console).is_some() => None,
+        None => standalone::for_console(console).find_map(found),
+    }
+}
+
+/// Plays a classic in a standalone emulator and counts the time, as with RetroArch.
+fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'static standalone::Emulator, exe: &Path) -> Result<(), String> {
+    let data = app.state::<DataDir>().0.clone();
+    let id = format!("classic:{path}");
+    let result = standalone::launch(exe, emulator, &rom);
+    trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no {}", emulator.name)).map_err(Clone::clone));
+    let mut child = result?;
+    let started = std::time::Instant::now();
+    background::classic_started();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        let seconds = started.elapsed().as_secs();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+        let saved = emulation::add_played(&data, &path, seconds, now);
+        play_log::record(&data, &id, seconds, now);
+        trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) }));
+        let _ = app.emit("catalog-changed", ());
+        background::classic_ended(&app);
+    });
+    Ok(())
+}
+
+fn standalone_status_now(data: &Path) -> cerberus_shared::StandaloneStatus {
+    let chosen = settings::load(data);
+    let consoles = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu"];
+    let retroarch = emulation::retroarch(data, chosen.retroarch.as_deref()).is_some();
+    let play_with = consoles
+        .iter()
+        .map(|c| {
+            let who = match standalone_for(data, &chosen, c, retroarch) {
+                Some((e, _)) => e.id.to_string(),
+                None if emulation::core_for(c).is_some() => "retroarch".to_string(),
+                None => String::new(),
+            };
+            (c.to_string(), chosen.play_with.get(*c).cloned().unwrap_or(who))
+        })
+        .collect();
+    cerberus_shared::StandaloneStatus {
+        emulators: standalone::status(data, &chosen.emulators),
+        play_with,
+        use_folders: chosen.emulator_folders,
+        folders: if chosen.emulator_folders { standalone::game_folders(data, &chosen.emulators).iter().map(|p| p.display().to_string()).collect() } else { Vec::new() },
+    }
+}
+
+/// The standalone emulators: found or not, who plays each console, their game folders.
+#[tauri::command]
+async fn standalone_status(app: AppHandle) -> cerberus_shared::StandaloneStatus {
+    let data = app.state::<DataDir>().0.clone();
+    tauri::async_runtime::spawn_blocking(move || standalone_status_now(&data)).await.unwrap_or_default()
+}
+
+/// Installs a standalone emulator from its official release; progress as `emu-progress`.
+#[tauri::command]
+async fn install_standalone(app: AppHandle, http: State<'_, reqwest::Client>, id: String) -> Result<cerberus_shared::StandaloneStatus, String> {
+    let emulator = standalone::find(&id).ok_or(tr!("Emulador desconhecido."))?;
+    let data = app.state::<DataDir>().0.clone();
+    let report = {
+        let app = app.clone();
+        move |done: u64, total: u64| {
+            let _ = app.emit("emu-progress", (done, total));
+        }
+    };
+    let result = standalone::install(&http, &data, emulator, report).await;
+    trail::note(&app, "emulation", tk!("Instalar emulador"), &result.as_ref().map(|p| format!("{} · {}", emulator.name, p.display())).map_err(Clone::clone));
+    result?;
+    // Cerberus's own copy wins over a pick made before.
+    let mut chosen = settings::load(&data);
+    chosen.emulators.remove(&id);
+    settings::save(&data, &chosen)?;
+    rescan_roms(&app).await;
+    Ok(standalone_status_now(&data))
+}
+
+/// Uses a standalone emulator the player already has.
+#[tauri::command]
+async fn pick_standalone(app: AppHandle, id: String) -> Result<cerberus_shared::StandaloneStatus, String> {
+    let emulator = standalone::find(&id).ok_or(tr!("Emulador desconhecido."))?;
+    let dialog = app.dialog().file().set_title(tr!("Programa do {}", emulator.name)).add_filter(emulator.name, &["exe"]);
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())?;
+    let data = app.state::<DataDir>().0.clone();
+    let Some(picked) = picked else { return Ok(standalone_status_now(&data)) };
+    let exe = picked.into_path().map_err(|e| e.to_string())?;
+    let name = exe.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if !emulator.exe.iter().any(|w| name.eq_ignore_ascii_case(w)) {
+        return Err(tr!("Esse não parece ser o programa do {} (esperado: {}).", emulator.name, emulator.exe[0]));
+    }
+    let mut chosen = settings::load(&data);
+    chosen.emulators.insert(id, exe);
+    settings::save(&data, &chosen)?;
+    rescan_roms(&app).await;
+    Ok(standalone_status_now(&data))
+}
+
+/// Removes the copy Cerberus installed (saves and settings inside it go too), or forgets a pick.
+#[tauri::command]
+async fn remove_standalone(app: AppHandle, id: String) -> Result<cerberus_shared::StandaloneStatus, String> {
+    let emulator = standalone::find(&id).ok_or(tr!("Emulador desconhecido."))?;
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    if chosen.emulators.remove(&id).is_none() {
+        let dir = standalone::managed_dir(&data, emulator.id);
+        if dir.is_dir() {
+            fs::remove_dir_all(&dir).map_err(|e| tr!("Não foi possível remover o {}: {}", emulator.name, e))?;
+        }
+    }
+    chosen.play_with.retain(|_, who| who != &id);
+    settings::save(&data, &chosen)?;
+    rescan_roms(&app).await;
+    Ok(standalone_status_now(&data))
+}
+
+/// Opens an emulator on its own, to set controls, video or its BIOS folder.
+#[tauri::command]
+fn open_standalone(app: AppHandle, id: String) -> Result<(), String> {
+    let emulator = standalone::find(&id).ok_or(tr!("Emulador desconhecido."))?;
+    let data = app.state::<DataDir>().0.clone();
+    let chosen = settings::load(&data);
+    let (exe, _) = standalone::locate(&data, chosen.emulators.get(&id).map(PathBuf::as_path), emulator).ok_or(tr!("O {} não está instalado.", emulator.name))?;
+    let mut command = std::process::Command::new(&exe);
+    if let Some(dir) = exe.parent() {
+        command.current_dir(dir);
+    }
+    command.spawn().map(|_| ()).map_err(|e| tr!("Não foi possível abrir o {}: {}", emulator.name, e))
+}
+
+/// Which emulator opens a console's games: "retroarch" or a standalone id.
+#[tauri::command]
+fn set_play_with(app: AppHandle, console: String, who: String) -> Result<cerberus_shared::StandaloneStatus, String> {
+    let ok = who == "retroarch" && emulation::core_for(&console).is_some() || standalone::find(&who).is_some_and(|e| e.consoles.contains(&console.as_str()));
+    if !ok {
+        return Err(tr!("Esse emulador não roda jogos desse console.").into());
+    }
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    chosen.play_with.insert(console, who);
+    settings::save(&data, &chosen)?;
+    Ok(standalone_status_now(&data))
+}
+
+/// Turns the emulators' own game folders on or off for the classics.
+#[tauri::command]
+async fn set_emulator_folders(app: AppHandle, on: bool) -> Result<cerberus_shared::StandaloneStatus, String> {
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    chosen.emulator_folders = on;
+    settings::save(&data, &chosen)?;
+    rescan_roms(&app).await;
+    Ok(standalone_status_now(&data))
 }
 
 /// Logs RetroArch in to RetroAchievements with the linked account.
@@ -2525,6 +2709,13 @@ fn main() {
             achievements_hub,
             steam_details,
             steam_news,
+            standalone_status,
+            install_standalone,
+            pick_standalone,
+            remove_standalone,
+            set_play_with,
+            open_standalone,
+            set_emulator_folders,
             add_all_to_steam,
             wiki_about,
             open_wiki,

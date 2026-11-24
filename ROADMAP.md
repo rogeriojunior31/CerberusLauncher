@@ -468,7 +468,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       ajustes, requisitos do sistema. É compatibilidade com o formato aberto deles; avisar sem bloquear quando o PC
       não atende.
 - [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
-- [ ] Achar jogos nas pastas que os emuladores já conhecem: Dolphin, PCSX2, RPCS3, RetroArch, Cemu e Ryujinx, só lendo.
+- [x] Achar jogos nas pastas que os emuladores já conhecem (Dolphin, PCSX2, DuckStation, PPSSPP, RPCS3, Cemu), só lendo, e instalar esses emuladores das páginas oficiais. Ryujinx ficou de fora: o projeto foi encerrado.
 - [ ] Reconhecer jogos de PlayStation pelo ID do disco (não só pelo nome).
 - [ ] Trazer recomps que já estão na Steam ou em outro launcher, além da pasta escolhida.
 - [ ] Notar uma instalação interrompida (cancelada, travada, falta de luz) e refazer antes de jogar.

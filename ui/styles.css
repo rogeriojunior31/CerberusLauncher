@@ -1196,6 +1196,8 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 .swatch:hover { transform: scale(1.08); }
 .swatch.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
 .swatch.on svg { opacity: 1; }
+.emu-folders { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.emu-folders li { padding: 6px 10px; border-radius: 8px; background: var(--fill); font-size: 12.5px; }
 .set-find { width: 100%; margin-bottom: 4px; font-size: 13.5px; }
 .set-menu, .set-hits { display: flex; flex-direction: column; gap: 2px; }
 .set-menu.hidden { display: none; }

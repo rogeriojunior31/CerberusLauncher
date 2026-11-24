@@ -98,7 +98,7 @@ fn system_of(path: &str) -> &'static str {
 pub fn play_original(library: Library, path: String, console: String) {
     leptos::task::spawn_local(async move {
         if library.report(crate::api::play_classic(path, console).await).is_some() {
-            library.toast(tr!("Abrindo no RetroArch..."));
+            library.toast(tr!("Abrindo o jogo..."));
         }
     });
 }
@@ -299,7 +299,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let play = if emulated {
             view! {
                 <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar no RetroArch")}
+                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar")}
                 </button>
             }
             .into_any()

@@ -276,9 +276,9 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
                 .filter(|_| matches!(game.source, Source::Recomp { .. }))
                 .and_then(|copy| crate::classics::emulated_console(&copy).map(|c| (copy, c.to_string())))
                 .map(|(copy, console)| view! {
-                    <button type="button" class="btn big" title=tr!("Abrir a sua cópia original no RetroArch")
+                    <button type="button" class="btn big" title=tr!("Abrir a sua cópia original no emulador")
                         on:click=move |_| crate::classics::play_original(library, copy.clone(), console.clone())>
-                        {tr!("Original no RetroArch")}
+                        {tr!("Jogar o original")}
                     </button>
                 });
             return view! {

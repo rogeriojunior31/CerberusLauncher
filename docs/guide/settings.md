@@ -95,7 +95,7 @@ Lists the controllers connected now, with their button layout (Xbox, PlayStation
 
 ### Emulation
 
-RetroArch (install or use yours), **Cores**, **BIOS** and **Achievements in RetroArch**. See [Classics](classics.md).
+RetroArch (install or use yours), **Cores**, **BIOS** and **Achievements in RetroArch**; then the standalone **Emulators** (DuckStation, PCSX2, RPCS3, PPSSPP, Dolphin, Cemu), **Who opens each console**, and **Use the emulators' folders**. See [Classics](classics.md#standalone-emulators).
 
 ## Accounts
 

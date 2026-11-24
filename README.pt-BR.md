@@ -59,6 +59,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 - **Erro explicado:** quando um jogo fecha com erro, o Cerberus diz o motivo e onde está o log do jogo. O motivo pode ser uma DLL faltando, um Visual C++ antigo ou um travamento.
 - **DLSS:** mostra a versão que o jogo usa e troca por uma DLL que você já tem. Dá para voltar à original quando quiser.
 - **Steam:** você pode colocar qualquer jogo na Steam (para o Steam Deck e o Big Picture) ou criar um atalho na área de trabalho que abre pelo Cerberus.
+- **Emuladores dedicados:** DuckStation, PCSX2, RPCS3, PPSSPP, Dolphin e Cemu, instalados das páginas oficiais ou achados no seu PC. Você escolhe quem abre cada console, e os jogos que seus emuladores já conhecem entram nos clássicos.
 - **Clássicos com vários discos** aparecem como um jogo só. A troca de disco fica no menu do RetroArch.
 - **Integração com o Windows:** ícone na bandeja, abrir com o Windows, avisos que você escolhe um por um e uma janela só, mesmo se você abrir de novo.
 - **Controles:** **Configurações → Controles** mostra os controles conectados (Xbox, PlayStation, Nintendo) e testa cada botão.

@@ -733,6 +733,29 @@ pub struct MonitorView {
     pub primary: bool,
 }
 
+/// A standalone emulator (DuckStation, PCSX2...) as Configurações shows it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StandaloneView {
+    pub id: String,
+    pub name: String,
+    /// The consoles it plays, as the ROM scan names them ("ps2").
+    pub consoles: Vec<String>,
+    /// Its program, when found.
+    pub exe: Option<String>,
+    /// Cerberus installed it (and may remove it).
+    pub managed: bool,
+}
+
+/// Every standalone emulator, which one plays each console, and the folders they list games from.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StandaloneStatus {
+    pub emulators: Vec<StandaloneView>,
+    /// Console → "retroarch" or an emulator id: who opens its games now.
+    pub play_with: Vec<(String, String)>,
+    pub use_folders: bool,
+    pub folders: Vec<String>,
+}
+
 /// Emulation as Configurações shows it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EmulationView {

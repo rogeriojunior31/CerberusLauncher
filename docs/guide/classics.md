@@ -40,6 +40,25 @@ The BIOS is the console's built-in program. **Cerberus never downloads BIOS file
 - **PlayStation 2** needs the BIOS from your own console. These are 4 MB files like `SCPH-70012.bin`.
 - **PlayStation** runs without one, but is more compatible with it. It's a 512 KB file like `scph5501.bin`.
 
+## Standalone emulators
+
+Besides RetroArch, **Settings → Emulation → Emulators** has six standalone emulators, each installed from its own project's official release (the ones on GitHub come with their SHA-256 checked) into Cerberus's folder:
+
+| Emulator | Plays |
+|---|---|
+| DuckStation | PlayStation |
+| PCSX2 | PlayStation 2 |
+| RPCS3 | PlayStation 3 |
+| PPSSPP | PSP |
+| Dolphin | GameCube and Wii |
+| Cemu | Wii U |
+
+- **Install** downloads it; **I have it** uses the one already on your PC (Cerberus also finds them in the usual install folders on its own). **Open** starts the emulator by itself, to set its controls, video or BIOS folder. **Remove** deletes the copy Cerberus installed.
+- They never come with BIOS or firmware: those come from your own console.
+- **Who opens each console** picks, per console, RetroArch or an installed emulator. By default, RetroArch opens what it has a core for; PlayStation 3 and Wii U need their emulator.
+- **Use the emulators' folders** (on by default): the game folders your emulators already list (DuckStation's and PCSX2's game list, Dolphin's ISO folders, PPSSPP's last folder, Cemu's game paths, RPCS3's games) join your classics. Cerberus only reads them.
+- Play time is counted the same way. RetroAchievements notices on the spot are for RetroArch only.
+
 ## Multi-disc games
 
 Files named like `Game (Disc 1)`, `Game (Disc 2)` in the same folder show up as **one game**. If you have your own `.m3u` list, Cerberus uses it.
