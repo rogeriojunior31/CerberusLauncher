@@ -14,6 +14,7 @@ mod sessions;
 mod roms;
 mod settings;
 mod setup_runner;
+mod awake;
 mod background;
 mod favorites;
 mod game_notes;
@@ -2325,6 +2326,7 @@ fn main() {
             folders.set_cloud(chosen.cloud_dir.clone());
             app.manage(folders);
             app.manage(recomp::Installing::default());
+            awake::start(app.handle().clone());
             app.manage(sessions::Sessions::default());
             let asked: Vec<String> = std::env::args().collect();
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));

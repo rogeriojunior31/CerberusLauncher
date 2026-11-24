@@ -156,6 +156,11 @@ impl Installing {
         }
     }
 
+    /// A recomp is downloading or installing right now.
+    pub fn any_active(&self) -> bool {
+        !self.0.lock().unwrap_or_else(|p| p.into_inner()).is_empty()
+    }
+
     /// Stops the download but keeps its bytes for the next install.
     pub fn pause(&self, id: &str) {
         let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
