@@ -1196,6 +1196,49 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 .swatch:hover { transform: scale(1.08); }
 .swatch.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
 .swatch.on svg { opacity: 1; }
+/* Configurações › Emulação */
+.card.set.emu-top { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
+.emu-top > div { flex: 1; min-width: 0; }
+.emu-top h3 { margin: 0 0 4px; }
+.emu-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 12px; }
+.emu-tile { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: var(--fill); border: 1px solid var(--line); border-top: 3px solid var(--line2); min-width: 0; }
+.emu-tile.wide { grid-column: span 2; }
+.emu-tile.ok { border-top-color: #4ade80; }
+.emu-tile.warn { border-top-color: #fbbf24; }
+.emu-tile.off { border-top-color: var(--fill3); }
+.emu-tile-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.emu-tile-h b { white-space: nowrap; }
+.emu-tile-h b { font-size: 15px; }
+.emu-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.emu-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--fill3); }
+.emu-tile.ok .emu-dot { color: #86efac; }
+.emu-tile.ok .emu-dot::before { background: #4ade80; }
+.emu-tile.warn .emu-dot { color: #fcd34d; }
+.emu-tile.warn .emu-dot::before { background: #fbbf24; }
+.emu-who { width: 100%; height: 34px; font-size: 13px; }
+.emu-who-one { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.emu-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 12px; }
+.emu-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; background: var(--fill); border: 1px solid var(--line); min-width: 0; }
+.emu-card.on { background: var(--card2); border-color: var(--line2); }
+.emu-card.ra { grid-column: 1 / -1; }
+.emu-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.emu-card header div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.emu-card header b { font-size: 16px; }
+.emu-card header small { color: var(--muted); font-size: 12.5px; }
+.emu-status { margin: 0; font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.emu-card footer { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+.emu-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.emu-line .btn { margin-left: auto; }
+.emu-flag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--fill2); color: var(--muted); }
+.emu-flag.ok { background: color-mix(in srgb, #4ade80 16%, transparent); color: #86efac; }
+.emu-flag.warn { background: color-mix(in srgb, #fbbf24 16%, transparent); color: #fcd34d; }
+.emu-cores-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.emu-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.emu-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--fill2); color: var(--ink); border: 1px solid var(--line); }
+button.emu-chip:hover:not(:disabled) { border-color: var(--accent); }
+.emu-chip.ok { background: color-mix(in srgb, #4ade80 12%, transparent); color: #bbf7d0; border-color: transparent; }
+.emu-chip.ok svg { color: #4ade80; }
+@media (max-width: 900px) { .emu-tile.wide { grid-column: auto; } }
 .emu-folders { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .emu-folders li { padding: 6px 10px; border-radius: 8px; background: var(--fill); font-size: 12.5px; }
 .set-find { width: 100%; margin-bottom: 4px; font-size: 13.5px; }

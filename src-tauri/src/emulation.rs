@@ -440,6 +440,11 @@ pub fn unlocked(line: &str) -> Option<String> {
     if !id.trim().chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
+    // RetroAchievements "awards" its own warnings (101000001 "Warning: Unsupported
+    // Core", and the others from that number up): not the game's achievements.
+    if id.trim().parse::<u64>().is_ok_and(|n| n >= 101_000_000) || text.trim_start().starts_with("Warning:") {
+        return None;
+    }
     let text = text.trim();
     let title = match text.rfind(" (") {
         Some(i) if text.ends_with(')') => &text[..i],
@@ -521,6 +526,8 @@ mod tests {
         assert_eq!(unlocked("[INFO] Loading achievement list"), None);
         // A failed award isn't an unlock.
         assert_eq!(unlocked("[RCHEEVOS]: Error awarding achievement 12: Speedy, retrying in 5 seconds"), None);
+        // Seen in a real session: RetroAchievements' own warning, not an achievement.
+        assert_eq!(unlocked("[INFO] [RCHEEVOS] Awarding achievement 101000001: Warning: Unsupported Core"), None);
     }
 
     #[test]

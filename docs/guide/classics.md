@@ -20,7 +20,7 @@ Go to **Settings → Emulation**:
 
 ### Cores
 
-Each console uses one RetroArch core, downloaded from the libretro website when you install it:
+Each console uses one RetroArch core, downloaded from the libretro website when you click its chip on the RetroArch card, or all at once with **Install all**:
 
 | Consoles | Core |
 |---|---|
@@ -56,9 +56,9 @@ Besides RetroArch, **Settings → Emulation → Emulators** has six standalone e
 | Cemu | Wii U |
 
 - **Install** downloads it; **I have it** uses the one already on your PC (Cerberus also finds them in the usual install folders on its own). **Open** starts the emulator by itself, to set its controls, video or BIOS folder. **Remove** deletes the copy Cerberus installed.
-- They never come with BIOS or firmware: those come from your own console.
-- **Who opens each console** picks, per console, RetroArch or an installed emulator. By default, RetroArch opens what it has a core for; PlayStation 3 and Wii U need their emulator.
-- **Use the emulators' folders** (on by default): the game folders your emulators already list (DuckStation's and PCSX2's game list, Dolphin's ISO folders, PPSSPP's last folder, Cemu's game paths, RPCS3's games) join your classics. Cerberus only reads them.
+- They never come with BIOS or firmware: those come from your own console. An emulator that needs them says so on its card: **Add BIOS** copies your BIOS files from a folder into the emulator's own BIOS folder (DuckStation: 512 KB PlayStation files; PCSX2: 4 MB PlayStation 2 files and their NVM/MEC), and **Install firmware** has RPCS3 install your `PS3UPDAT.PUP`.
+- **Your consoles**, at the top of the page, shows each disc console with who opens it and whether it's ready (green), missing a BIOS or a RetroArch core (yellow), or without an emulator (grey). It also picks, per console, RetroArch or an installed emulator. By default, RetroArch opens what it has a core for; PlayStation 3 and Wii U need their emulator.
+- **Use the emulators' folders** (on by default): the game folders your emulators already list (RetroArch's file browser folder and playlists, DuckStation's and PCSX2's game list, Dolphin's ISO folders, PPSSPP's last folder, Cemu's game paths, RPCS3's games) join your classics. Cerberus only reads them.
 - Play time is counted the same way. RetroAchievements notices on the spot are for RetroArch only.
 
 ## Multi-disc games

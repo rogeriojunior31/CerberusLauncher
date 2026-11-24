@@ -1134,3 +1134,13 @@ pub async fn set_emulator_folders(on: bool) -> Result<cerberus_shared::Standalon
 pub async fn open_standalone(id: &str) -> Result<(), String> {
     call("open_standalone", &EmulatorId { id }).await
 }
+
+/// The player's BIOS into a standalone emulator (or the PS3 firmware through RPCS3); what was done.
+pub async fn standalone_bios(id: &str) -> Result<(cerberus_shared::StandaloneStatus, String), String> {
+    call("standalone_bios", &EmulatorId { id }).await
+}
+
+/// Every RetroArch core not installed yet; how many came.
+pub async fn install_all_cores() -> Result<(cerberus_shared::EmulationView, usize), String> {
+    call("install_all_cores", &()).await
+}

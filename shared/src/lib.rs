@@ -744,6 +744,12 @@ pub struct StandaloneView {
     pub exe: Option<String>,
     /// Cerberus installed it (and may remove it).
     pub managed: bool,
+    /// Its BIOS (or firmware) from the player's console is in place; None when it needs none.
+    #[serde(default)]
+    pub bios: Option<bool>,
+    /// What it needs is the PS3 firmware (installed by RPCS3), not BIOS files.
+    #[serde(default)]
+    pub firmware: bool,
 }
 
 /// Every standalone emulator, which one plays each console, and the folders they list games from.

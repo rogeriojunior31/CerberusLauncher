@@ -305,7 +305,8 @@ fn classic_folders(data: &Path) -> Vec<PathBuf> {
     let chosen = settings::load(data);
     let mut dirs = chosen.rom_dirs.clone();
     if chosen.emulator_folders {
-        for folder in standalone::game_folders(data, &chosen.emulators) {
+        let retroarch = emulation::retroarch(data, chosen.retroarch.as_deref());
+        for folder in standalone::game_folders(data, &chosen.emulators, retroarch.as_deref()) {
             if !dirs.iter().any(|d| folder.starts_with(d)) {
                 dirs.push(folder);
             }
@@ -680,7 +681,12 @@ fn standalone_status_now(data: &Path) -> cerberus_shared::StandaloneStatus {
         emulators: standalone::status(data, &chosen.emulators),
         play_with,
         use_folders: chosen.emulator_folders,
-        folders: if chosen.emulator_folders { standalone::game_folders(data, &chosen.emulators).iter().map(|p| p.display().to_string()).collect() } else { Vec::new() },
+        folders: if chosen.emulator_folders {
+            let retroarch = emulation::retroarch(data, chosen.retroarch.as_deref());
+            standalone::game_folders(data, &chosen.emulators, retroarch.as_deref()).iter().map(|p| p.display().to_string()).collect()
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -763,6 +769,48 @@ fn open_standalone(app: AppHandle, id: String) -> Result<(), String> {
         command.current_dir(dir);
     }
     command.spawn().map(|_| ()).map_err(|e| tr!("Não foi possível abrir o {}: {}", emulator.name, e))
+}
+
+/// The emulator's program, found or picked.
+fn standalone_exe(data: &Path, id: &str) -> Result<(&'static standalone::Emulator, PathBuf), String> {
+    let emulator = standalone::find(id).ok_or(tr!("Emulador desconhecido."))?;
+    let chosen = settings::load(data);
+    let (exe, _) = standalone::locate(data, chosen.emulators.get(id).map(PathBuf::as_path), emulator).ok_or(tr!("O {} não está instalado.", emulator.name))?;
+    Ok((emulator, exe))
+}
+
+/// Copies the player's own BIOS into a standalone emulator, or (RPCS3) has it install their PS3 firmware file.
+#[tauri::command]
+async fn standalone_bios(app: AppHandle, id: String) -> Result<(cerberus_shared::StandaloneStatus, String), String> {
+    let data = app.state::<DataDir>().0.clone();
+    let (emulator, exe) = standalone_exe(&data, &id)?;
+    if standalone::needs(&id) == Some(standalone::Needs::Ps3Firmware) {
+        let dialog = app.dialog().file().set_title(tr!("O arquivo de firmware do seu PS3 (PS3UPDAT.PUP)")).add_filter("PS3UPDAT.PUP", &["pup", "PUP"]);
+        let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())?;
+        let Some(picked) = picked else { return Ok((standalone_status_now(&data), String::new())) };
+        standalone::install_firmware(&exe, &picked.into_path().map_err(|e| e.to_string())?)?;
+        return Ok((standalone_status_now(&data), tr!("O RPCS3 abriu para instalar o firmware. Quando ele terminar, feche a janela dele.").to_string()));
+    }
+    let dialog = app.dialog().file().set_title(tr!("Pasta com a BIOS do seu console"));
+    let Some(folder) = pick_folder(dialog).await? else { return Ok((standalone_status_now(&data), String::new())) };
+    let copied = standalone::import_bios(&id, &exe, &folder)?;
+    Ok((standalone_status_now(&data), tr!("{} BIOS adicionada(s) ao {}.", copied, emulator.name)))
+}
+
+/// Installs every RetroArch core Cerberus knows that isn't there yet; how many.
+#[tauri::command]
+async fn install_all_cores(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<(cerberus_shared::EmulationView, usize), String> {
+    let (data, picked) = retroarch_choice(&app);
+    let exe = emulation::retroarch(&data, picked.as_deref()).ok_or(tr!("Instale ou escolha o RetroArch primeiro."))?;
+    let mut missing: Vec<String> = emulation::status(&data, picked.as_deref()).cores.into_iter().filter(|c| !c.installed).map(|c| c.core).collect();
+    missing.dedup();
+    let mut done = 0;
+    for (i, core) in missing.iter().enumerate() {
+        let _ = app.emit("emu-progress", (i as u64, missing.len() as u64));
+        emulation::install_core(&http, &exe, core).await?;
+        done += 1;
+    }
+    Ok((emulation::status(&data, picked.as_deref()), done))
 }
 
 /// Which emulator opens a console's games: "retroarch" or a standalone id.
@@ -2716,6 +2764,8 @@ fn main() {
             remove_standalone,
             set_play_with,
             open_standalone,
+            standalone_bios,
+            install_all_cores,
             set_emulator_folders,
             add_all_to_steam,
             wiki_about,

@@ -263,9 +263,15 @@ pub fn folders_in(id: &str, text: &str) -> Vec<String> {
     }
 }
 
-/// Every folder the emulators on this PC list games from, that exists.
-pub fn game_folders(data: &Path, picked: &BTreeMap<String, PathBuf>) -> Vec<PathBuf> {
+/// Every folder the emulators on this PC (RetroArch too) list games from, that exists.
+pub fn game_folders(data: &Path, picked: &BTreeMap<String, PathBuf>, retroarch: Option<&Path>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
+    for folder in retroarch.map(retroarch_folders).unwrap_or_default() {
+        let folder = PathBuf::from(folder.replace('/', "\\"));
+        if folder.is_dir() && !out.iter().any(|o| o == &folder) {
+            out.push(folder);
+        }
+    }
     for emulator in ALL {
         let exe = locate(data, picked.get(emulator.id).map(PathBuf::as_path), emulator).map(|(p, _)| p);
         for file in config_files(emulator.id, exe.as_deref()) {
@@ -275,6 +281,160 @@ pub fn game_folders(data: &Path, picked: &BTreeMap<String, PathBuf>) -> Vec<Path
                 if folder.is_dir() && !out.iter().any(|o| o == &folder) {
                     out.push(folder);
                 }
+            }
+        }
+    }
+    out
+}
+
+// ---------- BIOS and firmware (the player's own, never downloaded) ----------
+
+/// A PlayStation BIOS is 512 KB; a PlayStation 2 BIOS, 4 MB.
+const PS1_BIOS: u64 = 512 * 1024;
+const PS2_BIOS: u64 = 4 * 1024 * 1024;
+
+/// What an emulator needs from the player's own console before games start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Needs {
+    Ps1Bios,
+    Ps2Bios,
+    /// PS3 system software, installed by RPCS3 from the player's PS3UPDAT.PUP.
+    Ps3Firmware,
+}
+
+pub fn needs(id: &str) -> Option<Needs> {
+    match id {
+        "duckstation" => Some(Needs::Ps1Bios),
+        "pcsx2" => Some(Needs::Ps2Bios),
+        "rpcs3" => Some(Needs::Ps3Firmware),
+        _ => None,
+    }
+}
+
+fn portable(exe: &Path) -> bool {
+    exe.parent().is_some_and(|d| d.join("portable.txt").is_file() || d.join("portable.ini").is_file())
+}
+
+/// Where the emulator looks for its BIOS (or firmware) on this PC.
+pub fn bios_dir(id: &str, exe: &Path) -> Option<PathBuf> {
+    let beside = exe.parent()?.to_path_buf();
+    match id {
+        "duckstation" if portable(exe) => Some(beside.join("bios")),
+        "duckstation" => documents().map(|d| d.join("DuckStation").join("bios")),
+        "pcsx2" if portable(exe) => Some(beside.join("bios")),
+        "pcsx2" => documents().map(|d| d.join("PCSX2").join("bios")),
+        "rpcs3" => Some(beside.join("dev_flash").join("sys").join("external")),
+        _ => None,
+    }
+}
+
+fn has_bin(dir: &Path, size: u64) -> bool {
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|e| {
+            e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("bin")) && e.metadata().is_ok_and(|m| m.is_file() && m.len() == size)
+        })
+    })
+}
+
+/// Whether what the emulator needs is in place (None: it needs nothing).
+pub fn bios_ready(id: &str, exe: &Path) -> Option<bool> {
+    let dir = bios_dir(id, exe)?;
+    Some(match needs(id)? {
+        Needs::Ps1Bios => has_bin(&dir, PS1_BIOS),
+        Needs::Ps2Bios => has_bin(&dir, PS2_BIOS),
+        Needs::Ps3Firmware => fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()),
+    })
+}
+
+/// Copies the player's BIOS files from a folder into the emulator's BIOS
+/// folder, telling them apart by size. Returns how many were copied.
+pub fn import_bios(id: &str, exe: &Path, from: &Path) -> Result<usize, String> {
+    let (kind, dir) = (needs(id), bios_dir(id, exe));
+    let (Some(kind), Some(dir)) = (kind, dir) else { return Err(tr!("Esse emulador não usa BIOS.").into()) };
+    let wanted = match kind {
+        Needs::Ps1Bios => PS1_BIOS,
+        Needs::Ps2Bios => PS2_BIOS,
+        Needs::Ps3Firmware => return Err(tr!("O firmware do PS3 é instalado pelo próprio RPCS3, a partir do arquivo PS3UPDAT.PUP.").into()),
+    };
+    let entries = fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))?;
+    let mut copied = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        // PCSX2 also keeps the BIOS's NVRAM and MEC files beside it.
+        let companion = kind == Needs::Ps2Bios && matches!(ext.as_str(), "mec" | "nvm");
+        if !meta.is_file() || !((ext == "bin" && meta.len() == wanted) || companion) {
+            continue;
+        }
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        fs::copy(&path, dir.join(&name)).map_err(|e| tr!("Não foi possível copiar {0}: {1}", name.to_string_lossy(), e))?;
+        if ext == "bin" {
+            copied += 1;
+        }
+    }
+    if copied == 0 {
+        return Err(match kind {
+            Needs::Ps1Bios => tr!("Nenhuma BIOS de PlayStation (arquivo .bin de 512 KB) nessa pasta."),
+            _ => tr!("Nenhuma BIOS de PlayStation 2 (arquivo .bin de 4 MB) nessa pasta."),
+        }
+        .into());
+    }
+    Ok(copied)
+}
+
+/// Has RPCS3 install the player's PS3 firmware file, in its own window.
+pub fn install_firmware(exe: &Path, pup: &Path) -> Result<(), String> {
+    let mut command = std::process::Command::new(exe);
+    command.arg("--installfw").arg(pup);
+    if let Some(dir) = exe.parent() {
+        command.current_dir(dir);
+    }
+    command.spawn().map(|_| ()).map_err(|e| tr!("Não foi possível abrir o {}: {}", "RPCS3", e))
+}
+
+// ---------- RetroArch's own game folders ----------
+
+/// The folders RetroArch knows games in: its file browser's start folder and
+/// the folders of the games in its playlists.
+pub fn retroarch_folders(exe: &Path) -> Vec<String> {
+    let Some(dir) = exe.parent() else { return Vec::new() };
+    let mut out: Vec<String> = Vec::new();
+    if let Ok(cfg) = fs::read_to_string(dir.join("retroarch.cfg")) {
+        out.extend(
+            cfg.lines()
+                .filter_map(|l| l.split_once('='))
+                .filter(|(k, _)| k.trim() == "rgui_browser_directory")
+                .map(|(_, v)| v.trim().trim_matches('"').to_string())
+                .filter(|v| !v.is_empty() && v != "default"),
+        );
+    }
+    if let Ok(lists) = fs::read_dir(dir.join("playlists")) {
+        for list in lists.flatten().filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("lpl"))) {
+            if let Ok(text) = fs::read_to_string(list.path()) {
+                for folder in playlist_folders(&text) {
+                    if !out.contains(&folder) {
+                        out.push(folder);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A RetroArch playlist (JSON): the folders its games are in. A game inside an
+/// archive ("game.zip#game.sfc") counts as the archive.
+fn playlist_folders(text: &str) -> Vec<String> {
+    let Ok(v) = serde_json::from_str::<Value>(text) else { return Vec::new() };
+    let mut out: Vec<String> = Vec::new();
+    for item in v.get("items").and_then(Value::as_array).into_iter().flatten() {
+        let Some(path) = item.get("path").and_then(Value::as_str) else { continue };
+        let path = path.split('#').next().unwrap_or(path);
+        if let Some(parent) = Path::new(path).parent().map(|p| p.to_string_lossy().to_string()).filter(|p| !p.is_empty()) {
+            if !out.contains(&parent) {
+                out.push(parent);
             }
         }
     }
@@ -381,6 +541,8 @@ pub fn status(data: &Path, picked: &BTreeMap<String, PathBuf>) -> Vec<Standalone
                 consoles: e.consoles.iter().map(|c| c.to_string()).collect(),
                 exe: found.as_ref().map(|(p, _)| p.display().to_string()),
                 managed: found.as_ref().is_some_and(|(_, m)| *m),
+                bios: found.as_ref().and_then(|(p, _)| bios_ready(e.id, p)),
+                firmware: needs(e.id) == Some(Needs::Ps3Firmware),
             }
         })
         .collect()
@@ -463,6 +625,44 @@ mod tests {
             assert!(head.status().is_success() || head.status().is_redirection(), "{}: {} answered {}", e.id, asset.url, head.status());
             println!("{:<12} {} ({} MB, sha256: {})", e.id, asset.name, asset.size / 1_000_000, asset.sha256.is_some());
         }
+    }
+
+    #[test]
+    fn bios_goes_where_each_emulator_looks_and_by_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("emu").join("pcsx2-qt.exe");
+        fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        fs::write(&exe, b"MZ").unwrap();
+        fs::write(exe.parent().unwrap().join("portable.txt"), b"").unwrap();
+        assert_eq!(bios_dir("pcsx2", &exe).unwrap(), dir.path().join("emu").join("bios"));
+        assert_eq!(bios_ready("pcsx2", &exe), Some(false));
+        assert_eq!(bios_ready("ppsspp", &exe), None, "PPSSPP needs no BIOS");
+        let mine = dir.path().join("mine");
+        fs::create_dir_all(&mine).unwrap();
+        fs::write(mine.join("scph39001.bin"), vec![0u8; PS2_BIOS as usize]).unwrap();
+        fs::write(mine.join("scph39001.nvm"), b"n").unwrap();
+        fs::write(mine.join("scph1001.bin"), vec![0u8; PS1_BIOS as usize]).unwrap();
+        fs::write(mine.join("notes.txt"), b"x").unwrap();
+        assert_eq!(import_bios("pcsx2", &exe, &mine).unwrap(), 1);
+        assert_eq!(bios_ready("pcsx2", &exe), Some(true));
+        let bios = dir.path().join("emu").join("bios");
+        assert!(bios.join("scph39001.nvm").is_file() && !bios.join("scph1001.bin").exists() && !bios.join("notes.txt").exists());
+        let empty = dir.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        assert!(import_bios("pcsx2", &exe, &empty).is_err());
+    }
+
+    #[test]
+    fn retroarch_playlists_give_their_games_folders() {
+        let lpl = r#"{"version":"1.5","items":[{"path":"D:\\ROMS\\SNES\\Zelda.sfc"},{"path":"D:\\ROMS\\SNES\\Mario.zip#Mario.sfc"},{"path":"E:\\GBA\\Golden Sun.gba"}]}"#;
+        assert_eq!(playlist_folders(lpl), [r"D:\ROMS\SNES", r"E:\GBA"]);
+        assert!(playlist_folders("not json").is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        fs::write(dir.path().join("retroarch.cfg"), "video_fullscreen = \"true\"\nrgui_browser_directory = \"D:\\ROMS\"\n").unwrap();
+        fs::create_dir_all(dir.path().join("playlists")).unwrap();
+        fs::write(dir.path().join("playlists").join("Nintendo - SNES.lpl"), lpl).unwrap();
+        assert_eq!(retroarch_folders(&exe), [r"D:\ROMS", r"D:\ROMS\SNES", r"E:\GBA"]);
     }
 
     #[test]
