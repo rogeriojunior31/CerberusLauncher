@@ -275,7 +275,11 @@ fn own_file(cache_dir: &Path) -> PathBuf {
 
 /// Our list in its JSON form; only a list that reads and isn't empty is taken.
 fn parse_own(text: &str) -> Option<Vec<CatalogEntry>> {
-    let list: Vec<CatalogEntry> = serde_json::from_str(text).ok()?;
+    let mut list: Vec<CatalogEntry> = serde_json::from_str(text).ok()?;
+    for entry in &mut list {
+        entry.origin = origin_id(&entry.origin);
+        entry.console = origin_name(&entry.origin, Some(&entry.console));
+    }
     (!list.is_empty()).then_some(list)
 }
 

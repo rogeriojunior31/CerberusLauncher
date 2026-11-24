@@ -4420,7 +4420,7 @@
     "name": "Kingdom Hearts 358/2 Days PC",
     "game": "Kingdom Hearts 358/2 Days",
     "console": "Nintendo DS",
-    "origin": "nds",
+    "origin": "ds",
     "repo": "Yokimitsuro/khdays-port",
     "icon": null,
     "cover": null,
