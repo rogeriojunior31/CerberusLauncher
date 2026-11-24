@@ -1,4 +1,5 @@
 //! Track the processes from one click on Play, including descendants of short-lived launchers.
+use cerberus_shared::tr;
 use super::Observation;
 use std::ffi::OsString;
 use std::io;
@@ -41,7 +42,7 @@ pub(super) fn runtime_for(exe: &Path) -> Option<PathBuf> {
 pub(super) fn spawn_game(mut command: Command, selected: Option<&Path>) -> io::Result<GameProcess> {
     let runtime = match selected {
         Some(path) => Some(dunce::canonicalize(path).map_err(|e|
-            io::Error::new(e.kind(), format!("Confira o executável acompanhado em Gerenciar ({}): {e}", path.display())))?),
+            io::Error::new(e.kind(), tr!("Confira o executável acompanhado em Gerenciar ({0}): {1}", path.display(), e)))?),
         None => runtime_for(Path::new(command.get_program())),
     };
     // An unnamed job without termination limits leaves the game alive if Cerberus closes.

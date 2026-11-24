@@ -1,6 +1,6 @@
 # Draws the installer's pictures (NSIS wants 24-bit BMPs) from the app icon.
 # Run again after changing the icon or the version shown:  pwsh src-tauri/installer/make-images.ps1
-param([string]$Version = "0.10")
+param([string]$Version = "0.11")
 Add-Type -AssemblyName System.Drawing
 $here = $PSScriptRoot
 $icon = [System.Drawing.Image]::FromFile((Join-Path $here "..\icons\icon.png"))
@@ -30,7 +30,7 @@ $g.DrawString("Cerberus", $title, (New-Object System.Drawing.SolidBrush $ink), (
 $g.DrawString("Launcher", $title, (New-Object System.Drawing.SolidBrush $ink), (New-Object System.Drawing.RectangleF 0, 204, 164, 30), $center)
 $bar = New-Object System.Drawing.Drawing2D.LinearGradientBrush (New-Object System.Drawing.Point 52, 0), (New-Object System.Drawing.Point 112, 0), $orange, $red
 $g.FillRectangle($bar, 52, 242, 60, 3)
-$g.DrawString("versão $Version", $small, (New-Object System.Drawing.SolidBrush $muted), (New-Object System.Drawing.RectangleF 0, 256, 164, 20), $center)
+$g.DrawString("v$Version", $small, (New-Object System.Drawing.SolidBrush $muted), (New-Object System.Drawing.RectangleF 0, 256, 164, 20), $center)
 $g.Dispose(); $bmp.Save((Join-Path $here "sidebar.bmp"), [System.Drawing.Imaging.ImageFormat]::Bmp); $bmp.Dispose()
 
 # Header of the other pages: 150 x 57, on white like the rest of the page.

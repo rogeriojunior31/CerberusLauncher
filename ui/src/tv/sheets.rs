@@ -2,6 +2,7 @@
 //! options, confirming a removal, and the on-screen keyboard for search. While
 //! one is open it takes every button; B closes it.
 
+use cerberus_shared::{tk, tr};
 use std::rc::Rc;
 
 use cerberus_shared::Source;
@@ -49,11 +50,11 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
 
     let (title, choices): (String, Vec<Choice>) = match &sheet {
         Sheet::Leave => (
-            "Sair do Big Picture Mode?".into(),
+            tr!("Sair do Big Picture Mode?").into(),
             vec![
-                choice("Voltar para a janela normal", move || library.go(Route::Home)),
-                danger("Fechar o Cerberus", || api::window_action("close")),
-                choice("Cancelar", move || tv.sheet.set(None)),
+                choice(tr!("Voltar para a janela normal"), move || library.go(Route::Home)),
+                danger(tr!("Fechar o Cerberus"), || api::window_action("close")),
+                choice(tr!("Cancelar"), move || tv.sheet.set(None)),
             ],
         ),
         Sheet::Options(id) => {
@@ -78,35 +79,35 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                         header = Some((e.name.clone(), crate::art::recomp_covers(e)));
                         if e.latest.is_some() && e.installed.is_none() {
                             let rid = e.id.clone();
-                            list.push(choice("Instalar", move || start_install(library, rid.clone())));
+                            list.push(choice(tr!("Instalar"), move || start_install(library, rid.clone())));
                         }
                     }
                 }
             }
             if tv.view.get_untracked() != View::Game(id.clone()) {
                 let open = id.clone();
-                list.push(choice("Página do jogo", move || tv.open(View::Game(open.clone()))));
+                list.push(choice(tr!("Página do jogo"), move || tv.open(View::Game(open.clone()))));
             }
             if let Some(g) = &game {
                 let (gid, on) = (g.id.clone(), g.favorite);
-                list.push(choice(if on { "Tirar dos favoritos" } else { "Adicionar aos favoritos" }, move || {
+                list.push(choice(if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }, move || {
                     crate::toggle_favorite(library, gid.clone(), !on)
                 }));
                 if matches!(g.source, Source::Recomp { .. }) {
                     let gid = g.id.clone();
-                    list.push(choice("Fazer backup dos saves", move || {
+                    list.push(choice(tr!("Fazer backup dos saves"), move || {
                         let gid = gid.clone();
                         spawn_local(async move {
                             match library.report(api::backup_now(&gid).await) {
-                                Some(Some(b)) => library.toast(format!("Backup feito: {} arquivos.", b.files)),
-                                Some(None) => library.toast("Nada novo para copiar."),
+                                Some(Some(b)) => library.toast(tr!("Backup feito: {} arquivos.", b.files)),
+                                Some(None) => library.toast(tr!("Nada novo para copiar.")),
                                 None => {}
                             }
                         });
                     }));
                 }
                 let gid = g.id.clone();
-                list.push(choice("Abrir a pasta do jogo", move || {
+                list.push(choice(tr!("Abrir a pasta do jogo"), move || {
                     let gid = gid.clone();
                     spawn_local(async move {
                         library.report(api::open_folder(&gid).await);
@@ -114,11 +115,11 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                 }));
                 if matches!(g.source, Source::Recomp { .. } | Source::Local { .. }) {
                     let gid = g.id.clone();
-                    let label = if matches!(g.source, Source::Recomp { .. }) && !g.external { "Desinstalar" } else { "Remover da biblioteca" };
+                    let label = if matches!(g.source, Source::Recomp { .. }) && !g.external { tr!("Desinstalar") } else { tr!("Remover da biblioteca") };
                     list.push(danger(label, move || tv.sheet.set(Some(Sheet::ConfirmRemove(gid.clone())))));
                 }
             }
-            ("Opções".into(), list)
+            (tr!("Opções").into(), list)
         }
         Sheet::ConfirmRemove(id) => {
             let game = games.iter().find(|g| g.id == *id).cloned();
@@ -131,7 +132,7 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                     if library.report(api::remove_game(&gid).await).is_some() {
                         library.games.refetch();
                         library.recomps.refetch();
-                        library.toast("Removido. Os backups de saves continuam guardados.");
+                        library.toast(tr!("Removido. Os backups de saves continuam guardados."));
                         if tv.view.get_untracked() == View::Game(gid.clone()) && !tv.back() {
                             tv.tab(Tab::Home);
                         }
@@ -139,8 +140,8 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                 });
             };
             (
-                if uninstall { format!("Desinstalar {name}?") } else { format!("Remover {name} da biblioteca?") },
-                vec![danger(if uninstall { "Sim, desinstalar" } else { "Sim, remover" }, remove), choice("Cancelar", move || tv.sheet.set(None))],
+                if uninstall { tr!("Desinstalar {}?", name) } else { tr!("Remover {} da biblioteca?", name) },
+                vec![danger(if uninstall { tr!("Sim, desinstalar") } else { tr!("Sim, remover") }, remove), choice(tr!("Cancelar"), move || tv.sheet.set(None))],
             )
         }
         Sheet::Keyboard => (String::new(), Vec::new()),
@@ -149,7 +150,7 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
     let count = choices.len();
     let runs: Vec<Rc<dyn Fn()>> = choices.iter().map(|c| c.run.clone()).collect();
     let runs = StoredValue::new_local(runs);
-    tv.sheet_hints.set(vec![(Btn::A, "Escolher"), (Btn::B, "Fechar")]);
+    tv.sheet_hints.set(vec![(Btn::A, tr!("Escolher")), (Btn::B, tr!("Fechar"))]);
     let is_options = matches!(sheet, Sheet::Options(_));
     // A on the focused choice, or a click on any choice.
     let pick = move |i: usize| {
@@ -209,7 +210,7 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
 
 const KEYS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const KEY_COLUMNS: usize = 6;
-const EXTRA: [&str; 4] = ["Espaço", "Apagar", "Limpar", "Pronto"];
+const EXTRA: [&str; 4] = [tk!("Espaço"), tk!("Apagar"), tk!("Limpar"), tk!("Pronto")];
 
 /// The search keyboard: letters and digits in a grid, Y types a space and X
 /// deletes; a physical keyboard types too. Results filter as you type.
@@ -227,7 +228,7 @@ fn Keyboard() -> impl IntoView {
     let erase = move || tv.search.update(|s| {
         s.pop();
     });
-    tv.sheet_hints.set(vec![(Btn::A, "Digitar"), (Btn::Y, "Espaço"), (Btn::X, "Apagar"), (Btn::B, "Pronto")]);
+    tv.sheet_hints.set(vec![(Btn::A, tr!("Digitar")), (Btn::Y, tr!("Espaço")), (Btn::X, tr!("Apagar")), (Btn::B, tr!("Pronto"))]);
     let key_list = keys.clone();
     tv.handle_sheet(move |btn| {
         match btn {
@@ -277,13 +278,13 @@ fn Keyboard() -> impl IntoView {
     let extra = EXTRA
         .iter()
         .enumerate()
-        .map(|(c, label)| view! { <span class="tv-key wide" class:done=c == 3 class:on=move || focus.is(key_rows, c) data-tvf=focus.key(key_rows, c)>{*label}</span> })
+        .map(|(c, label)| view! { <span class="tv-key wide" class:done=c == 3 class:on=move || focus.is(key_rows, c) data-tvf=focus.key(key_rows, c)>{cerberus_shared::i18n::t(label)}</span> })
         .collect_view();
     view! {
         <div class="tv-scrim">
             <aside class="tv-sheet keyboard">
-                <h2>"Buscar"</h2>
-                <div class="tv-field">{move || { let q = tv.search.get(); if q.is_empty() { view! { <span class="ph">"Nome do jogo"</span> }.into_any() } else { view! { <span>{q}</span> }.into_any() } }}<i class="caret"></i></div>
+                <h2>{tr!("Buscar")}</h2>
+                <div class="tv-field">{move || { let q = tv.search.get(); if q.is_empty() { view! { <span class="ph">{tr!("Nome do jogo")}</span> }.into_any() } else { view! { <span>{q}</span> }.into_any() } }}<i class="caret"></i></div>
                 <div class="tv-keys">{grid}</div>
                 <div class="tv-keys extra">{extra}</div>
             </aside>

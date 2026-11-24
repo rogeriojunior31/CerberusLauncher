@@ -53,6 +53,21 @@ pub fn on_overlay_opened(mut handler: impl FnMut() + 'static) {
     on_event("overlay-opened", move |_: ()| handler());
 }
 
+/// A new achievement notice is waiting (in the notice's own window).
+pub fn on_unlock_queued(mut handler: impl FnMut() + 'static) {
+    on_event("unlock-queued", move |_: ()| handler());
+}
+
+/// The next achievement notice to show; `None` hides the window.
+pub async fn unlock_next() -> Result<Option<cerberus_shared::UnlockNotice>, String> {
+    call("unlock_next", &()).await
+}
+
+/// Shows a sample achievement notice.
+pub async fn unlock_test() -> Result<(), String> {
+    call("unlock_test", &()).await
+}
+
 /// The menu over a game asked for the game's page in the launcher.
 pub fn on_show_game(handler: impl FnMut(String) + 'static) {
     on_event("show-game", handler);
@@ -547,6 +562,14 @@ pub async fn list_monitors() -> Result<Vec<cerberus_shared::MonitorView>, String
     call("list_monitors", &()).await
 }
 
+pub async fn set_language(code: Option<String>) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        code: Option<String>,
+    }
+    call("set_language", &Arg { code }).await
+}
+
 pub async fn set_monitor(name: Option<String>) -> Result<SettingsView, String> {
     #[derive(serde::Serialize)]
     struct Arg {
@@ -588,10 +611,163 @@ pub async fn rerun_setup() -> Result<SettingsView, String> {
 struct RaArgs {
     user: String,
     key: String,
+    password: Option<String>,
 }
 
-pub async fn ra_connect(user: String, key: String) -> Result<cerberus_shared::RaProfile, String> {
-    call("ra_connect", &RaArgs { user, key }).await
+pub async fn ra_connect(user: String, key: String, password: Option<String>) -> Result<cerberus_shared::RaProfile, String> {
+    call("ra_connect", &RaArgs { user, key, password }).await
+}
+
+/// A classic's RetroAchievements game and the player's progress, when there is one.
+pub async fn classic_achievements(path: &str, console: &str) -> Result<Option<cerberus_shared::GameAchievements>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        path: &'a str,
+        console: &'a str,
+    }
+    call("classic_achievements", &Arg { path, console }).await
+}
+
+/// This copy's version (the UI and the app are built together).
+pub fn app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+pub fn on_update_available(handler: impl FnMut(cerberus_shared::AppUpdate) + 'static) {
+    on_event("update-available", handler);
+}
+
+/// Bytes of the update downloaded so far, and the total.
+pub fn on_update_progress(handler: impl FnMut((u64, u64)) + 'static) {
+    on_event("update-progress", handler);
+}
+
+pub async fn update_check() -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    call("update_check", &()).await
+}
+
+pub async fn update_found() -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    call("update_found", &()).await
+}
+
+pub async fn update_install() -> Result<(), String> {
+    call("update_install", &()).await
+}
+
+pub async fn whats_new() -> Result<Option<cerberus_shared::AppUpdate>, String> {
+    call("whats_new", &()).await
+}
+
+pub async fn whats_new_seen() -> Result<(), String> {
+    call("whats_new_seen", &()).await
+}
+
+/// The recomp download limit in MB/s (0 = none) and slowing down while playing.
+pub async fn set_download_limit(mb: u32, slow_while_playing: bool) -> Result<cerberus_shared::SettingsView, String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg {
+        mb: u32,
+        slow_while_playing: bool,
+    }
+    call("set_download_limit", &Arg { mb, slow_while_playing }).await
+}
+
+/// Pauses or resumes a recomp's updates.
+pub async fn set_updates_paused(id: &str, on: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        on: bool,
+    }
+    call("set_updates_paused", &Arg { id, on }).await
+}
+
+/// The player's status, rating and notes for a game.
+pub async fn set_game_note(id: &str, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        status: Option<cerberus_shared::GameStatus>,
+        rating: u8,
+        notes: String,
+    }
+    call("set_game_note", &Arg { id, status, rating, notes }).await
+}
+
+/// A game's play sessions, oldest first.
+pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>, String> {
+    call("game_sessions", &Id { id }).await
+}
+
+/// Opens a page about a Steam game in the browser: "store", "steamdb", "pcgw" or "site".
+pub async fn open_store_link(app_id: u32, kind: &str) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg<'a> {
+        app_id: u32,
+        kind: &'a str,
+    }
+    call("open_store_link", &Arg { app_id, kind }).await
+}
+
+/// A Steam game's store page: description, pictures, trailers, requirements, languages.
+pub async fn steam_details(app_id: u32) -> Result<cerberus_shared::StoreDetails, String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg {
+        app_id: u32,
+    }
+    call("steam_details", &Arg { app_id }).await
+}
+
+/// The Steam account on this PC: SteamID64 and name.
+pub async fn steam_local_account() -> Result<Option<(String, String)>, String> {
+    call("steam_local_account", &()).await
+}
+
+pub async fn steam_account() -> Result<Option<cerberus_shared::SteamAccount>, String> {
+    call("steam_account", &()).await
+}
+
+pub async fn steam_connect(key: String, profile: Option<String>) -> Result<cerberus_shared::SteamAccount, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        key: String,
+        profile: Option<String>,
+    }
+    call("steam_connect", &Arg { key, profile }).await
+}
+
+pub async fn steam_disconnect() -> Result<(), String> {
+    call("steam_disconnect", &()).await
+}
+
+/// "key", "privacy" or "profile".
+pub async fn steam_open(page: &str) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        page: &'a str,
+    }
+    call("steam_open", &Arg { page }).await
+}
+
+/// `online` off: only what's on this PC, at once; on: asks Steam and RetroAchievements too.
+pub async fn achievements_hub(online: bool) -> Result<cerberus_shared::AchievementsHub, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        online: bool,
+    }
+    call("achievements_hub", &Arg { online }).await
+}
+
+pub async fn game_achievements(source: &str, key: &str) -> Result<cerberus_shared::GameAchievements, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        source: &'a str,
+        key: &'a str,
+    }
+    call("game_achievements", &Arg { source, key }).await
 }
 
 pub async fn ra_profile() -> Result<Option<cerberus_shared::RaProfile>, String> {
@@ -829,4 +1005,56 @@ pub fn window_toggle(action: &str, on: bool) {
     if let Some(method) = method.dyn_ref::<js_sys::Function>() {
         let _ = method.call1(&window, &JsValue::from_bool(on));
     }
+}
+
+pub async fn set_in_game(choices: cerberus_shared::InGame) -> Result<cerberus_shared::SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        choices: cerberus_shared::InGame,
+    }
+    call("set_in_game", &Arg { choices }).await
+}
+
+pub async fn set_notices(choices: cerberus_shared::Notices) -> Result<cerberus_shared::SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        choices: cerberus_shared::Notices,
+    }
+    call("set_notices", &Arg { choices }).await
+}
+
+/// Whether the Epic Games Launcher is on this PC, and how many of its games are installed.
+pub async fn epic_status() -> Result<(bool, usize), String> {
+    call("epic_status", &()).await
+}
+
+pub async fn epic_open() -> Result<(), String> {
+    call("epic_open", &()).await
+}
+
+/// A copy of the player's data, saved where they choose; how many files (None: cancelled).
+pub async fn export_data() -> Result<Option<usize>, String> {
+    call("export_data", &()).await
+}
+
+/// Restores a copy; Cerberus starts again after it. How many files (None: cancelled).
+pub async fn import_data() -> Result<Option<usize>, String> {
+    call("import_data", &()).await
+}
+
+/// Developers' posts for these Steam games (app id, name), newest first.
+pub async fn steam_news(games: Vec<(u32, String)>) -> Result<Vec<cerberus_shared::NewsItem>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        games: Vec<(u32, String)>,
+    }
+    call("steam_news", &Arg { games }).await
+}
+
+pub async fn open_news(url: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        url: String,
+    }
+    call("open_news", &Arg { url }).await
 }

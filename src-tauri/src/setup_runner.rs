@@ -4,6 +4,8 @@
 //! says the installer put it (Settings > Apps). If neither finds it, the window
 //! asks the player to point at the game's program.
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -28,16 +30,16 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
     let mut child = command
         .current_dir(installer.parent().unwrap_or(Path::new(".")))
         .spawn()
-        .map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
-    let _ = app.emit("toast", format!("Instalador de {} aberto. Siga os passos dele; quando ele fechar, o Cerberus procura o jogo.", game.name));
+        .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))?;
+    let _ = app.emit("toast", tr!("Instalador de {} aberto. Siga os passos dele; quando ele fechar, o Cerberus procura o jogo.", game.name));
 
     let app = app.clone();
     let game = game.clone();
     std::thread::spawn(move || {
         let outcome = child.wait()
-            .map_err(|e| format!("Falha ao aguardar o instalador: {e}"))
+            .map_err(|e| tr!("Falha ao aguardar o instalador: {}", e))
             .and_then(|status| installer_result(status.code(), msi_package));
-        crate::trail::note(&app, &game.id, "Instalador", &outcome.clone().map(|()| "Instalador concluído".to_string()));
+        crate::trail::note(&app, &game.id, tk!("Instalador"), &outcome.clone().map(|()| tr!("Instalador concluído").to_string()));
         match outcome {
             Ok(()) => finish(&app, &game),
             Err(message) => { let _ = app.emit("toast", message); }
@@ -54,7 +56,7 @@ pub fn recover(app: &AppHandle) {
     for game in games.into_iter().filter(|g| g.setup_pending) {
         if let Some(program) = locate(&game) {
             if use_program(app, &game.id, &program).is_ok() {
-                crate::trail::note(app, &game.id, "Localizar o jogo", &Ok(format!("Encontrado depois de reiniciar: {}", program.display())));
+                crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Ok(tr!("Encontrado depois de reiniciar: {}", program.display())));
             }
         }
     }
@@ -65,7 +67,7 @@ pub fn recover(app: &AppHandle) {
 pub fn already_installed(app: &AppHandle, game: &Game) -> Option<Game> {
     let program = locate(game)?;
     let found = use_program(app, &game.id, &program).ok()?;
-    crate::trail::note(app, &game.id, "Localizar o jogo", &Ok(format!("Já instalado: {}", program.display())));
+    crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Ok(tr!("Já instalado: {}", program.display())));
     Some(found)
 }
 
@@ -73,25 +75,25 @@ fn installer_result(code: Option<i32>, msi_package: bool) -> Result<(), String> 
     match code {
         Some(0) => Ok(()),
         Some(1641 | 3010) if msi_package => Ok(()),
-        Some(1602) if msi_package => Err("Instalação cancelada. Você pode tentar de novo em Jogar.".into()),
-        Some(code) => Err(format!("O instalador encerrou com código {code}. Você pode tentar de novo em Jogar.")),
-        None => Err("O instalador foi interrompido. Você pode tentar de novo em Jogar.".into()),
+        Some(1602) if msi_package => Err(tr!("Instalação cancelada. Você pode tentar de novo em Jogar.").into()),
+        Some(code) => Err(tr!("O instalador encerrou com código {}. Você pode tentar de novo em Jogar.", code)),
+        None => Err(tr!("O instalador foi interrompido. Você pode tentar de novo em Jogar.").into()),
     }
 }
 
 fn finish(app: &AppHandle, game: &Game) {
     let Some(program) = locate(game) else {
-        crate::trail::note(app, &game.id, "Localizar o jogo", &Err("O instalador terminou, mas o jogo instalado não foi encontrado. Escolha o programa dele.".into()));
+        crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Err(tr!("O instalador terminou, mas o jogo instalado não foi encontrado. Escolha o programa dele.").into()));
         let _ = app.emit(NEEDS_LOCATION, game.id.clone());
         return;
     };
     match use_program(app, &game.id, &program) {
         Ok(_) => {
-            crate::trail::note(app, &game.id, "Localizar o jogo", &Ok(program.display().to_string()));
-            crate::notify::tell(app, &format!("{} está pronto", game.name), "O instalador terminou e o jogo foi encontrado.");
+            crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Ok(program.display().to_string()));
+            crate::notify::tell(app, crate::notify::Kind::Installed, &tr!("{} está pronto", game.name), tr!("O instalador terminou e o jogo foi encontrado."));
         }
         Err(error) => {
-            crate::trail::note(app, &game.id, "Localizar o jogo", &Err(error.clone()));
+            crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Err(error.clone()));
             let _ = app.emit("toast", error);
         }
     }
@@ -100,7 +102,7 @@ fn finish(app: &AppHandle, game: &Game) {
 /// Points the game at its program, now that the installer has run.
 pub fn use_program(app: &AppHandle, game_id: &str, program: &Path) -> Result<Game, String> {
     if !program.is_file() {
-        return Err(format!("{} não existe.", program.display()));
+        return Err(tr!("{} não existe.", program.display()));
     }
     let exe = program.to_string_lossy().into_owned();
     let library = app.state::<LocalLibrary>();

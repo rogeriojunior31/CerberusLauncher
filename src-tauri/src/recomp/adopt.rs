@@ -7,6 +7,7 @@
 //! names that look alike (`Zelda64Recompiled.exe` and "Zelda 64: Recompiled"),
 //! which is only a suggestion the player confirms.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -139,25 +140,22 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// with that program becomes the recomp, keeping its play time.
 pub fn adopt(library: &LocalLibrary, entry: &CatalogEntry, program: &Path) -> Result<Game, String> {
     if !program.is_file() {
-        return Err(format!("{} não existe.", program.display()));
+        return Err(tr!("{} não existe.", program.display()));
     }
     let program = dunce::canonicalize(program).map_err(|e| format!("{}: {e}", program.display()))?;
-    let dir = program.parent().ok_or("O programa precisa estar numa pasta.")?.to_path_buf();
+    let dir = program.parent().ok_or(tr!("O programa precisa estar numa pasta."))?.to_path_buf();
     let exe = program.to_string_lossy().into_owned();
     let install_dir = dir.to_string_lossy().into_owned();
 
     if let Some(existing) = installed_game(library, entry)? {
         let Source::Recomp { exe: current, .. } = &existing.source else {
-            return Err("O registro do recomp está diferente do esperado.".into());
+            return Err(tr!("O registro do recomp está diferente do esperado.").into());
         };
         if same_file(Path::new(current), &program) {
             return Ok(existing);
         }
         if !existing.external {
-            return Err(format!(
-                "{} já está instalado pelo Cerberus em {}. Desinstale esse antes de trazer outra pasta.",
-                existing.name, existing.install_dir
-            ));
+            return Err(tr!("{} já está instalado pelo Cerberus em {}. Desinstale esse antes de trazer outra pasta.", existing.name, existing.install_dir));
         }
         // Moved or reinstalled elsewhere: the link follows it.
         return library.update(&existing.id, |game| {

@@ -577,7 +577,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-builder"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "cerberus-launcher"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "base64 0.22.1",
  "cerberus-shared",
@@ -615,6 +615,7 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
+ "md-5",
  "png 0.17.16",
  "reqwest 0.12.28",
  "serde",
@@ -639,14 +640,15 @@ dependencies = [
 
 [[package]]
 name = "cerberus-shared"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "cerberus-ui"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "cerberus-shared",
  "console_error_panic_hook",

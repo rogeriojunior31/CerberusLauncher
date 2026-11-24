@@ -9,6 +9,7 @@
 //! closes, so it must be closed while Cerberus changes it; the file is backed
 //! up first, and any part Cerberus doesn't understand stops the change.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -35,14 +36,14 @@ struct Reader<'a> {
 
 impl Reader<'_> {
     fn byte(&mut self) -> Result<u8, String> {
-        let b = *self.bytes.get(self.at).ok_or("shortcuts.vdf terminou no meio.")?;
+        let b = *self.bytes.get(self.at).ok_or(tr!("shortcuts.vdf terminou no meio."))?;
         self.at += 1;
         Ok(b)
     }
 
     fn text(&mut self) -> Result<String, String> {
         let rest = &self.bytes[self.at..];
-        let end = rest.iter().position(|&b| b == 0).ok_or("shortcuts.vdf tem um texto sem fim.")?;
+        let end = rest.iter().position(|&b| b == 0).ok_or(tr!("shortcuts.vdf tem um texto sem fim."))?;
         self.at += end + 1;
         Ok(String::from_utf8_lossy(&rest[..end]).into_owned())
     }
@@ -60,12 +61,12 @@ impl Reader<'_> {
                 TEXT => Node::Text(self.text()?),
                 INT => {
                     let end = self.at + 4;
-                    let raw = self.bytes.get(self.at..end).ok_or("shortcuts.vdf terminou no meio.")?;
+                    let raw = self.bytes.get(self.at..end).ok_or(tr!("shortcuts.vdf terminou no meio."))?;
                     self.at = end;
                     Node::Int(u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]))
                 }
                 // Rewriting a part not understood could lose it: leave the file alone.
-                other => return Err(format!("shortcuts.vdf tem um tipo de valor desconhecido ({other}); nada foi mudado.")),
+                other => return Err(tr!("shortcuts.vdf tem um tipo de valor desconhecido ({}); nada foi mudado.", other)),
             };
             items.push((key, value));
         }
@@ -271,7 +272,7 @@ pub fn load(config: &Path) -> Result<Vec<(String, Node)>, String> {
         Ok(bytes) if !bytes.is_empty() => parse(&bytes),
         Ok(_) => Ok(Vec::new()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(format!("Não foi possível ler a lista da Steam: {e}")),
+        Err(e) => Err(tr!("Não foi possível ler a lista da Steam: {}", e)),
     }
 }
 
@@ -280,7 +281,7 @@ pub fn save(config: &Path, top: &[(String, Node)]) -> Result<(), String> {
     let file = config.join("shortcuts.vdf");
     fs::create_dir_all(config).map_err(|e| e.to_string())?;
     if file.is_file() {
-        fs::copy(&file, config.join("shortcuts.vdf.cerberus.bak")).map_err(|e| format!("Não foi possível guardar uma cópia da lista da Steam: {e}"))?;
+        fs::copy(&file, config.join("shortcuts.vdf.cerberus.bak")).map_err(|e| tr!("Não foi possível guardar uma cópia da lista da Steam: {}", e))?;
     }
     let temp = config.join("shortcuts.vdf.cerberus.tmp");
     fs::write(&temp, write(top)).map_err(|e| e.to_string())?;

@@ -2,6 +2,7 @@
 //! starts Cerberus with `--play <id>`, so the session is tracked as usual:
 //! playtime, save backups, picture filters.
 
+use cerberus_shared::tr;
 use std::path::{Path, PathBuf};
 
 /// The `--play` argument's game, from a command line.
@@ -15,7 +16,7 @@ pub fn file_name(game: &str) -> String {
     let clean: String = game.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { ' ' } else { c }).collect();
     let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
     let clean = clean.trim_matches('.').trim();
-    if clean.is_empty() { "Jogo".to_string() } else { clean.to_string() }
+    if clean.is_empty() { tr!("Jogo").to_string() } else { clean.to_string() }
 }
 
 /// Writes `<desktop>/<name>.lnk` starting Cerberus for this game.
@@ -29,7 +30,7 @@ pub fn create(desktop: &Path, name: &str, game_id: &str, icon: Option<&Path>) ->
     // COM wants its own thread; the shortcut is written there and waited for.
     std::thread::spawn(move || write_link(&link_path, &exe, &args, &icon, &name))
         .join()
-        .map_err(|_| "Não foi possível criar o atalho.".to_string())??;
+        .map_err(|_| tr!("Não foi possível criar o atalho.").to_string())??;
     Ok(link)
 }
 
@@ -39,7 +40,7 @@ fn write_link(link: &Path, exe: &Path, args: &str, icon: &Path, name: &str) -> R
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
     use windows::core::{HSTRING, Interface};
 
-    let failed = |e: windows::core::Error| format!("Não foi possível criar o atalho: {}", e.message());
+    let failed = |e: windows::core::Error| tr!("Não foi possível criar o atalho: {}", e.message());
     unsafe {
         let started = CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_ok();
         let result = (|| {
@@ -50,7 +51,7 @@ fn write_link(link: &Path, exe: &Path, args: &str, icon: &Path, name: &str) -> R
                 shell.SetWorkingDirectory(&HSTRING::from(dir.as_os_str())).map_err(failed)?;
             }
             shell.SetIconLocation(&HSTRING::from(icon.as_os_str()), 0).map_err(failed)?;
-            shell.SetDescription(&HSTRING::from(format!("Jogar {name} pelo Cerberus"))).map_err(failed)?;
+            shell.SetDescription(&HSTRING::from(tr!("Jogar {} pelo Cerberus", name))).map_err(failed)?;
             let file: IPersistFile = shell.cast().map_err(failed)?;
             file.Save(&HSTRING::from(link.as_os_str()), true).map_err(failed)
         })();
@@ -63,7 +64,7 @@ fn write_link(link: &Path, exe: &Path, args: &str, icon: &Path, name: &str) -> R
 
 #[cfg(not(windows))]
 pub fn create(_desktop: &Path, _name: &str, _game_id: &str, _icon: Option<&Path>) -> Result<PathBuf, String> {
-    Err("Atalhos só no Windows por enquanto.".into())
+    Err(tr!("Atalhos só no Windows por enquanto.").into())
 }
 
 #[cfg(test)]

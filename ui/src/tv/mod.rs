@@ -6,6 +6,7 @@
 //! game's options anywhere. A button bar at the bottom shows what each button
 //! does, drawn for the controller in use (Xbox, PlayStation or Nintendo).
 
+mod achievements;
 mod focus;
 mod game;
 pub(crate) mod input;
@@ -13,6 +14,7 @@ mod pages;
 mod sheets;
 mod sound;
 
+use cerberus_shared::{tk, tr};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -32,16 +34,18 @@ pub enum Tab {
     Home,
     Library,
     Discover,
+    Achievements,
     Downloads,
     Settings,
 }
 
-const TABS: [(Tab, &str, Icon); 5] = [
-    (Tab::Home, "Início", Icon::Home),
-    (Tab::Library, "Biblioteca", Icon::Library),
-    (Tab::Discover, "Descobrir", Icon::Discover),
-    (Tab::Downloads, "Downloads", Icon::Download),
-    (Tab::Settings, "Configurações", Icon::Settings),
+const TABS: [(Tab, &str, Icon); 6] = [
+    (Tab::Home, tk!("Início"), Icon::Home),
+    (Tab::Library, tk!("Biblioteca"), Icon::Library),
+    (Tab::Discover, tk!("Descobrir"), Icon::Discover),
+    (Tab::Achievements, tk!("Conquistas"), Icon::Trophy),
+    (Tab::Downloads, tk!("Downloads"), Icon::Download),
+    (Tab::Settings, tk!("Configurações"), Icon::Settings),
 ];
 
 #[derive(Clone, PartialEq, Debug)]
@@ -49,6 +53,8 @@ pub enum View {
     Tab(Tab),
     /// A game in the library (its id) or in the catalog (`recomp:<id>`).
     Game(String),
+    /// One game's achievements (source code and key), for games not in the library.
+    Achievements(String, String),
 }
 
 impl View {
@@ -56,6 +62,7 @@ impl View {
         match self {
             View::Tab(t) => format!("{t:?}"),
             View::Game(id) => format!("game:{id}"),
+            View::Achievements(source, key) => format!("ach:{source}:{key}"),
         }
     }
 }
@@ -267,7 +274,7 @@ pub fn TvMode() -> impl IntoView {
             Btn::Lb | Btn::Rb => {
                 let current = match tv.view.get_untracked() {
                     View::Tab(t) => TABS.iter().position(|(x, _, _)| *x == t).unwrap_or(0),
-                    View::Game(_) => 0,
+                    View::Game(_) | View::Achievements(..) => 0,
                 };
                 let next = if btn == Btn::Rb { (current + 1) % TABS.len() } else { (current + TABS.len() - 1) % TABS.len() };
                 tv.tab(TABS[next].0);
@@ -304,8 +311,8 @@ pub fn TvMode() -> impl IntoView {
     let tabs = move || {
         let current = tv.view.get();
         match current {
-            View::Game(_) => view! {
-                <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>"Voltar"</span></div>
+            View::Game(_) | View::Achievements(..) => view! {
+                <div class="tv-back" on:click=move |_| { tv.back(); }>{move || glyph(Btn::B, tv.pad.get())}<span>{tr!("Voltar")}</span></div>
             }
             .into_any(),
             View::Tab(now) => {
@@ -320,7 +327,7 @@ pub fn TvMode() -> impl IntoView {
                             }
                         });
                         let target = *tab;
-                        view! { <span class="tv-tab" class:on=on on:click=move |_| tv.tab(target)><Svg icon=*icon size=22 />{*label}{badge}</span> }
+                        view! { <span class="tv-tab" class:on=on on:click=move |_| tv.tab(target)><Svg icon=*icon size=22 />{cerberus_shared::i18n::t(label)}{badge}</span> }
                     })
                     .collect_view();
                 view! {
@@ -339,35 +346,61 @@ pub fn TvMode() -> impl IntoView {
         View::Tab(Tab::Home) => view! { <pages::Home /> }.into_any(),
         View::Tab(Tab::Library) => view! { <pages::LibraryGrid /> }.into_any(),
         View::Tab(Tab::Discover) => view! { <pages::Discover /> }.into_any(),
+        View::Tab(Tab::Achievements) => view! { <achievements::Achievements /> }.into_any(),
         View::Tab(Tab::Downloads) => view! { <pages::Downloads /> }.into_any(),
         View::Tab(Tab::Settings) => view! { <pages::Settings /> }.into_any(),
         View::Game(id) => view! { <game::GamePage id /> }.into_any(),
+        View::Achievements(source, key) => view! { <achievements::GameList source key /> }.into_any(),
     };
 
     let hints = move || {
         let list = if tv.sheet.get().is_some() { tv.sheet_hints.get() } else { tv.hints.get() };
         let kind = tv.pad.get();
         let sections = (tv.sheet.get().is_none() && matches!(tv.view.get(), View::Tab(_))).then(|| {
-            view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>"Seções"</b></span> }
+            view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>{tr!("Seções")}</b></span> }
         });
         let items = list.into_iter().map(|(btn, label)| view! { <span class="tv-hint">{glyph(btn, kind)}<b>{label}</b></span> }).collect_view();
-        let held = (!library.running.with(|r| r.is_empty())).then(|| view! { <span class="tv-hint dim end">"Jogando agora"</span> });
-        view! { {items}{sections}{held} }
+        view! { {items}{sections} }
     };
 
     let sheet = move || tv.sheet.get().map(|s| view! { <sheets::SheetView sheet=s /> });
 
+    // The app's notices, sized for the TV (the window's own are under this screen).
+    let toasts = move || {
+        library
+            .toasts
+            .get()
+            .into_iter()
+            .map(|t| {
+                let icon = if t.error { Icon::Info } else { Icon::Check };
+                view! { <div class="tv-toast" class:bad=t.error role=if t.error { "alert" } else { "status" }><Svg icon size=26 /><span>{t.text}</span></div> }
+            })
+            .collect_view()
+    };
+
     view! {
         <div class="tv">
+            <div class="tv-toasts" aria-live="polite">{toasts}</div>
             <div class="tv-bg">{move || { let s = tv.backdrop.get(); (!s.is_empty()).then(|| view! { <Backdrop sources=s /> }) }}</div>
             <div class="tv-shade"></div>
             <header class="tv-top">
                 <div class="tv-brand">
                     <img class="mark" src="brand/cerberus-pixel-icone.svg" alt="" draggable="false" />
-                    <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt="Cerberus Launcher" draggable="false" />
+                    <img class="word" src="brand/cerberus-launcher-pixel.svg#wordmark" alt=tr!("Cerberus Launcher") draggable="false" />
                 </div>
                 {tabs}
-                <div class="tv-clock">{move || time.get()}</div>
+                <div class="tv-top-end">
+                    {move || {
+                        time.track();
+                        let id = library.running.with(|r| r.iter().next().cloned())?;
+                        let name = library.games.with(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| x.name.clone())))?;
+                        let mins = library.started.with(|s| s.get(&id).map(|t| ((js_sys::Date::now() - t) / 60000.0) as u64)).unwrap_or(0);
+                        Some(view! {
+                            <span class="tv-playing"><i></i>{tr!("Jogando {}", name)}<small>{if mins == 0 { tr!("agora").to_string() } else { format!("{mins} min") }}</small></span>
+                        })
+                    }}
+                    <div class="tv-clock">{move || time.get()}</div>
+                </div>
             </header>
             <main class="tv-main">{page}</main>
             <footer class="tv-hints">{hints}</footer>

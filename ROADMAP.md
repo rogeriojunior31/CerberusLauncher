@@ -314,7 +314,7 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       WebView2 embutido para PCs sem ele. Desinstalar mantém os dados (a caixa para apagar diz o que apaga) e tira
       o "Abrir com o Windows" e as chaves do instalador. Conferido: instalar, primeira abertura e desinstalar.
       Falta: assinatura digital (o SmartScreen avisa) e publicar a release.
-- [ ] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
+- [x] Atualização do próprio Cerberus e "O que há de novo" (precisa de releases assinadas no GitHub).
 - [x] Atalho do jogo na área de trabalho (abre pelo Cerberus com --play).
 - [x] Adicionar à Steam (Gerenciar): jogo de fora na biblioteca da Steam, com capa e fundo, abrindo pelo Cerberus;
       com a Steam fechada, backup do shortcuts.vdf, e "Tirar da Steam" desfaz. Conferido no app com o SpaghettiKart.
@@ -352,7 +352,10 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       com a versão; "Trocar versão…" usa uma DLL de mesmo nome que o jogador já tem (o Cerberus não baixa nada),
       guarda a do jogo e "Voltar à original" desfaz. Testado com DLLs do Windows no lugar; a tela conferida com
       um jogo falso. Falta: um jogo real com DLSS.
-- [ ] Discord "Jogando...".
+- [x] Idiomas: português do Brasil e inglês em todo o app (interface, Big Picture, menu por cima do jogo, avisos,
+      erros do backend, bandeja e instalador). Automático segue o Windows; escolha em Configurações › Aparência.
+      `tr!` com o texto em português como chave e `shared/locales/en.json`; teste garante que nada fica sem tradução.
+      Conferido no app trocando para inglês e voltando.
 
 ### 4.4 Transição
 
@@ -360,3 +363,295 @@ repositório: o app já busca `src-tauri/catalog/recomps.json` daqui a cada 6 h.
       por padrão (decisão do usuário em 19/11/2026). Desligado, ficam os 117 recomps do Cerberus e as fontes.
 - [ ] Pedir permissão ao mantenedor do RecompLauncher para usar a lista de repositórios deles como
       ponto de partida da descoberta (só os fatos: quais projetos existem; nunca textos ou arte).
+
+
+## Onda 5: próximas entregas (levantamento de 23/11/2026)
+
+Levantamento do RecompLauncher (Beta 68, de 23/11/2026; GPL: só ideias e fatos, nunca código) e do Hydra
+(MIT), cruzado com o que o Cerberus já tem. Ordem = prioridade dentro de cada bloco. O que depende de servidor
+ou de conta de terceiros está marcado; o que só serve para jogos piratas fica de fora de vez (no fim).
+
+### 5.1 Hub de conquistas (prioridade 1)
+
+Uma página **Conquistas** no menu lateral que acompanha todas as plataformas, mais uma aba **Conquistas** na
+página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub entre jogos (só totais no perfil).
+
+**Fontes de dados (validadas neste PC em 23/11/2026):**
+
+- [x] **Steam pelo cache local do próprio cliente, sem chave nem perfil público.**
+      - `Steam\appcache\stats\UserGameStatsSchema_<appid>.bin` traz o catálogo de cada jogo: nome e descrição em
+        vários idiomas (inclusive `brazilian`), ícone, ícone cinza e se a conquista é secreta.
+      - `UserGameStats_<conta>_<appid>.bin` traz o que foi desbloqueado, com a data.
+      - Os dois são KeyValues binário. Conferido aqui: 254 jogos em cache; no Balatro, 31 conquistas, 8 desbloqueadas
+        e todas com data.
+      - Ícone: `https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/<appid>/<hash>.jpg`.
+      - O Hydra não lê esses arquivos: seria diferencial nosso.
+      - Limite: o cache cobre os jogos que a Steam deste PC já sincronizou.
+- [x] **Tempo de jogo e última vez da Steam pelo `userdata\<conta>\config\localconfig.vdf`** (`Playtime`, `LastPlayed`;
+      259 jogos aqui). Hoje o Cerberus só conta o tempo enquanto está aberto; isso traz o histórico todo da Steam.
+- [x] **Raridade das conquistas da Steam** (% de jogadores que desbloquearam) pelo endpoint público
+      `ISteamUserStats/GetGlobalAchievementPercentagesForApp` (sem chave). *A validar.*
+- [x] **Steam sem cache (opcional, em Configurações › Contas › Steam):** chave da Web API e SteamID do jogador (`GetPlayerAchievements`, `GetSchemaForGame`);
+      exige perfil com detalhes de jogo públicos. *A validar.* (O Hydra usa um token tirado da sessão logada da loja
+      e lê páginas da Comunidade; não vamos por esse caminho.)
+- [x] **RetroAchievements pela Web API oficial**, com a chave que o jogador já conecta:
+      - `API_GetGameInfoAndUserProgress` dá as conquistas do jogo com pontos, emblema e data, separando normal e hardcore.
+      - `API_GetUserCompletionProgress` dá todos os jogos com o progresso de cada um, para o hub.
+      - Falta descobrir o id do jogo no RA para cada clássico (pelo hash da ROM ou pela linha do log do RetroArch). *A validar.*
+- [ ] **Epic (fase 3, precisa de login na conta Epic):**
+      - Login OAuth com o cliente público do launcher, o mesmo do Legendary, do Heroic e do Hydra.
+      - Conquistas pela GraphQL do launcher (`playerAchievementGameRecordsBySandbox`).
+      - Tempo de jogo pelo `library-service` (`/library/api/public/playtime/account/<id>/all`).
+      - Falta o "sandbox" de cada jogo: o `CatalogNamespace` dos manifestos da Epic deve servir. *A validar*: não há jogo
+        da Epic instalado neste PC, e a Epic não guarda conquistas nem tempo de jogo no disco.
+- [ ] **Conquistas dos recomps (fase 3):**
+      - Ler os arquivos de troféus que cada port já grava; o Hydra (MIT) mapeia os formatos: bitmask, linhas id+hora,
+        jsonl e log.
+      - Avaliar o canal de sessão do RecompLauncher (variável de ambiente com um pipe por partida, uma mensagem JSON por
+        linha), para os recomps que adotarem a biblioteca deles.
+
+**Telas:**
+
+- [x] **Hub:** totais de todas as plataformas (desbloqueadas, % concluído, jogos 100%, pontos do RA) e **últimas
+      conquistas de todos os jogos** numa linha do tempo.
+- [x] **Hub, lista de jogos:**
+      - Filtros por plataforma (Steam, Epic, RetroAchievements, Recomps).
+      - Filtros por estado: em andamento, concluídos, não começados.
+      - Ordem: recentes, % concluído, A a Z, mais raros.
+      - Busca por nome.
+- [x] **Página de conquistas do jogo** (falta a aba na página do jogo da Biblioteca):
+      - Resumo X/Y com barra, e um troféu quando chega a 100%.
+      - Busca e filtro Todas / Desbloqueadas / Bloqueadas.
+      - Ordem: mais comuns, mais raras, recentes.
+      - Secretas escondidas até clicar, com opção para mostrar todas.
+      - Selo de hardcore e conjuntos (subsets) do RA.
+      - % de raridade com "<0,1%" para as raríssimas.
+- [ ] **Biblioteca:** progresso de conquistas na capa e opção de ordenar por conquistas.
+- [ ] **Big Picture Mode:** a mesma página de conquistas.
+- [ ] **Aviso ao desbloquear por cima do jogo:** janela transparente, sem foco e sempre no topo, num canto escolhido,
+      com ícone, raridade e "platina" quando completa o jogo.
+      - Steam: vigiar a data de modificação do `UserGameStats` durante a partida.
+      - RA: o log do RetroArch, que já lemos.
+- [ ] **Cartão "Seu tempo de jogo"** na página do jogo (ideia do RecompLauncher):
+      - Barras das últimas 2 semanas, total, semana, mês, número de sessões e sessão mais longa.
+      - Soma Cerberus, Steam e Epic, separando a origem.
+
+### 5.2 Confiança e distribuição (prioridade 2)
+
+- [x] **Atualização do próprio Cerberus** (já listada em 4.3d):
+      - Um `version.json` com URL, SHA-256 e tamanho por plataforma, mais uma versão mínima obrigatória.
+      - Instalação silenciosa do NSIS e reabertura do app.
+      - Arquivo ruim marcado para não ser oferecido de novo, e conferência da versão exata dentro do instalador.
+      - Cartão "O que há de novo" depois de atualizar e Configurações › Novidades.
+- [ ] **Assinatura do instalador** (some o aviso do SmartScreen) e uma Action de conferência da release (versão certa,
+      assinado, arquivo certo).
+- [ ] **Janela de falha:**
+      - As últimas linhas do log do jogo e a explicação que já temos.
+      - "Usar a placa de vídeo mais rápida".
+      - Botão para abrir uma issue com o log e o histórico.
+- [ ] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
+- [ ] **Recuperar o WebView2** quando ele travar, sem derrubar jogos nem downloads; avisar que o RivaTuner é a causa comum.
+- [ ] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
+- [ ] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
+      pouco de aleatoriedade.
+- [ ] Achar o arquivo da release pelo sistema e pela CPU quando o padrão do catálogo parar de bater (projeto que
+      renomeou os arquivos).
+
+### 5.3 Recomps e Easy Setup (prioridade 3)
+
+- [ ] **Fila única de downloads:** downloads e builds juntos, "Pausar tudo" e contador no menu.
+- [ ] Por jogo: atualizar sozinho e optar por versões de teste (pre-release).
+- [ ] "Liberar espaço": apagar arquivos de instalação que não são mais necessários.
+- [ ] Recomp que mudou de página no catálogo: "Mudar para ele", levando saves, tempo de jogo e arquivos.
+- [ ] **Recomps com vários jogos** numa instalação só, cada um com a própria capa, tempo, conquistas e atalhos.
+- [ ] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
+      ajustes, requisitos do sistema. É compatibilidade com o formato aberto deles; avisar sem bloquear quando o PC
+      não atende.
+- [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
+- [ ] Achar jogos nas pastas que os emuladores já conhecem: Dolphin, PCSX2, RPCS3, RetroArch, Cemu e Ryujinx, só lendo.
+- [ ] Reconhecer jogos de PlayStation pelo ID do disco (não só pelo nome).
+- [ ] Trazer recomps que já estão na Steam ou em outro launcher, além da pasta escolhida.
+- [ ] Notar uma instalação interrompida (cancelada, travada, falta de luz) e refazer antes de jogar.
+
+### 5.4 Durante o jogo e integração (prioridade 4)
+
+- [ ] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
+- [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
+- [ ] Menu da bandeja com os jogos recentes.
+- [ ] Impedir o PC de dormir durante downloads.
+- [ ] **HowLongToBeat** na página do jogo (tempo para zerar).
+- [ ] Informações do jogo original pela Wikipedia, guardadas por um mês.
+- [ ] Prévia ao vivo dos filtros visuais sobre a imagem do próprio jogo, e um filtro "Studio".
+- [ ] Arte de mídia: o jogo desenhado como o cartucho, cartão ou disco dele.
+- [ ] Saves na nuvem de jogos de PC comuns (Steam, Epic, adicionados) pelos locais de save conhecidos (base do
+      Ludusavi/PCGamingWiki; conferir a licença antes de usar).
+
+### 5.5 Interface e acessibilidade (prioridade 5)
+
+- [ ] **Tamanho do texto:** zoom da janela de 90% a 150%, com Ctrl +, Ctrl − e Ctrl 0.
+- [ ] Respeitar o "reduzir movimento" do Windows sozinho (hoje só a chave "Menos animações").
+- [ ] Mais idiomas além de português e inglês (o RecompLauncher tem 22): espanhol primeiro.
+- [ ] Detectar portáteis (ROG Ally, Legion Go, Steam Deck) e ajustar padrões.
+- [ ] Temas: cores e som de conquista personalizáveis.
+- [ ] Formulário de opinião dentro do app (área, humor, mensagem, dados do PC opcionais).
+- [ ] Modo portátil (tudo na pasta do programa).
+
+### 5.6 Depende de servidor ou de outra decisão (avaliar)
+
+- [ ] Relatos dos jogadores ("Como rodou?"), nota para o Steam Deck, aviso de "esta versão está travando muito",
+      desenvolvedores verificados para seguir, "Avise-me" de lançamentos, notícias e aviso imediato de versão nova.
+      No RecompLauncher tudo isso vem do site deles; para nós, só com um servidor próprio ou com permissão de usar o deles.
+- [ ] Conta e sincronização entre PCs (biblioteca, tempo de jogo, saves) com login.
+- [ ] Perfil, amigos, placares e avaliações de jogos (Hydra): precisam de servidor e moderação.
+- [ ] Estatísticas de uso opcionais, perguntadas na primeira abertura, com página de privacidade.
+- [ ] **Linux e Steam Deck:** Proton/umu para os recomps só de Windows; pacotes AppImage, Flatpak, .deb e Nix.
+- [ ] Sistema de plugins e ferramentas para desenvolvedores de recomps (validar manifesto, pasta de build local).
+- [ ] Emuladores fora do RetroArch (RPCS3, shadPS4, DuckStation, PCSX2, PPSSPP), com os troféus e conquistas deles.
+- [ ] Importar a biblioteca do LaunchBox.
+
+## Onda 6: consolidado de Playnite, Hydra e RecompLauncher (levantamento de 23/11/2026)
+
+Três análises, uma por projeto, cruzadas com o que o Cerberus já tem e com a Onda 5 (o que já está lá não se repete
+aqui). Licenças: **Playnite MIT** e **Hydra MIT** (ideias e código, com crédito); **RecompLauncher GPL** (só ideias e
+fatos, nunca código). Origem entre colchetes: [P] Playnite, [H] Hydra, [R] RecompLauncher. Esforço: P, M, G.
+Nada aqui precisa de servidor próprio, salvo onde está marcado.
+
+### 6.1 Conquistas, a continuação do hub (prioridade 1)
+
+- [x] **Aviso de conquista na tela durante o jogo** [H]: janela transparente, sem foco e por cima de tudo, em 6
+      posições; versões normal, rara (até 10%), secreta e platina (a que completa o jogo); "N conquistas em M jogos"
+      quando vierem várias; som e volume próprios e botão de teste. — M
+- [x] **Conquista da Steam na hora** [H]: durante a partida, olhar `userdata/<conta>/config/librarycache/<app>.json`
+      a cada 2 s e avisar o que mudou; reler a Steam 10 s e 30 s depois que o jogo fecha. — M
+- [x] **Aba Conquistas na página do jogo da Biblioteca** (o que faltou da 5.1). — P
+- [ ] **Steam sem chave** [H]: entrar na loja da Steam numa janela do app e usar o token que a própria página já tem
+      (`webapi_token`) no lugar da chave da Web API; a chave continua como alternativa. — M
+- [ ] **Biblioteca da família Steam** [H] (`IFamilyGroupsService`): jogos compartilhados, com o tempo de jogo. — M
+- [ ] **Troféus dos recomps** [H]: ler os arquivos de troféus que alguns ports gravam (`trophies.dat`, `trophies.jsonl`,
+      `earned.json`, linhas do log) e mostrar no hub; nomes e ícones num JSON nosso no catálogo. — M
+- [ ] **Foto no momento da conquista** [H]: capturar a janela do jogo quando a conquista cai; no RetroArch, ligar a
+      opção dele de foto ao desbloquear só durante a partida. — M
+- [ ] Conquistas da Epic [H] (GraphQL da loja da Epic), depois do login da Epic (6.2). — M
+- [ ] Separar conquistas do jogo base e das DLCs [H]. — P
+
+### 6.2 Biblioteca e lojas (prioridade 2)
+
+- [x] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" e
+      "Desinstalar" por `steam://install|uninstall/<id>`, e o jogo vira instalado sozinho quando aparece o
+      `appmanifest_*.acf`. — M
+- [ ] Opções de inicialização passadas à Steam: `steam://run/<id>//<argumentos>/` [H]. — P
+- [ ] Ler o `appinfo.vdf` da Steam para saber o executável real de cada jogo [H] (medir a partida certo). — M
+- [ ] **Login da Epic e biblioteca completa** [H]: login numa janela da Epic e o Legendary para listar, instalar,
+      verificar e abrir (conferir a licença do Legendary, GPL, antes de distribuir junto); tempo de jogo da Epic pelos
+      servidores dela. — G
+- [ ] **Importar o tempo de jogo das lojas** com escolha: sempre, só para jogos novos ou nunca; "última vez" da loja só
+      vale se for mais nova [P]. Tempo separado por fonte (Cerberus, Steam, Epic), editar e zerar [H]. — P
+- [ ] **Achar jogos fora das lojas** [P][H]: atalhos do Menu Iniciar (ignorando desinstaladores, setup, vc_redist,
+      crash handlers), uma pasta escolhida, `C:\Games`/`D:\Games`/"GOG Games", e apps da Microsoft Store/Xbox
+      (`shell:AppsFolder`). Jogo apagado entra numa lista de exclusão e não volta na próxima busca [P]. — M
+- [ ] O mesmo jogo na Steam e na Epic aparece como um só [H]. — M
+- [ ] Ordem pelo nome sem "The"/"A" e com algarismos romanos na ordem certa [P]. — P
+- [ ] Tamanho instalado de cada jogo, agrupar por disco e mover um jogo de PC para outro disco [P][H]. — M
+- [ ] **Página do jogo com dados da loja** [H]: descrição, requisitos mínimo e recomendado, idiomas, suporte a controle,
+      imagens e trailers (`store.steampowered.com/api/appdetails`). — M
+- [ ] Atalho no Menu Iniciar além da área de trabalho [H][R]. — P
+
+### 6.3 Organizar a coleção (prioridade 3)
+
+- [x] **Situação do jogo** [P]: Não jogado, Jogado, Jogando, Zerado, Completo, Abandonado, Em pausa, Quero jogar,
+      editáveis. Vira "Jogado" na primeira partida; os selos do hub (Zerado, Completo, Dominado) sugerem a situação. — P
+- [x] Nota pessoal (0 a 100) e anotações por jogo [P]. — P
+- [ ] **Filtros salvos** com ordem e agrupamento [P]: prontos "Todos", "Jogados recentemente", "Favoritos" e
+      "Mais jogados"; aparecem também no Big Picture. — M
+- [ ] **Agrupar** por plataforma, loja, situação, ano, disco, faixa de tempo de jogo (menos de 1 h, 1 a 10 h, 10 a
+      100 h...) e última vez jogado (hoje, ontem, esta semana, este mês, este ano, nunca) [P]. — M
+- [x] Mais ordens: adicionado em, nota, situação, tamanho, vezes jogado [P]. — P
+- [ ] Fixar jogos no topo e ordem manual por arrasto, também dentro das coleções [H][R]. — M
+- [ ] **Editar vários jogos de uma vez** (situação, coleção, ocultar) [P]. — M
+- [ ] **Página de estatísticas** [P]: total de jogos, instalados, tempo total e médio, os 50 mais jogados, quantos por
+      situação e por loja, espaço ocupado, filtrável por loja ou plataforma. — M
+- [x] **"Jogar algo aleatório"** dentro do filtro atual, com "sortear outro" e "jogar" [P][H]. — P
+- [ ] **Busca global (Ctrl+F)** [P]: aceita erro de digitação e siglas ("gta"), sem acento; vazia mostra os 20 últimos
+      jogados; resultados abrem ou jogam. — M
+- [ ] Atalhos de teclado [P]: F5 atualizar biblioteca, F6 jogo aleatório, Ctrl+F busca, Enter jogar, Delete remover. — P
+- [ ] Arte padrão quando falta: a da loja, depois a da plataforma, depois uma genérica [P]. — P
+
+### 6.4 Partidas (prioridade 4)
+
+- [ ] **Medir melhor** [P][H]: modos por jogo (programa, árvore de processos, qualquer programa na pasta do jogo,
+      nome do processo) e programas extras a acompanhar; jogos abertos fora do Cerberus também contam; não contar o
+      tempo em que o PC dormiu. — M
+- [ ] **Várias formas de abrir o mesmo jogo** (DX12 e Vulkan, launcher de mods), com escolha ao jogar [P];
+      variáveis nos caminhos: `{InstallDir}`, `{Name}`, `{ImagePath}` [P]. — M
+- [ ] **Ações antes e depois de jogar**, globais ou por jogo, e a de antes pode cancelar [P]. — M
+- [ ] **HDR do Windows ligado só durante o jogo** e devolvido no fim [P]. — M
+- [ ] Fechar a Steam ou a Epic depois da partida (só se a partida passou de 2 min e nada mais dela está rodando) [P]. — P
+- [ ] Ao abrir um jogo: nada, minimizar, ir para a bandeja ou fechar; ao fechar o jogo: restaurar [P][H]. — P
+- [ ] Janelinha de abertura quando o jogo vem de um atalho: tempo jogado e verificações, fechando quando o jogo
+      aparece [H]. — P
+- [ ] Manter a tela acordada durante a partida e os downloads [H]. — P
+- [ ] **Fotos de jogos em tela cheia exclusiva** pela Desktop Duplication do Windows [H]; tecla e combinação do
+      controle escolhidas pelo jogador; copiar a foto. — M
+- [ ] **Link `cerberus://`** (abrir jogo, página, busca), opções de linha de comando e lista de atalhos da barra de
+      tarefas com os 10 jogos recentes [P][H]. — P
+- [ ] Mais pacotes necessários com instalação num clique: DirectX de junho de 2010, OpenAL, .NET 4 e XNA 4 [H]. — P
+- [ ] Central de notificações dentro do app (lidas e não lidas) [H]. — P
+
+### 6.5 Clássicos e emuladores (prioridade 5)
+
+- [ ] **Reconhecer ROMs pelo CRC** [P][H] com as bases No-Intro/Redump do libretro-database (também dentro de zip),
+      depois pelo nome e pelo serial; região pelos códigos do nome do arquivo; nome, região e ano certos. — G
+- [ ] Buscas de ROMs salvas por pasta (subpastas, dentro de arquivos, exclusões, ignorar arquivos só na nuvem),
+      refeitas ao atualizar a biblioteca [P]. — M
+- [ ] Escolher o disco ao jogar, com "não perguntar de novo" [H]. — P
+- [ ] **Emuladores fora do RetroArch** [H][P]: instalar e atualizar DuckStation, PCSX2, PPSSPP, Dolphin, RPCS3 e
+      shadPS4 pelas releases oficiais; conferir BIOS e firmware (sem baixar BIOS); levar o login do RetroAchievements
+      para eles e ler as conquistas pelos logs; troféus do RPCS3 e do shadPS4; tempo de jogo deles. — G
+- [ ] Cartões de memória de PS1 e PS2: listar e exportar saves [H]. — M
+
+### 6.6 Big Picture (prioridade 6)
+
+- [ ] Teclado virtual para o controle e sons de navegação, com chave para desligar [H][R]. — M
+- [ ] Menu de energia: desligar, reiniciar, suspender, bloquear [P][H]. — P
+- [ ] Filtros salvos e mudar situação, nota e coleção pelo controle [P]. — M
+- [ ] Música de fundo (muda quando um jogo abre), relógio e bateria, escurecer jogos não instalados [P]. — P
+- [ ] Ícones dos botões (Xbox, PlayStation, Nintendo) e trocar confirmar/cancelar [P][R]. — P
+- [ ] Diagnóstico do controle: botões e eixos ao vivo e teste de vibração [H]. — P
+
+### 6.7 Recomps (complementa a 5.3) [R]
+
+- [x] Pausar as atualizações de um jogo e limite de velocidade de download, mais lento enquanto se joga. — P
+- [ ] Pasta de instalação por jogo e proxy em Configurações › Rede. — P
+- [x] Repetir quando o Windows ou o antivírus prende um arquivo, com mensagem clara. — P
+- [ ] Etiquetas no catálogo (Widescreen, 60 FPS, Mods, Online) com filtro, situação do projeto (encerrado, pausado)
+      e "Parecidos com este". — P
+- [ ] Chaves compartilhadas (Switch, Wii U) importadas uma vez e usadas por todos os jogos que pedem. — M
+- [ ] Conferir a cópia do jogador contra o Redump ("Bate com o disco USA verificado"). — P
+- [ ] **Resolver problemas** numa janela: arquivos, requisitos, caminho com acento, pasta do OneDrive, DLL faltando,
+      com botões de correção; tirar do caminho DLLs antigas que o jogo traz. — M
+- [ ] Mais causas na janela de falha: memória, placa de vídeo sem DX12/Vulkan, driver reiniciado, VRAM cheia,
+      .NET ou Python faltando, um mod como culpado. — M
+- [ ] Filtro visual que falha ao abrir tenta o outro jeito de carregar o ReShade da próxima vez. — P
+- [ ] Guardar os saves ao desinstalar e devolver ao reinstalar; página de saves de todos os jogos. — P
+- [ ] Segurar Jogar para escolher qual programa do recomp abrir. — P
+
+### 6.8 Dados e interface
+
+- [ ] **Backup da biblioteca** num zip (configurações, biblioteca, artes), automático diário ou semanal com rodízio, e
+      restauração escolhendo o que voltar [P]. — M
+- [ ] **Saves de qualquer jogo de PC** pelo Ludusavi (pré-visualizar, fazer backup e restaurar) [H]; junta com a nuvem
+      por pasta que já temos. — M
+- [ ] Menu lateral personalizável (esconder e reordenar), tamanho dos cards, abrir em Início, Biblioteca ou Conquistas
+      [R]. — P
+- [ ] Textos copiáveis (descrições, caminhos, erros) e layout que funciona em 640×480 [R]. — P
+
+### 6.9 Precisa de servidor (só registro)
+
+- Placares, amigos, chat, perfil público e "Wrapped" [H]; relatos "Como rodou?", aviso de versão que trava, seguir
+  desenvolvedores e pedidos de recomp [R]; HowLongToBeat e arte do SteamGridDB sem chave do jogador vêm do servidor do
+  Hydra [H]. Para nós, só com servidor próprio.
+
+## Fora de vez
+
+- Ler arquivos de conquistas de emuladores de Steam usados em jogos piratas (CODEX, RUNE, Goldberg, EMPRESS etc.),
+  fontes de download, torrent, debrid e hosters, e instalar PKG de PS4 baixado. O Hydra tem; o Cerberus nunca terá.

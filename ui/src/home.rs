@@ -1,5 +1,6 @@
 //! Home: a rotating banner, then shelves of what to play next.
 
+use cerberus_shared::tr;
 use std::time::Duration;
 
 use cerberus_shared::{Game, RecompEntry, Source};
@@ -25,13 +26,42 @@ struct Feature {
     open: Route,
     /// The game to start from the banner, when it is in the library.
     game: Option<Game>,
+    /// Your numbers with it: last session, total, status.
+    facts: Vec<String>,
+    /// The game's logo, drawn instead of the title when it loads.
+    logo: Option<String>,
+    /// A Steam game: its store description fills `about`.
+    steam_app: Option<u32>,
 }
 
 fn game_feature(game: &Game) -> Feature {
+    let mut facts = Vec::new();
+    if let Some(last) = game.last_played {
+        facts.push(tr!("Jogado {}", crate::format::ago(last)));
+    }
+    if let Some(s) = game.last_session_secs.filter(|s| *s >= 60) {
+        facts.push(tr!("última sessão de {}", crate::format::playtime(s)));
+    }
+    if game.playtime_secs >= 60 {
+        facts.push(tr!("{} no total", crate::format::playtime(game.playtime_secs)));
+    }
+    if let Some(s) = game.status {
+        facts.push(crate::game_notes::label(s).to_string());
+    }
+    let steam_app = match &game.source {
+        Source::Steam { app_id } => Some(*app_id),
+        _ => None,
+    };
+    let logo = game.logo_path.as_deref().map(crate::art::src).or_else(|| {
+        steam_app.map(|id| format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png"))
+    });
     Feature {
-        kicker: "Continue jogando".to_string(),
+        kicker: tr!("Continue jogando").to_string(),
         title: game.name.clone(),
         based: source_name(&game.source).to_string(),
+        facts,
+        logo,
+        steam_app,
         about: String::new(),
         heroes: hero_sources(game),
         soft: game.hero_url.as_deref().is_some_and(is_low_res) && matches!(game.source, Source::Recomp { .. }),
@@ -43,9 +73,12 @@ fn game_feature(game: &Game) -> Feature {
 
 fn recomp_feature(entry: &RecompEntry) -> Feature {
     Feature {
-        kicker: format!("Recomp · {}", entry.console),
+        kicker: tr!("Recomp · {}", entry.console),
         title: entry.name.clone(),
-        based: format!("Baseado em {}", entry.game),
+        based: tr!("Baseado em {}", entry.game),
+        facts: Vec::new(),
+        logo: entry.logo.as_deref().map(crate::art::src),
+        steam_app: None,
         about: entry.about.clone(),
         heroes: recomp_heroes(entry),
         soft: entry.hero.as_deref().is_some_and(is_low_res),
@@ -84,7 +117,8 @@ pub fn Home() -> impl IntoView {
     move || {
         let library_state = library.games.get();
         let read_error = library_state.as_ref().and_then(|state| state.as_ref().err()).cloned();
-        let games = library_state.and_then(Result::ok).unwrap_or_default();
+        // Home is about what's on this PC: owned-but-not-installed games stay in the Library.
+        let games: Vec<Game> = library_state.and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.next_step != cerberus_shared::NextStep::Install).collect();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
 
@@ -101,12 +135,14 @@ pub fn Home() -> impl IntoView {
         let everything: Vec<TileInfo> = games.iter().take(24).map(|g| game_tile(g, library)).collect();
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
-        let recent = (!recent.is_empty()).then(|| view! { <Shelf title="Jogue de novo".to_string() tiles=recent /> });
+        let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });
+        let favorites: Vec<TileInfo> = games.iter().filter(|g| g.favorite && !g.hidden).map(|g| game_tile(g, library)).collect();
+        let favorites = (!favorites.is_empty()).then(|| view! { <Shelf title=tr!("Favoritos").to_string() tiles=favorites see_all=Route::Library /> });
         let found = (!found.is_empty()).then(|| {
             view! {
                 <Shelf
-                    title="Encontrado nas suas pastas".to_string()
-                    note="Você já tem esses jogos; cada um tem uma versão nativa para PC.".to_string()
+                    title=tr!("Encontrado nas suas pastas").to_string()
+                    note=tr!("Você já tem esses jogos; cada um tem uma versão nativa para PC.").to_string()
                     tiles=found
                 />
             }
@@ -114,28 +150,28 @@ pub fn Home() -> impl IntoView {
         let popular = (!popular.is_empty()).then(|| {
             view! {
                 <Shelf
-                    title="Populares agora".to_string()
-                    note="Versões nativas para PC de jogos de console. Você precisa da sua própria cópia do jogo.".to_string()
+                    title=tr!("Populares agora").to_string()
+                    note=tr!("Versões nativas para PC de jogos de console. Você precisa da sua própria cópia do jogo.").to_string()
                     tiles=popular
                     see_all=Route::Discover
                 />
             }
         });
         let newest = (!newest.is_empty()).then(|| {
-            view! { <Shelf title="Adicionados recentemente".to_string() tiles=newest see_all=Route::Discover /> }
+            view! { <Shelf title=tr!("Adicionados recentemente").to_string() tiles=newest see_all=Route::Discover /> }
         });
         let everything = (!everything.is_empty()).then(|| {
-            view! { <Shelf title="Na sua biblioteca".to_string() tiles=everything see_all=Route::Library /> }
+            view! { <Shelf title=tr!("Na sua biblioteca").to_string() tiles=everything see_all=Route::Library /> }
         });
         let error = read_error.as_ref().map(|message| view! {
             <div class="card" role="alert">
                 <p>{message.clone()}</p>
-                <button type="button" class="btn" on:click=move |_| library.go(Route::Library)>"Abrir biblioteca"</button>
+                <button type="button" class="btn" on:click=move |_| library.go(Route::Library)>{tr!("Abrir biblioteca")}</button>
             </div>
         });
-        let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">"Carregando..."</p> });
+        let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">{tr!("Carregando...")}</p> });
 
-        view! { <div class="page home">{error}{loading}{slider}{recent}{found}{popular}{newest}{everything}</div> }
+        view! { <div class="page home">{error}{loading}{slider}{recent}{favorites}{found}{popular}{newest}{everything}</div> }
     }
 }
 
@@ -162,7 +198,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
     }
 
     let dots = features.iter().enumerate().map(|(index, feature)| {
-        let name = format!("Destaque {} de {count} · {}", index + 1, feature.title);
+        let name = tr!("Destaque {} de {} · {}", index + 1, count, feature.title);
         view! {
             <input type="radio" name="home-highlight" class="dot" aria-label=name.clone() title=name
                 prop:checked=move || current.get() == index on:focus=move |_| rotating.set(false) on:change=move |_| current.set(index) />
@@ -192,25 +228,47 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                     let open = open.clone();
                     view! {
                         <button type="button" class="btn main big" on:click=move |_| library.go(open.clone())>
-                            "Ver e instalar"
+                            {tr!("Ver e instalar")}
                         </button>
                     }
                     .into_any()
                 }
             };
-            let about = (!feature.about.is_empty()).then(|| view! { <p>{feature.about.clone()}</p> });
+            // A Steam game's short description comes from its store page (kept on disk).
+            let store = feature.steam_app.map(|app| LocalResource::new(move || async move { crate::api::steam_details(app).await.ok().map(|d| d.short) }));
+            let fixed_about = feature.about.clone();
+            let about = move || {
+                let text = store.and_then(|s| s.get().flatten()).unwrap_or_else(|| fixed_about.clone());
+                (!text.is_empty()).then(|| view! { <p class="sl-about">{text}</p> })
+            };
+            let facts = (!feature.facts.is_empty()).then(|| {
+                let items = feature.facts.iter().map(|f| view! { <span>{f.clone()}</span> }).collect_view();
+                view! { <div class="sl-facts">{items}</div> }
+            });
+            let logo_failed = RwSignal::new(false);
+            let title_text = StoredValue::new(feature.title.clone());
+            let heading = match feature.logo.clone() {
+                Some(src) => view! {
+                    <Show when=move || !logo_failed.get() fallback=move || view! { <h2>{title_text.get_value()}</h2> }>
+                        <img class="sl-logo" src=src.clone() alt=title_text.get_value() on:error=move |_| logo_failed.set(true) />
+                    </Show>
+                }
+                .into_any(),
+                None => view! { <h2>{feature.title.clone()}</h2> }.into_any(),
+            };
             view! {
                 <div class="slide" class:on=on inert=move || !on() aria-hidden=move || (!on()).to_string()>
                     <Backdrop sources=feature.heroes.clone() soft=feature.soft />
                     <div class="sl-in">
                         <span class="kick">{feature.kicker.clone()}</span>
-                        <h2>{feature.title.clone()}</h2>
+                        {heading}
                         <span class="based">{feature.based.clone()}</span>
+                        {facts}
                         {about}
                         <div class="acts">
                             {primary}
                             {installed.then(|| view! {
-                                <button type="button" class="btn big glass" on:click=move |_| library.go(open.clone())>"Detalhes"</button>
+                                <button type="button" class="btn big glass" on:click=move |_| library.go(open.clone())>{tr!("Detalhes")}</button>
                             })}
                         </div>
                     </div>
@@ -222,19 +280,19 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
         })
         .collect_view();
 
-    let rotation_label = move || if rotating.get() { "Pausar rotação" } else { "Retomar rotação" };
+    let rotation_label = move || if rotating.get() { tr!("Pausar rotação") } else { tr!("Retomar rotação") };
     let controls = (count > 1).then(|| view! {
         <div class="sl-controls">
-            <div class="sl-dots" role="radiogroup" aria-label="Escolher destaque">{dots}</div>
+            <div class="sl-dots" role="radiogroup" aria-label=tr!("Escolher destaque")>{dots}</div>
             <div class="sl-arrows">
                 <button type="button" class="round glass" aria-label=rotation_label title=rotation_label
                     on:click=move |_| rotating.update(|value| *value = !*value)>
                     {move || view! { <Svg icon=if rotating.get() { Icon::Pause } else { Icon::Play } size=16 /> }}
                 </button>
-                <button type="button" class="round glass" aria-label="Destaque anterior" on:focus=move |_| rotating.set(false) on:click=move |_| step(-1)>
+                <button type="button" class="round glass" aria-label=tr!("Destaque anterior") on:focus=move |_| rotating.set(false) on:click=move |_| step(-1)>
                     <Svg icon=Icon::Left size=18 />
                 </button>
-                <button type="button" class="round glass" aria-label="Próximo destaque" on:focus=move |_| rotating.set(false) on:click=move |_| step(1)>
+                <button type="button" class="round glass" aria-label=tr!("Próximo destaque") on:focus=move |_| rotating.set(false) on:click=move |_| step(1)>
                     <Svg icon=Icon::Right size=18 />
                 </button>
             </div>
@@ -242,7 +300,7 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
     });
 
     view! {
-        <section node_ref=slider class="slider" class:multiple=(count > 1) aria-label="Destaques" aria-roledescription="carrossel">
+        <section node_ref=slider class="slider" class:multiple=(count > 1) aria-label=tr!("Destaques") aria-roledescription=tr!("carrossel")>
             <div on:focusin=move |_| rotating.set(false)>{slides}</div>
             {controls}
         </section>

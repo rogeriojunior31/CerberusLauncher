@@ -1,6 +1,8 @@
 mod api;
 mod art;
 mod backups;
+mod game_overview;
+mod game_notes;
 mod tv;
 mod discover;
 mod format;
@@ -21,8 +23,13 @@ mod tiles;
 mod news;
 mod game_menu;
 mod versions;
+mod achievements;
+mod i18n;
 mod overlay;
+mod unlock;
+mod updates;
 
+use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
@@ -34,6 +41,14 @@ use art::{Poster, cover_sources};
 
 fn main() {
     console_error_panic_hook::set_once();
+    i18n::init();
+    if unlock::is_unlock() {
+        if let Some(root) = document().document_element() {
+            let _ = root.class_list().add_1("overlay-mode");
+        }
+        leptos::mount::mount_to_body(unlock::UnlockToast);
+        return;
+    }
     if overlay::is_overlay() {
         leptos::mount::mount_to_body(overlay::OverlayMenu);
         return;
@@ -57,6 +72,10 @@ pub enum Route {
     Game(String),
     /// A classic from the ROM folders, by its file.
     Classic(String),
+    /// The achievements hub.
+    Achievements,
+    /// One game's achievements: its source ("steam", "retro") and id there.
+    AchievementGame(String, String),
 }
 
 impl Route {
@@ -65,6 +84,7 @@ impl Route {
         match self {
             Route::Game(id) if id.starts_with("recomp:") => Route::Discover,
             Route::Game(_) | Route::Classic(_) => Route::Library,
+            Route::AchievementGame(..) => Route::Achievements,
             other => other.clone(),
         }
     }
@@ -75,7 +95,7 @@ pub fn toggle_favorite(library: Library, id: String, on: bool) {
     leptos::task::spawn_local(async move {
         if library.report(api::set_favorite(id, on).await).is_some() {
             library.games.refetch();
-            library.toast(if on { "Adicionado aos favoritos." } else { "Tirado dos favoritos." });
+            library.toast(if on { tr!("Adicionado aos favoritos.") } else { tr!("Tirado dos favoritos.") });
         }
     });
 }
@@ -105,6 +125,12 @@ pub struct Library {
     adopting: RwSignal<bool>,
     /// The game whose art is being customized.
     customizing: RwSignal<Option<Game>>,
+    /// Installs that didn't finish this session: recomp id -> why.
+    failed: RwSignal<std::collections::BTreeMap<String, String>>,
+    /// Download speed samples (bytes per second), newest last, by recomp id.
+    speed: RwSignal<HashMap<String, Vec<f64>>>,
+    /// When each running game was seen starting (ms since 1970).
+    started: RwSignal<HashMap<String, f64>>,
 }
 
 impl Library {
@@ -146,6 +172,8 @@ impl Library {
     }
 
     fn push_toast(self, text: String, error: bool) -> u64 {
+        // Messages kept in Portuguese (like a cancelled install) show in the player's language.
+        let text = cerberus_shared::i18n::translate(&text);
         let id = js_sys::Date::now() as u64 ^ (text.len() as u64);
         self.toasts.update(|all| all.push(Toast { id, text, error }));
         id
@@ -166,11 +194,12 @@ impl Library {
 /// The main button's label and icon: the step the backend says comes next.
 pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
     match &game.next_step {
-        NextStep::Play => ("Jogar", icons::Icon::Play),
-        NextStep::RunInstaller => ("Abrir instalador", icons::Icon::External),
-        NextStep::ChooseCopy { found: Some(_) } => ("Usar minha cópia", icons::Icon::Check),
-        NextStep::ChooseCopy { found: None } => ("Escolher cópia do jogo", icons::Icon::Folder),
-        NextStep::Locate { .. } => ("Localizar programa", icons::Icon::Search),
+        NextStep::Play => (tr!("Jogar"), icons::Icon::Play),
+        NextStep::RunInstaller => (tr!("Abrir instalador"), icons::Icon::External),
+        NextStep::ChooseCopy { found: Some(_) } => (tr!("Usar minha cópia"), icons::Icon::Check),
+        NextStep::ChooseCopy { found: None } => (tr!("Escolher cópia do jogo"), icons::Icon::Folder),
+        NextStep::Locate { .. } => (tr!("Localizar programa"), icons::Icon::Search),
+        NextStep::Install => (tr!("Instalar"), icons::Icon::Download),
     }
 }
 
@@ -179,12 +208,17 @@ pub fn play_game(library: Library, game: Game) {
     spawn_local(async move {
         let ready = match &game.next_step {
             NextStep::Play | NextStep::RunInstaller => Some(game),
+            // The store's own install window opens; the tile turns into Play when it's done.
+            NextStep::Install => {
+                library.toast(tr!("A Steam vai instalar {}. Quando terminar, ele aparece pronto para jogar.", game.name));
+                Some(game)
+            }
             NextStep::ChooseCopy { found } => {
                 let set = library.report(api::set_game_copy(&game.id, found.is_some(), false).await).flatten();
                 library.games.refetch();
                 library.recomps.refetch();
                 if set.is_some() {
-                    library.toast(format!("Cópia de {} configurada.", game.name));
+                    library.toast(tr!("Cópia de {} configurada.", game.name));
                 }
                 // Plays right away; Play itself refuses if anything is still missing.
                 set
@@ -194,7 +228,7 @@ pub fn play_game(library: Library, game: Game) {
                 let found = library.report(api::locate_game(&game.id).await).flatten();
                 library.games.refetch();
                 if let Some(found) = &found {
-                    library.toast(format!("{} está pronto para jogar.", found.name));
+                    library.toast(tr!("{} está pronto para jogar.", found.name));
                 }
                 None
             }
@@ -218,9 +252,13 @@ fn App() -> impl IntoView {
         toasts: RwSignal::new(Vec::new()),
         adopting: RwSignal::new(false),
         customizing: RwSignal::new(None),
+        failed: RwSignal::new(Default::default()),
+        speed: RwSignal::new(HashMap::new()),
+        started: RwSignal::new(HashMap::new()),
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
+    provide_context(updates::Updates::start());
     provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.
@@ -230,6 +268,13 @@ fn App() -> impl IntoView {
         }
     });
     api::on_session(move |event| {
+        library.started.update(|all| {
+            if event.running {
+                all.entry(event.game_id.clone()).or_insert_with(js_sys::Date::now);
+            } else {
+                all.remove(&event.game_id);
+            }
+        });
         library.running.update(|all| {
             if event.running {
                 all.insert(event.game_id.clone());
@@ -249,12 +294,15 @@ fn App() -> impl IntoView {
     api::on_toast(move |text| library.toast(text));
     tv::watch_for_tv(library);
     settings_page::apply_calm(settings_page::calm_saved());
+    settings_page::apply_size(settings_page::size_saved());
+    settings_page::apply_look(settings_page::look_saved());
 
     // The first time: the setup. Later, straight into the TV screen when that is how the player plays.
     let first_run = RwSignal::new(None::<cerberus_shared::SettingsView>);
     let first_run_open = RwSignal::new(false);
     spawn_local(async move {
         let Ok(settings) = api::get_settings().await else { return };
+        i18n::follow(settings.language.as_deref());
         if !settings.setup_done {
             first_run_open.set(true);
             first_run.set(Some(settings));
@@ -274,7 +322,37 @@ fn App() -> impl IntoView {
     // An installer finished but its game wasn't found: ask where it went.
     let locating: RwSignal<Option<String>> = RwSignal::new(None);
     api::on_needs_location(move |id| locating.set(Some(id)));
+    // Speed from how many bytes arrived since the last sample, at most twice a second.
+    let last_sample = StoredValue::new(HashMap::<String, (f64, u64)>::new());
     api::on_install_progress(move |progress| {
+        if let InstallStep::Downloading { done, .. } = progress.step {
+            let now = js_sys::Date::now();
+            let id = progress.recomp_id.clone();
+            let before = last_sample.with_value(|m| m.get(&id).copied());
+            match before {
+                Some((t, d)) if now - t >= 500.0 => {
+                    let rate = done.saturating_sub(d) as f64 / ((now - t) / 1000.0);
+                    last_sample.update_value(|m| {
+                        m.insert(id.clone(), (now, done));
+                    });
+                    library.speed.update(|all| {
+                        let list = all.entry(id).or_default();
+                        list.push(rate);
+                        if list.len() > 60 {
+                            list.remove(0);
+                        }
+                    });
+                }
+                Some(_) => {}
+                None => last_sample.update_value(|m| {
+                    m.insert(id, (now, done));
+                }),
+            }
+        } else {
+            last_sample.update_value(|m| {
+                m.remove(&progress.recomp_id);
+            });
+        }
         library.progress.update(|all| match progress.step {
             InstallStep::Failed { .. } => {
                 all.remove(&progress.recomp_id);
@@ -292,6 +370,8 @@ fn App() -> impl IntoView {
         Route::Downloads => view! { <pages::DownloadsPage /> }.into_any(),
         Route::Saves => view! { <pages::SavesPage /> }.into_any(),
         Route::News => view! { <news::NewsPage /> }.into_any(),
+        Route::Achievements => view! { <achievements::AchievementsPage /> }.into_any(),
+        Route::AchievementGame(source, key) => view! { <achievements::AchievementGamePage source key /> }.into_any(),
         Route::Classic(path) => view! { <classics::ClassicPage path /> }.into_any(),
         Route::Settings => view! { <settings_page::SettingsPage /> }.into_any(),
         // Drawn over the whole window instead, below.
@@ -324,7 +404,7 @@ fn App() -> impl IntoView {
                 library.go(Route::Game(game.id.clone()));
                 play_game(library, game);
             }
-            None => library.toast("O jogo desse atalho não está mais na biblioteca."),
+            None => library.toast(tr!("O jogo desse atalho não está mais na biblioteca.")),
         }
     });
     let editor = move || library.editing.get().map(|game| view! { <EditDialog game /> });
@@ -336,18 +416,18 @@ fn App() -> impl IntoView {
                 if library.report(api::locate_game(&id).await).flatten().is_some() {
                     locating.set(None);
                     library.games.refetch();
-                    library.toast("Pronto: o jogo está na biblioteca e abre pelo Cerberus.");
+                    library.toast(tr!("Pronto: o jogo está na biblioteca e abre pelo Cerberus."));
                 }
             });
         };
         Some(view! {
             <div class="backdrop-dim">
                 <div class="dialog">
-                    <h2>"Onde o jogo foi instalado?"</h2>
-                    <p class="muted">"O instalador terminou, mas o Cerberus não achou o jogo sozinho. Escolha o programa do jogo (o .exe) na pasta onde o instalador o colocou."</p>
+                    <h2>{tr!("Onde o jogo foi instalado?")}</h2>
+                    <p class="muted">{tr!("O instalador terminou, mas o Cerberus não achou o jogo sozinho. Escolha o programa do jogo (o .exe) na pasta onde o instalador o colocou.")}</p>
                     <div class="dialog-footer">
-                        <button type="button" class="btn" on:click=move |_| locating.set(None)>"Depois"</button>
-                        <button type="button" class="btn main" on:click=pick>"Escolher programa..."</button>
+                        <button type="button" class="btn" on:click=move |_| locating.set(None)>{tr!("Depois")}</button>
+                        <button type="button" class="btn main" on:click=pick>{tr!("Escolher programa...")}</button>
                     </div>
                 </div>
             </div>
@@ -375,6 +455,8 @@ fn App() -> impl IntoView {
         <Show when=move || library.adopting.get()><adopt::AdoptDialog /></Show>
         {move || library.customizing.get().map(|game| view! { <customize::CustomizeDialog game /> })}
         <shell::Toasts />
+        <updates::UpdateDialog />
+        <updates::WhatsNewDialog />
         {editor}
         {locate}
         <game_menu::GameMenuLayer />
@@ -432,11 +514,11 @@ fn EditDialog(game: Game) -> impl IntoView {
     view! {
         <div class="backdrop-dim" on:click=move |_| close()>
             <form class="dialog" on:click=|event| event.stop_propagation() on:submit=on_save>
-                <h2>"Editar jogo"</h2>
+                <h2>{tr!("Editar jogo")}</h2>
                 <div class="dialog-body">
                     <div class="preview">{preview}</div>
                     <div class="fields">
-                        <label for="game-name">"Nome"</label>
+                        <label for="game-name">{tr!("Nome")}</label>
                         <input
                             id="game-name"
                             class="input"
@@ -445,18 +527,18 @@ fn EditDialog(game: Game) -> impl IntoView {
                         />
                         <div class="row">
                             <button type="button" class="btn sm" on:click=on_find disabled=move || busy.get()>
-                                "Buscar capa na Steam"
+                                {tr!("Buscar capa na Steam")}
                             </button>
                             <button type="button" class="btn sm" on:click=on_pick disabled=move || busy.get()>
-                                "Escolher imagem..."
+                                {tr!("Escolher imagem...")}
                             </button>
                         </div>
-                        <p class="muted small">"A busca usa o nome acima. Mude o nome e busque de novo se a capa vier errada."</p>
+                        <p class="muted small">{tr!("A busca usa o nome acima. Mude o nome e busque de novo se a capa vier errada.")}</p>
                     </div>
                 </div>
                 <div class="dialog-footer">
-                    <button type="button" class="btn" on:click=move |_| close()>"Cancelar"</button>
-                    <button type="submit" class="btn main" disabled=move || busy.get()>"Salvar"</button>
+                    <button type="button" class="btn" on:click=move |_| close()>{tr!("Cancelar")}</button>
+                    <button type="submit" class="btn main" disabled=move || busy.get()>{tr!("Salvar")}</button>
                 </div>
             </form>
         </div>

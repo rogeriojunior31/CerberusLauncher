@@ -66,16 +66,17 @@ pub fn tag(text: &str) -> String {
     }
 }
 
+const NEEDS: &[(&str, &str)] = &[
+    ("Your own copy of ", "Sua cópia de "),
+    ("Your own dump of ", "Seu dump de "),
+    ("Your own disc image of ", "Sua imagem de disco de "),
+    ("Your own USA disc image of ", "Sua imagem de disco americana de "),
+    ("Your own USA copy of ", "Sua cópia americana de "),
+];
+
 /// "Your own copy of Mario Kart 64" -> "Sua cópia de Mario Kart 64".
 pub fn needs(text: &str) -> String {
-    const PATTERNS: &[(&str, &str)] = &[
-        ("Your own copy of ", "Sua cópia de "),
-        ("Your own dump of ", "Seu dump de "),
-        ("Your own disc image of ", "Sua imagem de disco de "),
-        ("Your own USA disc image of ", "Sua imagem de disco americana de "),
-        ("Your own USA copy of ", "Sua cópia americana de "),
-    ];
-    for (english, portuguese) in PATTERNS {
+    for (english, portuguese) in NEEDS {
         if let Some(rest) = text.strip_prefix(english) {
             return format!("{portuguese}{rest}");
         }
@@ -83,9 +84,53 @@ pub fn needs(text: &str) -> String {
     text.to_string()
 }
 
+/// The catalog is kept in Portuguese (the curated list is written in it, the
+/// site's is translated on load); in English, tags and "what you need" go back
+/// to English where the translation is known, and everything else stays as is.
+pub fn shown_tag(text: &str) -> String {
+    if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt {
+        return text.to_string();
+    }
+    match TAGS.iter().find(|(_, portuguese)| *portuguese == text) {
+        Some((english, _)) => capitalize(english),
+        None => text.to_string(),
+    }
+}
+
+pub fn shown_needs(text: &str) -> String {
+    if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt {
+        return text.to_string();
+    }
+    for (english, portuguese) in NEEDS {
+        if let Some(rest) = text.strip_prefix(portuguese) {
+            return format!("{english}{rest}");
+        }
+    }
+    text.to_string()
+}
+
+/// "controller support" -> "Controller support" (the list keeps English in lowercase).
+fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn english_players_see_the_catalog_in_english() {
+        use cerberus_shared::i18n::{Lang, with_lang};
+        let shown = with_lang(Lang::En, || (shown_tag("Suporte a controle"), shown_tag("Guitar Hero"), shown_needs("Sua cópia de Mario Kart 64")));
+        assert_eq!(shown.0, "Controller support");
+        assert_eq!(shown.1, "Guitar Hero");
+        assert_eq!(shown.2, "Your own copy of Mario Kart 64");
+        assert_eq!(shown_tag("Suporte a controle"), "Suporte a controle");
+    }
 
     #[test]
     fn translates_known_tags_and_keeps_names() {

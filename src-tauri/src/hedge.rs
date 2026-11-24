@@ -5,6 +5,7 @@
 //! Hedge Mod Manager writes, so a player who uses it keeps their list: the
 //! launcher only adds and takes out its own lines (ids `cerberus_gb_<mod>`).
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -106,7 +107,7 @@ fn mods_db(user: &str, exe_dir: &Path) -> Result<PathBuf, String> {
         if let Some(dir) = cfg_path.parent() {
             fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        fs::write(&cfg_path, cfg.text()).map_err(|e| format!("Não foi possível gravar o cpkredir.ini: {e}"))?;
+        fs::write(&cfg_path, cfg.text()).map_err(|e| tr!("Não foi possível gravar o cpkredir.ini: {}", e))?;
     }
     Ok(db)
 }
@@ -144,7 +145,7 @@ fn change_db(path: &Path, change: impl FnOnce(&mut Ini)) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    fs::write(path, db.text()).map_err(|e| format!("Não foi possível gravar o ModsDB.ini: {e}"))
+    fs::write(path, db.text()).map_err(|e| tr!("Não foi possível gravar o ModsDB.ini: {}", e))
 }
 
 pub fn db_id(mod_id: u64) -> String {
@@ -181,7 +182,7 @@ fn move_dir(from: &Path, to: &Path) -> Result<(), String> {
     if fs::rename(from, to).is_ok() {
         return Ok(());
     }
-    crate::recomp::copy_tree(from, to).map_err(|e| format!("Não foi possível copiar o mod: {e}"))
+    crate::recomp::copy_tree(from, to).map_err(|e| tr!("Não foi possível copiar o mod: {}", e))
 }
 
 /// Takes out folders the launcher put in `mods` (only plain names holding a mod.ini).
@@ -210,11 +211,11 @@ pub fn place(archive: &Path, mods: &Path, user: &str, mod_id: u64, name: &str, o
         let mut found = Vec::new();
         mod_folders(&unpacked, 0, &mut found);
         let folder = match found.as_slice() {
-            [] => return Err("Esse mod não tem mod.ini, então o jogo não o carrega. A página dele explica como instalar.".into()),
+            [] => return Err(tr!("Esse mod não tem mod.ini, então o jogo não o carrega. A página dele explica como instalar.").into()),
             [one] => one.clone(),
             many => {
                 let names: Vec<String> = many.iter().filter_map(|d| d.file_name()).map(|n| n.to_string_lossy().into_owned()).take(4).collect();
-                return Err(format!("Esse mod vem em várias versões ({}); escolha uma na página dele e instale à mão.", names.join(", ")));
+                return Err(tr!("Esse mod vem em várias versões ({}); escolha uma na página dele e instale à mão.", names.join(", ")));
             }
         };
         remove_folders(mods, old);
@@ -226,7 +227,7 @@ pub fn place(archive: &Path, mods: &Path, user: &str, mod_id: u64, name: &str, o
         let _ = fs::remove_dir_all(&target);
         fs::create_dir_all(mods).map_err(|e| e.to_string())?;
         move_dir(&folder, &target)?;
-        let ini = mod_ini(&target).ok_or("O mod.ini sumiu ao mover o mod.")?;
+        let ini = mod_ini(&target).ok_or(tr!("O mod.ini sumiu ao mover o mod."))?;
         let exe_dir = mods.parent().unwrap_or(mods);
         let db = mods_db(user, exe_dir)?;
         let id = db_id(mod_id);

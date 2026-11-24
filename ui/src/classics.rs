@@ -4,6 +4,7 @@
 //! recomp opens that recomp's page (which plays the original too); the others
 //! have their own page, played in RetroArch.
 
+use cerberus_shared::tr;
 use cerberus_shared::{RecompEntry, RomView};
 use leptos::prelude::*;
 
@@ -97,7 +98,7 @@ fn system_of(path: &str) -> &'static str {
 pub fn play_original(library: Library, path: String, console: String) {
     leptos::task::spawn_local(async move {
         if library.report(crate::api::play_classic(path, console).await).is_some() {
-            library.toast("Abrindo no RetroArch...");
+            library.toast(tr!("Abrindo no RetroArch..."));
         }
     });
 }
@@ -128,7 +129,7 @@ pub fn console_name(console: &str) -> &'static str {
         "wiiu" => "Wii U",
         "dc" => "Dreamcast",
         "saturn" => "Saturn",
-        _ => "Console",
+        _ => tr!("Console"),
     }
 }
 
@@ -185,7 +186,7 @@ pub fn box_art(rom: &RomView, console: &str) -> Vec<String> {
             other => format!("%{other:02X}"),
         })
         .collect();
-    vec![format!("https://raw.githubusercontent.com/libretro-thumbnails/{repo}/master/Named_Boxarts/{encoded}.png")]
+    vec![format!("https://raw.githubusercontent.com/libretro-thumbnails/{}/master/Named_Boxarts/{}.png", repo, encoded)]
 }
 
 #[component]
@@ -194,7 +195,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
     let roms = LocalResource::new(move || async move { crate::api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
     let grid = move || {
         let Some(list) = roms.get() else {
-            return view! { <p class="muted" role="status">"Procurando seus clássicos…"</p> }.into_any();
+            return view! { <p class="muted" role="status">{tr!("Procurando seus clássicos…")}</p> }.into_any();
         };
         let recomps: Vec<RecompEntry> = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let mut list: Vec<RomView> = list.into_iter().filter(|r| needle.is_empty() || display_name(r).to_lowercase().contains(&needle)).collect();
@@ -202,9 +203,9 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
         if list.is_empty() {
             return view! {
                 <div class="empty">
-                    <h2>"Nenhum clássico encontrado"</h2>
-                    <p class="muted">"Adicione as pastas onde você guarda ROMs e imagens de disco em Configurações › Biblioteca e ROMs."</p>
-                    <button type="button" class="btn" on:click=move |_| library.go(Route::Settings)>"Abrir Configurações"</button>
+                    <h2>{tr!("Nenhum clássico encontrado")}</h2>
+                    <p class="muted">{tr!("Adicione as pastas onde você guarda ROMs e imagens de disco em Configurações › Biblioteca e ROMs.")}</p>
+                    <button type="button" class="btn" on:click=move |_| library.go(Route::Settings)>{tr!("Abrir Configurações")}</button>
                 </div>
             }
             .into_any();
@@ -219,7 +220,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                 let (hover, alt) = (title.clone(), title.clone());
                 let emulated = EMULATED.contains(&console);
                 let sub = match &recomp {
-                    Some(e) if emulated => format!("{} · recomp ou RetroArch", console_name(console)),
+                    Some(e) if emulated => tr!("{} · recomp ou RetroArch", console_name(console)),
                     Some(e) => format!("{} · tem recomp: {}", console_name(console), e.name),
                     None if emulated => match rom.last_played {
                         Some(t) => format!("{} · jogado {} · {}", console_name(console), crate::format::ago(t), crate::format::playtime(rom.playtime_secs)),
@@ -227,7 +228,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
                     },
                     None => console_name(console).to_string(),
                 };
-                let badge = recomp.as_ref().map(|_| view! { <span class="chip">"Tem recomp"</span> });
+                let badge = recomp.as_ref().map(|_| view! { <span class="chip">{tr!("Tem recomp")}</span> });
                 let open = recomp.map(|e| e.id);
                 let path = rom.path.clone();
                 // A classic with a recomp opens the recomp's page, which offers both ways to play.
@@ -252,7 +253,7 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
             .collect_view();
         view! {
             <section class="catalog-results">
-                <h2>{if count == 1 { "1 clássico".to_string() } else { format!("{count} clássicos") }}</h2>
+                <h2>{if count == 1 { tr!("1 clássico").to_string() } else { tr!("{} clássicos", count) }}</h2>
                 <div class="grid">{tiles}</div>
             </section>
         }
@@ -287,7 +288,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
     let content = move || {
         let list = roms.get()?;
         let Some(rom) = list.into_iter().find(|r| r.path == wanted.get_value()) else {
-            return Some(view! { <div class="page"><p class="muted">"Esse jogo não está mais nas suas pastas de ROMs."</p></div> }.into_any());
+            return Some(view! { <div class="page"><p class="muted">{tr!("Esse jogo não está mais nas suas pastas de ROMs.")}</p></div> }.into_any());
         };
         let console = console_of(&rom);
         let title = display_name(&rom);
@@ -298,16 +299,16 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let play = if emulated {
             view! {
                 <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />"Jogar no RetroArch"
+                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar no RetroArch")}
                 </button>
             }
             .into_any()
         } else {
-            view! { <p class="muted small">"Esse console ainda não tem emulação no Cerberus."</p> }.into_any()
+            view! { <p class="muted small">{tr!("Esse console ainda não tem emulação no Cerberus.")}</p> }.into_any()
         };
         let to_recomp = recomp.map(|e| {
             let id = e.id.clone();
-            view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{format!("Ver o recomp: {}", e.name)}</button> }
+            view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{tr!("Ver o recomp: {}", e.name)}</button> }
         });
         let folder = rom.path.clone();
         let open_folder = move |_| {
@@ -316,18 +317,37 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 library.report(crate::api::open_rom_folder(folder).await);
             });
         };
-        let stats = [
-            ("Tempo de jogo", if rom.playtime_secs > 0 { crate::format::playtime(rom.playtime_secs) } else { "Ainda não jogado".to_string() }),
-            ("Última vez", rom.last_played.map(crate::format::ago).unwrap_or_else(|| "Nunca".to_string())),
-            ("Console", console_name(console).to_string()),
-            ("Região", if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
+        let facts = [
+            (tr!("Console"), console_name(console).to_string()),
+            (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
         ]
         .into_iter()
-        .chain((rom.discs.len() > 1).then(|| ("Discos", rom.discs.len().to_string())))
-        .into_iter()
-        .map(|(label, value)| view! { <div class="stat"><span>{label}</span><b>{value}</b></div> })
+        .chain((rom.discs.len() > 1).then(|| (tr!("Discos"), rom.discs.len().to_string())))
+        .map(|(label, value)| view! { <div><dt>{label}</dt><dd>{value}</dd></div> })
         .collect_view();
         let history_id = format!("classic:{}", rom.path);
+        let played = match (rom.playtime_secs, rom.last_played) {
+            (0, None) => tr!("Você ainda não jogou").to_string(),
+            (t, Some(last)) => tr!("Jogou por {} · última vez {}", crate::format::playtime(t), crate::format::ago(last)),
+            (t, None) => tr!("Jogou por {}", crate::format::playtime(t)),
+        };
+        // RetroAchievements for this ROM, found by its hash or its name.
+        let (ach_path, ach_console) = (rom.path.clone(), console.to_string());
+        let achievements = LocalResource::new(move || {
+            let (p, c) = (ach_path.clone(), ach_console.clone());
+            async move {
+                match crate::api::classic_achievements(&p, &c).await {
+                    Ok(Some(d)) => Ok(d),
+                    Ok(None) => Err(String::new()),
+                    Err(e) => Err(e),
+                }
+            }
+        });
+        let on_all = Callback::new(move |_| {
+            if let Some(Ok(d)) = achievements.get_untracked() {
+                library.go(Route::AchievementGame("retro".into(), d.game.key.clone()));
+            }
+        });
         Some(
             view! {
                 <div class="gp-hero">
@@ -338,22 +358,25 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     <section class="gp-head">
                         <div class="gp-cover"><Poster sources=art title=title.clone() /></div>
                         <div class="gp-info">
-                            <span class="kick">{format!("Clássico · {}", console_name(console))}</span>
+                            <span class="kick">{tr!("Clássico · {}", console_name(console))}</span>
                             <h1>{title.clone()}</h1>
+                            <span class="gp-played"><crate::icons::Svg icon=crate::icons::Icon::Clock size=15 />{played}</span>
                         </div>
                         <div class="gp-act">{to_recomp}{play}</div>
                     </section>
-                    <div class="stats">{stats}</div>
+                    <div class="ov">
+                    <div class="ov-main">
+                    <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played />
                     <section class="card classic-file">
                         <div class="card-h">
-                            <h3>{if rom.discs.len() > 1 { "Arquivos do jogo" } else { "Arquivo do jogo" }}</h3>
-                            <button type="button" class="btn sm" on:click=open_folder>"Abrir pasta"</button>
+                            <h3>{if rom.discs.len() > 1 { tr!("Arquivos do jogo") } else { tr!("Arquivo do jogo") }}</h3>
+                            <button type="button" class="btn sm" on:click=open_folder>{tr!("Abrir pasta")}</button>
                         </div>
                         {if rom.discs.len() > 1 {
                             let swap = if matches!(console, "ps1" | "gc") {
-                                "O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos."
+                                tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.")
                             } else {
-                                "O RetroArch abre o disco 1; esse console ainda não troca de disco pelo Cerberus. O Cerberus nunca altera esses arquivos."
+                                tr!("O RetroArch abre o disco 1; esse console ainda não troca de disco pelo Cerberus. O Cerberus nunca altera esses arquivos.")
                             };
                             view! {
                                 <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol>
@@ -362,11 +385,17 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                         } else {
                             view! {
                                 <span class="path">{rom.path.clone()}</span>
-                                <p class="muted small">"O RetroArch abre esse arquivo como está; o Cerberus nunca o altera."</p>
+                                <p class="muted small">{tr!("O RetroArch abre esse arquivo como está; o Cerberus nunca o altera.")}</p>
                             }.into_any()
                         }}
                     </section>
                     <crate::game::History id=history_id />
+                    </div>
+                    <aside class="ov-rail">
+                        <crate::game_overview::AchievementsCard data=achievements on_all />
+                        <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{facts}</dl></section>
+                    </aside>
+                    </div>
                 </div>
             }
             .into_any(),
@@ -375,7 +404,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
     view! {
         <div class="gp">
             <button type="button" class="btn glass back" on:click=move |_| library.back()>
-                <crate::icons::Svg icon=crate::icons::Icon::Back size=18 />"Voltar"
+                <crate::icons::Svg icon=crate::icons::Icon::Back size=18 />{tr!("Voltar")}
             </button>
             {content}
         </div>

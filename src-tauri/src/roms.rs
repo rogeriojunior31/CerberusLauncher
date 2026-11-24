@@ -5,6 +5,7 @@
 //! on it whatever the file is called; other cartridges and disc images are
 //! matched on their file name.
 
+use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
@@ -59,7 +60,7 @@ fn region_name(code: char) -> &'static str {
         'E' | 'N' => "americana (EUA)",
         'J' => "japonesa",
         'P' | 'X' | 'Y' => "europeia",
-        'D' => "alemã",
+        'D' => tr!("alemã"),
         'F' => "francesa",
         'I' => "italiana",
         'S' => "espanhola",
@@ -71,19 +72,15 @@ fn region_name(code: char) -> &'static str {
 /// Why this cartridge isn't the version the recomp needs, if it isn't.
 pub fn version_problem(code: &N64Code, wanted: &N64Wanted) -> Option<String> {
     if !wanted.id.is_empty() && !code.id.eq_ignore_ascii_case(&wanted.id) {
-        return Some(format!("Essa ROM é de outro jogo (código {}, esperado {}).", code.id, wanted.id));
+        return Some(tr!("Essa ROM é de outro jogo (código {}, esperado {}).", code.id, wanted.id));
     }
     if !wanted.regions.is_empty() && !wanted.regions.contains(code.region) {
         let wanted_names: Vec<&str> = wanted.regions.chars().map(region_name).collect();
-        return Some(format!(
-            "Essa ROM é a versão {}; esse recomp precisa da versão {}.",
-            region_name(code.region),
-            wanted_names.join(" ou ")
-        ));
+        return Some(tr!("Essa ROM é a versão {}; esse recomp precisa da versão {}.", region_name(code.region), wanted_names.join(tr!(" ou "))));
     }
     if !wanted.revisions.is_empty() && !wanted.revisions.contains(&code.revision) {
         let list: Vec<String> = wanted.revisions.iter().map(|r| format!("1.{r}")).collect();
-        return Some(format!("Essa ROM é a revisão 1.{}; esse recomp precisa da {}.", code.revision, list.join(" ou ")));
+        return Some(tr!("Essa ROM é a revisão 1.{}; esse recomp precisa da {}.", code.revision, list.join(tr!(" ou "))));
     }
     None
 }

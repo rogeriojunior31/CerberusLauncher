@@ -1,5 +1,52 @@
 # Novidades
 
+## 0.11.0 — conquistas, Novidades e do seu jeito
+
+### Idiomas
+
+- O Cerberus agora fala **inglês** e **português do Brasil**: segue o idioma do Windows, ou você escolhe na primeira tela e em **Configurações → Aparência → Idioma**.
+- Mensagens, erros, histórico e o catálogo aparecem no idioma escolhido, com datas no formato de cada um.
+- Documentação completa em `docs/` e README em inglês e português.
+
+### Início, menu lateral e Novidades
+
+- Banner com o logo do jogo, sua última sessão, tempo total e conquistas; botão **Jogar** na própria capa; fileira de Favoritos.
+- Menu lateral com **Prontos para jogar**: os jogos que dá para abrir agora, com filtro. Embaixo, **+** (adicionar jogo), Big Picture e Configurações.
+- **Novidades** mostra os anúncios dos desenvolvedores dos seus jogos da Steam, além das atualizações e da atividade recente.
+
+### Biblioteca e Descobrir
+
+- Jogos da sua conta Steam que não estão instalados, com **Instalar**.
+- Situação, nota e anotações de cada jogo, e jogo aleatório.
+- Barra de conquistas na capa; a 100% o jogo vira **Platinado**.
+- Descobrir com filtro por gênero e pelo que o recomp traz (controle, conquistas, multijogador, tela larga, mods).
+
+### Conquistas
+
+- Hub com Steam e RetroAchievements: platinados, perto dos 100%, últimas desbloqueadas e a lista de cada jogo com raridade.
+- Aviso por cima do jogo quando uma conquista cai, no canto que você escolher.
+- Chave opcional da Web API da Steam para a conta inteira.
+
+### Página do jogo, Downloads e Saves
+
+- Dados da loja da Steam, galeria com trailers, gráfico de jogatina e coluna lateral.
+- Downloads em seções, limite de velocidade e mais devagar enquanto você joga.
+- Saves com status de cada jogo, nuvem e histórico na própria página.
+
+### Big Picture Mode
+
+- Página de jogo completa, filtros na Biblioteca, gêneros no Descobrir e aba de Conquistas com a lista de cada jogo.
+- O jogo aberto aparece no topo, e os avisos aparecem no tamanho da TV.
+
+### Configurações
+
+- Busca: digite parte do nome e vá direto para a opção.
+- **Aparência:** tema Escuro ou Preto (OLED), cinco cores de destaque e tamanho da janela (90% a 125%).
+- **Durante o jogo**, **Notificações**, **Controles** e **Epic Games**.
+- **Armazenamento:** copiar os seus dados num `.zip` (sem chaves nem senhas) e restaurar de uma cópia.
+- Configuração inicial começa pelo idioma e termina mostrando o que o Cerberus achou no PC.
+- O próprio Cerberus avisa quando tem versão nova.
+
 ## 0.10.0 — primeira versão para Windows
 
 Primeira versão com instalador. Baixe `Cerberus-Launcher_0.10.0_x64-setup.exe` em Assets e instale.

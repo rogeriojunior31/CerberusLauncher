@@ -6,6 +6,7 @@
 //! A game update that brings its own DLL makes the kept copy pointless, so it
 //! is dropped then.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -95,16 +96,16 @@ fn same_size(a: &Path, b: &Path) -> bool {
 fn target(game_dir: &Path, relative: &str) -> Result<(PathBuf, PathBuf), String> {
     let relative = PathBuf::from(relative);
     if !inside(&relative) || !find(game_dir).contains(&relative) {
-        return Err("Esse arquivo não é um DLSS do jogo.".into());
+        return Err(tr!("Esse arquivo não é um DLSS do jogo.").into());
     }
     Ok((game_dir.join(&relative), relative))
 }
 
 fn locked(e: std::io::Error) -> String {
     if e.raw_os_error() == Some(32) {
-        "O arquivo está em uso: feche o jogo e tente de novo.".into()
+        tr!("O arquivo está em uso: feche o jogo e tente de novo.").into()
     } else {
-        format!("Não foi possível trocar o arquivo: {e}")
+        tr!("Não foi possível trocar o arquivo: {}", e)
     }
 }
 
@@ -118,19 +119,19 @@ fn swap_with(data: &Path, game_id: &str, game_dir: &Path, relative: &str, new_fi
     let name = here.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let picked = new_file.file_name().unwrap_or_default().to_string_lossy().into_owned();
     if !picked.eq_ignore_ascii_case(&name) {
-        return Err(format!("Escolha um arquivo {name} (o escolhido é {picked})."));
+        return Err(tr!("Escolha um arquivo {} (o escolhido é {}).", name, picked));
     }
-    let new_version = version_of(new_file).ok_or("Esse arquivo não tem versão: não parece uma DLL do DLSS.")?;
+    let new_version = version_of(new_file).ok_or(tr!("Esse arquivo não tem versão: não parece uma DLL do DLSS."))?;
     if !is_dlss(new_file) {
-        return Err("Esse arquivo não é da NVIDIA: não parece uma DLL do DLSS.".into());
+        return Err(tr!("Esse arquivo não é da NVIDIA: não parece uma DLL do DLSS.").into());
     }
     if dunce::canonicalize(new_file).ok() == dunce::canonicalize(&here).ok() {
-        return Err("Esse já é o arquivo do jogo.".into());
+        return Err(tr!("Esse já é o arquivo do jogo.").into());
     }
     let backup = kept(data, game_id, &relative);
     if !backup.is_file() {
         fs::create_dir_all(backup.parent().unwrap_or(data)).map_err(|e| e.to_string())?;
-        fs::copy(&here, &backup).map_err(|e| format!("Não foi possível guardar o arquivo do jogo: {e}"))?;
+        fs::copy(&here, &backup).map_err(|e| tr!("Não foi possível guardar o arquivo do jogo: {}", e))?;
     }
     // Copied beside it first, then swapped in one step.
     let fresh = here.with_extension("dll.cerberus-new");
@@ -147,7 +148,7 @@ pub fn restore(data: &Path, game_id: &str, game_dir: &Path, relative: &str) -> R
     let (here, relative) = target(game_dir, relative)?;
     let backup = kept(data, game_id, &relative);
     if !backup.is_file() {
-        return Err("O arquivo original não está guardado.".into());
+        return Err(tr!("O arquivo original não está guardado.").into());
     }
     let fresh = here.with_extension("dll.cerberus-new");
     fs::copy(&backup, &fresh).map_err(locked)?;

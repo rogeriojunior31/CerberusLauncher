@@ -49,6 +49,39 @@ fn kind_of(id: &str) -> PadKind {
     }
 }
 
+/// A controller as the player knows it: "Xbox 360 Controller", not the driver's long id.
+pub fn pad_name(id: &str) -> String {
+    let name = id.split(" (").next().unwrap_or(id).trim();
+    if name.is_empty() { id.to_string() } else { name.to_string() }
+}
+
+/// The controllers Windows passes to Cerberus now: name, kind, and the button
+/// held (by its printed label), for the check in Settings.
+pub fn connected_pads() -> Vec<(String, PadKind, Option<&'static str>)> {
+    let Some(pads) = web_sys::window().and_then(|w| w.navigator().get_gamepads().ok()) else { return Vec::new() };
+    pads.iter()
+        .filter_map(|p| p.dyn_into::<web_sys::Gamepad>().ok())
+        .filter(|p| p.connected())
+        .map(|pad| {
+            let kind = kind_of(&pad.id());
+            let buttons = pad.buttons();
+            let down = |i: u32| buttons.get(i).dyn_into::<web_sys::GamepadButton>().is_ok_and(|b| b.pressed());
+            let labels: [&'static str; 4] = match kind {
+                PadKind::PlayStation => ["\u{2715}", "\u{25CB}", "\u{25A1}", "\u{25B3}"],
+                PadKind::Nintendo => ["B", "A", "Y", "X"],
+                PadKind::Xbox => ["A", "B", "X", "Y"],
+            };
+            let held = (0..4u32).find(|&i| down(i)).map(|i| labels[i as usize]).or_else(|| {
+                [(4, "LB"), (5, "RB"), (8, "View"), (9, "Menu"), (12, "\u{2191}"), (13, "\u{2193}"), (14, "\u{2190}"), (15, "\u{2192}")]
+                    .into_iter()
+                    .find(|(i, _)| down(*i))
+                    .map(|(_, l)| l)
+            });
+            (pad_name(&pad.id()), kind, held)
+        })
+        .collect()
+}
+
 const REPEAT_FIRST: f64 = 400.0;
 const REPEAT_NEXT: f64 = 120.0;
 const MENU_HOLD: f64 = 900.0;
@@ -220,6 +253,12 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pad_names_drop_the_driver_details() {
+        assert_eq!(pad_name("Xbox 360 Controller (XInput STANDARD GAMEPAD)"), "Xbox 360 Controller");
+        assert_eq!(pad_name("Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)"), "Wireless Controller");
+    }
 
     #[test]
     fn pads_are_told_apart_by_their_names() {

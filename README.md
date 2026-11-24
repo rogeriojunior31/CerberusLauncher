@@ -13,6 +13,8 @@
 
 **English** · [Português (Brasil)](README.pt-BR.md)
 
+[Download](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+
 <img src="docs/screenshots/home.jpg" alt="Cerberus home screen" width="900" />
 
 </div>
@@ -26,39 +28,47 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 - **It brings your PC games together.** Games from Steam and Epic show up on their own, and any `.exe` can be added by hand.
 - **It installs and updates recomps.** A *recomp* is a native PC version of a console game that the community rebuilt from the original code (Zelda 64: Recompiled, Ship of Harkinian, Unleashed Recompiled and many more). Cerberus downloads each one straight from its developers' official releases and hands it **your own copy** of the game.
 - **It plays your classics.** ROMs from your folders open in RetroArch, which Cerberus installs and sets up for you, with RetroAchievements.
+- **It follows your achievements.** Steam and RetroAchievements on one page, with awards, rarity and a notice the moment one unlocks.
 
 > [!IMPORTANT]
 > **Cerberus never downloads game files.** Every recomp and every classic needs a copy of the game that you own.
 
 > [!NOTE]
-> The interface is in **Brazilian Portuguese** for now. This README shows each button as it appears in the app, with the English meaning in parentheses.
+> Cerberus speaks **English** and **Brazilian Portuguese**. It follows your Windows language, and you can pick one in **Settings → Appearance → Language**. More languages are on the way.
 
 ## Features
 
 | | |
 |---|---|
-| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library** (*Biblioteca*)<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. |
-| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover** (*Descobrir*)<br>Over 1,500 recomps and native ports. You can search by game, console or author. Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
+| <img src="docs/screenshots/library.jpg" alt="Library" /> | **Library**<br>Steam, Epic and your own games in one place. You get favorites, collections, hidden games, custom art from SteamGridDB, and play time and history for every game. Every game you can start right now is also in the side menu, under **Ready to play**. |
+| <img src="docs/screenshots/discover.jpg" alt="Discover" /> | **Discover**<br>Over 1,500 recomps and native ports. You can search by game, console or author, and filter by genre or by what a recomp adds (controller, achievements, multiplayer, widescreen, mods). Installs come from the developers' GitHub, GitLab or Forgejo releases, with checksum verification. You can pause and resume downloads. |
 | <img src="docs/screenshots/game-page.jpg" alt="Game page" /> | **Game page**<br>Play time, versions, saves, game settings, mods, screenshots and management, all in one page. **Easy Setup** finds your copy in your ROM folders and delivers it the way each recomp expects. That works for a ROM, an extracted folder, an ISO, an Xbox or Xbox 360 image, a CHD or a CSO. |
-| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>A TV interface for the couch. You can use a controller, keyboard or mouse, and it opens full screen on the monitor you choose. |
+| <img src="docs/screenshots/achievements.jpg" alt="Achievements" /> | **Achievements**<br>Steam and RetroAchievements on one page: your platinums (games at 100%), the games closest to it, the latest unlocks and each game's full list with rarity. A notice shows over the game the moment one unlocks. |
+| <img src="docs/screenshots/big-picture.jpg" alt="Big Picture Mode" /> | **Big Picture Mode**<br>A TV interface for the couch. You can use a controller, keyboard or mouse, and it opens full screen on the monitor you choose. It has its own Library filters, genres in Discover, an Achievements tab and TV-sized notices. |
+| <img src="docs/screenshots/news.jpg" alt="News" /> | **News**<br>Updates waiting for your recomps, the latest announcements from the developers of your Steam games, and what happened lately with every game. |
 
 ### And also
 
+- **Achievements hub:** every game with achievements from Steam and RetroAchievements, the latest unlocks, your platinums (games at 100%), the games closest to it, and each game's full list with rarity and secret achievements. RetroAchievements awards (beaten, completed, mastered) show as badges, hardcore ones in gold. Steam works straight from this PC; with your free Steam Web API key it covers your whole account. While you play a Steam game, Cerberus tells you when an achievement unlocks.
+- **Make it yours:** Dark or Black (OLED) theme, five accent colors, window size from 90% to 125%, and a search box in **Settings** that takes you straight to any option.
+- **Your data in one file:** **Settings → Storage → Copy my data** saves the library, favorites, collections, notes, play time, chosen covers and settings in a `.zip` (never your keys or passwords). **Restore from a copy** brings it back, on this PC or another one.
 - **Save backups:** after every session, before updates and before uninstalling. Cerberus keeps the 10 most recent backups, and can copy them to the cloud through any synced folder (OneDrive, Google Drive, Dropbox).
 - **Mods:** one-click mods from Thunderstore and GameBanana, including Ship of Harkinian, Starship, SpaghettiKart, Ghostship, Unleashed and Marathon Recompiled.
-- **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game".
+- **In-game tools:** <kbd>F12</kbd> takes a screenshot of just the game window. <kbd>Ctrl</kbd>+<kbd>F12</kbd> (or **View + Menu** on a controller) opens a menu on top of the game, with play time, screenshots, "back to Cerberus" and "close game". **Settings → While playing** turns each one on or off, picks the corner for achievement notices, and can minimize Cerberus while a game runs.
 - **Visual filters:** Sharp, Vivid, CRT and Film, applied with ReShade.
 - **Crash explanations:** when a game closes with an error, Cerberus tells you the cause and where the game's log is. The cause can be a missing DLL, an old Visual C++ runtime or a crash.
 - **DLSS:** Cerberus shows which DLSS version a game uses. You can swap it for a DLL you already have and go back to the original at any time.
 - **Steam integration:** add any game to Steam (for Steam Deck and Big Picture), or create a desktop shortcut that opens the game through Cerberus.
 - **Multi-disc classics:** games on several discs show up as one game, and you swap discs from RetroArch's menu.
-- **Windows integration:** tray icon, start with Windows, notifications, and only one copy of Cerberus running at a time.
+- **Windows integration:** tray icon, start with Windows, notifications you choose one by one, and only one copy of Cerberus running at a time.
+- **Controllers:** **Settings → Controllers** lists the connected controllers (Xbox, PlayStation, Nintendo) and lets you test every button.
+- **Languages:** English and Brazilian Portuguese, following Windows or picked in the settings. The installer speaks both too.
 
 ## Download and install
 
 1. Download **`Cerberus-Launcher_<version>_x64-setup.exe`** from the [latest release](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest).
 2. Run it. It installs for your user only, so it doesn't ask for administrator rights.
-3. On the last page, keep **Executar o Cerberus Launcher** (*Run Cerberus Launcher*) checked. The setup guide opens.
+3. On the last page, keep **Run Cerberus Launcher** checked. The setup guide opens.
 
 <img src="docs/screenshots/installer.png" alt="Installer" width="380" />
 
@@ -72,27 +82,29 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 
 ## Getting started
 
-The first time Cerberus opens, a short setup guide asks a few questions. You can change every answer later in **Configurações** (*Settings*).
+The first time Cerberus opens, a short setup guide asks a few questions. You can change every answer later in **Settings**.
 
 <img src="docs/screenshots/first-run.jpg" alt="First-run setup" width="700" />
 
-1. **How you play:** at a desk, or on a TV. If you pick TV, Cerberus starts straight in Big Picture Mode.
-2. **Your ROM folders:** Cerberus scans them and shows which of your games already have a recomp.
-3. **Where recomps are installed,** with the free space on each drive.
-4. **Saves in the cloud:** a folder that OneDrive, Google Drive or Dropbox keeps in sync.
+1. **Language:** automatic (follows Windows), Português (Brasil) or English.
+2. **How you play:** at a desk, or on a TV. If you pick TV, Cerberus starts straight in Big Picture Mode.
+3. **Your ROM folders:** Cerberus scans them and shows which of your games already have a recomp.
+4. **Where recomps are installed,** with the free space on each drive.
+5. **Saves in the cloud:** a folder that OneDrive, Google Drive or Dropbox keeps in sync.
+6. **All set:** your games that have a recomp, and what else Cerberus found on this PC: Steam and Epic games, and RetroArch.
 
 ### Install a recomp
 
-1. Open **Descobrir** (*Discover*) and search for a game, for example *Mario Kart 64*.
-2. Click **Instalar** (*Install*). Cerberus downloads the developers' release and checks the file.
+1. Open **Discover** and search for a game, for example *Mario Kart 64*.
+2. Click **Install**. Cerberus downloads the developers' release and checks the file.
 3. On the game page, **Easy Setup** shows the copy it found in your ROM folders. If it didn't find one, pick the file yourself.
-4. Click **Jogar** (*Play*). From now on, play time, save backups and history are tracked.
+4. Click **Play**. From now on, play time, save backups and history are tracked.
 
 ### Add any other game
 
-Click **Adicionar jogo** (*Add game*) and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
+Click **+** (Add game) at the bottom of the side menu and pick the game's `.exe`. Cerberus finds its name and cover, and you can edit both.
 
-Some games open a launcher before the game itself. For those, choose which program counts as playing under **Gerenciar → Processo acompanhado** (*Manage → Tracked process*).
+Some games open a launcher before the game itself. For those, choose which program counts as playing under **Manage → Tracked process**.
 
 ### Shortcuts
 
@@ -139,16 +151,31 @@ Cerberus keeps the game's own DLL and can put it back at any time. A game update
 </details>
 
 <details>
+<summary><b>Some of my Steam achievements are missing.</b></summary>
+
+Without a key, Cerberus reads only what Steam has synced on this PC. Connect your free Steam Web API key in **Settings → Accounts → Steam**, and set **Game details** to **Public** in Steam's privacy settings. See [Achievements](docs/guide/achievements.md).
+</details>
+
+<details>
 <summary><b>Can I use the RetroArch I already have?</b></summary>
 
-Yes: in **Configurações → Emulação** (*Settings → Emulation*), point Cerberus to your `retroarch.exe`.
+Yes: in **Settings → Emulation**, point Cerberus to your `retroarch.exe`.
 </details>
 
 <details>
 <summary><b>A recomp I like isn't in the catalog.</b></summary>
 
-Use **Pedir um recomp** (*Request a recomp*) in Discover, or [open an issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). The catalog updates without a new version of Cerberus.
+Use **Request a recomp** in Discover, or [open an issue](https://github.com/rogeriojunior31/CerberusLauncher/issues/new/choose). The catalog updates without a new version of Cerberus.
 </details>
+
+## Documentation
+
+The full documentation lives in **[docs/](docs/README.md)**:
+
+- **Getting started:** [Installation](docs/getting-started/installation.md) · [First launch](docs/getting-started/first-launch.md)
+- **User guide:** [Home and News](docs/guide/home-and-news.md) · [Library](docs/guide/library.md) · [Recomps](docs/guide/recomps.md) · [Easy Setup](docs/guide/easy-setup.md) · [Classics](docs/guide/classics.md) · [Achievements](docs/guide/achievements.md) · [Saves](docs/guide/saves.md) · [Mods](docs/guide/mods.md) · [While you play](docs/guide/in-game.md) · [Big Picture Mode](docs/guide/big-picture.md) · [Managing a game](docs/guide/managing-games.md) · [Settings](docs/guide/settings.md)
+- **Help:** [Troubleshooting](docs/help/troubleshooting.md) · [FAQ](docs/help/faq.md) · [Data and privacy](docs/help/data-and-privacy.md)
+- **Development:** [Architecture](docs/development/architecture.md) · [Building](docs/development/building.md) · [Recomp catalog](docs/development/catalog.md) · [Catalog sources](docs/development/catalog-sources.md) · [Translations](docs/development/translations.md) · [Releasing](docs/development/releasing.md)
 
 ## Building from source
 
@@ -164,7 +191,7 @@ cargo tauri build    # Windows installer in target/release/bundle/nsis
 cargo test --workspace
 ```
 
-**[CONTRIBUTING.md](CONTRIBUTING.md)** covers the project layout, how the recomp catalog is maintained and the format of custom catalog sources.
+See **[Building](docs/development/building.md)** for details, and **[Architecture](docs/development/architecture.md)** for how the code is organized.
 
 ## Contributing
 

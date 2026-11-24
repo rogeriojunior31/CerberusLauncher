@@ -1,0 +1,50 @@
+# Big Picture Mode
+
+A full-screen interface made for the couch, with a controller, keyboard or mouse.
+
+![Big Picture Mode](../screenshots/big-picture.jpg)
+
+## Open and leave
+
+- **Open:** click **Big Picture Mode** in the sidebar, press <kbd>F11</kbd>, or hold **Menu** on a controller for a second.
+- **Leave:** hold **Menu** again, press <kbd>F11</kbd>, or choose **Leave Big Picture Mode** in its settings.
+- To always start in it, turn on **Settings → Big Picture Mode → Open in Big Picture Mode**, or choose **On a TV** in the setup guide.
+
+It opens on the monitor chosen in **Settings → General → Monitor**. That option shows up only with more than one monitor.
+
+## Sections
+
+**Home**, **Library**, **Discover**, **Achievements**, **Downloads** and **Settings**, switched with **LB / RB**.
+
+- **Library:** chips for All, Favorites, Playing, Recomps, Steam and Epic, and an order (Recent, A–Z, Most played).
+- **Discover:** the whole catalog, with chips on top: search, only the games you have, genre (**A** goes to the next one: action, platformers, racing...) and order.
+- **Achievements:** your totals and platinums, then rows of games close to 100%, platinums and recent unlocks, each cover with its count and bar. **A** opens the game's page; games that aren't in the library (RetroAchievements classics, for example) open their own list: unlocked first, then the rest from the most common, with points and dates. Secret ones stay hidden until you press **A** on them.
+- **A game's page:** for Steam games, the store description, pictures (A opens them full screen, the D-pad changes picture), achievements and details. While the game runs, the main button is **Back to game**.
+- The top bar shows the game you're playing and for how long.
+- Notices (backup done, install finished, errors) show at the top right, sized for the TV.
+
+![A game's achievements in Big Picture Mode](../screenshots/big-picture-achievements.jpg)
+
+## Controls
+
+| Action | Controller | Keyboard |
+|---|---|---|
+| Move | D-pad or left stick | Arrow keys |
+| Play / choose | **A** | <kbd>Enter</kbd> |
+| Back | **B** | <kbd>Esc</kbd> |
+| Game page | **Y** | <kbd>Y</kbd> |
+| Options | **X** | <kbd>X</kbd> |
+| Switch sections | **LB / RB** | <kbd>Page Up</kbd> / <kbd>Page Down</kbd> |
+| Settings | Tap **Menu** | <kbd>F10</kbd> |
+| Leave | Hold **Menu** | <kbd>F11</kbd> |
+
+Xbox, PlayStation and Nintendo controllers are told apart by name. On Nintendo controllers, the A and B buttons follow their printed labels.
+
+Search uses an on-screen keyboard. A physical keyboard types straight into it.
+
+**Navigation sounds** can be turned off in **Settings → Big Picture Mode**.
+
+## See also
+
+- [While you play](in-game.md)
+- [Settings](settings.md#big-picture-mode)

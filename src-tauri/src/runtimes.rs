@@ -4,6 +4,7 @@
 //! XAudio 2.7) that Windows doesn't bring and older PC ports still load. Both
 //! are installed from Microsoft's own links.
 
+use cerberus_shared::tr;
 use std::path::Path;
 use std::time::Duration;
 
@@ -59,7 +60,7 @@ pub fn dx_missing() -> Vec<String> {
 
 /// Installs or updates Visual C++. Returns the version installed afterwards.
 pub async fn install_vc(http: &reqwest::Client, downloads: &Path) -> Result<Option<String>, String> {
-    run_microsoft_installer(http, downloads, "Visual C++", VC_URL, "vc_redist.x64.exe", 5_000_000, &["/install", "/passive", "/norestart"]).await?;
+    run_microsoft_installer(http, downloads, tr!("Visual C++"), VC_URL, "vc_redist.x64.exe", 5_000_000, &["/install", "/passive", "/norestart"]).await?;
     Ok(vc_version())
 }
 
@@ -78,15 +79,15 @@ async fn run_microsoft_installer(http: &reqwest::Client, downloads: &Path, what:
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("Não foi possível baixar o {what}: {e}"))?;
+        .map_err(|e| tr!("Não foi possível baixar o {}: {}", what, e))?;
     // Only Microsoft's own servers, wherever the link points.
     let host = reply.url().host_str().unwrap_or_default().to_lowercase();
     if !(host == "microsoft.com" || host.ends_with(".microsoft.com")) {
-        return Err(format!("O link da Microsoft levou a outro site ({host}); a instalação foi cancelada."));
+        return Err(tr!("O link da Microsoft levou a outro site ({}); a instalação foi cancelada.", host));
     }
     let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
     if bytes.len() < smallest || !bytes.starts_with(b"MZ") {
-        return Err(format!("O instalador do {what} veio incompleto."));
+        return Err(tr!("O instalador do {} veio incompleto.", what));
     }
     std::fs::create_dir_all(downloads).map_err(|e| e.to_string())?;
     let installer = downloads.join(file);
@@ -95,13 +96,13 @@ async fn run_microsoft_installer(http: &reqwest::Client, downloads: &Path, what:
     let status = tauri::async_runtime::spawn_blocking(move || std::process::Command::new(&installer).args(&args).status())
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
+    .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))?;
     match status.code() {
         // Done; already newer; done but a restart is due.
         Some(0 | 1638 | 3010) => Ok(()),
-        Some(1602) => Err("Instalação cancelada.".into()),
-        Some(code) => Err(format!("O instalador do {what} terminou com o código {code}.")),
-        None => Err(format!("O instalador do {what} foi interrompido.")),
+        Some(1602) => Err(tr!("Instalação cancelada.").into()),
+        Some(code) => Err(tr!("O instalador do {} terminou com o código {}.", what, code)),
+        None => Err(tr!("O instalador do {} foi interrompido.", what)),
     }
 }
 

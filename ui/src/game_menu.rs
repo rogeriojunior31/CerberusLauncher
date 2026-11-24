@@ -1,6 +1,7 @@
 //! The menu a right click on a game's cover opens, as in Hydra: play, its
 //! page, favorite, collections, hiding, and its folder, without opening the page first.
 
+use cerberus_shared::tr;
 use cerberus_shared::Game;
 use leptos::prelude::*;
 
@@ -59,12 +60,12 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
         leptos::task::spawn_local(async move {
             if library.report(api::set_in_collection(&name, &id, on).await).is_some() {
                 library.games.refetch();
-                library.toast(if on { format!("Adicionado à coleção {name}.") } else { format!("Tirado da coleção {name}.") });
+                library.toast(if on { tr!("Adicionado à coleção {}.", name) } else { tr!("Tirado da coleção {}.", name) });
             }
         });
     };
     view! {
-        <span class="ctx-h">"Coleções"</span>
+        <span class="ctx-h">{tr!("Coleções")}</span>
         {move || names.get().and_then(Result::ok).unwrap_or_default().into_iter().map(|name| {
             let on = in_shelves.with_value(|s| s.contains(&name));
             let label = name.clone();
@@ -77,14 +78,14 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
         {move || if typing.get() {
             view! {
                 <form class="ctx-form" on:submit=move |e| { e.prevent_default(); put(typed.get_untracked(), true); }>
-                    <input class="input" type="text" maxlength="40" placeholder="Nome da coleção" aria-label="Nome da nova coleção" node_ref=name_box
+                    <input class="input" type="text" maxlength="40" placeholder=tr!("Nome da coleção") aria-label=tr!("Nome da nova coleção") node_ref=name_box
                         prop:value=move || typed.get() on:input=move |e| typed.set(event_target_value(&e)) />
                 </form>
             }.into_any()
         } else {
             view! {
                 <button type="button" role="menuitem" on:click=move |_| typing.set(true)>
-                    <Svg icon=Icon::Plus size=16 />"Nova coleção…"
+                    <Svg icon=Icon::Plus size=16 />{tr!("Nova coleção…")}
                 </button>
             }.into_any()
         }}
@@ -98,7 +99,7 @@ pub fn GameMenuLayer() -> impl IntoView {
     move || {
         let (game, x, y) = menu.0.get()?;
         let running = library.running.with(|all| all.contains(&game.id));
-        let (play_label, play_icon) = if running { ("Jogando", Icon::Play) } else { crate::launch_action(&game) };
+        let (play_label, play_icon) = if running { (tr!("Jogando"), Icon::Play) } else { crate::launch_action(&game) };
         let has_folder = !game.install_dir.is_empty();
         let (id, on) = (game.id.clone(), game.favorite);
         let page_id = game.id.clone();
@@ -117,11 +118,11 @@ pub fn GameMenuLayer() -> impl IntoView {
                     <Svg icon=play_icon size=16 />{play_label}
                 </button>
                 <button type="button" role="menuitem" on:click=move |_| { menu.close(); library.go(Route::Game(page_id.clone())); }>
-                    <Svg icon=Icon::Info size=16 />"Página do jogo"
+                    <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
                 </button>
                 <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
                     <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
-                    {if on { "Tirar dos favoritos" } else { "Adicionar aos favoritos" }}
+                    {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}
                 </button>
                 <button type="button" role="menuitem" on:click=move |_| {
                     menu.close();
@@ -129,14 +130,14 @@ pub fn GameMenuLayer() -> impl IntoView {
                     leptos::task::spawn_local(async move {
                         if library.report(api::set_hidden(&id, !hidden).await).is_some() {
                             library.games.refetch();
-                            library.toast(if hidden { "O jogo voltou para a biblioteca." } else { "Jogo oculto. Ele fica na aba Ocultos da biblioteca." });
+                            library.toast(if hidden { tr!("O jogo voltou para a biblioteca.") } else { tr!("Jogo oculto. Ele fica na aba Ocultos da biblioteca.") });
                         }
                     });
                 }>
-                    <Svg icon=Icon::EyeOff size=16 />{if hidden { "Mostrar na biblioteca" } else { "Ocultar da biblioteca" }}
+                    <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
                 </button>
                 <Shelves id=shelf_id in_shelves />
-                {
+                {has_folder.then(|| {
                     let id = game.id.clone();
                     view! {
                         <button type="button" role="menuitem" on:click=move |_| {
@@ -144,21 +145,21 @@ pub fn GameMenuLayer() -> impl IntoView {
                             let id = id.clone();
                             leptos::task::spawn_local(async move {
                                 if library.report(api::create_shortcut(&id).await).is_some() {
-                                    library.toast("Atalho criado na área de trabalho.");
+                                    library.toast(tr!("Atalho criado na área de trabalho."));
                                 }
                             });
                         }>
-                            <Svg icon=Icon::External size=16 />"Criar atalho na área de trabalho"
+                            <Svg icon=Icon::External size=16 />{tr!("Criar atalho na área de trabalho")}
                         </button>
                     }
-                }
+                })}
                 {has_folder.then(|| view! {
                     <button type="button" role="menuitem" on:click=move |_| {
                         menu.close();
                         let id = folder_id.clone();
                         leptos::task::spawn_local(async move { library.report(api::open_folder(&id).await); });
                     }>
-                        <Svg icon=Icon::Folder size=16 />"Abrir pasta do jogo"
+                        <Svg icon=Icon::Folder size=16 />{tr!("Abrir pasta do jogo")}
                     </button>
                 })}
             </div>

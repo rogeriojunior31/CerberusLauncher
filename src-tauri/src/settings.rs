@@ -38,12 +38,36 @@ pub struct Settings {
     pub ra_user: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
+    /// RetroAchievements' connect token, traded once for the password (which is
+    /// never kept), written into RetroArch whenever it lacks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ra_token: Option<String>,
+    /// The version whose "What's new" was shown; a newer running version shows its notes once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_version: Option<String>,
+    /// Recomp download limit in MB/s; 0 for none.
+    #[serde(default)]
+    pub download_limit: u32,
+    /// Downloads go slower while a game is open (on unless turned off).
+    #[serde(default = "yes")]
+    pub slow_while_playing: bool,
+    /// Recomps whose updates the player paused, by game id.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub paused_updates: std::collections::BTreeSet<String>,
+    /// Steam's Web API, turned on by the player: their own key and their SteamID64.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steam_id: Option<String>,
     /// recomplauncher.com's catalog is used besides Cerberus's own (on unless turned off).
     #[serde(default = "yes")]
     pub site_catalog: bool,
     /// Closing the window keeps Cerberus in the notification area (tray).
     #[serde(default)]
     pub close_to_tray: bool,
+    /// The app's language ("pt-BR", "en"); none: Windows' language.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// The monitor Cerberus opens on, by Windows' name for it; none: where Windows puts it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor: Option<String>,
@@ -53,6 +77,12 @@ pub struct Settings {
     /// A RetroArch the player picked, instead of Cerberus's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch: Option<PathBuf>,
+    /// What happens while a game is open.
+    #[serde(default)]
+    pub in_game: cerberus_shared::InGame,
+    /// Which notices to give, and where.
+    #[serde(default)]
+    pub notices: cerberus_shared::Notices,
 }
 
 fn yes() -> bool {

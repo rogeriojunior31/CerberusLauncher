@@ -9,6 +9,7 @@
 //! `RESHADE_BASE_PATH_OVERRIDE`. A `dxgi.dll` the player already has (their own
 //! ReShade, another mod) is never touched: the look is skipped instead.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -74,15 +75,15 @@ fn is_64bit(bytes: &[u8]) -> Option<bool> {
 
 pub fn route(exe: &Path) -> Route {
     if !cfg!(windows) {
-        return Route::Unsupported("Por enquanto, filtros só funcionam no Windows.".into());
+        return Route::Unsupported(tr!("Por enquanto, filtros só funcionam no Windows.").into());
     }
     let mut bytes = Vec::new();
     let Ok(file) = fs::File::open(exe) else {
-        return Route::Unsupported("O programa do jogo não foi encontrado.".into());
+        return Route::Unsupported(tr!("O programa do jogo não foi encontrado.").into());
     };
     let _ = file.take(96 << 20).read_to_end(&mut bytes);
     if !bytes.starts_with(b"MZ") {
-        return Route::Unsupported("Esse programa não é um jogo de Windows.".into());
+        return Route::Unsupported(tr!("Esse programa não é um jogo de Windows.").into());
     }
     let x64 = is_64bit(&bytes).unwrap_or(true);
     if [&b"d3d12.dll"[..], b"d3d11.dll", b"dxgi.dll", b"d3d10.dll"].iter().any(|n| contains(&bytes, n)) {
@@ -95,9 +96,9 @@ pub fn route(exe: &Path) -> Route {
     } else if contains(&bytes, b"d3d9.dll") {
         "Direct3D 9"
     } else {
-        "um jeito de desenhar que o Cerberus não reconhece"
+        tr!("um jeito de desenhar que o Cerberus não reconhece")
     };
-    Route::Unsupported(format!("Esse jogo usa {what}. Por enquanto os filtros funcionam em jogos com Direct3D 10, 11 ou 12."))
+    Route::Unsupported(tr!("Esse jogo usa {}. Por enquanto os filtros funcionam em jogos com Direct3D 10, 11 ou 12.", what))
 }
 
 /// ReShade is downloaded already.
@@ -108,7 +109,7 @@ pub fn ready(data: &Path) -> bool {
 /// The ReShade DLLs from its setup program, which carries them in a zip
 /// starting on a 512-byte boundary.
 fn dlls_from_setup(setup: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
-    let bad = || "O instalador do ReShade veio diferente do esperado.".to_string();
+    let bad = || tr!("O instalador do ReShade veio diferente do esperado.").to_string();
     if !setup.starts_with(b"MZ") {
         return Err(bad());
     }
@@ -137,7 +138,7 @@ async fn latest(http: &reqwest::Client) -> Result<String, String> {
         .timeout(Duration::from_secs(15))
         .send()
         .await
-        .map_err(|e| format!("Não foi possível ver a versão do ReShade: {e}"))?
+        .map_err(|e| tr!("Não foi possível ver a versão do ReShade: {}", e))?
         .json()
         .await
         .map_err(|e| e.to_string())?;
@@ -146,7 +147,7 @@ async fn latest(http: &reqwest::Client) -> Result<String, String> {
         .flatten()
         .filter_map(|t| t.get("name")?.as_str()?.strip_prefix('v').map(str::to_string))
         .find(|v| v.split('.').count() == 3 && v.split('.').all(|p| p.parse::<u32>().is_ok()))
-        .ok_or_else(|| "Não foi possível ver a versão do ReShade.".to_string())
+        .ok_or_else(|| tr!("Não foi possível ver a versão do ReShade.").to_string())
 }
 
 /// Downloads ReShade from its developer's site, once.
@@ -162,10 +163,10 @@ pub async fn ensure(http: &reqwest::Client, data: &Path) -> Result<(), String> {
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("Não foi possível baixar o ReShade: {e}"))?
+        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?
         .bytes()
         .await
-        .map_err(|e| format!("Não foi possível baixar o ReShade: {e}"))?;
+        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?;
     let (x64, x86) = dlls_from_setup(&setup)?;
     let dir = reshade_dir(data);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -213,21 +214,21 @@ fn note_file(data: &Path, game_id: &str) -> PathBuf {
 /// Gets a game start ready for its look: ReShade beside the program, unless a
 /// `dxgi.dll` that isn't ours is there already.
 pub fn prepare(data: &Path, game_id: &str, exe: &Path, look: &Look) -> Result<Prepared, String> {
-    let technique = technique(&look.id).ok_or("Esse filtro não existe mais.")?;
+    let technique = technique(&look.id).ok_or(tr!("Esse filtro não existe mais."))?;
     let Route::Dxgi { x64 } = route(exe) else {
-        return Err("Esse jogo não aceita filtros.".into());
+        return Err(tr!("Esse jogo não aceita filtros.").into());
     };
     let dll = fs::read(reshade_dir(data).join(if x64 { "ReShade64.dll" } else { "ReShade32.dll" }))
-        .map_err(|_| "O ReShade ainda não foi baixado. Escolha o filtro de novo na aba Ajustes.".to_string())?;
+        .map_err(|_| tr!("O ReShade ainda não foi baixado. Escolha o filtro de novo na aba Ajustes.").to_string())?;
     let base = game_dir(data, game_id);
     write_settings(data, &base, look, technique)?;
-    let target = exe.parent().ok_or("O jogo não está numa pasta.")?.join(PROXY);
+    let target = exe.parent().ok_or(tr!("O jogo não está numa pasta."))?.join(PROXY);
     let note = note_file(data, game_id);
     if target.exists() && !placed_by_us(&note, &target) {
-        return Err(format!("A pasta do jogo já tem um {PROXY} (talvez um ReShade seu ou outro mod), então o filtro ficou desligado para não mexer nele."));
+        return Err(tr!("A pasta do jogo já tem um {0} (talvez um ReShade seu ou outro mod), então o filtro ficou desligado para não mexer nele.", PROXY));
     }
     fs::write(&note, format!("{}\n{}\n", target.display(), sha256(&dll))).map_err(|e| e.to_string())?;
-    fs::write(&target, &dll).map_err(|e| format!("Não foi possível colocar o filtro na pasta do jogo: {e}"))?;
+    fs::write(&target, &dll).map_err(|e| tr!("Não foi possível colocar o filtro na pasta do jogo: {}", e))?;
     Ok(Prepared { env: vec![("RESHADE_BASE_PATH_OVERRIDE".into(), base.display().to_string())] })
 }
 

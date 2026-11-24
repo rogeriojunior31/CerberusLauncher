@@ -10,6 +10,7 @@
 //! Only the packs inside go into the mods folder, and the launcher remembers
 //! which (as for Thunderstore), so removing a mod takes exactly those out.
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -135,11 +136,11 @@ fn parse_list(page: &Value) -> Vec<Listed> {
 }
 
 async fn get_json(client: &Client, url: &str) -> Result<Value, String> {
-    let reply = client.get(url).timeout(Duration::from_secs(30)).send().await.map_err(|_| "Sem conexão com o GameBanana.".to_string())?;
+    let reply = client.get(url).timeout(Duration::from_secs(30)).send().await.map_err(|_| tr!("Sem conexão com o GameBanana.").to_string())?;
     if !reply.status().is_success() {
-        return Err(format!("O GameBanana respondeu {}.", reply.status().as_u16()));
+        return Err(tr!("O GameBanana respondeu {}.", reply.status().as_u16()));
     }
-    reply.json().await.map_err(|_| "Resposta inesperada do GameBanana.".to_string())
+    reply.json().await.map_err(|_| tr!("Resposta inesperada do GameBanana.").to_string())
 }
 
 fn age(file: &Path) -> Option<Duration> {
@@ -185,7 +186,7 @@ pub struct ModFile {
 /// The newest file that passed the virus scan and the launcher can open.
 fn pick_file(profile: &Value) -> Result<ModFile, String> {
     if flag(profile, "_bIsTrashed") || flag(profile, "_bIsWithheld") || flag(profile, "_bHasContentRatings") {
-        return Err("Esse mod não está disponível por aqui.".into());
+        return Err(tr!("Esse mod não está disponível por aqui.").into());
     }
     let files = profile.get("_aFiles").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut usable: Vec<&Value> = files.iter().filter(|f| text(f, "_sAvResult") == "clean").collect();
@@ -198,9 +199,9 @@ fn pick_file(profile: &Value) -> Result<ModFile, String> {
         return Ok(ModFile { id: number(f, "_idRow"), name: text(f, "_sFile"), size: number(f, "_nFilesize") });
     }
     if usable.iter().any(|f| text(f, "_sFile").to_lowercase().ends_with(".rar")) {
-        return Err("Esse mod vem em .rar, que o Cerberus ainda não abre. A página dele explica como instalar à mão.".into());
+        return Err(tr!("Esse mod vem em .rar, que o Cerberus ainda não abre. A página dele explica como instalar à mão.").into());
     }
-    Err("Esse mod não tem um arquivo .zip ou .7z aprovado pelo antivírus do GameBanana.".into())
+    Err(tr!("Esse mod não tem um arquivo .zip ou .7z aprovado pelo antivírus do GameBanana.").into())
 }
 
 /// Which file of the mod would be installed, asking GameBanana.
@@ -212,20 +213,20 @@ pub async fn file_of(client: &Client, id: u64) -> Result<ModFile, String> {
 /// Downloads a mod's file into `dir`, streamed to disk; returns its path.
 pub async fn download(client: &Client, file: &ModFile, dir: &Path) -> Result<PathBuf, String> {
     if file.size > MAX_FILE_BYTES {
-        return Err("Esse mod é grande demais para instalar por aqui.".into());
+        return Err(tr!("Esse mod é grande demais para instalar por aqui.").into());
     }
     let reply = client
         .get(format!("https://gamebanana.com/dl/{}", file.id))
         .timeout(Duration::from_secs(60 * 60))
         .send()
         .await
-        .map_err(|_| "Sem conexão com o GameBanana.".to_string())?;
+        .map_err(|_| tr!("Sem conexão com o GameBanana.").to_string())?;
     if !reply.status().is_success() {
-        return Err(format!("O GameBanana respondeu {}.", reply.status().as_u16()));
+        return Err(tr!("O GameBanana respondeu {}.", reply.status().as_u16()));
     }
     let expected = reply.content_length().unwrap_or(file.size);
     if expected > MAX_FILE_BYTES {
-        return Err("Esse mod é grande demais para instalar por aqui.".into());
+        return Err(tr!("Esse mod é grande demais para instalar por aqui.").into());
     }
     crate::disk::require(dir, expected.saturating_mul(2))?;
     tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
@@ -235,12 +236,12 @@ pub async fn download(client: &Client, file: &ModFile, dir: &Path) -> Result<Pat
     let mut written = 0u64;
     let mut stream = reply.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|_| "A conexão caiu durante o download do mod.".to_string())?;
+        let chunk = chunk.map_err(|_| tr!("A conexão caiu durante o download do mod.").to_string())?;
         written += chunk.len() as u64;
         if written > MAX_FILE_BYTES {
             drop(out);
             let _ = tokio::fs::remove_file(&path).await;
-            return Err("Esse mod é grande demais para instalar por aqui.".into());
+            return Err(tr!("Esse mod é grande demais para instalar por aqui.").into());
         }
         out.write_all(&chunk).await.map_err(|e| e.to_string())?;
     }
@@ -280,7 +281,7 @@ pub fn place_packs(archive: &Path, mods: &Path) -> Result<Vec<String>, String> {
         let mut packs = Vec::new();
         packs_in(&unpacked, 0, &mut packs);
         if packs.is_empty() {
-            return Err("Esse mod não tem pacotes .otr ou .o2r que o jogo carregue sozinho; a página dele explica como instalar.".into());
+            return Err(tr!("Esse mod não tem pacotes .otr ou .o2r que o jogo carregue sozinho; a página dele explica como instalar.").into());
         }
         fs::create_dir_all(mods).map_err(|e| e.to_string())?;
         let mut names = Vec::new();

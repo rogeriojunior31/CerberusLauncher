@@ -12,6 +12,8 @@ Thanks for helping. This guide covers the code layout, the development loop, and
 - **Request a recomp** with the "Pedir um recomp" form, or the button of the same name in Discover.
 - **Send a pull request.** Small, focused PRs are easier to review. The checks below must pass.
 
+The [documentation](docs/README.md) goes deeper: [architecture](docs/development/architecture.md), [building](docs/development/building.md), [the recomp catalog](docs/development/catalog.md), [catalog sources](docs/development/catalog-sources.md), [translations](docs/development/translations.md) and [releasing](docs/development/releasing.md).
+
 ## Project layout
 
 ```text
@@ -48,7 +50,23 @@ Things to keep in mind:
 - **Cerberus never downloads game files.** Recomps come from their developers' releases; the game data always comes from the player's own copy.
 - **Code from RecompLauncher (GPL) is never copied.** Only ideas and facts are used. Hydra is MIT.
 - **User data is precious.** Anything that writes to a game folder, a save or another program's settings needs a backup and a way back.
-- **The interface text is Brazilian Portuguese,** short and plain. Code and comments are in English.
+- **Texts are written in Brazilian Portuguese,** short and plain, and translated to English. Code and comments are in English.
+
+### Translations
+
+Every text the player sees goes through `tr!`, from `shared/src/i18n.rs`. The Portuguese text is its own key, and `shared/locales/en.json` holds the English:
+
+```rust
+tr!("Biblioteca")                       // "Library"
+tr!("{} jogos", count)                  // "{} games"
+tr!("{1} não está mais em {0}.", a, b)  // numbered parts, when the order changes
+```
+
+- Add the English for any new text to `en.json`. `cargo test -p cerberus-shared` fails if a text has no translation, if `en.json` keeps a text the code no longer uses, or if a translation drops one of the `{}` parts.
+- `const` tables use `tk!("...")`, which marks the text without translating it, and call `cerberus_shared::i18n::t(text)` where it's shown.
+- Saved data stays in Portuguese (history steps, backup reasons) and is translated on screen with `i18n::translate`, so a file never mixes languages.
+- Keys, file and folder names, URLs and brand names are never translated.
+- To add a language: a new `Lang` value, its `locales/<code>.json`, and the language in `bundle.windows.nsis.languages` for the installer.
 
 ### Releasing
 

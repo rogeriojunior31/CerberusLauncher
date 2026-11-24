@@ -2,6 +2,7 @@
 
 mod recovery;
 
+use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -64,7 +65,7 @@ impl LocalLibrary {
     pub fn update(&self, id: &str, change: impl FnOnce(&mut Game)) -> Result<Game, String> {
         self.access(|games| {
             let mut next = games.clone();
-            let game = next.iter_mut().find(|game| game.id == id).ok_or("Esse jogo não está mais na biblioteca.")?;
+            let game = next.iter_mut().find(|game| game.id == id).ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
             change(game);
             let updated = game.clone();
             self.commit(games, next)?;
@@ -126,6 +127,10 @@ pub fn game_from_exe(exe: &Path) -> Game {
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
+        updates_paused: false,
     }
 }
 

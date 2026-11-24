@@ -2,6 +2,7 @@
 //! of buttons led by the one thing to do now (play, install, update, the
 //! download's progress), and the details beside it.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, RecompEntry, Source};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -29,19 +30,19 @@ enum Act {
 fn label(act: &Act, library: Library, entry: &Option<RecompEntry>) -> String {
     match act {
         Act::Play(g) => crate::launch_action(g).0.to_string(),
-        Act::Running => "Jogando".into(),
+        Act::Running => tr!("Voltar ao jogo").into(),
         Act::Install(_) => match entry.as_ref().and_then(|e| e.latest.clone()) {
-            Some(r) if r.size > 0 => format!("Instalar · {}", format::megabytes(r.size)),
-            _ => "Instalar".into(),
+            Some(r) if r.size > 0 => tr!("Instalar · {}", format::megabytes(r.size)),
+            _ => tr!("Instalar").into(),
         },
-        Act::Cancel(rid) if crate::discover::is_paused(library, rid) => "Cancelar download".into(),
-        Act::Cancel(rid) => format!("Baixando {}% · cancelar", progress_of(library, rid).unwrap_or(0)),
-        Act::Pause(_) => "Pausar download".into(),
-        Act::Resume(rid) => format!("Continuar download · {}%", progress_of(library, rid).unwrap_or(0)),
-        Act::Update(_) => format!("Atualizar para {}", entry.as_ref().and_then(|e| e.latest.as_ref()).map(|l| l.version.clone()).unwrap_or_default()),
-        Act::Backup(_) => "Fazer backup dos saves".into(),
-        Act::Options => "Opções".into(),
-        Act::Unavailable => "Indisponível".into(),
+        Act::Cancel(rid) if crate::discover::is_paused(library, rid) => tr!("Cancelar download").into(),
+        Act::Cancel(rid) => tr!("Baixando {}% · cancelar", progress_of(library, rid).unwrap_or(0)),
+        Act::Pause(_) => tr!("Pausar download").into(),
+        Act::Resume(rid) => tr!("Continuar download · {}%", progress_of(library, rid).unwrap_or(0)),
+        Act::Update(_) => tr!("Atualizar para {}", entry.as_ref().and_then(|e| e.latest.as_ref()).map(|l| l.version.clone()).unwrap_or_default()),
+        Act::Backup(_) => tr!("Fazer backup dos saves").into(),
+        Act::Options => tr!("Opções").into(),
+        Act::Unavailable => tr!("Indisponível").into(),
     }
 }
 
@@ -110,10 +111,44 @@ pub fn GamePage(id: String) -> impl IntoView {
         list.push(Act::Options);
         list
     };
-    let rows = move || vec![actions().len()];
+    // A Steam game's store page and achievements, both kept on disk once read.
+    let steam_app = Memo::new(move |_| match game.get().map(|g| g.source) {
+        Some(Source::Steam { app_id }) => Some(app_id),
+        _ => None,
+    });
+    let store = LocalResource::new(move || {
+        let app = steam_app.get();
+        async move {
+            match app {
+                Some(a) => api::steam_details(a).await.ok(),
+                None => None,
+            }
+        }
+    });
+    let achievements = LocalResource::new(move || {
+        let app = steam_app.get();
+        async move {
+            match app {
+                Some(a) => api::game_achievements("steam", &a.to_string()).await.ok(),
+                None => None,
+            }
+        }
+    });
+    let shots = move || store.get().flatten().map(|d| d.screenshots).unwrap_or_default();
+    let viewing = RwSignal::new(None::<usize>);
+    let rows = move || {
+        let n = shots().len();
+        if n > 0 { vec![actions().len(), n] } else { vec![actions().len()] }
+    };
     Effect::new(move |_| focus.clamp(&rows()));
 
-    tv.hints.set(vec![(Btn::A, "Escolher"), (Btn::X, "Opções"), (Btn::B, "Voltar")]);
+    Effect::new(move |_| {
+        tv.hints.set(if viewing.get().is_some() {
+            vec![(Btn::Left, tr!("Trocar imagem")), (Btn::B, tr!("Fechar"))]
+        } else {
+            vec![(Btn::A, tr!("Escolher")), (Btn::X, tr!("Opções")), (Btn::B, tr!("Voltar"))]
+        });
+    });
     let run = move |act: Act| match act {
         Act::Play(g) => {
             play(Sound::Select);
@@ -135,8 +170,8 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             spawn_local(async move {
                 match library.report(api::backup_now(&gid).await) {
-                    Some(Some(b)) => library.toast(format!("Backup feito: {} arquivos.", b.files)),
-                    Some(None) => library.toast("Nada novo para copiar: o backup mais recente já tem esses saves."),
+                    Some(Some(b)) => library.toast(tr!("Backup feito: {} arquivos.", b.files)),
+                    Some(None) => library.toast(tr!("Nada novo para copiar: o backup mais recente já tem esses saves.")),
                     None => {}
                 }
             });
@@ -145,13 +180,36 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             tv.sheet.set(Some(Sheet::Options(id.get_value())));
         }
-        Act::Running | Act::Unavailable => {}
+        // The game is open: Cerberus steps aside so it's in front again.
+        Act::Running => {
+            play(Sound::Select);
+            crate::api::window_action("minimize");
+        }
+        Act::Unavailable => {}
     };
-    tv.handle_page(move |btn| match btn {
+    tv.handle_page(move |btn| {
+        // The full-screen picture: left and right step, B or A closes.
+        if let Some(i) = viewing.get_untracked() {
+            let n = shots().len().max(1);
+            match btn {
+                Btn::Left => viewing.set(Some((i + n - 1) % n)),
+                Btn::Right => viewing.set(Some((i + 1) % n)),
+                Btn::B | Btn::A => viewing.set(None),
+                _ => {}
+            }
+            play(Sound::Move);
+            return true;
+        }
+        match btn {
         Btn::Left | Btn::Right | Btn::Up | Btn::Down => {
             if focus.step(btn, &rows()) {
                 play(Sound::Move);
             }
+            true
+        }
+        Btn::A if focus.row.get_untracked() == 1 => {
+            play(Sound::Select);
+            viewing.set(Some(focus.col.get_untracked()));
             true
         }
         Btn::A => {
@@ -165,6 +223,7 @@ pub fn GamePage(id: String) -> impl IntoView {
             true
         }
         _ => false,
+        }
     });
 
     let buttons = move || {
@@ -196,16 +255,34 @@ pub fn GamePage(id: String) -> impl IntoView {
         let e = entry.get();
         let g = game.get();
         let kicker = match &e {
-            Some(e) => format!("Recomp · {}", e.console),
+            Some(e) => tr!("Recomp · {}", e.console),
             None => g.as_ref().map(|g| crate::tiles::source_name(&g.source).to_string()).unwrap_or_default(),
         };
         let title = match g.as_ref().and_then(|g| g.logo_path.clone()).or_else(|| e.as_ref().and_then(|e| e.logo.clone())) {
             Some(path) => view! { <img class="tv-logo" src=crate::art::src(&path) alt=i.name() /> }.into_any(),
             None => view! { <h1>{i.name()}</h1> }.into_any(),
         };
-        let based = e.as_ref().filter(|e| !e.game.is_empty()).map(|e| view! { <p class="tv-based">"Baseado em "<b>{e.game.clone()}</b></p> });
-        let note = e.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|n| view! { <p class="tv-note-box"><b>"Como começar"</b>{n}</p> });
+        let based = e.as_ref().filter(|e| !e.game.is_empty()).map(|e| view! { <p class="tv-based">{tr!("Baseado em ")}<b>{e.game.clone()}</b></p> });
+        let note = e.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|n| view! { <p class="tv-note-box"><b>{tr!("Como começar")}</b>{n}</p> });
         let about = e.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|a| view! { <p class="tv-about">{a}</p> });
+        // Steam games: the store's short description.
+        let store_about = move || store.get().flatten().map(|d| d.short).filter(|s| !s.is_empty()).map(|s| view! { <p class="tv-about">{s}</p> });
+        let media = move || {
+            let list = shots();
+            (!list.is_empty()).then(|| {
+                let thumbs = list
+                    .into_iter()
+                    .enumerate()
+                    .map(|(c, s)| view! {
+                        <span class="tv-shot" class:on=move || focus.is(1, c) data-tvf=focus.key(1, c)
+                            on:mouseenter=move |_| focus.set(1, c) on:click=move |_| viewing.set(Some(c))>
+                            <img src=s.thumb alt="" loading="lazy" />
+                        </span>
+                    })
+                    .collect_view();
+                view! { <div class="tv-shots">{thumbs}</div> }
+            })
+        };
         Some(view! {
             <div class="tv-game-main">
                 <span class="tv-kicker">{kicker}</span>
@@ -213,7 +290,9 @@ pub fn GamePage(id: String) -> impl IntoView {
                 {based}
                 <div class="tv-actions">{buttons}</div>
                 {about}
+                {store_about}
                 {note}
+                {media}
             </div>
         })
     };
@@ -221,38 +300,89 @@ pub fn GamePage(id: String) -> impl IntoView {
     let details = move || {
         let mut facts: Vec<(&'static str, String)> = Vec::new();
         if let Some(g) = game.get() {
-            facts.push(("Tempo de jogo", if g.playtime_secs == 0 { "Nunca jogado".into() } else { format::playtime(g.playtime_secs) }));
+            facts.push((tr!("Tempo de jogo"), if g.playtime_secs == 0 { tr!("Nunca jogado").into() } else { format::playtime(g.playtime_secs) }));
             if let Some(t) = g.last_played {
-                facts.push(("Última vez", format::ago(t)));
+                facts.push((tr!("Última vez"), format::ago(t)));
             }
             if let Source::Recomp { version, .. } = &g.source {
-                facts.push(("Versão", if version.is_empty() { "Instalado por você".into() } else { version.clone() }));
+                facts.push((tr!("Versão"), if version.is_empty() { tr!("Instalado por você").into() } else { version.clone() }));
             }
         }
         if let Some(e) = entry.get() {
-            facts.push(("Console", e.console.clone()));
+            facts.push((tr!("Console"), e.console.clone()));
             if e.downloads > 0 {
-                facts.push(("Downloads", format::count(e.downloads)));
+                facts.push((tr!("Downloads"), format::count(e.downloads)));
             }
             if e.stars > 0 {
-                facts.push(("Estrelas", format::count(e.stars)));
+                facts.push((tr!("Estrelas"), format::count(e.stars)));
             }
             if let Some(copy) = e.owned_copy.clone() {
-                facts.push(("Sua cópia", copy.rsplit(['\\', '/']).next().unwrap_or_default().to_string()));
+                facts.push((tr!("Sua cópia"), copy.rsplit(['\\', '/']).next().unwrap_or_default().to_string()));
+            }
+        }
+        if let Some(d) = store.get().flatten() {
+            if let Some(dev) = d.developers.first() {
+                facts.push((tr!("Desenvolvedora"), dev.clone()));
+            }
+            if !d.released.is_empty() {
+                facts.push((tr!("Lançamento"), d.released.clone()));
+            }
+            if !d.genres.is_empty() {
+                facts.push((tr!("Gêneros"), d.genres.iter().take(3).cloned().collect::<Vec<_>>().join(", ")));
+            }
+            match d.controller.as_str() {
+                "full" => facts.push((tr!("Controle"), tr!("Suporte total").to_string())),
+                "partial" => facts.push((tr!("Controle"), tr!("Suporte parcial").to_string())),
+                _ => {}
+            }
+            if let Some(m) = d.metacritic {
+                facts.push(("Metacritic", format!("{m}/100")));
             }
         }
         let cover = item().map(|i| view! { <div class="tv-side-cover"><Poster sources=i.covers() title=i.name() /></div> });
         let rows = facts.into_iter().map(|(k, v)| view! { <div class="tv-fact"><span>{k}</span><b>{v}</b></div> }).collect_view();
-        view! { <aside class="tv-side">{cover}{rows}</aside> }
+        // Achievements: progress and the latest unlocks.
+        let ach = achievements.get().flatten().filter(|d| d.game.total > 0).map(|d| {
+            let g = d.game.clone();
+            let pct = g.percent();
+            let mut list = d.achievements.clone();
+            list.sort_by(|a, b| b.unlocked_at.cmp(&a.unlocked_at));
+            let icons = list
+                .into_iter()
+                .filter(|a| a.unlocked_at.is_some())
+                .take(5)
+                .map(|a| view! { <img src=a.icon.clone().unwrap_or_default() alt=a.name.clone() title=a.name.clone() /> })
+                .collect_view();
+            view! {
+                <div class="tv-ach">
+                    <div class="tv-ach-h"><span>{tr!("Conquistas")}</span><b>{format!("{}/{}", g.unlocked, g.total)}</b></div>
+                    <div class="tv-ach-bar"><i style=format!("width: {pct}%")></i></div>
+                    <div class="tv-ach-icons">{icons}</div>
+                </div>
+            }
+        });
+        view! { <aside class="tv-side">{cover}{ach}{rows}</aside> }
     };
 
+    let viewer = move || {
+        let i = viewing.get()?;
+        let list = shots();
+        let shot = list.get(i)?.clone();
+        Some(view! {
+            <div class="tv-viewer" on:click=move |_| viewing.set(None)>
+                <img src=shot.full alt="" />
+                <span class="tv-viewer-n">{format!("{} / {}", i + 1, list.len())}</span>
+            </div>
+        })
+    };
     view! {
         <div class="tv-page game">
             {move || if item().is_some() {
                 view! { {head} {details} }.into_any()
             } else {
-                view! { <p class="tv-empty">"Esse jogo não está mais aqui."</p> }.into_any()
+                view! { <p class="tv-empty">{tr!("Esse jogo não está mais aqui.")}</p> }.into_any()
             }}
         </div>
+        {viewer}
     }
 }

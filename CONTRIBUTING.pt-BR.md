@@ -10,6 +10,8 @@ Valeu pela ajuda! Este guia mostra como o código é organizado, como desenvolve
 - **Pedir um recomp:** use o formulário "Pedir um recomp" ou o botão com o mesmo nome no Descobrir.
 - **Mandar um pull request:** PRs pequenos e focados são mais fáceis de revisar. As verificações abaixo precisam passar.
 
+A [documentação](docs/README.md), em inglês por enquanto, vai mais fundo: [arquitetura](docs/development/architecture.md), [compilar](docs/development/building.md), [catálogo de recomps](docs/development/catalog.md), [fontes de catálogo](docs/development/catalog-sources.md), [traduções](docs/development/translations.md) e [publicar uma versão](docs/development/releasing.md).
+
 ## Estrutura do projeto
 
 ```text
@@ -46,7 +48,23 @@ Regras do projeto:
 - **O Cerberus nunca baixa arquivos de jogo.** O recomp vem da release dos desenvolvedores, e os dados do jogo vêm sempre da cópia do jogador.
 - **Não se copia código do RecompLauncher**, que é GPL. Só ideias e fatos. O Hydra é MIT.
 - **Os dados do jogador valem ouro.** Tudo que escreve na pasta de um jogo, num save ou na configuração de outro programa precisa de backup e de um jeito de desfazer.
-- **Os textos da interface são em português do Brasil**, curtos e simples. Código e comentários são em inglês.
+- **Os textos são escritos em português do Brasil**, curtos e simples, e traduzidos para o inglês. Código e comentários são em inglês.
+
+### Traduções
+
+Todo texto que o jogador vê passa por `tr!`, de `shared/src/i18n.rs`. O texto em português é a própria chave, e o `shared/locales/en.json` guarda o inglês:
+
+```rust
+tr!("Biblioteca")                       // "Library"
+tr!("{} jogos", n)                      // "{} games"
+tr!("{1} não está mais em {0}.", a, b)  // partes numeradas, quando a ordem muda
+```
+
+- Coloque o inglês de todo texto novo no `en.json`. O `cargo test -p cerberus-shared` falha se um texto ficar sem tradução, se o `en.json` guardar um texto que o código não usa mais ou se uma tradução perder uma das partes `{}`.
+- Tabelas `const` usam `tk!("...")`, que marca o texto sem traduzir, e chamam `cerberus_shared::i18n::t(texto)` onde ele aparece.
+- Dados salvos ficam em português (passos do histórico, motivos de backup) e são traduzidos na tela com `i18n::translate`, para um arquivo nunca misturar idiomas.
+- Chaves, nomes de arquivo e pasta, URLs e nomes de marca nunca são traduzidos.
+- Para um idioma novo: um valor novo em `Lang`, o `locales/<código>.json` e o idioma em `bundle.windows.nsis.languages` para o instalador.
 
 ### Publicando uma versão
 

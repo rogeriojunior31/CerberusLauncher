@@ -9,6 +9,8 @@
 //! `cerberus-backup.json` naming the places as templates, so a copy goes back to
 //! the right folder even if the game was reinstalled somewhere else.
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -20,7 +22,7 @@ use sha2::{Digest, Sha256};
 
 /// Newest copies kept per game.
 const KEEP: usize = 10;
-pub(super) const BEFORE_CLOUD: &str = "Antes de trazer da nuvem";
+pub(super) const BEFORE_CLOUD: &str = tk!("Antes de trazer da nuvem");
 /// Nothing bigger than this is a save: it's a disc image, a video, an asset pack.
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 /// The most a guess at the game's whole folder may add up to.
@@ -221,12 +223,12 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
         bytes,
         fingerprint,
     };
-    write_zip(temp.as_file(), &found, &manifest).map_err(|e| format!("Não foi possível criar o backup: {e}"))?;
+    write_zip(temp.as_file(), &found, &manifest).map_err(|e| tr!("Não foi possível criar o backup: {}", e))?;
     temp.as_file().sync_all().map_err(|e| e.to_string())?;
     let queued = cloud.map(|destination| super::cloud::queue(&target, destination)).transpose();
     temp.persist_noclobber(&target).map_err(|e| e.to_string())?;
     prune(backups);
-    queued.map_err(|e| format!("Backup local guardado. Falha ao agendar o envio: {e}"))?;
+    queued.map_err(|e| tr!("Backup local guardado. Falha ao agendar o envio: {}", e))?;
     Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes }))
 }
 
@@ -325,17 +327,17 @@ pub(super) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<
     // Only a plain file name from our own list, never a path.
     let plain = Path::new(name).components().count() == 1 && name.ends_with(".zip");
     if !plain {
-        return Err("Backup inválido.".into());
+        return Err(tr!("Backup inválido.").into());
     }
     let path = backups.join(name);
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
-    zip::ZipArchive::new(file).map_err(|e| format!("Esse backup não pode ser lido: {e}"))
+    zip::ZipArchive::new(file).map_err(|e| tr!("Esse backup não pode ser lido: {}", e))
 }
 
 pub(super) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, allowed_places: Option<&[String]>) -> Result<u32, String> {
     let manifest = manifest_in(&mut zip)?;
     if allowed_places.is_some_and(|places| manifest.places.iter().any(|p| !places.contains(p))) {
-        return Err("As pastas do backup na nuvem diferem das pastas de saves deste jogo.".into());
+        return Err(tr!("As pastas do backup na nuvem diferem das pastas de saves deste jogo.").into());
     }
     let mut staged = Vec::new();
     for index in 0..zip.len() {
@@ -346,18 +348,18 @@ pub(super) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, a
         let Some(target) = target_for(entry.name(), &manifest.places, install) else {
             continue;
         };
-        let parent = target.parent().ok_or("O destino do save é inválido.")?;
+        let parent = target.parent().ok_or(tr!("O destino do save é inválido."))?;
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         let mut temp = tempfile::Builder::new().prefix(".cerberus-").suffix(".tmp").tempfile_in(parent)
-            .map_err(|e| format!("Não foi possível preparar {}: {e}", target.display()))?;
-        io::copy(&mut entry, temp.as_file_mut()).map_err(|e| format!("Falha ao ler o save {}: {e}", entry.name()))?;
+            .map_err(|e| tr!("Não foi possível preparar {}: {}", target.display(), e))?;
+        io::copy(&mut entry, temp.as_file_mut()).map_err(|e| tr!("Falha ao ler o save {}: {}", entry.name(), e))?;
         temp.as_file().sync_all().map_err(|e| e.to_string())?;
         staged.push((temp.into_temp_path(), target));
     }
     // Finish reading and checking every ZIP entry before replacing the first live save.
     let written = staged.len() as u32;
     for (temp, target) in staged {
-        temp.persist(&target).map_err(|e| format!("Não foi possível restaurar {}: {e}", target.display()))?;
+        temp.persist(&target).map_err(|e| tr!("Não foi possível restaurar {}: {}", target.display(), e))?;
     }
     Ok(written)
 }

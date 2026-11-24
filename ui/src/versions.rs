@@ -2,6 +2,7 @@
 //! Harkinian are both Majora's Mask). Lists show each game once, and its page
 //! has a menu to switch between them.
 
+use cerberus_shared::tr;
 use cerberus_shared::RecompEntry;
 use leptos::prelude::*;
 
@@ -67,8 +68,8 @@ pub fn VersionPill(current: RecompEntry) -> impl IntoView {
                     open.set(false);
                     library.replace(route.clone());
                 };
-                let tag = entry.installed.as_ref().map(|v| view! { <span class="vtag inst">{format!("Instalado · {v}")}</span> });
-                let recommended = entry.recommended.then(|| view! { <span class="vtag rec">"Recomendado"</span> });
+                let tag = entry.installed.as_ref().map(|v| view! { <span class="vtag inst">{tr!("Instalado · {}", v)}</span> });
+                let recommended = entry.recommended.then(|| view! { <span class="vtag rec">{tr!("Recomendado")}</span> });
                 let why = (entry.recommended && !entry.why.is_empty()).then(|| view! { <small class="why">{entry.why.clone()}</small> });
                 let author = if entry.author.is_empty() { entry.repo.split('/').next().unwrap_or_default().to_string() } else { entry.author.clone() };
                 view! {
@@ -88,7 +89,7 @@ pub fn VersionPill(current: RecompEntry) -> impl IntoView {
         Some(view! {
             <div class="vm-scrim" on:click=move |_| open.set(false)></div>
             <div class="vermenu" role="listbox">
-                <div class="vm-h">{format!("{} versões deste jogo", count())}</div>
+                <div class="vm-h">{tr!("{} versões deste jogo", count())}</div>
                 {rows}
             </div>
         })
@@ -98,7 +99,7 @@ pub fn VersionPill(current: RecompEntry) -> impl IntoView {
         <div class="ver-wrap">
             <button type="button" class="ver-pill" aria-haspopup="listbox" aria-expanded=move || open.get().to_string() on:click=move |_| open.update(|o| *o = !*o)>
                 <Svg icon=Icon::Library size=16 />
-                <span>{move || format!("{} versões", count())}</span>
+                <span>{move || tr!("{} versões", count())}</span>
                 {move || (installed() > 1).then(|| view! { <em>{format!("{} instaladas", installed())}</em> })}
             </button>
             {menu}

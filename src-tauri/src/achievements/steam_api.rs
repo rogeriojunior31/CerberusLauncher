@@ -1,0 +1,421 @@
+//! Steam's official Web API, used only when the player turns it on with their
+//! own free key (Settings › Steam). It fills in what the Steam client on this
+//! PC never cached: every owned game, with play time, and the achievements of
+//! games played elsewhere. The player's profile must show game details publicly.
+//!
+//! Everything read is kept in `cache/achievements/steam-api/`, and a game's
+//! achievements are asked again only after it was played since the last time.
+
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use cerberus_shared::i18n::{Lang, lang};
+use cerberus_shared::{SteamAccount, tr};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use super::steam::Kv;
+
+const API: &str = "https://api.steampowered.com";
+/// SteamID64 of account number 0; a SteamID64 is this plus the account number.
+#[cfg(test)]
+const ID_BASE: u64 = 76_561_197_960_265_728;
+
+fn steam_lang() -> &'static str {
+    if lang() == Lang::Pt { "brazilian" } else { "english" }
+}
+
+async fn get(http: &reqwest::Client, path: &str, query: &str) -> Result<Value, String> {
+    let url = format!("{API}/{path}?{query}");
+    let reply = http
+        .get(&url)
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|_| tr!("Não foi possível falar com a Steam. Confira a internet.").to_string())?;
+    let status = reply.status().as_u16();
+    let body = reply.text().await.unwrap_or_default();
+    read_reply(status, &body)
+}
+
+/// What a reply means. Steam answers 403 for three different things: game
+/// details that aren't public (JSON saying so), too many questions in a row
+/// (an HTML page from its edge servers) and a key it doesn't accept.
+fn read_reply(status: u16, body: &str) -> Result<Value, String> {
+    let json: Option<Value> = serde_json::from_str(body).ok();
+    let not_public = json
+        .as_ref()
+        .and_then(|v| v.pointer("/playerstats/error"))
+        .and_then(Value::as_str)
+        .is_some_and(|e| e.to_lowercase().contains("not public"));
+    if not_public {
+        return Err(cerberus_shared::i18n::t(NOT_PUBLIC).into());
+    }
+    match status {
+        403 if body.trim_start().starts_with('<') => Err(cerberus_shared::i18n::t(BUSY).into()),
+        401 | 403 => Err(tr!("A Steam não aceitou essa chave da Web API.").into()),
+        429 => Err(cerberus_shared::i18n::t(BUSY).into()),
+        // Asking for a game without stats answers 400 with a JSON body; read it.
+        400 => json.ok_or(tr!("A Steam respondeu algo inesperado.").into()),
+        s if !(200..300).contains(&s) => Err(tr!("A Steam respondeu {}.", s)),
+        _ => json.ok_or(tr!("A Steam respondeu algo inesperado.").into()),
+    }
+}
+
+/// Game details hidden in the player's privacy settings.
+pub const NOT_PUBLIC: &str = cerberus_shared::tk!("Os detalhes de jogo do seu perfil da Steam estão privados. Em Privacidade, deixe \"Detalhes de jogo\" como Público para o Cerberus ler suas conquistas.");
+/// Not a message for the player: asked from the disk only, and the disk had nothing.
+pub const OFFLINE: &str = "offline";
+
+/// Steam's edge servers turned questions away for a moment.
+pub const BUSY: &str = cerberus_shared::tk!("A Steam recusou consultas por um momento, por serem muitas seguidas. Tente de novo em alguns minutos.");
+
+fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
+
+/// The account that last signed in to Steam on this PC: its SteamID64 and name.
+pub fn local_account(steam: &Path) -> Option<(String, String)> {
+    let text = fs::read_to_string(steam.join("config").join("loginusers.vdf")).ok()?;
+    let root = super::steam::text_kv(&text);
+    let users = root.get("users")?;
+    let mut best: Option<(bool, i64, String, String)> = None;
+    for (id, user) in users.children() {
+        if id.len() != 17 || !id.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let recent = user.get("MostRecent").and_then(Kv::int) == Some(1);
+        let stamp = user.get("Timestamp").and_then(Kv::int).unwrap_or(0);
+        let name = user.get("PersonaName").and_then(Kv::text).unwrap_or_default().to_string();
+        if best.as_ref().is_none_or(|(r, t, _, _)| (recent, stamp) > (*r, *t)) {
+            best = Some((recent, stamp, id.clone(), name));
+        }
+    }
+    best.map(|(_, _, id, name)| (id, name))
+}
+
+/// A SteamID64 from what the player typed: the number, a `/profiles/<id>` link,
+/// or a `/id/<name>` link (asked of Steam).
+pub async fn resolve(http: &reqwest::Client, key: &str, typed: &str) -> Result<String, String> {
+    let typed = typed.trim().trim_end_matches('/');
+    let last = typed.rsplit('/').next().unwrap_or(typed);
+    if last.len() == 17 && last.chars().all(|c| c.is_ascii_digit()) {
+        return Ok(last.to_string());
+    }
+    if last.is_empty() {
+        return Err(tr!("Informe o seu perfil da Steam.").into());
+    }
+    let v = get(http, "ISteamUser/ResolveVanityURL/v1/", &format!("key={}&vanityurl={}", encode(key), encode(last))).await?;
+    match v.pointer("/response/steamid").and_then(Value::as_str) {
+        Some(id) => Ok(id.to_string()),
+        None => Err(tr!("A Steam não encontrou esse perfil.").into()),
+    }
+}
+
+/// The account behind a key and SteamID, and whether its game details are public.
+pub async fn account(http: &reqwest::Client, key: &str, steamid: &str) -> Result<SteamAccount, String> {
+    let v = get(http, "ISteamUser/GetPlayerSummaries/v2/", &format!("key={}&steamids={}", encode(key), encode(steamid))).await?;
+    let p = v.pointer("/response/players/0").ok_or(tr!("A Steam não encontrou esse perfil."))?;
+    let owned = owned_raw(http, key, steamid).await?;
+    // The owner's own key gets the game list even with game details private;
+    // achievements are what privacy hides, so ask for one played game's.
+    let games_public = match owned.as_ref().and_then(|list| list.iter().filter(|o| o.stats).max_by_key(|o| o.minutes)) {
+        Some(probe) => {
+            let q = format!("key={}&steamid={}&appid={}", encode(key), encode(steamid), probe.app);
+            match get(http, "ISteamUserStats/GetPlayerAchievements/v1/", &q).await {
+                Err(e) if e == cerberus_shared::i18n::t(NOT_PUBLIC) => false,
+                _ => true,
+            }
+        }
+        None => owned.is_some(),
+    };
+    Ok(SteamAccount {
+        steamid: steamid.to_string(),
+        name: p.get("personaname").and_then(Value::as_str).unwrap_or_default().to_string(),
+        avatar: p.get("avatarfull").and_then(Value::as_str).map(str::to_string),
+        url: p.get("profileurl").and_then(Value::as_str).unwrap_or_default().to_string(),
+        profile_public: p.get("communityvisibilitystate").and_then(Value::as_i64) == Some(3),
+        games_public,
+        games: owned.map(|o| o.len() as u32).unwrap_or(0),
+    })
+}
+
+/// A game the account owns.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Owned {
+    pub app: u32,
+    pub name: String,
+    pub minutes: u64,
+    pub last_played: u64,
+    /// Steam says the game has stats (and so maybe achievements).
+    pub stats: bool,
+}
+
+/// `None` when the account's game details aren't public (Steam answers with nothing).
+async fn owned_raw(http: &reqwest::Client, key: &str, steamid: &str) -> Result<Option<Vec<Owned>>, String> {
+    let v = get(
+        http,
+        "IPlayerService/GetOwnedGames/v1/",
+        &format!("key={}&steamid={}&include_appinfo=1&include_played_free_games=1", encode(key), encode(steamid)),
+    )
+    .await?;
+    let Some(games) = v.pointer("/response/games").and_then(Value::as_array) else { return Ok(None) };
+    Ok(Some(
+        games
+            .iter()
+            .filter_map(|g| {
+                Some(Owned {
+                    app: g.get("appid")?.as_u64()? as u32,
+                    name: g.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    minutes: g.get("playtime_forever").and_then(Value::as_u64).unwrap_or(0),
+                    last_played: g.get("rtime_last_played").and_then(Value::as_u64).unwrap_or(0),
+                    stats: g.get("has_community_visible_stats").and_then(Value::as_bool).unwrap_or(false),
+                })
+            })
+            .collect(),
+    ))
+}
+
+fn cache_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("cache").join("achievements").join("steam-api")
+}
+
+fn age(file: &Path) -> Option<Duration> {
+    fs::metadata(file).and_then(|m| m.modified()).ok()?.elapsed().ok()
+}
+
+/// Every owned game, kept for 5 minutes (one question: it says which games were
+/// played since, and only those are asked again).
+/// With `online` off only the disk is read, however old (the hub shows that at
+/// once and asks Steam right after).
+pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, online: bool) -> Result<Vec<Owned>, String> {
+    let file = cache_dir(data_dir).join(format!("owned-{steamid}.json"));
+    if !online {
+        return fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or(OFFLINE.to_string());
+    }
+    if age(&file).is_some_and(|a| a < Duration::from_secs(300)) {
+        if let Some(list) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()) {
+            return Ok(list);
+        }
+    }
+    let list = owned_raw(http, key, steamid)
+        .await?
+        .ok_or_else(|| cerberus_shared::i18n::t(NOT_PUBLIC).to_string())?;
+    let _ = fs::create_dir_all(cache_dir(data_dir));
+    let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
+    Ok(list)
+}
+
+/// How far the player is in a game: its achievements, and how many are unlocked.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct Top {
+    pub total: u32,
+    pub unlocked: u32,
+    /// When the game had last been played when this was read: asked again only
+    /// after it's played again.
+    #[serde(default)]
+    pub played: u64,
+}
+
+/// Games asked of Steam in one question.
+const PER_QUESTION: usize = 100;
+
+/// How far the player is in many games at once (`GetTopAchievementsForGames`:
+/// 100 games per question, against one game per question for the full list).
+/// It has no unlock dates; those come from `mine`. Kept on disk, and only the
+/// games played since they were read are asked again: with nothing new played,
+/// nothing is asked. `apps` holds each game and when it was last played.
+pub async fn tops(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, apps: &[(u32, u64)], online: bool) -> Result<HashMap<u32, Top>, String> {
+    let file = cache_dir(data_dir).join(format!("tops-{steamid}.json"));
+    let mut known: HashMap<u32, Top> = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    if !online {
+        return if known.is_empty() { Err(OFFLINE.into()) } else { Ok(known) };
+    }
+    let stale: Vec<(u32, u64)> = apps.iter().copied().filter(|(app, played)| known.get(app).is_none_or(|t| t.played < *played || t.played == 0)).collect();
+    let when: HashMap<u32, u64> = stale.iter().copied().collect();
+    let stale: Vec<u32> = stale.into_iter().map(|(app, _)| app).collect();
+    for chunk in stale.chunks(PER_QUESTION) {
+        let mut query = format!("key={}&steamid={}&max_achievements=10000", encode(key), encode(steamid));
+        for (i, app) in chunk.iter().enumerate() {
+            query.push_str(&format!("&appids%5B{i}%5D={app}"));
+        }
+        let v = get(http, "IPlayerService/GetTopAchievementsForGames/v1/", &query).await?;
+        for g in v.pointer("/response/games").and_then(Value::as_array).into_iter().flatten() {
+            let Some(app) = g.get("appid").and_then(Value::as_u64) else { continue };
+            let total = g.get("total_achievements").and_then(Value::as_u64).unwrap_or(0) as u32;
+            let unlocked = g.get("achievements").and_then(Value::as_array).map_or(0, |a| a.len()) as u32;
+            let played = when.get(&(app as u32)).copied().unwrap_or(0).max(1);
+            known.insert(app as u32, Top { total, unlocked: unlocked.min(total), played });
+        }
+        tokio::time::sleep(Duration::from_millis(350)).await;
+    }
+    let _ = fs::create_dir_all(cache_dir(data_dir));
+    let _ = fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+    Ok(known)
+}
+
+/// One of the player's achievements, as the API gives it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Mine {
+    pub api: String,
+    pub achieved: bool,
+    pub unlocked_at: u64,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MineFile {
+    last_played: u64,
+    lang: String,
+    list: Vec<Mine>,
+}
+
+/// The player's achievements in a game (empty when it has none), kept until
+/// the game is played again.
+pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, app: u32, last_played: u64, online: bool) -> Result<Vec<Mine>, String> {
+    let file = cache_dir(data_dir).join(format!("mine-{steamid}-{app}.json"));
+    let lang_now = steam_lang();
+    if let Some(kept) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<MineFile>(&t).ok()) {
+        if !online || (kept.last_played >= last_played && kept.lang == lang_now) {
+            return Ok(kept.list);
+        }
+    } else if !online {
+        return Err(OFFLINE.into());
+    }
+    let v = get(
+        http,
+        "ISteamUserStats/GetPlayerAchievements/v1/",
+        &format!("key={}&steamid={}&appid={app}&l={lang_now}", encode(key), encode(steamid)),
+    )
+    .await;
+    // A pause after each question keeps Steam from turning the key away.
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    // Steam answers "not public" for single games even on a public profile
+    // (demos, free weekends, shared games): remembered as empty until played again.
+    if matches!(&v, Err(e) if *e == cerberus_shared::i18n::t(NOT_PUBLIC)) {
+        let _ = fs::create_dir_all(cache_dir(data_dir));
+        let kept = MineFile { last_played, lang: lang_now.into(), list: Vec::new() };
+        let _ = fs::write(&file, serde_json::to_string(&kept).unwrap_or_default());
+    }
+    let v = v?;
+    // A game without stats answers success false ("Requested app has no stats"):
+    // it has no achievements. Private game details were already turned into an error.
+    let stats = v.get("playerstats").ok_or(tr!("A Steam respondeu algo inesperado."))?;
+    let list: Vec<Mine> = stats
+        .get("achievements")
+        .and_then(Value::as_array)
+        .map(|all| {
+            all.iter()
+                .map(|a| Mine {
+                    api: a.get("apiname").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    achieved: a.get("achieved").and_then(Value::as_i64) == Some(1),
+                    unlocked_at: a.get("unlocktime").and_then(Value::as_u64).unwrap_or(0),
+                    name: a.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    description: a.get("description").and_then(Value::as_str).unwrap_or_default().to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let _ = fs::create_dir_all(cache_dir(data_dir));
+    let kept = MineFile { last_played, lang: lang_now.into(), list: list.clone() };
+    let _ = fs::write(&file, serde_json::to_string(&kept).unwrap_or_default());
+    Ok(list)
+}
+
+/// A game's achievement list with icons and secret flags, kept for a month.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SchemaEntry {
+    pub api: String,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub icon_locked: Option<String>,
+    pub hidden: bool,
+}
+
+pub async fn schema(http: &reqwest::Client, data_dir: &Path, key: &str, app: u32, online: bool) -> Result<Vec<SchemaEntry>, String> {
+    let lang_now = steam_lang();
+    let file = cache_dir(data_dir).join(format!("schema-{app}-{lang_now}.json"));
+    if !online {
+        return fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or(OFFLINE.to_string());
+    }
+    if age(&file).is_some_and(|a| a < Duration::from_secs(30 * 24 * 3600)) {
+        if let Some(list) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()) {
+            return Ok(list);
+        }
+    }
+    let v = get(http, "ISteamUserStats/GetSchemaForGame/v2/", &format!("key={}&appid={app}&l={lang_now}", encode(key))).await?;
+    let list: Vec<SchemaEntry> = v
+        .pointer("/game/availableGameStats/achievements")
+        .and_then(Value::as_array)
+        .map(|all| {
+            all.iter()
+                .map(|a| SchemaEntry {
+                    api: a.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    name: a.get("displayName").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    description: a.get("description").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    icon: a.get("icon").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string),
+                    icon_locked: a.get("icongray").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string),
+                    hidden: a.get("hidden").and_then(Value::as_i64).unwrap_or(0) != 0,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let _ = fs::create_dir_all(cache_dir(data_dir));
+    let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
+    Ok(list)
+}
+
+/// The account number in Steam's files (`userdata/<n>`) for a SteamID64.
+#[cfg(test)]
+pub fn account_number(steamid: &str) -> Option<String> {
+    steamid.parse::<u64>().ok().and_then(|id| id.checked_sub(ID_BASE)).map(|n| n.to_string())
+}
+
+/// What the API says about achievements, by API name.
+pub fn by_api(list: &[Mine]) -> HashMap<&str, &Mine> {
+    list.iter().map(|m| (m.api.as_str(), m)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_account_last_signed_in_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("config")).unwrap();
+        fs::write(
+            dir.path().join("config").join("loginusers.vdf"),
+            "\"users\"\n{\n\t\"76561198000000001\"\n\t{\n\t\t\"PersonaName\"\t\t\"Old\"\n\t\t\"MostRecent\"\t\t\"0\"\n\t\t\"Timestamp\"\t\t\"200\"\n\t}\n\t\"76561198000000002\"\n\t{\n\t\t\"PersonaName\"\t\t\"Player\"\n\t\t\"MostRecent\"\t\t\"1\"\n\t\t\"Timestamp\"\t\t\"100\"\n\t}\n}\n",
+        )
+        .unwrap();
+        assert_eq!(local_account(dir.path()), Some(("76561198000000002".into(), "Player".into())));
+        assert_eq!(account_number("76561198000000002").as_deref(), Some("39734274"));
+    }
+
+    #[test]
+    fn steam_403s_are_told_apart() {
+        let private = r#"{"playerstats":{"error":"Profile is not public","success":false}}"#;
+        assert_eq!(read_reply(403, private).unwrap_err(), cerberus_shared::i18n::t(NOT_PUBLIC));
+        assert_eq!(read_reply(403, "<HTML><HEAD><TITLE>Access Denied</TITLE>").unwrap_err(), cerberus_shared::i18n::t(BUSY));
+        assert!(read_reply(403, "").unwrap_err().contains("chave") || read_reply(403, "").unwrap_err().contains("key"));
+        let no_stats = r#"{"playerstats":{"error":"Requested app has no stats","success":false}}"#;
+        assert!(read_reply(400, no_stats).is_ok());
+    }
+
+    #[test]
+    fn typed_profiles_with_the_number_need_no_question() {
+        let http = reqwest::Client::new();
+        let id = tauri::async_runtime::block_on(resolve(&http, "k", "https://steamcommunity.com/profiles/76561198000000002/")).unwrap();
+        assert_eq!(id, "76561198000000002");
+    }
+}

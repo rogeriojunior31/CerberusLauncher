@@ -104,7 +104,7 @@ impl ArtCache {
         }
         let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
         if bytes.len() > MAX_BYTES || !is_image(&bytes) {
-            return Err(format!("{url} is not a picture"));
+            return Err(format!("{} is not a picture", url));
         }
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let file = self.file_for(url);

@@ -56,6 +56,12 @@ pub fn root() -> Option<PathBuf> {
 /// Art from Steam's local cache, the first of `names` found. Older games keep it
 /// as `<appid>/library_600x900.jpg`; newer ones put it in a hash-named
 /// subfolder, and name the tall cover `library_capsule.jpg`.
+/// The tall cover Steam keeps on disk for a game, if any.
+pub fn local_cover(app_id: u32) -> Option<String> {
+    let root = root()?;
+    local_art(&cover_cache_dir(&root), app_id, &["library_600x900.jpg", "library_capsule.jpg"])
+}
+
 fn local_art(covers: &Path, app_id: u32, names: &[&str]) -> Option<String> {
     let dir = covers.join(app_id.to_string());
     for name in names {
@@ -81,6 +87,41 @@ fn clean_path(path: &Path) -> Option<String> {
     Some(path.to_string_lossy().into_owned())
 }
 
+/// A game the Steam account owns but this PC hasn't installed. Its art is what
+/// the Steam client already keeps here, or Steam's servers.
+pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
+    let host = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps";
+    Game {
+        id: format!("steam:{app_id}"),
+        name: name.to_string(),
+        source: Source::Steam { app_id },
+        install_dir: String::new(),
+        cover_path: covers.and_then(|c| local_art(c, app_id, &["library_600x900.jpg", "library_capsule.jpg"])),
+        cover_url: Some(format!("{host}/{app_id}/library_600x900.jpg")),
+        hero_path: covers.and_then(|c| local_art(c, app_id, &["library_hero.jpg"])),
+        hero_url: Some(format!("{host}/{app_id}/library_hero.jpg")),
+        playtime_secs: 0,
+        last_played: None,
+        last_session_secs: None,
+        launch_args: String::new(),
+        tracking_exe: None,
+        game_copy: None,
+        setup_pending: false,
+        next_step: cerberus_shared::NextStep::Install,
+        setting_picks: Default::default(),
+        external: false,
+        logo_path: None,
+        look: None,
+        favorite: false,
+        hidden: false,
+        collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
+        updates_paused: false,
+    }
+}
+
 fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
     let text = fs::read_to_string(path).ok()?;
     let app_id: u32 = first_value(&text, "appid")?.parse().ok()?;
@@ -90,8 +131,8 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
     let name = first_value(&text, "name")?;
     let install_dir = first_value(&text, "installdir")?;
     let install_dir = library.join("steamapps").join("common").join(install_dir);
-    let cover_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg");
-    let hero_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_hero.jpg");
+    let cover_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_600x900.jpg", app_id);
+    let hero_url = format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_hero.jpg", app_id);
     Some(Game {
         id: format!("steam:{app_id}"),
         name,
@@ -116,6 +157,10 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
+        updates_paused: false,
     })
 }
 
@@ -185,6 +230,18 @@ fn steam_root() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_owned_game_not_on_this_pc_installs_through_steam() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("620_library_600x900.jpg"), b"x").unwrap();
+        let g = super::not_installed(620, "Portal 2", Some(dir.path()));
+        assert_eq!(g.next_step, cerberus_shared::NextStep::Install);
+        assert!(g.install_dir.is_empty());
+        assert!(g.cover_url.as_deref().unwrap().contains("/620/library_600x900.jpg"));
+        let none = super::not_installed(4000, "Garry's Mod", None);
+        assert!(none.cover_path.is_none() && none.hero_url.is_some());
+    }
+
     use super::*;
 
     #[test]

@@ -1,5 +1,6 @@
 //! Discover: every recomp in the catalog, plus the install flow shared with the game page.
 
+use cerberus_shared::tr;
 use cerberus_shared::{InstallStep, RecompEntry};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -11,6 +12,17 @@ use crate::{Library, api, format::megabytes};
 
 /// Starts installing (or updating) a recomp; progress fills in from the backend's events.
 pub fn start_install(library: Library, id: String) {
+    spawn_local(install_one(library, id));
+}
+
+/// Installs one recomp and waits for it: for "Update all", one after the other.
+pub async fn install_one(library: Library, id: String) {
+    library.failed.update(|all| {
+        all.remove(&id);
+    });
+    library.speed.update(|all| {
+        all.remove(&id);
+    });
     library.progress.update(|all| {
         // Carrying on from a pause starts where the bar stopped.
         let starting = match all.get(&id) {
@@ -19,25 +31,35 @@ pub fn start_install(library: Library, id: String) {
         };
         all.insert(id.clone(), starting);
     });
-    spawn_local(async move {
-        let result = api::install_recomp(&id).await;
-        // Paused: the bar stays, showing where it stopped, until it carries on.
-        if result.as_ref().is_err_and(|e| e == cerberus_shared::PAUSED) {
-            return;
-        }
-        library.progress.update(|all| {
-            all.remove(&id);
-        });
-        library.games.refetch();
-        library.recomps.refetch();
-        if let Some(game) = library.report(result) {
-            if game.setup_pending {
-                library.toast(format!("Download de {} concluído. Abra o instalador na página do jogo.", game.name));
-            } else {
-                library.toast(format!("{} foi instalado.", game.name));
-            }
-        }
+    let result = api::install_recomp(&id).await;
+    // Paused: the bar stays, showing where it stopped, until it carries on.
+    if result.as_ref().is_err_and(|e| e == cerberus_shared::PAUSED) {
+        return;
+    }
+    library.progress.update(|all| {
+        all.remove(&id);
     });
+    library.speed.update(|all| {
+        all.remove(&id);
+    });
+    // Kept for the Downloads page's "Didn't finish"; a cancel isn't a failure.
+    if let Err(e) = &result {
+        let cancelled = e.as_str() == cerberus_shared::CANCELLED_INSTALL || e.as_str() == cerberus_shared::i18n::t(cerberus_shared::CANCELLED_INSTALL);
+        if !cancelled {
+            library.failed.update(|all| {
+                all.insert(id.clone(), e.clone());
+            });
+        }
+    }
+    library.games.refetch();
+    library.recomps.refetch();
+    if let Some(game) = library.report(result) {
+        if game.setup_pending {
+            library.toast(tr!("Download de {} concluído. Abra o instalador na página do jogo.", game.name));
+        } else {
+            library.toast(tr!("{} foi instalado.", game.name));
+        }
+    }
 }
 
 pub fn cancel_install(library: Library, id: String) {
@@ -73,29 +95,29 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
     let (label, percent) = match step {
         InstallStep::Downloading { done, total } if total > 0 => {
             let percent = u128::from(done.min(total)) * 100 / u128::from(total);
-            (format!("Baixando {percent}% · {} de {}", megabytes(done), megabytes(total)), Some(percent))
+            (tr!("Baixando {}% · {} de {}", percent, megabytes(done), megabytes(total)), Some(percent))
         }
-        InstallStep::Downloading { done, .. } if done > 0 => (format!("Baixando · {}", megabytes(done)), None),
-        InstallStep::Downloading { .. } => ("Iniciando download…".into(), None),
+        InstallStep::Downloading { done, .. } if done > 0 => (tr!("Baixando · {}", megabytes(done)), None),
+        InstallStep::Downloading { .. } => (tr!("Iniciando download…").into(), None),
         InstallStep::Paused { done, total } if total > 0 => {
             let percent = u128::from(done.min(total)) * 100 / u128::from(total);
-            (format!("Pausado em {percent}% · {} de {}", megabytes(done), megabytes(total)), Some(percent))
+            (tr!("Pausado em {}% · {} de {}", percent, megabytes(done), megabytes(total)), Some(percent))
         }
-        InstallStep::Paused { done, .. } => (format!("Pausado · {}", megabytes(done)), None),
-        InstallStep::Unpacking => ("Preparando arquivos…".into(), None),
-        InstallStep::Finished => ("Concluído".into(), Some(100)),
-        InstallStep::Failed { message } => (format!("Falha na instalação · {message}"), Some(0)),
+        InstallStep::Paused { done, .. } => (tr!("Pausado · {}", megabytes(done)), None),
+        InstallStep::Unpacking => (tr!("Preparando arquivos…").into(), None),
+        InstallStep::Finished => (tr!("Concluído").into(), Some(100)),
+        InstallStep::Failed { message } => (tr!("Falha na instalação · {}", cerberus_shared::i18n::translate(&message)), Some(0)),
     };
     let (pause_id, resume_id) = (recomp_id.clone(), recomp_id.clone());
     let pause = pausable.then(|| {
-        view! { <button type="button" class="btn" on:click=move |_| pause_install(library, pause_id.clone())>"Pausar"</button> }
+        view! { <button type="button" class="btn" on:click=move |_| pause_install(library, pause_id.clone())>{tr!("Pausar")}</button> }
     });
     let resume = paused.then(|| {
-        view! { <button type="button" class="btn primary" on:click=move |_| start_install(library, resume_id.clone())>"Continuar"</button> }
+        view! { <button type="button" class="btn primary" on:click=move |_| start_install(library, resume_id.clone())>{tr!("Continuar")}</button> }
     });
     let cancel = cancellable.then(|| {
         view! {
-            <button type="button" class="btn" on:click=move |_| cancel_install(library, recomp_id.clone())>"Cancelar"</button>
+            <button type="button" class="btn" on:click=move |_| cancel_install(library, recomp_id.clone())>{tr!("Cancelar")}</button>
         }
     });
     view! {
@@ -156,6 +178,51 @@ fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
     needle.split_whitespace().all(|word| haystack.contains(word))
 }
 
+/// The catalog's genres, in the player's words. "other" isn't offered.
+pub fn genre_label(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "action" => tr!("Ação"),
+        "platformer" => tr!("Plataformas"),
+        "shooter" => tr!("Tiro"),
+        "rpg" => "RPG",
+        "racing" => tr!("Corrida"),
+        "fighting" => tr!("Luta"),
+        "adventure" => tr!("Aventura"),
+        "sports" => tr!("Esportes"),
+        "puzzle" => tr!("Quebra-cabeça"),
+        _ => return None,
+    })
+}
+
+/// What a recomp adds, as the catalog tags it (several tags mean the same thing).
+// Tags come in Portuguese (the catalog is kept in it) or back in English, so both are listed.
+const FEATURES: [(&str, &[&str]); 7] = [
+    ("controller", &["Controller", "Controller Support", "Controle", "Suporte a controle"]),
+    ("achievements", &["Achievements", "Conquistas"]),
+    ("coop", &["Local Co-op", "Split Screen", "Multiplayer", "Co-op", "Cooperativo local", "Tela dividida", "Multijogador", "Cooperativo"]),
+    ("online", &["Online", "Netplay", "Jogo em rede"]),
+    ("fps", &["High FPS", "60 FPS", "FPS alto"]),
+    ("wide", &["Widescreen", "Ultrawide", "Ultrawide experimental", "Experimental ultrawide"]),
+    ("mods", &["Mods", "Mod support", "Suporte a mods"]),
+];
+
+fn feature_label(id: &str) -> &'static str {
+    match id {
+        "controller" => tr!("Suporte a controle"),
+        "achievements" => tr!("Conquistas"),
+        "coop" => tr!("Multijogador local"),
+        "online" => tr!("Online"),
+        "fps" => tr!("Mais FPS"),
+        "wide" => tr!("Tela larga"),
+        "mods" => tr!("Mods"),
+        _ => "",
+    }
+}
+
+fn has_feature(entry: &RecompEntry, id: &str) -> bool {
+    FEATURES.iter().find(|(f, _)| *f == id).is_some_and(|(_, tags)| entry.tags.iter().any(|t| tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
+}
+
 #[component]
 pub fn DiscoverPage() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -163,6 +230,8 @@ pub fn DiscoverPage() -> impl IntoView {
     let console = RwSignal::new(String::new());
     let sort = RwSignal::new(Sort::Popular);
     let only_owned = RwSignal::new(false);
+    let genre = RwSignal::new(String::new());
+    let feature = RwSignal::new(String::new());
     // Recomps by their own names ("Zelda 64: Recompiled"), or by the game they bring back ("Majora's Mask").
     let by_game = RwSignal::new(by_game_saved());
     let shown = RwSignal::new(PAGE);
@@ -172,6 +241,8 @@ pub fn DiscoverPage() -> impl IntoView {
         console.track();
         sort.track();
         only_owned.track();
+        genre.track();
+        feature.track();
         shown.set(PAGE);
     });
 
@@ -189,6 +260,22 @@ pub fn DiscoverPage() -> impl IntoView {
         counts.sort_by_key(|(_, _, n)| std::cmp::Reverse(*n));
         counts
     };
+    // Genres with recomps on the chosen platform, most first.
+    let genres = move || {
+        let wanted_console = console.get();
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for (entry, _) in one_each(&entries()) {
+            if genre_label(&entry.genre).is_none() || !(wanted_console.is_empty() || entry.origin == wanted_console) {
+                continue;
+            }
+            match counts.iter_mut().find(|(g, _)| *g == entry.genre) {
+                Some(found) => found.1 += 1,
+                None => counts.push((entry.genre.clone(), 1)),
+            }
+        }
+        counts.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+        counts
+    };
 
     let filtered = move || {
         let needle = search.get().to_lowercase();
@@ -200,6 +287,8 @@ pub fn DiscoverPage() -> impl IntoView {
             .into_iter()
             .filter(|(e, _)| wanted_console.is_empty() || e.origin == wanted_console)
             .filter(|(e, _)| !only_owned.get() || e.owned_copy.is_some())
+            .filter(|(e, _)| genre.with(|g| g.is_empty() || e.genre == *g))
+            .filter(|(e, _)| feature.with(|f| f.is_empty() || has_feature(e, f)))
             .filter_map(|(lead, n)| {
                 if matches_search(&lead, &needle) {
                     return Some((lead, n));
@@ -215,16 +304,18 @@ pub fn DiscoverPage() -> impl IntoView {
         games
     };
 
-    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get();
+    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get() || !genre.get().is_empty() || !feature.get().is_empty();
     let clear = move |_| {
         search.set(String::new());
         console.set(String::new());
         only_owned.set(false);
+        genre.set(String::new());
+        feature.set(String::new());
     };
 
     let grid = move || {
         if library.recomps.get().is_none() {
-            return view! { <p class="muted">"Carregando o catálogo..."</p> }.into_any();
+            return view! { <p class="muted">{tr!("Carregando o catálogo...")}</p> }.into_any();
         }
         if let Some(Err(error)) = library.recomps.get() {
             return view! { <p class="problem">{error}</p> }.into_any();
@@ -235,8 +326,8 @@ pub fn DiscoverPage() -> impl IntoView {
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Search size=32 />
-                    <h2>"Nenhum jogo encontrado"</h2>
-                    <p class="muted">"Tente outro nome ou tire os filtros."</p>
+                    <h2>{tr!("Nenhum jogo encontrado")}</h2>
+                    <p class="muted">{tr!("Tente outro nome ou tire os filtros.")}</p>
                 </div>
             }
             .into_any();
@@ -251,13 +342,13 @@ pub fn DiscoverPage() -> impl IntoView {
                 }
                 info.sub = match (&entry.latest, &entry.problem) {
                     _ if by_game.get() => format!("{} · {}", entry.console, if versions > 1 { format!("{versions} recomps") } else { entry.name.clone() }),
-                    _ if versions > 1 => format!("{} · {versions} versões", entry.console),
+                    _ if versions > 1 => tr!("{} · {} versões", entry.console, versions),
                     (Some(release), _) if release.size > 0 => format!("{} · {}", entry.console, megabytes(release.size)),
-                    (None, Some(_)) => format!("{} · Indisponível", entry.console),
+                    (None, Some(_)) => tr!("{} · Indisponível", entry.console),
                     _ => entry.console.clone(),
                 };
                 if entry.owned_copy.is_some() && info.badge.is_none() {
-                    info.badge = Some("Você tem".to_string());
+                    info.badge = Some(tr!("Você tem").to_string());
                 }
                 view! { <Tile info /> }
             })
@@ -266,14 +357,14 @@ pub fn DiscoverPage() -> impl IntoView {
             view! {
                 <div class="more">
                     <button type="button" class="btn" on:click=move |_| shown.update(|n| *n += PAGE)>
-                        {format!("Mostrar mais ({} de {total})", shown.get())}
+                        {tr!("Mostrar mais ({} de {})", shown.get(), total)}
                     </button>
                 </div>
             }
         });
         view! {
             <section class="catalog-results">
-                <h2>{if total == 1 { "1 jogo".into() } else { format!("{total} jogos") }}</h2>
+                <h2>{if total == 1 { tr!("1 jogo").into() } else { tr!("{} jogos", total) }}</h2>
                 <div class="grid">{tiles}</div>
                 {more}
             </section>
@@ -284,46 +375,46 @@ pub fn DiscoverPage() -> impl IntoView {
         <div class="page">
             <header class="page-h">
                 <div>
-                    <h1>"Descobrir"</h1>
+                    <h1>{tr!("Descobrir")}</h1>
                     <p class="muted">
-                        "Jogue no PC com sua cópia original. Catálogo de recomplauncher.com."
+                        {tr!("Jogue no PC com sua cópia original. Catálogo de recomplauncher.com.")}
                     </p>
                 </div>
                 <div class="row">
-                <button type="button" class="btn" title="Recomps que você instalou sem o Cerberus"
+                <button type="button" class="btn" title=tr!("Recomps que você instalou sem o Cerberus")
                     on:click=move |_| crate::adopt::start(library)>
-                    <Svg icon=Icon::Folder size=18 />"Trazer seus recomps"
+                    <Svg icon=Icon::Folder size=18 />{tr!("Trazer seus recomps")}
                 </button>
-                <button type="button" class="btn" title="Sugerir um projeto para o catálogo"
+                <button type="button" class="btn" title=tr!("Sugerir um projeto para o catálogo")
                     on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })>
-                    <Svg icon=Icon::Plus size=18 />"Pedir um recomp"
+                    <Svg icon=Icon::Plus size=18 />{tr!("Pedir um recomp")}
                 </button>
                 </div>
             </header>
-            <section class="catalog-filters" aria-label="Filtros do catálogo">
+            <section class="catalog-filters" aria-label=tr!("Filtros do catálogo")>
                 <div class="toolbar">
                     <label class="search">
                         <Svg icon=Icon::Search size=18 />
                         <input
                             type="search"
-                            aria-label="Buscar jogo, recomp ou autor"
-                            placeholder="Buscar jogo, recomp ou autor"
+                            aria-label=tr!("Buscar jogo, recomp ou autor")
+                            placeholder=tr!("Buscar jogo, recomp ou autor")
                             prop:value=move || search.get()
                             on:input=move |e| search.set(event_target_value(&e))
                         />
                     </label>
-                    <div class="segs" role="radiogroup" aria-label="Mostrar por">
+                    <div class="segs" role="radiogroup" aria-label=tr!("Mostrar por")>
                         <button type="button" class="seg" role="radio" class:on=move || !by_game.get() aria-checked=move || (!by_game.get()).to_string()
-                            on:click=move |_| { by_game.set(false); save_by_game(false); }>"Recomps"</button>
+                            on:click=move |_| { by_game.set(false); save_by_game(false); }>{tr!("Recomps")}</button>
                         <button type="button" class="seg" role="radio" class:on=move || by_game.get() aria-checked=move || by_game.get().to_string()
-                            on:click=move |_| { by_game.set(true); save_by_game(true); }>"Jogos"</button>
+                            on:click=move |_| { by_game.set(true); save_by_game(true); }>{tr!("Jogos")}</button>
                     </div>
                     <button type="button" class="chip-btn" aria-pressed=move || only_owned.get().to_string() class:on=move || only_owned.get() on:click=move |_| only_owned.update(|o| *o = !*o)>
-                        "Tenho o jogo"
+                        {tr!("Tenho o jogo")}
                     </button>
                     <select
                         class="select"
-                        aria-label="Ordenar"
+                        aria-label=tr!("Ordenar")
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {
                             "new" => Sort::Newest,
                             "updated" => Sort::Updated,
@@ -331,24 +422,45 @@ pub fn DiscoverPage() -> impl IntoView {
                             _ => Sort::Popular,
                         })
                     >
-                        <option value="popular">"Populares"</option>
-                        <option value="new">"Adicionados recentemente"</option>
-                        <option value="updated">"Atualizados recentemente"</option>
-                        <option value="name">"A a Z"</option>
+                        <option value="popular">{tr!("Populares")}</option>
+                        <option value="new">{tr!("Adicionados recentemente")}</option>
+                        <option value="updated">{tr!("Atualizados recentemente")}</option>
+                        <option value="name">{tr!("A a Z")}</option>
                     </select>
                 </div>
                 <div class="catalog-platform">
-                    <label for="catalog-console">"Plataforma"</label>
+                    <label for="catalog-console">{tr!("Plataforma")}</label>
                     <select id="catalog-console" class="select" prop:value=move || console.get()
                         on:change=move |e| console.set(event_target_value(&e))>
-                        <option value="">"Todas as plataformas"</option>
+                        <option value="">{tr!("Todas as plataformas")}</option>
                         {move || consoles().into_iter().map(|(id, name, n)| view! {
                             <option value=id>{format!("{name} ({n})")}</option>
                         }).collect_view()}
                     </select>
+                    <label for="catalog-feature">{tr!("Recurso")}</label>
+                    <select id="catalog-feature" class="select" prop:value=move || feature.get()
+                        on:change=move |e| feature.set(event_target_value(&e))>
+                        <option value="">{tr!("Qualquer recurso")}</option>
+                        {FEATURES.iter().map(|(id, _)| view! { <option value=*id>{feature_label(id)}</option> }).collect_view()}
+                    </select>
                     <Show when=has_filters>
-                        <button type="button" class="link" on:click=clear>"Limpar filtros"</button>
+                        <button type="button" class="link" on:click=clear>{tr!("Limpar filtros")}</button>
                     </Show>
+                </div>
+                <div class="genre-chips" role="radiogroup" aria-label=tr!("Gênero")>
+                    <button type="button" class="gchip" role="radio" class:on=move || genre.with(String::is_empty)
+                        aria-checked=move || genre.with(String::is_empty).to_string() on:click=move |_| genre.set(String::new())>{tr!("Todos os gêneros")}</button>
+                    {move || genres().into_iter().map(|(id, n)| {
+                        let mine = id.clone();
+                        let pick = id.clone();
+                        let on = move || genre.with(|g| *g == mine);
+                        view! {
+                            <button type="button" class="gchip" role="radio" class:on=on.clone() aria-checked=move || on().to_string()
+                                on:click=move |_| genre.update(|g| *g = if *g == pick { String::new() } else { pick.clone() })>
+                                {genre_label(&id).unwrap_or_default()}<small>{n}</small>
+                            </button>
+                        }
+                    }).collect_view()}
                 </div>
             </section>
             {grid}

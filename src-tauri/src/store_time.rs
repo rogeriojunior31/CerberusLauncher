@@ -4,6 +4,8 @@
 //! time is kept in `store-playtime.json` (those games are read from the stores
 //! each time, so the library can't hold it).
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -122,12 +124,20 @@ pub fn watch(app: AppHandle) {
         let mut games: Vec<(String, String, String)> = Vec::new();
         let mut scanned = Instant::now() - Duration::from_secs(3600);
         let mut playing: HashMap<String, Instant> = HashMap::new();
+        let mut live = crate::achievements::live::Live::default();
+        let steam_app = |id: &str| id.strip_prefix("steam:").and_then(|n| n.parse::<u32>().ok());
         loop {
             // The stores' lists change rarely; reading them each minute is plenty.
             if scanned.elapsed() >= Duration::from_secs(60) {
                 let mut found = crate::steam::installed_games();
                 found.extend(crate::epic::installed_games());
+                let before: HashSet<String> = games.iter().map(|(id, _, _)| id.clone()).collect();
                 games = found.into_iter().map(|g| (g.id, g.install_dir, g.name)).collect();
+                // A game finished installing (or was removed) in its store: the library shows it.
+                let now: HashSet<String> = games.iter().map(|(id, _, _)| id.clone()).collect();
+                if !before.is_empty() && before != now {
+                    let _ = app.emit("catalog-changed", ());
+                }
                 scanned = Instant::now();
             }
             let dirs: Vec<(String, String)> = games.iter().map(|(id, dir, _)| (id.clone(), dir.clone())).collect();
@@ -135,13 +145,23 @@ pub fn watch(app: AppHandle) {
             for id in &now_running {
                 if !playing.contains_key(id) {
                     playing.insert(id.clone(), Instant::now());
+                    crate::in_game::session(&app, true);
                     let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: true });
+                    if let Some(n) = steam_app(id) {
+                        live.start(&app, n);
+                    }
                 }
             }
             let ended: Vec<String> = playing.keys().filter(|id| !now_running.contains(*id)).cloned().collect();
             for id in ended {
                 let Some(started) = playing.remove(&id) else { continue };
+                if let Some(n) = steam_app(&id) {
+                    // Steam may store the last unlock as the game closes.
+                    live.check(&app);
+                    live.stop(n);
+                }
                 let seconds = started.elapsed().as_secs();
+                crate::in_game::session(&app, false);
                 let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: false });
                 // A blink (a launcher checking for updates) isn't a session.
                 if seconds < 30 {
@@ -150,10 +170,15 @@ pub fn watch(app: AppHandle) {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };
                 let saved = add(&data, &id, seconds, now);
-                let minutes = if seconds < 60 { "Menos de 1 min jogado".to_string() } else { format!("{} min jogados", seconds / 60) };
-                crate::trail::note(&app, &id, "Partida", &saved.map(|_| minutes));
+                crate::play_log::record(&data, &id, seconds, now);
+                let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) };
+                crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
                 let _ = app.emit("playtime-updated", &id);
             }
+            live.check(&app);
+            // Downloads slow down while any game is open (store games or ones Cerberus started).
+            let ours = !app.state::<crate::sessions::Sessions>().running().is_empty();
+            crate::recomp::throttle::set_playing(ours || !playing.is_empty());
             std::thread::sleep(Duration::from_secs(5));
         }
     });

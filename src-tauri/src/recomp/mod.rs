@@ -14,7 +14,10 @@ pub mod sources;
 mod translate;
 pub(crate) mod update;
 pub mod relocate;
+pub mod throttle;
 
+use cerberus_shared::tk;
+use cerberus_shared::tr;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -138,7 +141,7 @@ impl Installing {
         let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
         let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
         if busy.contains_key(&key) {
-            return Err("Aguarde a atualização do jogo terminar.".into());
+            return Err(tr!("Aguarde a atualização do jogo terminar.").into());
         }
         action()
     }
@@ -171,7 +174,7 @@ pub fn backup_saves(folders: &Folders, recomp_id: &str, install_dir: &Path, reas
 /// `to_cloud: false` for a safety copy of saves about to be replaced: sending
 /// it up would make the old saves the cloud's newest, and bring them back.
 fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str, to_cloud: bool) -> Result<Option<Backup>, String> {
-    let entry = find(recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let entry = find(recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let places = saves::places(&entry.saves);
     let backups = folders.backups_dir(recomp_id);
     let cloud = folders.cloud_dir(recomp_id).filter(|_| to_cloud);
@@ -193,7 +196,7 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let Some((cloud_newest, cloud_print)) = saves::newest_with_fingerprint(&cloud) else {
         return Ok(None);
     };
-    let entry = find(recomp_id).ok_or("Esse recomp não está no catálogo.")?;
+    let entry = find(recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let places = saves::places(&entry.saves);
     if saves::current_fingerprint(&places, install_dir).as_deref() == Some(cloud_print.as_str()) {
         return Ok(None);
@@ -211,10 +214,10 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let zip = zip::ZipArchive::new(temp.reopen().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     backup_saves_to(folders, recomp_id, install_dir, saves::BEFORE_CLOUD, false)?;
     if saves::restore_open(zip, install_dir, Some(&places))? == 0 {
-        return Err("O backup na nuvem não contém saves que este PC possa restaurar.".into());
+        return Err(tr!("O backup na nuvem não contém saves que este PC possa restaurar.").into());
     }
     cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
-    Ok(Some("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.".into()))
+    Ok(Some(tr!("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.").into()))
 }
 
 pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
@@ -226,7 +229,7 @@ pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
 pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<u32, String> {
     // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
     let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
-    backup_saves(folders, recomp_id, install_dir, "Antes de restaurar")?;
+    backup_saves(folders, recomp_id, install_dir, tk!("Antes de restaurar"))?;
     saves::restore_open(selected, install_dir, None)
 }
 
@@ -284,8 +287,8 @@ fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&Str
         _ => return NextStep::Play,
     };
     if !exe.is_file() {
-        let what = if game.setup_pending { "O instalador" } else { "O programa do jogo" };
-        return NextStep::Locate { reason: format!("{what} não está mais em {}.", exe.display()) };
+        let what = if game.setup_pending { tr!("O instalador") } else { tr!("O programa do jogo") };
+        return NextStep::Locate { reason: tr!("{1} não está mais em {0}.", exe.display(), what) };
     }
     if game.setup_pending {
         return NextStep::RunInstaller;
@@ -369,11 +372,11 @@ pub fn split_args(text: &str) -> Vec<String> {
 /// image's files) put there.
 pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Result<Game, String> {
     if !copy.exists() {
-        return Err(format!("{} não existe mais.", copy.display()));
+        return Err(tr!("{} não existe mais.", copy.display()));
     }
-    let game = library.get(game_id)?.ok_or("Esse jogo não está mais na biblioteca.")?;
+    let game = library.get(game_id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Recomp { recomp_id, .. } = &game.source else {
-        return Err("Só recomps usam uma cópia do jogo.".into());
+        return Err(tr!("Só recomps usam uma cópia do jogo.").into());
     };
     let entry = find(recomp_id);
     // The wrong region or revision of an N64 game opens to a black screen; say so now instead.
@@ -391,7 +394,7 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
         Some(CopyHandoff::Folder { folder, file_name, extract }) => {
             put_in_folder(&game.install_dir, &folder, file_name, extract, accepts_folder, copy)?;
         }
-        _ if copy.is_dir() => return Err("Esse jogo precisa de um arquivo, não de uma pasta.".into()),
+        _ if copy.is_dir() => return Err(tr!("Esse jogo precisa de um arquivo, não de uma pasta.").into()),
         _ => {}
     }
     let path = copy.to_string_lossy().into_owned();
@@ -402,28 +405,22 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
 /// the right console, a folder when only a folder will do, and a folder that
 /// holds what the recomp reads from it.
 fn copy_fits(entry: &CatalogEntry, copy: &Path) -> Result<(), String> {
-    let wants = if entry.copy_contains.is_empty() { String::new() } else { format!(" (com {})", entry.copy_contains.join(" e ")) };
+    let wants = if entry.copy_contains.is_empty() { String::new() } else { tr!(" (com {})", entry.copy_contains.join(" e ")) };
     if copy.is_dir() {
         let missing: Vec<&String> = entry.copy_contains.iter().filter(|name| !holds(copy, name)).collect();
         if !missing.is_empty() {
             let names: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
-            return Err(format!("Essa pasta não tem {}. Escolha a pasta do jogo{wants}.", names.join(" nem ")));
+            return Err(tr!("Essa pasta não tem {0}. Escolha a pasta do jogo{1}.", names.join(" nem "), wants));
         }
         return Ok(());
     }
     if let Some(system) = crate::roms::cartridge_of(copy) {
         if !crate::roms::console_fits(system, &entry.origin) {
-            return Err(format!(
-                "Esse arquivo é de {}, mas {} é de {}. Escolha a sua cópia de {}.",
-                crate::roms::console_name(system),
-                entry.name,
-                entry.console,
-                entry.game
-            ));
+            return Err(tr!("Esse arquivo é de {}, mas {} é de {}. Escolha a sua cópia de {}.", crate::roms::console_name(system), entry.name, entry.console, entry.game));
         }
     }
     if entry.copy_accepts == "folder" {
-        return Err(format!("{} precisa da pasta com os arquivos do jogo{wants}, não de um arquivo.", entry.name));
+        return Err(tr!("{0} precisa da pasta com os arquivos do jogo{1}, não de um arquivo.", entry.name, wants));
     }
     Ok(())
 }
@@ -438,15 +435,15 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
     // folder, so only plain names are taken (no "..", no drive, no root).
     let inside = |p: &str| Path::new(p).components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
     if !inside(folder) {
-        return Err("O catálogo pede um caminho inesperado; nada foi copiado.".into());
+        return Err(tr!("O catálogo pede um caminho inesperado; nada foi copiado.").into());
     }
     let dir = Path::new(install_dir).join(folder);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if copy.is_dir() {
         if !accepts_folder {
-            return Err("Esse jogo precisa de um arquivo, não de uma pasta.".into());
+            return Err(tr!("Esse jogo precisa de um arquivo, não de uma pasta.").into());
         }
-        return copy_tree(copy, &dir).map_err(|e| format!("Não foi possível copiar os arquivos do jogo: {e}"));
+        return copy_tree(copy, &dir).map_err(|e| tr!("Não foi possível copiar os arquivos do jogo: {}", e));
     }
     // A disc image is unpacked, whichever of the two formats the recomps ask for it is.
     if extract && crate::xdvdfs::is_xbox_disc(copy) {
@@ -460,7 +457,7 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
     let name = file_name.unwrap_or_else(|| copy.file_name().unwrap_or_default().to_string_lossy().into_owned());
     let plain_name = Path::new(&name).components().count() == 1 && inside(&name);
     if !plain_name {
-        return Err("O catálogo pede um caminho inesperado; nada foi copiado.".into());
+        return Err(tr!("O catálogo pede um caminho inesperado; nada foi copiado.").into());
     }
     // A CHD or CSO where the recomp reads an ISO: unpacked into one.
     let wants_iso = Path::new(&name)
@@ -470,7 +467,7 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         crate::disc_image::write_iso(copy, &dir.join(Path::new(&name).with_extension("iso")))?;
         return Ok(());
     }
-    fs::copy(copy, dir.join(&name)).map_err(|e| format!("Não foi possível copiar sua cópia do jogo: {e}"))?;
+    fs::copy(copy, dir.join(&name)).map_err(|e| tr!("Não foi possível copiar sua cópia do jogo: {}", e))?;
     Ok(())
 }
 
@@ -502,11 +499,11 @@ pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Resul
 fn problem_with(entry: &CatalogEntry) -> Option<String> {
     let for_this_pc = entry.systems.is_empty() || entry.systems.iter().any(|s| s == os_key());
     if !for_this_pc {
-        return Some("Não tem versão para este sistema.".into());
+        return Some(tr!("Não tem versão para este sistema.").into());
     }
     match entry.kind.as_str() {
-        "source" => Some("Esse projeto só publica o código-fonte; precisa ser compilado. Veja a página do projeto.".into()),
-        "installer" if !cfg!(windows) => Some("Esse recomp vem com um instalador de Windows.".into()),
+        "source" => Some(tr!("Esse projeto só publica o código-fonte; precisa ser compilado. Veja a página do projeto.").into()),
+        "installer" if !cfg!(windows) => Some(tr!("Esse recomp vem com um instalador de Windows.").into()),
         _ => None,
     }
 }
@@ -551,12 +548,12 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         players: entry.players,
         about: entry.about,
         adds: entry.adds,
-        needs: entry.needs,
+        needs: translate::shown_needs(&entry.needs),
         origin: entry.origin,
         author: entry.author,
         downloads: entry.downloads,
         stars: entry.stars,
-        tags: entry.tags,
+        tags: entry.tags.iter().map(|t| translate::shown_tag(t)).collect(),
         features: entry.features,
         setup_steps: entry.setup_steps,
         recommended: entry.recommended,
@@ -587,22 +584,19 @@ pub async fn install(
     id: &str,
     report: impl Fn(InstallStep) + Send + Sync,
 ) -> Result<Game, String> {
-    let entry = find(id).ok_or("Esse recomp não está no catálogo.")?;
+    let entry = find(id).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let cancel = Arc::new(install::Halt::default());
     {
         let mut busy = installing.0.lock().unwrap_or_else(|p| p.into_inner());
         if busy.contains_key(&entry.id) {
-            return Err(format!("{} já está sendo instalado.", entry.name));
+            return Err(tr!("{} já está sendo instalado.", entry.name));
         }
         let installed = installed_game(library, &entry)?;
         if installed.as_ref().is_some_and(|game| game.external) {
-            return Err(format!(
-                "{} foi instalado fora do Cerberus, então as atualizações dele ficam por sua conta. Para o Cerberus cuidar delas, remova o vínculo e instale por aqui.",
-                entry.name
-            ));
+            return Err(tr!("{} foi instalado fora do Cerberus, então as atualizações dele ficam por sua conta. Para o Cerberus cuidar delas, remova o vínculo e instale por aqui.", entry.name));
         }
         if installed.is_some_and(|game| sessions.is_running(&game.id)) {
-            return Err("Feche o jogo antes de atualizá-lo.".into());
+            return Err(tr!("Feche o jogo antes de atualizá-lo.").into());
         }
         busy.insert(entry.id.clone(), cancel.clone());
     }
@@ -635,7 +629,7 @@ async fn install_now(
     };
     if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source) {
         check_install_folder(folders, recomp_id, &target)?;
-        backup_saves(folders, recomp_id, &target, "Antes de atualizar")?;
+        backup_saves(folders, recomp_id, &target, tk!("Antes de atualizar"))?;
     }
 
     // Progress is sent at most once per percent; a 70 MB file has thousands of chunks.
@@ -730,7 +724,7 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
     if let Some(problem) = problem_with(entry) {
         return Err(problem);
     }
-    let forge = entry.forge().ok_or("O endereço do projeto no catálogo não é válido.")?;
+    let forge = entry.forge().ok_or(tr!("O endereço do projeto no catálogo não é válido."))?;
     let direct = entry.files.get(os_key()).filter(|f| !f.name.is_empty() && !f.sha256.is_empty());
     if let (Some(tag), Some(file)) = (&entry.tag, direct)
         && let Some(url) = forge.release_file(tag, &file.name)
@@ -752,7 +746,7 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
     let by_pattern = pattern.and_then(|p| assets::by_pattern(&release.assets, p).cloned().or_else(|| assets::by_bare_pattern(&release.assets, p)));
     let asset = by_pattern
         .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()).cloned())
-        .ok_or("Ainda não tem uma versão para este sistema.")?;
+        .ok_or(tr!("Ainda não tem uma versão para este sistema."))?;
     Ok((asset, release.version))
 }
 
@@ -779,9 +773,9 @@ fn register(
     let exe = program.to_string_lossy().into_owned();
     if let Some(existing) = installed {
         let Source::Recomp { recomp_id, generation, .. } = &existing.source else {
-            return Err("O registro do recomp mudou durante a atualização.".into());
+            return Err(tr!("O registro do recomp mudou durante a atualização.").into());
         };
-        let generation = generation.checked_add(1).ok_or("Limite de atualizações atingido.")?;
+        let generation = generation.checked_add(1).ok_or(tr!("Limite de atualizações atingido."))?;
         let source = Source::Recomp { recomp_id: recomp_id.clone(), version: version.to_string(), exe, generation };
         let mut game = library.update(&existing.id, |game| {
             game.source = source;
@@ -816,6 +810,10 @@ fn register(
         favorite: false,
         hidden: false,
         collections: Vec::new(),
+        status: None,
+        rating: 0,
+        notes: String::new(),
+        updates_paused: false,
     };
     apply_art(&mut game);
     library.add(game.clone())?;
@@ -834,7 +832,7 @@ pub fn delete_files(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<()
     match fs::remove_dir_all(dir) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(format!("Não foi possível apagar {}: {e}. O jogo está aberto?", dir.display())),
+        Err(e) => Err(tr!("Não foi possível apagar {0}: {1}. O jogo está aberto?", dir.display(), e)),
     }
 }
 
@@ -843,7 +841,7 @@ fn check_install_folder(folders: &Folders, recomp_id: &str, dir: &Path) -> Resul
     let safe_id = recomp_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     let legacy = safe_id && dir == folders.default_installs.join(recomp_id);
     if !marked && !legacy {
-        return Err(format!("O Cerberus não reconheceu a pasta de instalação {}.", dir.display()));
+        return Err(tr!("O Cerberus não reconheceu a pasta de instalação {}.", dir.display()));
     }
     Ok(())
 }

@@ -1,3 +1,4 @@
+use cerberus_shared::tr;
 use std::{io, path::Path};
 
 /// Settings can point to a directory that will be created on the first install.
@@ -14,7 +15,7 @@ pub fn available(path: &Path) -> Option<u64> {
 
 pub fn require(dir: &Path, additional: u64) -> Result<(), String> {
     if let Some(free) = available(dir) && additional > free {
-        return Err(format!("Espaço insuficiente em {}. Necessários {} MiB adicionais, disponíveis {} MiB.",
+        return Err(tr!("Espaço insuficiente em {}. Necessários {} MiB adicionais, disponíveis {} MiB.",
             dir.display(), additional.div_ceil(1 << 20), free >> 20));
     }
     Ok(())

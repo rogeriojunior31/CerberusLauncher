@@ -1,6 +1,7 @@
 //! The Ajustes tab: the game's own settings (full screen, resolution, frame
 //! rate...), changed here and written to the game's settings file.
 
+use cerberus_shared::tr;
 use cerberus_shared::{GameSetting, GameSettings};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -38,7 +39,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
             if let Some(now) = library.report(result) {
                 state.set(Some(Ok(Some(now))));
                 if reset {
-                    library.toast("Ajustes de volta ao padrão do jogo.");
+                    library.toast(tr!("Ajustes de volta ao padrão do jogo."));
                 }
             }
         });
@@ -58,13 +59,13 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
     let running = move || library.running.with(|all| all.contains(&id.get_value()));
 
     move || match state.get() {
-        None => view! { <p class="muted">"Lendo os ajustes do jogo..."</p> }.into_any(),
+        None => view! { <p class="muted">{tr!("Lendo os ajustes do jogo...")}</p> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(None)) => view! {
             <div class="empty small">
                 <Svg icon=Icon::Settings size=28 />
-                <h2>"Sem ajustes no catálogo"</h2>
-                <p class="muted">"Esse jogo muda as opções no próprio menu."</p>
+                <h2>{tr!("Sem ajustes no catálogo")}</h2>
+                <p class="muted">{tr!("Esse jogo muda as opções no próprio menu.")}</p>
             </div>
         }
         .into_any(),
@@ -81,19 +82,19 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
                     view! { {heading} <SettingRow setting=s busy apply=apply set_number=set_number /> }
                 })
                 .collect_view();
-            let reset_label = move || if armed_reset.get() { "Clique de novo para confirmar" } else { "Restaurar padrão" };
+            let reset_label = move || if armed_reset.get() { tr!("Clique de novo para confirmar") } else { tr!("Restaurar padrão") };
             let advanced_toggle = has_advanced.then(|| {
                 view! {
                     <button type="button" class="chip-btn" class:on=move || advanced.get() aria-pressed=move || advanced.get().to_string()
-                        on:click=move |_| advanced.update(|a| *a = !*a)>"Avançados"</button>
+                        on:click=move |_| advanced.update(|a| *a = !*a)>{tr!("Avançados")}</button>
                 }
             });
             view! {
                 <section class="card gs">
                     <div class="card-h">
                         <div>
-                            <h3>"Ajustes do jogo"</h3>
-                            <p class="muted small">"Gravados direto no arquivo de configuração do jogo. Valem na próxima vez que ele abrir."</p>
+                            <h3>{tr!("Ajustes do jogo")}</h3>
+                            <p class="muted small">{tr!("Gravados direto no arquivo de configuração do jogo. Valem na próxima vez que ele abrir.")}</p>
                         </div>
                         <div class="row">
                             {advanced_toggle}
@@ -104,7 +105,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
                         </div>
                     </div>
                     <Show when=running>
-                        <p class="problem small">"Feche o jogo para mudar os ajustes: ele grava os próprios ajustes ao fechar."</p>
+                        <p class="problem small">{tr!("Feche o jogo para mudar os ajustes: ele grava os próprios ajustes ao fechar.")}</p>
                     </Show>
                     <div class="gs-list" class:locked=running>{rows}</div>
                     <p class="muted small path">{files}</p>
@@ -173,7 +174,7 @@ where
         .into_any()
     };
     let help = (!setting.help.is_empty()).then(|| view! { <small>{setting.help.clone()}</small> });
-    let off = (!applies).then(|| view! { <small class="dim">"Não se aplica com os ajustes atuais."</small> });
+    let off = (!applies).then(|| view! { <small class="dim">{tr!("Não se aplica com os ajustes atuais.")}</small> });
     view! {
         <div class="gs-row" class:off=!applies>
             <div class="gs-text"><b>{setting.label}</b>{help}{off}</div>

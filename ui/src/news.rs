@@ -3,6 +3,7 @@
 //! sessions, achievements, problems), from the same history each game's page
 //! shows.
 
+use cerberus_shared::tr;
 use cerberus_shared::{Game, RecompEntry, Source, TrailEntry};
 use leptos::prelude::*;
 
@@ -70,6 +71,71 @@ fn page_of(id: &str, games: &[Game]) -> Option<Route> {
     id.starts_with("recomp:").then(|| Route::Game(id.to_string()))
 }
 
+/// The Steam games to ask news for: the ones played most lately first, then by play time.
+fn news_games(games: &[Game]) -> Vec<(u32, String)> {
+    let mut steam: Vec<&Game> = games.iter().filter(|g| !g.hidden && matches!(g.source, Source::Steam { .. })).collect();
+    steam.sort_by(|a, b| b.last_played.cmp(&a.last_played).then(b.playtime_secs.cmp(&a.playtime_secs)));
+    steam
+        .into_iter()
+        .filter_map(|g| match g.source {
+            Source::Steam { app_id } => Some((app_id, g.name.clone())),
+            _ => None,
+        })
+        .take(12)
+        .collect()
+}
+
+/// Posts by the developers of the player's Steam games.
+#[component]
+fn SteamNews() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let wanted = Memo::new(move |_| library.games.get().and_then(Result::ok).map(|g| news_games(&g)));
+    let news = LocalResource::new(move || {
+        let games = wanted.get();
+        async move {
+            match games {
+                Some(list) if !list.is_empty() => api::steam_news(list).await.ok(),
+                Some(_) => Some(Vec::new()),
+                None => None,
+            }
+        }
+    });
+    move || {
+        let Some(list) = news.get().flatten() else {
+            return view! { <p class="muted" role="status">{tr!("Procurando notícias…")}</p> }.into_any();
+        };
+        if list.is_empty() {
+            return view! { <p class="muted">{tr!("Nenhuma notícia recente dos seus jogos da Steam.")}</p> }.into_any();
+        }
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let cards = list
+            .into_iter()
+            .map(|n| {
+                let game = games.iter().find(|g| matches!(g.source, Source::Steam { app_id } if app_id == n.app_id)).cloned();
+                let art = game.as_ref().map(cover_sources).unwrap_or_default();
+                let url = n.url.clone();
+                let open = move |_| {
+                    let url = url.clone();
+                    leptos::task::spawn_local(async move {
+                        library.report(api::open_news(url).await);
+                    });
+                };
+                view! {
+                    <button type="button" class="news-card" on:click=open title=tr!("Abrir no navegador")>
+                        <div class="news-art"><Poster sources=art title=n.game.clone() /></div>
+                        <div class="news-t">
+                            <small>{n.game.clone()}" · "{format::ago(n.date)}</small>
+                            <b>{n.title.clone()}</b>
+                            <span>{n.summary.clone()}</span>
+                        </div>
+                    </button>
+                }
+            })
+            .collect_view();
+        view! { <div class="news-grid">{cards}</div> }.into_any()
+    }
+}
+
 #[component]
 pub fn NewsPage() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -80,7 +146,7 @@ pub fn NewsPage() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let list = updates(&games, &recomps);
         if list.is_empty() {
-            return view! { <p class="muted">"Todos os seus recomps estão na versão mais nova."</p> }.into_any();
+            return view! { <p class="muted">{tr!("Todos os seus recomps estão na versão mais nova.")}</p> }.into_any();
         }
         let rows = list
             .into_iter()
@@ -97,10 +163,10 @@ pub fn NewsPage() -> impl IntoView {
                             <span class="muted">{format!("{} → {}", u.from, u.to)}</span>
                         </div>
                         <div class="row">
-                            <button type="button" class="btn sm" on:click=move |_| library.go(route.clone())>"Ver o que mudou"</button>
+                            <button type="button" class="btn sm" on:click=move |_| library.go(route.clone())>{tr!("Ver o que mudou")}</button>
                             <button type="button" class="btn sm main" disabled=busy
                                 on:click=move |_| crate::discover::start_install(library, rid.clone())>
-                                {move || if busy() { "Atualizando..." } else { "Atualizar" }}
+                                {move || if busy() { tr!("Atualizando...") } else { tr!("Atualizar") }}
                             </button>
                         </div>
                     </div>
@@ -112,10 +178,10 @@ pub fn NewsPage() -> impl IntoView {
 
     let lately = move || {
         let Some(list) = activity.get() else {
-            return view! { <p class="muted" role="status">"Carregando..."</p> }.into_any();
+            return view! { <p class="muted" role="status">{tr!("Carregando...")}</p> }.into_any();
         };
         if list.is_empty() {
-            return view! { <p class="muted">"Nada por aqui ainda. Instalações, partidas e conquistas aparecem aqui."</p> }.into_any();
+            return view! { <p class="muted">{tr!("Nada por aqui ainda. Instalações, partidas e conquistas aparecem aqui.")}</p> }.into_any();
         }
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
@@ -135,7 +201,7 @@ pub fn NewsPage() -> impl IntoView {
                     <li class="act" class:bad=!e.ok class:clickable=clickable on:click=go>
                         <Svg icon size=18 />
                         <div>
-                            <b>{format!("{} · {}", name, e.step)}</b>
+                            <b>{format!("{} · {}", name, cerberus_shared::i18n::translate(&e.step))}</b>
                             <span>{e.message.clone()}</span>
                         </div>
                         <time>{format::ago(e.at)}</time>
@@ -150,16 +216,20 @@ pub fn NewsPage() -> impl IntoView {
         <div class="page">
             <header class="page-h">
                 <div>
-                    <h1>"Novidades"</h1>
-                    <p class="muted">"Atualizações dos seus recomps e o que aconteceu com os seus jogos."</p>
+                    <h1>{tr!("Novidades")}</h1>
+                    <p class="muted">{tr!("Atualizações dos seus recomps e o que aconteceu com os seus jogos.")}</p>
                 </div>
             </header>
             <section class="news-sec">
-                <h2><Svg icon=Icon::Download />"Atualizações disponíveis"</h2>
+                <h2><Svg icon=Icon::Download />{tr!("Atualizações disponíveis")}</h2>
                 {waiting}
             </section>
             <section class="news-sec">
-                <h2><Svg icon=Icon::Clock />"Atividade recente"</h2>
+                <h2><Svg icon=Icon::Bell />{tr!("Notícias dos seus jogos")}</h2>
+                <SteamNews />
+            </section>
+            <section class="news-sec">
+                <h2><Svg icon=Icon::Clock />{tr!("Atividade recente")}</h2>
                 {lately}
             </section>
         </div>

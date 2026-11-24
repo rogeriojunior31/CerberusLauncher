@@ -6,6 +6,7 @@
 //! The choices live in `art.json` (game id -> files), the pictures in the
 //! covers folder. Only pictures made here are ever deleted.
 
+use cerberus_shared::tr;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -64,20 +65,20 @@ fn image_type(bytes: &[u8]) -> Option<&'static str> {
 /// A picture as a `data:` address the window can draw on a canvas.
 pub fn data_url(bytes: &[u8]) -> Result<String, String> {
     if bytes.len() > MOST {
-        return Err("Essa imagem é grande demais (25 MB no máximo).".into());
+        return Err(tr!("Essa imagem é grande demais (25 MB no máximo).").into());
     }
-    let kind = image_type(bytes).ok_or("Isso não é uma imagem PNG, JPEG ou WebP.")?;
+    let kind = image_type(bytes).ok_or(tr!("Isso não é uma imagem PNG, JPEG ou WebP."))?;
     Ok(format!("data:image/{kind};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
 /// The bytes of a `data:` address the window made, checked to be a picture.
 fn from_data_url(data: &str) -> Result<(Vec<u8>, &'static str), String> {
-    let (_, body) = data.split_once(";base64,").ok_or("A imagem não chegou inteira.")?;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(body.trim()).map_err(|_| "A imagem não chegou inteira.")?;
+    let (_, body) = data.split_once(";base64,").ok_or(tr!("A imagem não chegou inteira."))?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(body.trim()).map_err(|_| tr!("A imagem não chegou inteira."))?;
     if bytes.len() > MOST {
-        return Err("Essa imagem é grande demais (25 MB no máximo).".into());
+        return Err(tr!("Essa imagem é grande demais (25 MB no máximo).").into());
     }
-    let kind = image_type(&bytes).ok_or("A imagem não chegou inteira.")?;
+    let kind = image_type(&bytes).ok_or(tr!("A imagem não chegou inteira."))?;
     Ok((bytes, kind))
 }
 
@@ -124,10 +125,10 @@ impl CustomArt {
     /// `None` puts the game's own art back.
     pub fn set(&self, id: &str, kind: &str, data: Option<&str>) -> Result<(), String> {
         if !KINDS.contains(&kind) {
-            return Err("Esse tipo de imagem não existe.".into());
+            return Err(tr!("Esse tipo de imagem não existe.").into());
         }
         if id.trim().is_empty() {
-            return Err("Jogo inválido.".into());
+            return Err(tr!("Jogo inválido.").into());
         }
         let new = match data {
             Some(data) => {
@@ -137,7 +138,7 @@ impl CustomArt {
                 let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
                 let ext = if format == "jpeg" { "jpg" } else { format };
                 let path = self.folder.join(format!("{safe}-{kind}-{stamp}.{ext}"));
-                fs::write(&path, bytes).map_err(|e| format!("Não foi possível gravar a imagem: {e}"))?;
+                fs::write(&path, bytes).map_err(|e| tr!("Não foi possível gravar a imagem: {}", e))?;
                 Some(path.to_string_lossy().into_owned())
             }
             None => None,
@@ -145,7 +146,7 @@ impl CustomArt {
         let mut map = self.lock();
         let mut next = map.clone();
         let custom = next.entry(id.to_string()).or_default();
-        let slot = custom.slot(kind).ok_or("Esse tipo de imagem não existe.")?;
+        let slot = custom.slot(kind).ok_or(tr!("Esse tipo de imagem não existe."))?;
         let old = std::mem::replace(slot, new.clone());
         if custom.cover.is_none() && custom.hero.is_none() && custom.logo.is_none() {
             next.remove(id);
@@ -172,11 +173,11 @@ async fn sgdb(http: &reqwest::Client, key: &str, path: &str) -> Result<Value, St
         .timeout(Duration::from_secs(15))
         .send()
         .await
-        .map_err(|e| format!("Não foi possível falar com o SteamGridDB: {e}"))?;
+        .map_err(|e| tr!("Não foi possível falar com o SteamGridDB: {}", e))?;
     match reply.status().as_u16() {
-        401 | 403 => return Err("O SteamGridDB não aceitou essa chave. Confira em Configurações.".into()),
+        401 | 403 => return Err(tr!("O SteamGridDB não aceitou essa chave. Confira em Configurações.").into()),
         404 => return Ok(Value::Array(Vec::new())),
-        s if !(200..300).contains(&s) => return Err(format!("O SteamGridDB respondeu {s}.")),
+        s if !(200..300).contains(&s) => return Err(tr!("O SteamGridDB respondeu {}.", s)),
         _ => {}
     }
     let value: Value = reply.json().await.map_err(|e| e.to_string())?;
@@ -246,11 +247,11 @@ fn from_steamgriddb(url: &str) -> bool {
 /// A SteamGridDB picture, fetched here so the window can frame it.
 pub async fn fetch(http: &reqwest::Client, url: &str) -> Result<String, String> {
     if !from_steamgriddb(url) {
-        return Err("Só imagens do SteamGridDB podem ser baixadas aqui.".into());
+        return Err(tr!("Só imagens do SteamGridDB podem ser baixadas aqui.").into());
     }
-    let reply = http.get(url).timeout(Duration::from_secs(60)).send().await.map_err(|e| format!("Não foi possível baixar a imagem: {e}"))?;
+    let reply = http.get(url).timeout(Duration::from_secs(60)).send().await.map_err(|e| tr!("Não foi possível baixar a imagem: {}", e))?;
     if !reply.status().is_success() {
-        return Err(format!("O SteamGridDB respondeu {} para essa imagem.", reply.status()));
+        return Err(tr!("O SteamGridDB respondeu {} para essa imagem.", reply.status()));
     }
     let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
     data_url(&bytes)

@@ -1,5 +1,6 @@
 //! A recomp's save backups: list, make one now, restore.
 
+use cerberus_shared::tr;
 use cerberus_shared::Backup;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -27,8 +28,8 @@ pub fn Backups(game_id: String) -> impl IntoView {
             let made = library.report(api::backup_now(&id.get_value()).await);
             busy.set(false);
             match made {
-                Some(Some(_)) => library.toast("Backup criado."),
-                Some(None) => library.toast("Nada novo para copiar: o backup mais recente já tem esses saves, ou o jogo ainda não salvou."),
+                Some(Some(_)) => library.toast(tr!("Backup criado.")),
+                Some(None) => library.toast(tr!("Nada novo para copiar: o backup mais recente já tem esses saves, ou o jogo ainda não salvou.")),
                 None => {}
             }
             refresh.update(|n| *n += 1);
@@ -41,12 +42,12 @@ pub fn Backups(game_id: String) -> impl IntoView {
     };
 
     let list = move || match backups.get() {
-        None => view! { <p class="muted">"Carregando..."</p> }.into_any(),
+        None => view! { <p class="muted">{tr!("Carregando...")}</p> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(list)) if list.is_empty() => view! {
             <div class="empty small">
-                <h3>"Nenhum backup ainda"</h3>
-                <p class="muted">"Um é feito sempre que você fecha o jogo, antes de atualizar e antes de desinstalar."</p>
+                <h3>{tr!("Nenhum backup ainda")}</h3>
+                <p class="muted">{tr!("Um é feito sempre que você fecha o jogo, antes de atualizar e antes de desinstalar.")}</p>
             </div>
         }
         .into_any(),
@@ -60,14 +61,14 @@ pub fn Backups(game_id: String) -> impl IntoView {
         <section class="card">
             <div class="card-h">
                 <div>
-                    <h3>"Backups de saves"</h3>
-                    <p class="muted small">"Os 10 mais recentes ficam guardados, mesmo se você desinstalar o jogo."</p>
+                    <h3>{tr!("Backups de saves")}</h3>
+                    <p class="muted small">{tr!("Os 10 mais recentes ficam guardados, mesmo se você desinstalar o jogo.")}</p>
                 </div>
                 <div class="row">
                     <button type="button" class="btn sm" on:click=on_open>
-                        <Svg icon=Icon::Folder size=16 />"Abrir pasta"
+                        <Svg icon=Icon::Folder size=16 />{tr!("Abrir pasta")}
                     </button>
-                    <button type="button" class="btn sm main" on:click=on_backup disabled=move || busy.get()>"Fazer backup agora"</button>
+                    <button type="button" class="btn sm main" on:click=on_backup disabled=move || busy.get()>{tr!("Fazer backup agora")}</button>
                 </div>
             </div>
             {list}
@@ -94,15 +95,20 @@ fn BackupRow(backup: Backup, game_id: String, refresh: RwSignal<u32>, busy: RwSi
             let restored = library.report(api::restore_backup(&id.get_value(), &name.get_value()).await);
             busy.set(false);
             if let Some(files) = restored {
-                library.toast(format!("{files} arquivo(s) restaurado(s). Os saves de antes ficaram num backup novo."));
+                library.toast(if files == 1 {
+                    tr!("1 arquivo restaurado. Os saves de antes ficaram num backup novo.").to_string()
+                } else {
+                    tr!("{} arquivos restaurados. Os saves de antes ficaram num backup novo.", files)
+                });
             }
             refresh.update(|n| *n += 1);
         });
     };
 
     let when = format::date_time(backup.created);
-    let detail = format!("{} · {} arquivo(s) · {}", backup.reason, backup.files, format::megabytes(backup.bytes));
-    let label = move || if armed.get() { "Confirmar: substituir os saves atuais" } else { "Restaurar" };
+    let files = if backup.files == 1 { tr!("1 arquivo").to_string() } else { tr!("{} arquivos", backup.files) };
+    let detail = format!("{} · {} · {}", cerberus_shared::i18n::translate(&backup.reason), files, format::megabytes(backup.bytes));
+    let label = move || if armed.get() { tr!("Confirmar: substituir os saves atuais") } else { tr!("Restaurar") };
 
     view! {
         <li>

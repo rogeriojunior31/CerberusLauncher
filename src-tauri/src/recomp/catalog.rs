@@ -10,6 +10,7 @@
 //! Our bundled entries also fill in what the site's list doesn't have, such as
 //! where each recomp keeps its saves (checked against each project's source).
 
+use cerberus_shared::tr;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -286,7 +287,7 @@ pub async fn refresh(client: &Client, cache_dir: &Path, force: bool) -> Result<(
         .timeout(Duration::from_secs(30))
         .send()
         .await
-        .map_err(|_| format!("Sem conexão com {SOURCE_NAME}."))?;
+        .map_err(|_| tr!("Sem conexão com {0}.", SOURCE_NAME))?;
     if !reply.status().is_success() {
         return Err(format!("{SOURCE_NAME} respondeu {}.", reply.status().as_u16()));
     }
@@ -324,7 +325,7 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
             theirs.copy_contains = mine.copy_contains;
         }
         // Ours, in Portuguese, when it says more than the usual "your copy of".
-        let generic = format!("Sua cópia de {} ({}).", mine.game, mine.console);
+        let generic = tr!("Sua cópia de {} ({}).", mine.game, mine.console);
         if !mine.needs.is_empty() && mine.needs != generic {
             theirs.needs = mine.needs;
         }
@@ -553,7 +554,7 @@ fn some(text: Option<String>) -> Option<String> {
 }
 
 pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
-    let catalog: RlCatalog = serde_json::from_str(text).map_err(|e| format!("Catálogo ilegível: {e}"))?;
+    let catalog: RlCatalog = serde_json::from_str(text).map_err(|e| tr!("Catálogo ilegível: {}", e))?;
     let consoles: HashMap<String, String> = catalog.origins.into_iter().map(|o| (o.id, o.name)).collect();
     // Versions of one game: the site groups them under a title, with the one it recommends.
     let mut title_of: HashMap<String, (String, bool, String)> = HashMap::new();
@@ -642,7 +643,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
         }
     }
     if list.is_empty() {
-        return Err("O catálogo veio vazio.".into());
+        return Err(tr!("O catálogo veio vazio.").into());
     }
     Ok(list)
 }

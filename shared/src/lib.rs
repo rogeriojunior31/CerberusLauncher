@@ -1,6 +1,8 @@
 //! Types the backend and the UI both use. Keeping them in one crate means a field
 //! renamed on one side fails to compile on the other, instead of breaking at runtime.
 
+pub mod i18n;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,6 +70,38 @@ pub struct Game {
     /// The player's collections it is in (kept in collections.json, not here).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collections: Vec<String>,
+    /// Where the player is with it (kept in game-notes.json, not here).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<GameStatus>,
+    /// The player's rating, 1 to 5 stars; 0 when not rated.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub rating: u8,
+    /// The player's own notes about it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+    /// A recomp whose updates the player paused: it stays on its version.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub updates_paused: bool,
+}
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
+}
+
+/// Where the player is with a game, as they mark it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameStatus {
+    Playing,
+    PlanToPlay,
+    Beaten,
+    Completed,
+    OnHold,
+    Abandoned,
+}
+
+impl GameStatus {
+    pub const ALL: [GameStatus; 6] = [GameStatus::Playing, GameStatus::PlanToPlay, GameStatus::Beaten, GameStatus::Completed, GameStatus::OnHold, GameStatus::Abandoned];
 }
 
 /// How a recomp is given the player's copy of the game, as its catalog entry says.
@@ -220,6 +254,8 @@ pub enum NextStep {
     /// The program to open is gone (moved, deleted, or an installer put it
     /// somewhere unknown); the player points at it.
     Locate { reason: String },
+    /// A store game the account owns that this PC hasn't installed: the store installs it.
+    Install,
 }
 
 impl Game {
@@ -317,6 +353,15 @@ pub struct SettingsView {
     pub setup_done: bool,
     #[serde(default)]
     pub start_in_tv: bool,
+    /// Recomp download limit in MB/s; 0 for none.
+    #[serde(default)]
+    pub download_limit: u32,
+    #[serde(default)]
+    pub slow_while_playing: bool,
+    #[serde(default)]
+    pub in_game: InGame,
+    #[serde(default)]
+    pub notices: Notices,
     /// The player's own SteamGridDB key, for picking art.
     #[serde(default)]
     pub steamgriddb_key: Option<String>,
@@ -338,12 +383,18 @@ pub struct SettingsView {
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,
+    /// The RetroAchievements password was given once: RetroArch gets connected by itself.
+    #[serde(default)]
+    pub ra_retroarch: bool,
     /// Files found in the ROM folders, for the Clássicos view.
     #[serde(default)]
     pub roms: Vec<RomView>,
     /// The monitor Cerberus opens on; none: where Windows puts it.
     #[serde(default)]
     pub monitor: Option<String>,
+    /// The language picked in the settings ("pt-BR", "en"); none: the system's.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 /// A DLSS file inside a game's folder.
@@ -366,6 +417,294 @@ pub struct OverlayView {
     pub session_secs: u64,
     /// The latest pictures of it, newest first.
     pub shots: Vec<Screenshot>,
+}
+
+/// The player's Steam account, when they turned on Steam's Web API.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SteamAccount {
+    pub steamid: String,
+    pub name: String,
+    pub avatar: Option<String>,
+    pub url: String,
+    /// The profile itself is public.
+    pub profile_public: bool,
+    /// Game details (owned games, play time, achievements) are public: needed to read them.
+    pub games_public: bool,
+    /// Owned games, when they can be read.
+    pub games: u32,
+}
+
+/// A newer Cerberus on GitHub (or this version's notes, for "What's new").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AppUpdate {
+    pub version: String,
+    /// The release notes, as written on GitHub (Markdown).
+    pub notes: String,
+    pub size: u64,
+    pub sha256: Option<String>,
+    pub url: String,
+    pub published: String,
+}
+
+/// One finished play session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaySession {
+    pub game_id: String,
+    /// Unix seconds when it ended.
+    pub ended: u64,
+    pub seconds: u64,
+}
+
+/// A piece of a store description: "h" heading, "p" paragraph, "li" list item, "img" picture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreBlock {
+    pub kind: String,
+    pub text: String,
+    pub src: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreShot {
+    pub thumb: String,
+    pub full: String,
+}
+
+/// A trailer: an MP4 when Steam still has one, otherwise its HLS stream.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreMovie {
+    pub name: String,
+    pub thumb: String,
+    pub mp4: Option<String>,
+    pub hls: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreLanguage {
+    pub name: String,
+    /// Full audio in this language, not just text.
+    pub audio: bool,
+}
+
+/// A post by a Steam game's developers, for Novidades. Plain text only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewsItem {
+    pub app_id: u32,
+    pub game: String,
+    pub title: String,
+    /// The start of the post.
+    pub summary: String,
+    /// The post on Steam.
+    pub url: String,
+    /// Unix seconds.
+    pub date: u64,
+}
+
+/// A game's page on the Steam store, as Cerberus shows it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoreDetails {
+    pub app: u32,
+    pub name: String,
+    pub short: String,
+    pub about: Vec<StoreBlock>,
+    pub developers: Vec<String>,
+    pub publishers: Vec<String>,
+    pub released: String,
+    pub coming_soon: bool,
+    pub genres: Vec<String>,
+    /// Steam's categories: single-player, co-op, achievements, cloud...
+    pub features: Vec<String>,
+    pub metacritic: Option<u32>,
+    pub recommendations: Option<u64>,
+    /// "full", "partial" or empty.
+    pub controller: String,
+    pub languages: Vec<StoreLanguage>,
+    pub minimum: Vec<(String, String)>,
+    pub recommended: Vec<(String, String)>,
+    pub screenshots: Vec<StoreShot>,
+    pub movies: Vec<StoreMovie>,
+    pub website: Option<String>,
+    pub background: Option<String>,
+    pub is_free: bool,
+}
+
+/// What kind of achievement notice to draw over the game.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UnlockKind {
+    Normal,
+    /// Few players have it.
+    Rare,
+    /// The last one: the game is at 100%.
+    Complete,
+}
+
+/// A notice over the game when an achievement unlocks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnlockNotice {
+    pub title: String,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub kind: UnlockKind,
+}
+
+/// Where a game's achievements come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AchievementSource {
+    Steam,
+    Retro,
+}
+
+impl AchievementSource {
+    /// The id used in routes: "steam", "retro".
+    pub fn code(self) -> &'static str {
+        match self {
+            AchievementSource::Steam => "steam",
+            AchievementSource::Retro => "retro",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "steam" => Some(AchievementSource::Steam),
+            "retro" => Some(AchievementSource::Retro),
+            _ => None,
+        }
+    }
+}
+
+/// The highest award a game earned: beaten (normal or hardcore), completed
+/// (every achievement) or mastered (every achievement in hardcore). Steam games
+/// at 100% count as completed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameAward {
+    BeatenSoftcore,
+    BeatenHardcore,
+    Completed,
+    Mastered,
+}
+
+impl GameAward {
+    /// RetroAchievements' `HighestAwardKind`: "beaten-softcore", "beaten-hardcore", "completed", "mastered".
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "beaten-softcore" => Some(GameAward::BeatenSoftcore),
+            "beaten-hardcore" => Some(GameAward::BeatenHardcore),
+            "completed" => Some(GameAward::Completed),
+            "mastered" => Some(GameAward::Mastered),
+            _ => None,
+        }
+    }
+
+    pub fn hardcore(self) -> bool {
+        matches!(self, GameAward::BeatenHardcore | GameAward::Mastered)
+    }
+
+    /// Every achievement, not just beaten.
+    pub fn full(self) -> bool {
+        matches!(self, GameAward::Completed | GameAward::Mastered)
+    }
+}
+
+/// A game with achievements, as the hub lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AchievementGame {
+    pub source: AchievementSource,
+    /// Steam's app id or RetroAchievements' game id.
+    pub key: String,
+    pub name: String,
+    /// Pictures to try in order: a tall cover (Steam: the copy on disk, then
+    /// online) or the game's square icon (RetroAchievements).
+    pub art: Vec<String>,
+    /// "Steam", or the console for RetroAchievements.
+    pub platform: String,
+    pub total: u32,
+    pub unlocked: u32,
+    /// RetroAchievements' hardcore unlocks.
+    #[serde(default)]
+    pub hardcore: u32,
+    /// RetroAchievements' points: earned and possible (0 when unknown).
+    #[serde(default)]
+    pub points: u32,
+    #[serde(default)]
+    pub points_total: u32,
+    /// The latest unlock, in Unix seconds.
+    pub last_unlock: Option<u64>,
+    /// Steam's own play time and last played, from the client's files.
+    pub playtime_secs: Option<u64>,
+    pub last_played: Option<u64>,
+    /// The highest award, and when it was earned.
+    #[serde(default)]
+    pub award: Option<GameAward>,
+    #[serde(default)]
+    pub award_at: Option<u64>,
+}
+
+impl AchievementGame {
+    pub fn percent(&self) -> u32 {
+        if self.total == 0 { 0 } else { self.unlocked * 100 / self.total }
+    }
+}
+
+/// One achievement of a game.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Achievement {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    /// The grey picture shown while it's locked.
+    pub icon_locked: Option<String>,
+    /// Secret until unlocked.
+    pub hidden: bool,
+    pub unlocked_at: Option<u64>,
+    /// RetroAchievements' hardcore unlock.
+    #[serde(default)]
+    pub hardcore_at: Option<u64>,
+    /// RetroAchievements' points (0 for Steam).
+    #[serde(default)]
+    pub points: u32,
+    /// How many players have it, in percent, when known.
+    pub rarity: Option<f32>,
+}
+
+/// An achievement unlocked lately, for the hub's timeline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecentUnlock {
+    pub source: AchievementSource,
+    pub game_key: String,
+    pub game_name: String,
+    pub achievement: Achievement,
+}
+
+/// Everything the hub shows.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct AchievementsHub {
+    pub games: Vec<AchievementGame>,
+    /// Newest first.
+    pub recent: Vec<RecentUnlock>,
+    /// Steam is installed and has achievement data on this PC.
+    pub steam: bool,
+    /// A RetroAchievements account is connected.
+    pub retro: bool,
+    /// RetroAchievements' points, when connected: hardcore and softcore.
+    pub retro_points: u64,
+    #[serde(default)]
+    pub retro_softcore: u64,
+    /// Why a source couldn't be read this time (offline, key refused...).
+    pub problems: Vec<String>,
+    /// Steam turned questions away before every game was read: ask again in a few minutes.
+    #[serde(default)]
+    pub retry_soon: bool,
+}
+
+/// One game's achievements, for its page in the hub.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GameAchievements {
+    pub game: AchievementGame,
+    pub achievements: Vec<Achievement>,
 }
 
 /// A picture taken of a game (F12 while it runs).
@@ -613,6 +952,8 @@ pub struct Release {
 
 /// The error an install ends with when the player pauses its download.
 pub const PAUSED: &str = "Download pausado.";
+/// What a cancelled install answers (in Portuguese, the text's key).
+pub const CANCELLED_INSTALL: &str = "Instalação cancelada.";
 
 /// Sent from the backend while a recomp installs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -630,4 +971,46 @@ pub enum InstallStep {
     Unpacking,
     Finished,
     Failed { message: String },
+}
+
+/// What Cerberus does while a game is open (Settings › While playing).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InGame {
+    /// Ctrl+F12 (or View+Menu on a controller) opens the menu over the game.
+    pub menu: bool,
+    /// F12 saves a picture of the game.
+    pub screenshots: bool,
+    /// A small notice over the game when an achievement unlocks.
+    pub unlock_notice: bool,
+    /// Where that notice shows: "br", "bl", "tr" or "tl".
+    pub corner: String,
+    /// Cerberus minimizes itself while a game runs and comes back when it closes.
+    pub minimize: bool,
+}
+
+impl Default for InGame {
+    fn default() -> Self {
+        Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false }
+    }
+}
+
+/// Which notices Cerberus gives, and whether Windows shows them (Settings › Notifications).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Notices {
+    /// A recomp or game finished installing.
+    pub installed: bool,
+    /// A game closed with an error.
+    pub crashed: bool,
+    /// A picture was saved with F12.
+    pub screenshots: bool,
+    /// When Cerberus isn't in front, Windows shows the notice; off: only inside Cerberus.
+    pub windows: bool,
+}
+
+impl Default for Notices {
+    fn default() -> Self {
+        Self { installed: true, crashed: true, screenshots: true, windows: true }
+    }
 }
