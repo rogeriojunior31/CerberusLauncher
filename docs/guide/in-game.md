@@ -10,6 +10,8 @@ Cerberus records how long each session lasts and saves the total every 15 second
 
 For games that open a launcher first, go to **Manage → Tracked process** and choose which program counts as playing.
 
+Programs that come along with a game but aren't it, like a crash reporter, an updater or Windows' error reporting, don't keep the session going: once only those are left, the session ends.
+
 Steam and Epic games are tracked by watching their programs while Cerberus is running, even from the tray.
 
 ## Achievement notifications

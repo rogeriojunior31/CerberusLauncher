@@ -78,9 +78,12 @@ impl GameProcess {
             report(Observation::Started(self.started));
             launcher_code = self.launcher.wait()?.code();
         }
+        let launcher_pid = self.launcher.id();
         loop {
             let members = self.members(&mut buffer)?;
-            if members.is_empty() {
+            // A crash reporter or updater the game left running isn't the game:
+            // once only those remain, the session is over.
+            if members.iter().all(|&pid| pid as u32 != launcher_pid && image_name(pid as u32).is_some_and(|n| is_helper(&n))) {
                 break;
             }
             if let Some(runtime) = &self.runtime {
@@ -154,6 +157,31 @@ impl GameProcess {
         };
         matches.then_some(process)
     }
+}
+
+/// The file name of a running process's program.
+fn image_name(pid: u32) -> Option<String> {
+    let raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if raw.is_null() {
+        return None;
+    }
+    let process = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let mut path = vec![0u16; 32768];
+    let mut len = path.len() as u32;
+    if unsafe { QueryFullProcessImageNameW(process.as_raw_handle(), 0, path.as_mut_ptr(), &mut len) } == 0 {
+        return None;
+    }
+    let path = PathBuf::from(OsString::from_wide(&path[..len as usize]));
+    Some(path.file_name()?.to_string_lossy().into_owned())
+}
+
+/// Programs that come along with a game but aren't it: crash reporters,
+/// updaters, uninstallers, Windows' error reporting.
+pub(super) fn is_helper(file_name: &str) -> bool {
+    let name = file_name.to_ascii_lowercase();
+    let stem = name.strip_suffix(".exe").unwrap_or(&name);
+    const PARTS: [&str; 9] = ["crashhandler", "crash_handler", "crashpad", "crashreport", "crashsender", "bugsplat", "updater", "uninstall", "werfault"];
+    PARTS.iter().any(|p| stem.contains(p)) || stem.starts_with("unins0") || stem == "sentry-cli"
 }
 
 /// How long the game ran, and its exit code.

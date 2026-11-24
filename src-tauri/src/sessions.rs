@@ -386,6 +386,17 @@ fn durations_read_as_people_say_them() {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn crash_reporters_and_updaters_are_not_the_game() {
+        for helper in ["UnityCrashHandler64.exe", "crashpad_handler.exe", "CrashReportClient.exe", "Game-Updater.exe", "unins000.exe", "WerFault.exe", "BsSndRpt.exe-bugsplat.exe"] {
+            assert!(windows::is_helper(helper), "{helper}");
+        }
+        for game in ["Zelda64Recompiled.exe", "SpaghettiKart.exe", "Hollow Knight.exe", "ReStreet.exe", "UpdateGame.exe"] {
+            assert!(!windows::is_helper(game), "{game}");
+        }
+    }
     use std::os::windows::process::CommandExt;
     use std::process::Stdio;
     use std::time::Instant;
