@@ -70,6 +70,20 @@ pub fn DownloadsPage() -> impl IntoView {
             return None;
         }
         let count = jobs.len();
+        // With more than one: pause every download that has bytes to keep, or carry on with every paused one.
+        let running: Vec<String> = jobs.iter().filter(|(_, s)| matches!(s, InstallStep::Downloading { done, .. } if *done > 0)).map(|(id, _)| id.clone()).collect();
+        let waiting: Vec<String> = jobs.iter().filter(|(_, s)| matches!(s, InstallStep::Paused { .. })).map(|(id, _)| id.clone()).collect();
+        let all_buttons = (count > 1).then(|| {
+            let pause = (!running.is_empty()).then(|| {
+                view! { <button type="button" class="btn sm" on:click=move |_| { for id in running.clone() { crate::discover::pause_install(library, id); } }>
+                    <Svg icon=Icon::Pause size=16 />{tr!("Pausar tudo")}</button> }
+            });
+            let resume = (!waiting.is_empty()).then(|| {
+                view! { <button type="button" class="btn sm main" on:click=move |_| { for id in waiting.clone() { crate::discover::start_install(library, id); } }>
+                    <Svg icon=Icon::Play size=16 />{tr!("Continuar tudo")}</button> }
+            });
+            view! { <div class="row">{pause}{resume}</div> }
+        });
         let rows = jobs
             .into_iter()
             .enumerate()
@@ -146,7 +160,7 @@ pub fn DownloadsPage() -> impl IntoView {
             .collect_view();
         Some(view! {
             <section class="shelf">
-                <div class="shelf-h"><h2>{tr!("Baixando")}{(count > 1).then(|| view! { <span class="chip-n">{count}</span> })}</h2></div>
+                <div class="shelf-h"><h2>{tr!("Baixando")}{(count > 1).then(|| view! { <span class="chip-n">{count}</span> })}</h2>{all_buttons}</div>
                 <div class="dl-list">{rows}</div>
             </section>
         })

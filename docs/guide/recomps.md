@@ -24,7 +24,7 @@ The catalog combines Cerberus's own list with the public list from [recomplaunch
 3. The file is checked against the checksum the host publishes. A file that doesn't match is discarded.
 4. The archive is unpacked into its own folder. Supported formats are `.zip`, `.7z` and `.tar.gz`, plus releases that ship a single `.exe` or an installer.
 
-While a recomp downloads or installs, the PC doesn't go to sleep (the screen still turns off as usual). You can **pause** a download and **resume** it later from where it stopped. **Cancel** deletes the partial file. Progress also shows on the **Downloads** page and in Big Picture Mode.
+While a recomp downloads or installs, the PC doesn't go to sleep (the screen still turns off as usual). You can **pause** a download and **resume** it later from where it stopped. With more than one at a time, **Downloads** has **Pause all** and **Resume all**. **Cancel** deletes the partial file. Progress also shows on the **Downloads** page and in Big Picture Mode.
 
 Some recomps ship a Windows installer. Cerberus runs it the first time you click **Play** and then looks for the installed game. If it can't find the game, it asks you to pick the program.
 
