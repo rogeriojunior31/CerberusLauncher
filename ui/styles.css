@@ -1957,3 +1957,8 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 /* A long version name gives way; the count of versions never does. */
 .gp-ver b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .gp-ver-more { flex: none; }
+
+/* A source row: a long name breaks instead of running under the buttons. */
+.set-row.sub > div:first-child { min-width: 0; }
+.set-row.sub > div:first-child b { overflow-wrap: anywhere; }
+.set-row small.ref-only { color: var(--ink); }

@@ -285,10 +285,13 @@ pub fn LibraryPage() -> impl IntoView {
         crate::api::library_recovery_notice()
     });
     let input = NodeRef::<leptos::html::Input>::new();
+    // Fresh play times for the classics shown under the other games.
+    library.roms.refetch();
     let clear = move |_| {
         search.set(String::new());
         filter.set(Filter::All);
         status.set(None);
+        absent.set(false);
         if let Some(input) = input.get_untracked() {
             let _ = input.focus();
         }
@@ -401,6 +404,15 @@ pub fn LibraryPage() -> impl IntoView {
         }
         let away = absent.get();
         let only = status.get();
+        // Todos is every game: the classics in the ROM folders go under the others,
+        // unless a filter they can't match (a store, a status, not installed) is on.
+        let with_classics = kind == Category::All && source == Filter::All && !away && only.is_none();
+        let classics_found = with_classics
+            && !crate::classics::matching(library.roms.get().unwrap_or_default(), &needle).is_empty();
+        let classics = move || with_classics.then(|| {
+            let needle = search.get_untracked().trim().to_lowercase();
+            view! { <crate::classics::ClassicsGrid needle embedded=true /> }
+        });
         games.retain(|g| {
             kind.keeps(g, open.as_deref())
                 && source.keeps(g)
@@ -438,6 +450,9 @@ pub fn LibraryPage() -> impl IntoView {
                     <p class="muted">{tr!("Na página de um jogo, clique em Favoritar. Os favoritos aparecem aqui e no menu lateral.")}</p>
                 </div>
             }.into_any();
+        }
+        if games.is_empty() && classics_found {
+            return view! { {classics()} }.into_any();
         }
         if games.is_empty() {
             return view! {
@@ -495,6 +510,7 @@ pub fn LibraryPage() -> impl IntoView {
                 <div class=if list { "library-list" } else { "grid" }
                     on:keydown=move |e| { if list { navigate_rows(e); } }>{items}</div>
             </section>
+            {classics()}
         }.into_any()
     };
 

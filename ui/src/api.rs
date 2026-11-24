@@ -936,6 +936,11 @@ pub async fn open_prepare_license(id: &str, option: &str) -> Result<(), String> 
     call("open_prepare_license", &OptionArgs { id, option, on: true }).await
 }
 
+/// Who opens each console's classics on this PC.
+pub async fn classic_players() -> Vec<cerberus_shared::ClassicPlayer> {
+    call("classic_players", &()).await.unwrap_or_default()
+}
+
 pub async fn preparation_pending(id: &str) -> Result<bool, String> {
     call("preparation_pending", &Id { id }).await
 }

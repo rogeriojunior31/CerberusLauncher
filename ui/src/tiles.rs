@@ -120,6 +120,11 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     }
 }
 
+/// A classic from the ROM folders, as a tile: it opens its own page.
+pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<String>) -> TileInfo {
+    TileInfo { title, sub, covers, badge, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: false, progress: None }
+}
+
 pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
     let update = match (&entry.installed, &entry.latest) {
         (Some(have), Some(newest)) => *have != newest.version,

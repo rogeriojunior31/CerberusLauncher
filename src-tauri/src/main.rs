@@ -198,9 +198,12 @@ fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
     };
     let view = SourceView {
         url: url.to_owned(),
-        name: source.as_ref().map(|s| s.name.as_str()).filter(|s| !s.trim().is_empty()).unwrap_or(url).to_owned(),
+        // Without a name of its own, the site it comes from, not the whole address.
+        name: source.as_ref().map(|s| s.name.trim().to_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| {
+            url.split("://").nth(1).and_then(|rest| rest.split('/').next()).filter(|h| !h.is_empty()).unwrap_or(url).to_owned()
+        }),
         hydra, games, synced_at: source.as_ref().and_then(|s| s.synced_at),
-        error: source.is_none().then(|| tr!("Sem cópia local. Atualize a fonte para consultá-la.").to_owned()),
+        error: source.is_none().then(|| tr!("Baixando a lista… Se continuar assim, clique em Atualizar.").to_owned()),
     };
     let state = app.state::<Sources>();
     let mut list = state.list.lock().unwrap_or_else(|p| p.into_inner());
@@ -693,6 +696,37 @@ fn standalone_for(data: &Path, chosen: &settings::Settings, console: &str, have_
         None if have_retroarch && emulation::core_for(console).is_some() => None,
         None => standalone::for_console(console).find_map(found),
     }
+}
+
+/// Who opens each console's classics, the way `play_classic` decides it, so a
+/// page never offers a Play that would fail.
+#[tauri::command]
+fn classic_players(app: AppHandle) -> Vec<cerberus_shared::ClassicPlayer> {
+    let (data, picked) = retroarch_choice(&app);
+    let chosen = settings::load(&data);
+    let retroarch = emulation::retroarch(&data, picked.as_deref());
+    let mut consoles: Vec<&str> = emulation::CORES.iter().map(|(c, _, _)| *c).collect();
+    for emulator in standalone::ALL {
+        consoles.extend(emulator.consoles.iter().copied());
+    }
+    consoles.sort_unstable();
+    consoles.dedup();
+    consoles
+        .into_iter()
+        .map(|console| {
+            let (name, problem) = if let Some((emulator, _)) = standalone_for(&data, &chosen, console, retroarch.is_some()) {
+                (Some(emulator.name.to_string()), None)
+            } else {
+                match (&retroarch, emulation::core_for(console)) {
+                    (Some(exe), Some(_)) if emulation::has_core(exe, console) => (Some("RetroArch".to_string()), None),
+                    (Some(_), Some(_)) => (Some("RetroArch".to_string()), Some(tr!("Falta o núcleo desse console no RetroArch. Instale em Configurações › Emulação.").to_string())),
+                    (None, Some(_)) => (None, Some(tr!("Instale o RetroArch, ou um emulador para esse console, em Configurações › Emulação.").to_string())),
+                    _ => (None, Some(tr!("Esse console ainda não tem emulação no Cerberus.").to_string())),
+                }
+            };
+            cerberus_shared::ClassicPlayer { console: console.to_string(), name, problem }
+        })
+        .collect()
 }
 
 /// Plays a classic in a standalone emulator, with achievements and play time as with RetroArch.
@@ -2841,6 +2875,24 @@ fn main() {
                 .user_agent("CerberusLauncher")
                 .timeout(Duration::from_secs(10))
                 .build()?;
+            // Lists with no copy on this PC, or one over a day old, are fetched
+            // again in the background: an added list is never left empty.
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+            let stale: Vec<String> = app.state::<Sources>().list.lock().unwrap_or_else(|p| p.into_inner()).iter()
+                .filter(|(view, _)| view.synced_at.is_none_or(|at| now.saturating_sub(at) > 24 * 60 * 60))
+                .map(|(view, _)| view.url.clone())
+                .collect();
+            if !stale.is_empty() {
+                let (handle, client) = (app.handle().clone(), http.clone());
+                tauri::async_runtime::spawn(async move {
+                    let state = handle.state::<Sources>();
+                    let _guard = state.sync.lock().await;
+                    for url in &stale {
+                        sync_source(&handle, &client, url).await;
+                    }
+                    publish_sources(&handle);
+                });
+            }
             app.manage(http);
 
             // The UI may only load local files from folders we allow here:
@@ -3013,6 +3065,7 @@ fn main() {
             open_prepare_license,
             game_actions,
             preparation_pending,
+            classic_players,
             prepare_game,
             run_game_action,
             set_launch_args,

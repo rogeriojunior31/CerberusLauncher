@@ -254,12 +254,23 @@ fn save_calm(on: bool) {
     apply_calm(on);
 }
 
+thread_local! {
+    /// The section the next Settings page opens on, when another page asks for one.
+    static NEXT: std::cell::Cell<Option<Section>> = const { std::cell::Cell::new(None) };
+}
+
+/// Opens Configurações › Emulação.
+pub fn open_emulation(library: Library) {
+    NEXT.with(|n| n.set(Some(Section::Emulation)));
+    library.go(crate::Route::Settings);
+}
+
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let library = expect_context::<Library>();
     let view_state: RwSignal<Option<SettingsView>> = RwSignal::new(None);
     let busy = RwSignal::new(false);
-    let section = RwSignal::new(Section::General);
+    let section = RwSignal::new(NEXT.with(|n| n.take()).unwrap_or(Section::General));
     let query = RwSignal::new(String::new());
 
     spawn_local(async move {
@@ -833,9 +844,9 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
     view! {
         <section class="card set">
             <h3>{tr!("Catálogo de recomps")}</h3>
-            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
+            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), tr!("Catálogo atualizado."))>{tr!("Atualizar agora")}</button> })}
-            {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com quase 1.900 recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes."),
+            {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com quase 1.900 recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes de projetos."),
                 switch(s.site_catalog, tr!("Catálogo do recomplauncher.com"), busy, move || {
                     let on = !s.site_catalog;
                     apply(Box::pin(api::set_site_catalog(on)), if on { tr!("Catálogo do recomplauncher.com ligado.") } else { tr!("Usando só o catálogo do Cerberus.") })
@@ -1700,6 +1711,9 @@ fn Sources(
                             <small>{count}</small>
                             {source.synced_at.map(|t| view! { <small>{tr!("Última sincronização em {}", format::date_time(t))}</small> })}
                             {source.error.map(|e| view! { <small role="status">{e}</small> })}
+                            {source.hydra.then(|| view! {
+                                <small class="ref-only">{tr!("Só consulta: estes títulos não aparecem no Descobrir nem na Biblioteca, e o Cerberus não baixa nada deles.")}</small>
+                            })}
                         </div>
                         <div class="row">
                             {source.hydra.then(|| view! {
@@ -1725,7 +1739,7 @@ fn Sources(
             <form class="set-row" on:submit=on_add>
                 <div>
                     <b>{tr!("Adicionar por URL")}</b>
-                    <small>{tr!("Consulte títulos, tamanhos e datas de listas Hydra aqui. Fontes de projetos para instalar aparecem em Descobrir.")}</small>
+                    <small>{tr!("Fontes de projetos (no formato do Cerberus ou do RecompLauncher) entram no Descobrir e instalam da página do desenvolvedor. Listas do Hydra ficam só para consulta aqui: títulos, tamanhos e datas.")}</small>
                 </div>
                 <div class="row">
                     <input class="input" type="url" required aria-label=tr!("URL da fonte") placeholder=tr!("https://.../jogos.json") prop:value=move || url.get() on:input=move |e| url.set(event_target_value(&e)) />

@@ -886,6 +886,16 @@ pub struct RomView {
     pub discs: Vec<String>,
 }
 
+/// Who opens a console's classics on this PC, as Play would decide it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ClassicPlayer {
+    pub console: String,
+    /// The emulator that opens it ("PCSX2", "RetroArch"); `None` when nothing can.
+    pub name: Option<String>,
+    /// What's missing, in words the player can act on; `None` when it plays.
+    pub problem: Option<String>,
+}
+
 /// A linked RetroAchievements account, as the settings and the library show it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RaProfile {

@@ -112,6 +112,11 @@ fn system_files(core: &str) -> Option<&'static str> {
 
 const SYSTEM_FILES: &str = "https://buildbot.libretro.com/assets/system";
 
+/// This RetroArch has the core for the console.
+pub fn has_core(exe: &Path, console: &str) -> bool {
+    core_for(console).is_some_and(|core| core_file(exe, core).is_file())
+}
+
 pub fn core_for(console: &str) -> Option<&'static str> {
     CORES.iter().find(|(c, _, _)| *c == console).map(|(_, core, _)| *core)
 }

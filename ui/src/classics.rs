@@ -1,11 +1,11 @@
 //! Clássicos: the console games found in the player's ROM folders. Each shows
 //! its box art (from the libretro thumbnails, by its No-Intro name), its
-//! console, and whether a recomp already plays it natively. A classic with a
-//! recomp opens that recomp's page (which plays the original too); the others
-//! have their own page, played in RetroArch.
+//! console, the emulator that opens it on this PC, and whether a recomp also
+//! plays it natively. Every classic has its own page; a recomp is one more way
+//! to play it, linked from there.
 
 use cerberus_shared::tr;
-use cerberus_shared::{RecompEntry, RomView};
+use cerberus_shared::{ClassicPlayer, RecompEntry, RomView};
 use leptos::prelude::*;
 
 use crate::art::Poster;
@@ -65,6 +65,11 @@ pub fn console_of(rom: &RomView) -> &'static str {
 /// Consoles RetroArch plays in Cerberus (cores in Configurações › Emulação).
 const EMULATED: &[&str] = &["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg", "ps1", "ps2", "psp", "gc", "wii"];
 
+/// Cerberus has some emulator for the console, installed or not.
+fn emulation_exists(console: &str) -> bool {
+    EMULATED.contains(&console) || matches!(console, "ps3" | "wiiu")
+}
+
 /// RetroArch plays this console in Cerberus.
 pub fn is_emulated(console: &str) -> bool {
     EMULATED.contains(&console)
@@ -75,6 +80,52 @@ pub fn emulated_console(path: &str) -> Option<&'static str> {
     let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new(), playtime_secs: 0, last_played: None, discs: Vec::new() };
     let console = console_of(&rom);
     EMULATED.contains(&console).then_some(console)
+}
+
+/// Who opens this console's classics here, as Play decides it.
+pub fn player_for<'a>(players: &'a [ClassicPlayer], console: &str) -> Option<&'a ClassicPlayer> {
+    players.iter().find(|p| p.console == console)
+}
+
+/// The emulator that will open it, when nothing is missing.
+pub fn ready_player(players: &[ClassicPlayer], console: &str) -> Option<String> {
+    player_for(players, console).filter(|p| p.problem.is_none()).and_then(|p| p.name.clone())
+}
+
+/// A classic's second line: its console and who opens it, or what's missing.
+pub fn classic_sub(rom: &RomView, console: &str, players: &[ClassicPlayer]) -> String {
+    let name = console_name(console);
+    let player = player_for(players, console);
+    match (player.and_then(|p| p.name.clone()), player.and_then(|p| p.problem.clone())) {
+        (Some(emulator), None) => match rom.last_played {
+            Some(t) => format!("{name} · {emulator} · {}", crate::format::ago(t)),
+            None => format!("{name} · {emulator}"),
+        },
+        (Some(_), Some(_)) => tr!("{} · falta o núcleo", name),
+        _ => tr!("{} · sem emulador", name),
+    }
+}
+
+/// The recomp that plays this very file natively, if one is in the catalog.
+pub fn recomp_of<'a>(recomps: &'a [RecompEntry], rom: &RomView) -> Option<&'a RecompEntry> {
+    recomps.iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str()))
+}
+
+/// A classic as a library tile.
+pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry]) -> crate::tiles::TileInfo {
+    let console = console_of(rom);
+    let badge = recomp_of(recomps, rom).map(|_| tr!("Tem recomp").to_string());
+    crate::tiles::classic_tile(display_name(rom), classic_sub(rom, console, players), box_art(rom, console), rom.path.clone(), badge)
+}
+
+/// The classics whose name has the words searched, A to Z.
+pub fn matching(roms: Vec<RomView>, needle: &str) -> Vec<RomView> {
+    let mut list: Vec<RomView> = roms.into_iter().filter(|r| needle.is_empty() || {
+        let hay = format!("{} {}", display_name(r), console_name(console_of(r))).to_lowercase();
+        needle.split_whitespace().all(|w| hay.contains(w))
+    }).collect();
+    list.sort_by_key(|r| display_name(r).to_lowercase());
+    list
 }
 
 /// A cartridge's console from its file type.
@@ -189,18 +240,22 @@ pub fn box_art(rom: &RomView, console: &str) -> Vec<String> {
     vec![format!("https://raw.githubusercontent.com/libretro-thumbnails/{}/master/Named_Boxarts/{}.png", repo, encoded)]
 }
 
+/// The classics, as a grid. `embedded`: under the Library's other games, with
+/// nothing at all when no classic matches.
 #[component]
-pub fn ClassicsGrid(needle: String) -> impl IntoView {
+pub fn ClassicsGrid(needle: String, #[prop(optional)] embedded: bool) -> impl IntoView {
     let library = expect_context::<Library>();
-    let roms = LocalResource::new(move || async move { crate::api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
     let grid = move || {
-        let Some(list) = roms.get() else {
-            return view! { <p class="muted" role="status">{tr!("Procurando seus clássicos…")}</p> }.into_any();
+        let Some(all) = library.roms.get() else {
+            return (!embedded).then(|| view! { <p class="muted" role="status">{tr!("Procurando seus clássicos…")}</p> }).into_any();
         };
+        let players = library.players.get().unwrap_or_default();
         let recomps: Vec<RecompEntry> = library.recomps.get().and_then(Result::ok).unwrap_or_default();
-        let mut list: Vec<RomView> = list.into_iter().filter(|r| needle.is_empty() || display_name(r).to_lowercase().contains(&needle)).collect();
-        list.sort_by_key(|r| display_name(r).to_lowercase());
+        let list = matching(all, &needle);
         if list.is_empty() {
+            if embedded {
+                return ().into_any();
+            }
             return view! {
                 <div class="empty">
                     <h2>{tr!("Nenhum clássico encontrado")}</h2>
@@ -211,49 +266,16 @@ pub fn ClassicsGrid(needle: String) -> impl IntoView {
             .into_any();
         }
         let count = list.len();
-        let tiles = list
-            .into_iter()
-            .map(|rom| {
-                let console = console_of(&rom);
-                let recomp = recomps.iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str())).cloned();
-                let title = display_name(&rom);
-                let (hover, alt) = (title.clone(), title.clone());
-                let emulated = EMULATED.contains(&console);
-                let sub = match &recomp {
-                    Some(e) if emulated => tr!("{} · recomp ou RetroArch", console_name(console)),
-                    Some(e) => format!("{} · tem recomp: {}", console_name(console), e.name),
-                    None if emulated => match rom.last_played {
-                        Some(t) => format!("{} · jogado {} · {}", console_name(console), crate::format::ago(t), crate::format::playtime(rom.playtime_secs)),
-                        None => format!("{} · RetroArch", console_name(console)),
-                    },
-                    None => console_name(console).to_string(),
-                };
-                let badge = recomp.as_ref().map(|_| view! { <span class="chip">{tr!("Tem recomp")}</span> });
-                let open = recomp.map(|e| e.id);
-                let path = rom.path.clone();
-                // A classic with a recomp opens the recomp's page, which offers both ways to play.
-                let on_open = move |_| match &open {
-                    Some(id) => library.go(Route::Game(format!("recomp:{id}"))),
-                    None => library.go(Route::Classic(path.clone())),
-                };
-
-                view! {
-                    <div class="tile">
-                        <button type="button" class="tile-b" on:click=on_open title=hover>
-                            <div class="poster-wrap">
-                                <Poster sources=box_art(&rom, console) title=alt />
-                                {badge}
-                            </div>
-                            <span class="t">{title}</span>
-                            <span class="s">{sub}</span>
-                        </button>
-                    </div>
-                }
-            })
-            .collect_view();
+        let tiles = list.iter().map(|rom| view! { <crate::tiles::Tile info=tile(rom, &players, &recomps) /> }).collect_view();
+        let heading = match (embedded, count) {
+            (true, 1) => tr!("1 clássico nas suas pastas").to_string(),
+            (true, n) => tr!("{} clássicos nas suas pastas", n),
+            (false, 1) => tr!("1 clássico").to_string(),
+            (false, n) => tr!("{} clássicos", n),
+        };
         view! {
             <section class="catalog-results">
-                <h2>{if count == 1 { tr!("1 clássico").to_string() } else { tr!("{} clássicos", count) }}</h2>
+                <h2>{heading}</h2>
                 <div class="grid">{tiles}</div>
             </section>
         }
@@ -284,31 +306,43 @@ mod tests {
 pub fn ClassicPage(path: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let wanted = StoredValue::new(path);
-    let roms = LocalResource::new(move || async move { crate::api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
+    // Play time may have changed since the list was read.
+    library.roms.refetch();
     let content = move || {
-        let list = roms.get()?;
+        let list = library.roms.get()?;
         let Some(rom) = list.into_iter().find(|r| r.path == wanted.get_value()) else {
             return Some(view! { <div class="page"><p class="muted">{tr!("Esse jogo não está mais nas suas pastas de ROMs.")}</p></div> }.into_any());
         };
         let console = console_of(&rom);
         let title = display_name(&rom);
-        let emulated = is_emulated(console);
-        let recomp = library.recomps.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str())));
+        let players = library.players.get().unwrap_or_default();
+        let player = player_for(&players, console).cloned();
+        let emulator = ready_player(&players, console);
+        let recomp = library.recomps.get().and_then(Result::ok).and_then(|all| recomp_of(&all, &rom).cloned());
         let art = box_art(&rom, console);
         let (path, console_id) = (rom.path.clone(), console.to_string());
-        let play = if emulated {
-            view! {
-                <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                    <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar")}
-                </button>
-            }
-            .into_any()
-        } else {
-            view! { <p class="muted small">{tr!("Esse console ainda não tem emulação no Cerberus.")}</p> }.into_any()
-        };
+        let play = emulator.clone().map(|name| view! {
+            <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
+                <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar no {}", name)}
+            </button>
+        });
         let to_recomp = recomp.map(|e| {
             let id = e.id.clone();
             view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{tr!("Ver o recomp: {}", e.name)}</button> }
+        });
+        // Nothing opens it yet: why, and the way forward, where Play would be.
+        let blocked = emulator.is_none().then(|| {
+            let why = player.as_ref().and_then(|p| p.problem.clone()).unwrap_or_else(|| tr!("Esse console ainda não tem emulação no Cerberus.").to_string());
+            let fixable = player.as_ref().is_some_and(|p| p.name.is_some()) || emulation_exists(console);
+            view! {
+                <section class="card blocked" role="status">
+                    <h3>{tr!("Ainda não dá para jogar aqui")}</h3>
+                    <p>{why}</p>
+                    {fixable.then(|| view! {
+                        <button type="button" class="btn sm main" on:click=move |_| crate::settings_page::open_emulation(library)>{tr!("Abrir Emulação")}</button>
+                    })}
+                </section>
+            }
         });
         let folder = rom.path.clone();
         let open_folder = move |_| {
@@ -366,6 +400,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     </section>
                     <div class="ov">
                     <div class="ov-main">
+                    {blocked}
                     <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played />
                     <section class="card classic-file">
                         <div class="card-h">
@@ -373,10 +408,10 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                             <button type="button" class="btn sm" on:click=open_folder>{tr!("Abrir pasta")}</button>
                         </div>
                         {if rom.discs.len() > 1 {
-                            let swap = if matches!(console, "ps1" | "gc") {
-                                tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.")
-                            } else {
-                                tr!("O RetroArch abre o disco 1; esse console ainda não troca de disco pelo Cerberus. O Cerberus nunca altera esses arquivos.")
+                            let swap = match emulator.as_deref() {
+                                Some("RetroArch") if matches!(console, "ps1" | "gc") => tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.").to_string(),
+                                Some(name) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
+                                None => tr!("O Cerberus nunca altera esses arquivos.").to_string(),
                             };
                             view! {
                                 <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol>
@@ -385,7 +420,10 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                         } else {
                             view! {
                                 <span class="path">{rom.path.clone()}</span>
-                                <p class="muted small">{tr!("O RetroArch abre esse arquivo como está; o Cerberus nunca o altera.")}</p>
+                                <p class="muted small">{match emulator.as_deref() {
+                                    Some(name) => tr!("O {} abre esse arquivo como está; o Cerberus nunca o altera.", name),
+                                    None => tr!("O Cerberus nunca altera esse arquivo.").to_string(),
+                                }}</p>
                             }.into_any()
                         }}
                     </section>

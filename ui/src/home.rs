@@ -120,6 +120,8 @@ fn not_installed(recomps: &[RecompEntry]) -> Vec<RecompEntry> {
 #[component]
 pub fn Home() -> impl IntoView {
     let library = expect_context::<Library>();
+    // A classic played since the list was read shows in "Jogue de novo".
+    library.roms.refetch();
     move || {
         let library_state = library.games.get();
         let read_error = library_state.as_ref().and_then(|state| state.as_ref().err()).cloned();
@@ -128,9 +130,20 @@ pub fn Home() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
 
-        let mut recent: Vec<&Game> = games.iter().filter(|g| !g.hidden && g.part_ids.is_empty() && (g.last_played.is_some() || g.is_tracked())).collect();
-        recent.sort_by_key(|g| std::cmp::Reverse(g.last_played));
-        let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|g| game_tile(g, library)).collect();
+        // Every kind of game played, newest first: the classics too.
+        let mut recent: Vec<(Option<u64>, TileInfo)> = games
+            .iter()
+            .filter(|g| !g.hidden && g.part_ids.is_empty() && (g.last_played.is_some() || g.is_tracked()))
+            .map(|g| (g.last_played, game_tile(g, library)))
+            .collect();
+        let players = library.players.get().unwrap_or_default();
+        recent.extend(
+            library.roms.get().unwrap_or_default().iter()
+                .filter(|r| r.last_played.is_some())
+                .map(|r| (r.last_played, crate::classics::tile(r, &players, &recomps))),
+        );
+        recent.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+        let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|(_, tile)| tile).collect();
 
         let candidates = not_installed(&recomps);
         let found: Vec<TileInfo> = candidates.iter().filter(|r| r.owned_copy.is_some()).map(recomp_tile).collect();

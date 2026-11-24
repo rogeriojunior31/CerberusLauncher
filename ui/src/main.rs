@@ -112,6 +112,10 @@ pub struct Toast {
 pub struct Library {
     games: LocalResource<Result<Vec<Game>, String>>,
     recomps: LocalResource<Result<Vec<RecompEntry>, String>>,
+    /// The classics in the player's ROM folders (refetched when a page shows them).
+    roms: LocalResource<Vec<cerberus_shared::RomView>>,
+    /// Who opens each console's classics on this PC.
+    players: LocalResource<Vec<cerberus_shared::ClassicPlayer>>,
     /// Recomps installing right now, by recomp id.
     progress: RwSignal<HashMap<String, InstallStep>>,
     /// Ids of games the launcher started that are still open.
@@ -244,6 +248,8 @@ fn App() -> impl IntoView {
     let library = Library {
         games: LocalResource::new(api::list_games),
         recomps: LocalResource::new(api::list_recomps),
+        roms: LocalResource::new(|| async { api::get_settings().await.map(|s| s.roms).unwrap_or_default() }),
+        players: LocalResource::new(api::classic_players),
         progress: RwSignal::new(HashMap::new()),
         running: RwSignal::new(HashSet::new()),
         route: RwSignal::new(Route::Home),
@@ -303,6 +309,8 @@ fn App() -> impl IntoView {
     api::on_catalog_changed(move || {
         library.recomps.refetch();
         library.games.refetch();
+        library.roms.refetch();
+        library.players.refetch();
     });
     api::on_toast(move |text| library.toast(text));
     tv::watch_for_tv(library);
