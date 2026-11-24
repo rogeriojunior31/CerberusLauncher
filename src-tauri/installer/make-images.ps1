@@ -1,6 +1,6 @@
 # Draws the installer's pictures (NSIS wants 24-bit BMPs) from the app icon.
 # Run again after changing the icon or the version shown:  pwsh src-tauri/installer/make-images.ps1
-param([string]$Version = "0.10")
+param([string]$Version = "0.11")
 Add-Type -AssemblyName System.Drawing
 $here = $PSScriptRoot
 $icon = [System.Drawing.Image]::FromFile((Join-Path $here "..\icons\icon.png"))

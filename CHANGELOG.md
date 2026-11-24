@@ -1,6 +1,6 @@
 # Novidades
 
-## Próxima versão
+## 0.11.0 — conquistas, Novidades e do seu jeito
 
 ### Início, menu lateral e Novidades
 
