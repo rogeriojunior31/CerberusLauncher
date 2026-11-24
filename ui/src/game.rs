@@ -1647,8 +1647,9 @@ fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> im
 }
 
 /// Other recomps someone who likes this one might like: shared tags count
-/// twice, then the same series, genre and console. Other versions of the same
-/// game are left out.
+/// twice, then the same series, genre and console; among those, the ones whose
+/// original the player has come first. Other versions of the same game are
+/// left out.
 pub fn similar(entry: &RecompEntry, all: &[RecompEntry], most: usize) -> Vec<RecompEntry> {
     let series = entry.original.as_ref().map(|o| o.series.clone()).filter(|s| !s.is_empty());
     let mut scored: Vec<(f32, &RecompEntry)> = crate::versions::one_each(all)
@@ -1667,7 +1668,12 @@ pub fn similar(entry: &RecompEntry, all: &[RecompEntry], most: usize) -> Vec<Rec
             if series.is_some() && x.original.as_ref().map(|o| &o.series) == series.as_ref() {
                 score += 4.0;
             }
-            (score >= 3.0).then_some((score, all.iter().find(|e| e.id == x.id)?))
+            let alike = score >= 3.0;
+            // The ones the player already has the original of can be played today: first.
+            if x.owned_copy.is_some() {
+                score += 3.0;
+            }
+            alike.then_some((score, all.iter().find(|e| e.id == x.id)?))
         })
         .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.downloads.cmp(&a.1.downloads)));
