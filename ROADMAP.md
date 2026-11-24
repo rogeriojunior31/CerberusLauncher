@@ -479,7 +479,6 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 - [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
 - [x] Menu da bandeja com os jogos recentes.
 - [x] Impedir o PC de dormir durante downloads.
-- [ ] **HowLongToBeat** na página do jogo (tempo para zerar).
 - [x] Informações do jogo original pela Wikipedia, guardadas por um mês.
 - [ ] Prévia ao vivo dos filtros visuais sobre a imagem do próprio jogo, e um filtro "Studio".
 - [ ] Arte de mídia: o jogo desenhado como o cartucho, cartão ou disco dele.
@@ -648,7 +647,7 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 ### 6.9 Precisa de servidor (só registro)
 
 - Placares, amigos, chat, perfil público e "Wrapped" [H]; relatos "Como rodou?", aviso de versão que trava, seguir
-  desenvolvedores e pedidos de recomp [R]; HowLongToBeat e arte do SteamGridDB sem chave do jogador vêm do servidor do
+  desenvolvedores e pedidos de recomp [R]; arte do SteamGridDB sem chave do jogador vem do servidor do
   Hydra [H]. Para nós, só com servidor próprio.
 
 ## Fora de vez
