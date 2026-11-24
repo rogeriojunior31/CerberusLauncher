@@ -395,6 +395,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     </section>
                     <div class="ov">
                     <div class="ov-main">
+                    <h2 class="vh">{tr!("Visão geral")}</h2>
                     {blocked}
                     <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played />
                     <section class="card classic-file">
@@ -426,7 +427,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     </div>
                     <aside class="ov-rail">
                         <crate::game_overview::AchievementsCard data=achievements on_all />
-                        <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{facts}</dl></section>
+                        <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{facts}</dl></section>
                     </aside>
                     </div>
                 </div>

@@ -396,7 +396,15 @@ pub fn SettingsPage() -> impl IntoView {
                         <div class="set-hits">{results}</div>
                     </Show>
                 </nav>
-                <div class="settings">{body}</div>
+                <div class="settings">
+                    // The open section's name, for screen readers (the menu shows it highlighted).
+                    <h2 class="vh">{move || {
+                        let now = section.get();
+                        MENU.iter().flat_map(|(_, items)| items.iter()).find(|(s, _, _)| *s == now)
+                            .map(|(_, label, _)| cerberus_shared::i18n::t(label)).unwrap_or_default()
+                    }}</h2>
+                    {body}
+                </div>
             </div>
         </div>
     }
@@ -953,15 +961,20 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             }
         };
         let installed: Vec<cerberus_shared::StandaloneView> = s.emulators.iter().filter(|e| e.exe.is_some()).cloned().collect();
-        let mut ready_count = 0;
-        let tiles = DISC_CONSOLES
-            .iter()
+        // The player's own classics, by console: their consoles come first.
+        let my_roms = library.roms.get().unwrap_or_default();
+        let players = library.players.get().unwrap_or_default();
+        let mine = |console: &str| my_roms.iter().filter(|r| crate::classics::console_of(r) == console).count();
+        let playable = my_roms.iter().filter(|r| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some()).count();
+        let mut order: Vec<&str> = DISC_CONSOLES.to_vec();
+        order.sort_by_key(|c| std::cmp::Reverse(mine(c)));
+        let tiles = order
+            .into_iter()
             .map(|console| {
+                let console = &console;
+                let owned = mine(console);
                 let who = s.play_with.iter().find(|(c, _)| c == console).map(|(_, w)| w.clone()).unwrap_or_default();
                 let ready = state_of(console, &who);
-                if ready == Ready::Yes {
-                    ready_count += 1;
-                }
                 let (class, label) = match ready {
                     Ready::Yes => ("ok", tr!("Pronto")),
                     Ready::NeedsBios => ("warn", tr!("Falta a BIOS")),
@@ -987,9 +1000,15 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                     let name = options.first().map(|(_, n)| n.clone()).unwrap_or_else(|| tr!("Instale um emulador abaixo").to_string());
                     view! { <span class="emu-who-one">{name}</span> }.into_any()
                 };
+                let games = match owned {
+                    0 => tr!("Nenhum jogo seu").to_string(),
+                    1 => tr!("1 jogo seu").to_string(),
+                    n => tr!("{} jogos seus", n),
+                };
                 view! {
-                    <div class=format!("emu-tile {class}")>
+                    <div class=format!("emu-tile {class}") class:idle=owned == 0>
                         <div class="emu-tile-h"><b>{console_name(console)}</b><span class="emu-dot">{label}</span></div>
+                        <small class="emu-mine">{games}</small>
                         {picker}
                     </div>
                 }
@@ -998,14 +1017,39 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         let retro_consoles: Vec<&cerberus_shared::CoreView> = v.cores.iter().filter(|c| !DISC_CONSOLES.contains(&c.console.as_str())).collect();
         let retro_missing = retro_consoles.iter().filter(|c| !c.installed).count();
         let retro_ready = has_ra && retro_missing == 0;
+        // Judged by the player's own cartridges: a core for a console they have no game of isn't missing.
+        let carts: Vec<&str> = my_roms.iter().map(crate::classics::console_of)
+            .filter(|c| !DISC_CONSOLES.contains(c) && v.cores.iter().any(|core| core.console == *c)).collect();
+        // Games of consoles nothing here plays yet (3DS, Xbox 360...).
+        let mut unplayable: Vec<&'static str> = my_roms.iter().map(crate::classics::console_of)
+            .filter(|c| !DISC_CONSOLES.contains(c) && !v.cores.iter().any(|core| core.console == *c))
+            .map(crate::classics::console_name).collect();
+        unplayable.sort_unstable();
+        unplayable.dedup();
+        let mut carts_missing: Vec<&str> = carts.iter().copied().filter(|c| !core_ok(c)).collect();
+        carts_missing.sort_unstable();
+        carts_missing.dedup();
+        let carts_ready = has_ra && if carts.is_empty() { retro_ready } else { carts_missing.is_empty() };
+        let cart_games = match carts.len() {
+            0 => tr!("Nenhum jogo seu").to_string(),
+            1 => tr!("1 jogo seu").to_string(),
+            n => tr!("{} jogos seus", n),
+        };
         let retro_tile = view! {
-            <div class=format!("emu-tile wide {}", if retro_ready { "ok" } else if has_ra { "warn" } else { "off" })>
+            <div class=format!("emu-tile wide {}", if carts_ready { "ok" } else if has_ra { "warn" } else { "off" })>
                 <div class="emu-tile-h">
                     <b>{tr!("Cartuchos")}</b>
-                    <span class="emu-dot">{if retro_ready { tr!("Pronto").to_string() } else if has_ra { tr!("Faltam {} núcleos", retro_missing) } else { tr!("Sem emulador").to_string() }}</span>
+                    <span class="emu-dot">{if carts_ready { tr!("Pronto").to_string() } else if !has_ra { tr!("Sem emulador").to_string() } else if carts.is_empty() { tr!("Faltam {} núcleos", retro_missing) } else { tr!("Faltam {} núcleos", carts_missing.len()) }}</span>
                 </div>
+                <small class="emu-mine">{cart_games}</small>
                 <span class="emu-who-one">{tr!("NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive pelo RetroArch")}</span>
             </div>
+            {(!unplayable.is_empty()).then(|| view! {
+                <div class="emu-tile wide off">
+                    <div class="emu-tile-h"><b>{unplayable.join(", ")}</b><span class="emu-dot">{tr!("Sem emulação")}</span></div>
+                    <span class="emu-who-one">{tr!("Você tem jogos desses consoles, mas o Cerberus ainda não tem emulador para eles.")}</span>
+                </div>
+            })}
         };
 
         // ---------- RetroArch's card ----------
@@ -1176,7 +1220,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             <section class="card set emu-top">
                 <div>
                     <h3>{tr!("Emulação")}</h3>
-                    <p class="muted small">{tr!("{} clássicos nas suas pastas · {} de {} consoles de disco prontos", roms, ready_count, DISC_CONSOLES.len())}</p>
+                    <p class="muted small">{tr!("{} clássicos nas suas pastas · {} já abrem aqui", roms, playable)}</p>
                 </div>
                 <button type="button" class="btn sm" on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
             </section>

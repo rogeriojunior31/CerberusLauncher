@@ -509,7 +509,7 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 
 /* Side rail cards */
 .rail-card { display: flex; flex-direction: column; gap: 12px; }
-.rail-card h3 { font-size: 16px; }
+.rail-card h3, .rail-card h2 { font-size: 16px; }
 .rail-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .rail-n { font-variant-numeric: tabular-nums; font-size: 15px; }
 .rail-card .ach-bar { flex: none; height: 6px; }
@@ -1350,6 +1350,9 @@ button.emu-chip:hover:not(:disabled) { border-color: var(--accent); }
 .act.clickable { cursor: pointer; }
 .act { position: relative; }
 .act-day + .act-day { margin-top: 18px; }
+.emu-mine { display: block; color: var(--muted); font-size: 12px; margin: -2px 0 8px; }
+.emu-tile.idle { opacity: 0.66; }
+.emu-tile.idle:hover, .emu-tile.idle:focus-within { opacity: 1; }
 .news-ok { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; color: var(--muted); }
 .news-ok svg { color: var(--ok, #3ccf8e); flex: none; }
 .act-day h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px 4px; }

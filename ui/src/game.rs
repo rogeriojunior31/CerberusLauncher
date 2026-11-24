@@ -273,7 +273,17 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     // Each tab arrives with a short fade, so the switch reads as one place changing.
     let body = move || {
         let which = tab.get();
-        view! { <div class="tab-body" role="tabpanel">{tab_body(which)}</div> }
+        // The tab's name as the panel's heading, for screen readers: the cards below are its parts.
+        let name = match which {
+            Tab::Overview => tr!("Visão geral"),
+            Tab::Saves => tr!("Saves"),
+            Tab::Settings => tr!("Ajustes"),
+            Tab::Mods => "Mods",
+            Tab::Achievements => tr!("Conquistas"),
+            Tab::Photos => tr!("Fotos"),
+            Tab::Manage => tr!("Gerenciar"),
+        };
+        view! { <div class="tab-body" role="tabpanel"><h2 class="vh">{name}</h2>{tab_body(which)}</div> }
     };
 
     view! {
@@ -426,7 +436,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
     }
     let facts_card = (!facts.is_empty()).then(|| {
         let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
-        view! { <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{rows}</dl></section> }
+        view! { <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{rows}</dl></section> }
     });
     let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played /> }.into_any());
     // Your numbers lead once there is a story to tell (an hour or more); before that they wait below.
