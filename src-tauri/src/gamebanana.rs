@@ -249,10 +249,24 @@ pub async fn download(client: &Client, file: &ModFile, dir: &Path) -> Result<Pat
     Ok(path)
 }
 
-/// Packs the game loads by itself.
+/// Packs the game loads by itself: .otr/.o2r (Ship of Harkinian and family),
+/// .nrm (N64: Recompiled).
 fn is_pack(name: &str) -> bool {
     let lower = name.to_lowercase();
-    lower.ends_with(".otr") || lower.ends_with(".o2r")
+    lower.ends_with(".otr") || lower.ends_with(".o2r") || lower.ends_with(".nrm")
+}
+
+/// A folder name from a game's own file, kept for as long as the app runs
+/// (Hedge Mod Manager mods are switched on in that folder's `cpkredir.ini`).
+pub fn named(user: &str) -> &'static str {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(found) = names.iter().find(|n| **n == user) {
+        return found;
+    }
+    let kept: &'static str = Box::leak(user.to_string().into_boxed_str());
+    names.push(kept);
+    kept
 }
 
 fn packs_in(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
@@ -281,7 +295,7 @@ pub fn place_packs(archive: &Path, mods: &Path) -> Result<Vec<String>, String> {
         let mut packs = Vec::new();
         packs_in(&unpacked, 0, &mut packs);
         if packs.is_empty() {
-            return Err(tr!("Esse mod não tem pacotes .otr ou .o2r que o jogo carregue sozinho; a página dele explica como instalar.").into());
+            return Err(tr!("Esse mod não tem pacotes .otr, .o2r ou .nrm que o jogo carregue sozinho; a página dele explica como instalar.").into());
         }
         fs::create_dir_all(mods).map_err(|e| e.to_string())?;
         let mut names = Vec::new();

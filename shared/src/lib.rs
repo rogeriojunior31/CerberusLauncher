@@ -40,6 +40,9 @@ pub struct Game {
     /// The player's copy of the original game (ROM or disc image) a recomp is set up with.
     #[serde(default)]
     pub game_copy: Option<String>,
+    /// The known good dump the copy matches ("USA"), from the developer's list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_verified: Option<String>,
     /// The other files a recomp's `recomplauncher.json` asks for: input id -> path.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub inputs: std::collections::BTreeMap<String, String>,
@@ -128,6 +131,37 @@ pub enum CopyHandoff {
     /// The developer's `recomplauncher.json` says which files the game takes
     /// (the copy, each disc, DLC, an update) and how each is passed.
     Inputs,
+}
+
+/// A tick for the game's setup step (a vendor's SDK), from its `recomplauncher.json`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PrepareOption {
+    pub id: String,
+    pub label: String,
+    pub note: String,
+    /// Ticking it accepts this license: its name and address.
+    pub license: Option<(String, String)>,
+    pub required: bool,
+    pub on: bool,
+}
+
+/// A button the game's developer adds: open one of its folders, or empty one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GameAction {
+    pub id: String,
+    pub label: String,
+    pub help: String,
+    /// Empties a folder (asked first) instead of opening it.
+    pub clear: bool,
+}
+
+/// How the game's setup step is going: 0 to 1 when it says, and its line.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PrepareProgress {
+    pub game_id: String,
+    pub fraction: Option<f32>,
+    pub text: String,
+    pub finished: bool,
 }
 
 /// A file a recomp's `recomplauncher.json` asks the player for, besides the copy.
@@ -986,6 +1020,12 @@ pub struct RecompEntry {
     /// How many of the game's own settings the launcher can change.
     #[serde(default)]
     pub settings_count: usize,
+    /// What the PC needs, from the developer's file ("Windows 10 ou mais novo").
+    #[serde(default)]
+    pub system_needs: Vec<String>,
+    /// This PC is older than that: why. The game still starts.
+    #[serde(default)]
+    pub system_problem: Option<String>,
     /// What the player should know before the first start, from the catalog (in English).
     #[serde(default)]
     pub player_note: String,

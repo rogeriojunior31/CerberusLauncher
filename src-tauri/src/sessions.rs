@@ -177,7 +177,20 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     command.current_dir(dir).args(plan.args).envs(plan.env);
     // The picture filter: ReShade beside the game until it closes. A look that
     // can't go on never stops the game from starting.
-    if let Some(look) = &game.look {
+    // An older PC than the game asks for: said, and the game starts anyway.
+    if let Some(problem) = recomp::entry_for(game).and_then(|e| e.manifest).and_then(|m| recomp::manifest::system_problem(&m, recomp::this_windows_build())) {
+        let _ = app.emit("toast", problem);
+    }
+    let look = match recomp::look_rule(game) {
+        Some(Err(why)) => {
+            if game.look.is_some() {
+                crate::trail::note(app, &game.id, tk!("Filtro"), &Err(why));
+            }
+            None
+        }
+        _ => game.look.as_ref(),
+    };
+    if let Some(look) = look {
         let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
         match crate::looks::prepare(&data, &game.id, exe, look) {
             Ok(prepared) => {
@@ -261,36 +274,96 @@ impl GameProcess {
 }
 
 fn prepare_then_start(app: &AppHandle, game: Game, exe: PathBuf, step: recomp::Preparation) -> Result<(), String> {
+    let fail = |message: String| {
+        release(app, &game.id);
+        message
+    };
+    let install = Path::new(&game.install_dir);
+    // A build needs room: at least 1 GB on the game's drive.
+    crate::disk::require(install, 1 << 30).map_err(fail)?;
+    if let Some(temp) = &step.temp {
+        let _ = std::fs::remove_dir_all(temp);
+        std::fs::create_dir_all(temp).map_err(|e| fail(e.to_string()))?;
+    }
     let dir = step.program.parent().map(Path::to_path_buf).unwrap_or_default();
-    let mut child = Command::new(&step.program)
-        .args(&step.args)
-        .current_dir(dir)
-        .spawn()
-        .map_err(|e| {
-            release(app, &game.id);
-            tr!("Não foi possível abrir a preparação do jogo: {}", e)
-        })?;
+    let mut command = Command::new(&step.program);
+    command.args(&step.args).envs(step.env.clone()).current_dir(dir).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // No window: the step never asks anything.
+        command.creation_flags(0x0800_0000);
+    }
+    let mut child = command.spawn().map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
     let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
+    let say = |app: &AppHandle, fraction: Option<f32>, text: String, finished: bool| {
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished });
+    };
+    say(app, Some(0.0), step.label.clone(), false);
+
+    // What it prints: progress for the player, the last lines for an error.
+    let heard = std::sync::Arc::new(Mutex::new((Instant::now(), Vec::<String>::new())));
+    for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)].into_iter().flatten() {
+        let (heard, app, label) = (heard.clone(), app.clone(), step.label.clone());
+        let game_id = game.id.clone();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stream).lines().map_while(Result::ok) {
+                let line = line.trim().to_string();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some((fraction, text)) = progress_line(&line) {
+                    let text = if text.is_empty() { label.clone() } else { text };
+                    let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game_id.clone(), fraction, text, finished: false });
+                }
+                if let Ok(mut h) = heard.lock() {
+                    h.0 = Instant::now();
+                    h.1.push(line);
+                    let len = h.1.len();
+                    if len > 40 {
+                        h.1.drain(..len - 40);
+                    }
+                }
+            }
+        });
+    }
     let app = app.clone();
     std::thread::spawn(move || {
         let started = Instant::now();
         let outcome = loop {
             match child.try_wait() {
                 Ok(Some(status)) if status.success() => break Ok(()),
-                Ok(Some(status)) => break Err(tr!("A preparação do jogo terminou com o código {}.", status.code().unwrap_or(-1)).to_string()),
-                Ok(None) if started.elapsed() > step.timeout => {
-                    let _ = child.kill();
-                    break Err(tr!("A preparação do jogo demorou demais e foi interrompida.").to_string());
+                Ok(Some(status)) => {
+                    let said = heard.lock().map(|h| h.1.join("\n")).unwrap_or_default();
+                    let long_path = said.contains("PathTooLongException") || said.to_lowercase().contains("filename or extension is too long");
+                    break Err(if long_path {
+                        tr!("O caminho da pasta do jogo é longo demais para o Windows. Instale numa pasta com caminho mais curto ou ligue o suporte a caminhos longos do Windows.").to_string()
+                    } else {
+                        tr!("A preparação do jogo terminou com o código {}.", status.code().unwrap_or(-1)).to_string()
+                    });
                 }
-                Ok(None) => std::thread::sleep(Duration::from_millis(500)),
+                Ok(None) => {
+                    let silent = heard.lock().map(|h| h.0.elapsed()).unwrap_or_default();
+                    // No limit for a long build, but an hour without a word is a stuck one.
+                    if step.timeout.is_some_and(|t| started.elapsed() > t) || silent > Duration::from_secs(3600) {
+                        let _ = child.kill();
+                        break Err(tr!("A preparação do jogo parou de responder e foi interrompida.").to_string());
+                    }
+                    std::thread::sleep(Duration::from_millis(500));
+                }
                 Err(e) => break Err(e.to_string()),
             }
         };
+        if let Some(temp) = &step.temp {
+            let _ = std::fs::remove_dir_all(temp);
+        }
         crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true });
         release(&app, &game.id);
         match outcome {
             Ok(()) => {
-                let _ = std::fs::write(&step.marker, &step.copy);
+                let _ = std::fs::write(&step.marker, &step.done_with);
                 if let Err(error) = start(&app, &game, &exe) {
                     let _ = app.emit("toast", error);
                 }
@@ -301,6 +374,26 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: PathBuf, step: recomp::P
         }
     });
     Ok(())
+}
+
+/// "progress 0.4 Unpacking menu art" (the SDK's way), or "@note 89%, 68606 files"
+/// and "@step 2 3 Unpacking" (some setups' own): how far, and what.
+fn progress_line(line: &str) -> Option<(Option<f32>, String)> {
+    if let Some(rest) = line.strip_prefix("progress ") {
+        let (number, text) = rest.split_once(' ').unwrap_or((rest, ""));
+        let fraction = number.trim().parse::<f32>().ok()?.clamp(0.0, 1.0);
+        return Some((Some(fraction), text.trim().to_string()));
+    }
+    if let Some(rest) = line.strip_prefix("@note ") {
+        let percent = rest.split('%').next()?.trim().parse::<f32>().ok()?;
+        return Some((Some((percent / 100.0).clamp(0.0, 1.0)), String::new()));
+    }
+    if let Some(rest) = line.strip_prefix("@step ") {
+        let mut parts = rest.splitn(3, ' ');
+        let (_, _, text) = (parts.next()?, parts.next()?, parts.next().unwrap_or_default());
+        return Some((None, text.trim().to_string()));
+    }
+    None
 }
 
 /// A game that ended badly: why, in the history and as a notice, with its log.
@@ -498,6 +591,14 @@ mod tests {
     use std::os::windows::process::CommandExt;
     use std::process::Stdio;
     use std::time::Instant;
+
+    #[test]
+    fn setup_steps_say_how_far_they_are() {
+        assert_eq!(progress_line("progress 0.4 Unpacking menu art"), Some((Some(0.4), "Unpacking menu art".into())));
+        assert_eq!(progress_line("@note 89%, 68606 files"), Some((Some(0.89), String::new())));
+        assert_eq!(progress_line("@step 2 3 Unpacking the disc"), Some((None, "Unpacking the disc".into())));
+        assert_eq!(progress_line("some log line"), None);
+    }
 
     #[test]
     fn a_game_that_crashes_reports_its_windows_exit_code() {

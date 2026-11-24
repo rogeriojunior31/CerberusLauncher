@@ -258,6 +258,18 @@ fn App() -> impl IntoView {
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
+    // Setup steps running now, by game: one listener for the whole app.
+    let preparing = game::Preparing(RwSignal::new(HashMap::new()));
+    api::on_prepare_progress(move |p| {
+        preparing.0.update(|all| {
+            if p.finished {
+                all.remove(&p.game_id);
+            } else {
+                all.insert(p.game_id.clone(), p);
+            }
+        })
+    });
+    provide_context(preparing);
     provide_context(updates::Updates::start());
     provide_context(news::Activity::start());
     provide_context(library_page::LibraryView::default());

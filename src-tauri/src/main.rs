@@ -449,9 +449,10 @@ fn look_status(library: State<'_, LocalLibrary>, id: String) -> Result<cerberus_
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let unsupported = match drawing_program(&game) {
         None => Some(tr!("Filtros funcionam em jogos que o Cerberus abre (recomps e jogos adicionados à mão).").to_string()),
-        Some(exe) => match looks::route(&exe) {
-            looks::Route::Dxgi { .. } => None,
-            looks::Route::Unsupported(why) => Some(why),
+        Some(exe) => match (recomp::look_rule(&game), looks::route(&exe)) {
+            (Some(Err(why)), _) => Some(why),
+            (Some(Ok(())), _) | (None, looks::Route::Dxgi { .. }) => None,
+            (None, looks::Route::Unsupported(why)) => Some(why),
         },
     };
     Ok(cerberus_shared::LookStatus { unsupported, current: game.look })
@@ -1791,6 +1792,31 @@ async fn mod_setup(app: &AppHandle, id: &str) -> Result<Option<(ModHost, PathBuf
         return Ok(None);
     };
     let record = app.state::<DataDir>().0.join("mods").join(format!("{recomp_id}.json"));
+    // The developer's own file says where its mods come from and go.
+    if let Some(own) = recomp::entry_for(&game).and_then(|e| e.manifest).and_then(|m| m.mods.clone()) {
+        let install = Path::new(&game.install_dir);
+        if let (Some(community), Some(data)) = (own.thunderstore.filter(|c| mods::plain(c)), own.data.clone().filter(|d| mods::plain(d))) {
+            let folder = mods::mods_dir(install, &data);
+            return Ok(Some((ModHost::Thunderstore(mods::ModSource { community, data }), folder, record)));
+        }
+        if let Some(game_id) = own.gamebanana {
+            let beside = gamebanana::mods_dir(Path::new(exe));
+            match own.loader.as_deref() {
+                Some("otr") => return Ok(Some((ModHost::GameBanana(game_id, gamebanana::Kind::Packs), beside, record))),
+                Some("nrm") => {
+                    if let Some(data) = own.data.filter(|d| mods::plain(d)) {
+                        return Ok(Some((ModHost::GameBanana(game_id, gamebanana::Kind::Packs), mods::mods_dir(install, &data), record)));
+                    }
+                }
+                Some("hmm") => {
+                    if let Some(user) = own.user.filter(|u| mods::plain(u)) {
+                        return Ok(Some((ModHost::GameBanana(game_id, gamebanana::Kind::Hedge(gamebanana::named(&user))), beside, record)));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     if let Some((game_id, kind)) = gamebanana::game_for(recomp_id) {
         return Ok(Some((ModHost::GameBanana(game_id, kind), gamebanana::mods_dir(Path::new(exe)), record)));
     }
@@ -2184,6 +2210,49 @@ fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings:
     let _ = recomp_id;
     let offer = recomp::entry_for(&game).map(|e| e.settings).unwrap_or_default();
     Ok((game, offer))
+}
+
+/// The setup step's ticks (a vendor's SDK), each on or off.
+#[tauri::command]
+fn prepare_options(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    Ok(recomp::prepare_options(&game))
+}
+
+#[tauri::command]
+fn set_prepare_option(library: State<'_, LocalLibrary>, id: String, option: String, on: bool) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
+    let game = recomp::set_prepare_option(&library, &id, &option, on)?;
+    Ok(recomp::prepare_options(&game))
+}
+
+/// Opens the license a setup tick asks the player to accept (an https address from the game's file).
+#[tauri::command]
+fn open_prepare_license(app: AppHandle, library: State<'_, LocalLibrary>, id: String, option: String) -> Result<(), String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    let (_, url) = recomp::prepare_options(&game).into_iter().find(|o| o.id == option).and_then(|o| o.license).ok_or(tr!("Essa opção não tem licença."))?;
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// The buttons the game's developer adds under its settings.
+#[tauri::command]
+fn game_actions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::GameAction>, String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    Ok(recomp::game_actions(&game))
+}
+
+/// Opens the folder an action names, or empties it (the page asked first).
+#[tauri::command]
+fn run_game_action(app: AppHandle, library: State<'_, LocalLibrary>, id: String, action: String) -> Result<(), String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    if app.state::<sessions::Sessions>().is_running(&id) {
+        return Err(tr!("Feche o jogo antes.").into());
+    }
+    let (folder, clear) = recomp::action_folder(&game, &action)?;
+    if clear {
+        return recomp::clear_folder(&folder);
+    }
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    app.opener().open_path(folder.to_string_lossy(), None::<&str>).map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
 /// The files besides the copy the game's `recomplauncher.json` asks for:
@@ -2912,6 +2981,11 @@ fn main() {
             set_game_copy,
             game_inputs,
             pick_game_input,
+            prepare_options,
+            set_prepare_option,
+            open_prepare_license,
+            game_actions,
+            run_game_action,
             set_launch_args,
             tracking_mode,
             pick_tracking_exe,

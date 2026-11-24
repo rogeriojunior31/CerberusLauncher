@@ -250,6 +250,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                     <div class="settings-tab">
                         <crate::looks::LooksCard game_id=g.id.clone() preview />
                         {catalog.then(|| view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> })}
+                        <GameActions game_id=g.id.clone() />
                     </div>
                 }
                 .into_any()
@@ -516,6 +517,13 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
                         {problem}
                         {tags}
                         {features}
+                        {(!e.system_needs.is_empty()).then(|| view! {
+                            <div class="ver-part">
+                                <span class="ver-label">{tr!("O que o PC precisa")}</span>
+                                <div class="tags">{e.system_needs.iter().map(|n| view! { <span class="tag">{n.clone()}</span> }).collect_view()}</div>
+                                {e.system_problem.clone().map(|p| view! { <p class="problem small">{p}</p> })}
+                            </div>
+                        })}
                         {note}
                     </section>
                 })}
@@ -655,14 +663,154 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
         .into_any(),
     };
 
+    let verified = game.copy_verified.clone().map(|name| view! {
+        <p class="verified"><Svg icon=Icon::Check size=16 />{tr!("Confere com o disco verificado ({})", name)}</p>
+    });
     view! {
         <aside class="card ready">
-            <h3>{tr!("Easy Setup")}</h3>
+            <h3>{tr!("Configuração fácil")}</h3>
             {warning}
             {body}
+            {verified}
             <MoreInputs game_id=id.get_value() />
+            <PrepareTicks game_id=id.get_value() />
+            <PrepareStatus game_id=id.get_value() />
             <p class="muted small">{tr!("O Cerberus entrega sua cópia ao jogo do jeito que ele espera. Nada sai do seu PC.")}</p>
         </aside>
+    }
+}
+
+/// The buttons the game's developer adds: open a folder, or empty one (clicked twice).
+#[component]
+fn GameActions(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let list = RwSignal::new(Vec::<cerberus_shared::GameAction>::new());
+    let armed = RwSignal::new(None::<String>);
+    spawn_local(async move {
+        list.set(api::game_actions(&id.get_value()).await.unwrap_or_default());
+    });
+    let run = move |action: cerberus_shared::GameAction| {
+        if action.clear && armed.get_untracked().as_deref() != Some(action.id.as_str()) {
+            armed.set(Some(action.id.clone()));
+            return;
+        }
+        armed.set(None);
+        spawn_local(async move {
+            if library.report(api::run_game_action(&id.get_value(), &action.id).await).is_some() && action.clear {
+                library.toast(tr!("Pronto: {} foi esvaziada.", action.label));
+            }
+        });
+    };
+    move || {
+        let all = list.get();
+        (!all.is_empty()).then(|| {
+            let rows = all
+                .into_iter()
+                .map(|a| {
+                    let key = a.id.clone();
+                    let label = a.label.clone();
+                    let shown = move || if armed.get().as_deref() == Some(key.as_str()) { tr!("Clique de novo para confirmar").to_string() } else { label.clone() };
+                    let help = a.help.clone();
+                    let icon = if a.clear { Icon::Close } else { Icon::Folder };
+                    view! {
+                        <div class="act-row">
+                            <button type="button" class="btn sm" on:click=move |_| run(a.clone())><Svg icon size=16 />{shown}</button>
+                            {(!help.is_empty()).then(|| view! { <small class="muted">{help}</small> })}
+                        </div>
+                    }
+                })
+                .collect_view();
+            view! {
+                <section class="card">
+                    <h3>{tr!("Pastas do jogo")}</h3>
+                    <div class="acts">{rows}</div>
+                </section>
+            }
+        })
+    }
+}
+
+/// The setup step's ticks (a vendor's SDK). One with a license starts off:
+/// ticking it is the player accepting that license.
+#[component]
+fn PrepareTicks(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let list = RwSignal::new(Vec::<cerberus_shared::PrepareOption>::new());
+    spawn_local(async move {
+        list.set(api::prepare_options(&id.get_value()).await.unwrap_or_default());
+    });
+    let flip = move |option: String, on: bool| {
+        spawn_local(async move {
+            if let Some(now) = library.report(api::set_prepare_option(&id.get_value(), &option, on).await) {
+                list.set(now);
+                library.games.refetch();
+            }
+        });
+    };
+    move || {
+        let all = list.get();
+        (!all.is_empty()).then(|| {
+            let rows = all
+                .into_iter()
+                .map(|o| {
+                    let key = o.id.clone();
+                    let on = o.on;
+                    let license_key = o.id.clone();
+                    let license = o.license.clone().map(|(name, _)| {
+                        view! {
+                            <small>{tr!("Marcar aceita: ")}
+                                <button type="button" class="linkish" on:click=move |e| {
+                                    e.prevent_default();
+                                    let option = license_key.clone();
+                                    spawn_local(async move { library.report(api::open_prepare_license(&id.get_value(), &option).await); });
+                                }>{name}</button>
+                            </small>
+                        }
+                    });
+                    view! {
+                        <label class="tick">
+                            <input type="checkbox" prop:checked=on on:change=move |e| flip(key.clone(), event_target_checked(&e)) />
+                            <span>
+                                <b>{o.label.clone()}{o.required.then(|| view! { <span class="vtag">{tr!("Necessário")}</span> })}</b>
+                                {(!o.note.is_empty()).then(|| view! { <small>{o.note.clone()}</small> })}
+                                {license}
+                            </span>
+                        </label>
+                    }
+                })
+                .collect_view();
+            view! {
+                <div class="inputs">
+                    <span class="ver-label">{tr!("Na preparação")}</span>
+                    {rows}
+                </div>
+            }
+        })
+    }
+}
+
+/// The setup steps running now, by game id.
+#[derive(Clone, Copy)]
+pub struct Preparing(pub RwSignal<std::collections::HashMap<String, cerberus_shared::PrepareProgress>>);
+
+/// The setup step running now: what it's doing and how far.
+#[component]
+fn PrepareStatus(game_id: String) -> impl IntoView {
+    let preparing = expect_context::<Preparing>();
+    move || {
+        preparing.0.with(|all| all.get(&game_id).cloned()).map(|p| {
+            let width = p.fraction.map(|f| format!("width: {:.0}%", f * 100.0));
+            let busy = width.is_none();
+            view! {
+                <div class="prep">
+                    <span class="ver-label">{tr!("Preparando o jogo")}</span>
+                    <div class="bar" class:busy=busy><i style=width.unwrap_or_default()></i></div>
+                    <small class="muted">{p.text}</small>
+                </div>
+            }
+        })
     }
 }
 

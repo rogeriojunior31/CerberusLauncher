@@ -464,9 +464,10 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 - [ ] "Liberar espaço": apagar arquivos de instalação que não são mais necessários.
 - [ ] Recomp que mudou de página no catálogo: "Mudar para ele", levando saves, tempo de jogo e arquivos.
 - [ ] **Recomps com vários jogos** numa instalação só, cada um com a própria capa, tempo, conquistas e atalhos.
-- [ ] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
-      ajustes, requisitos do sistema. É compatibilidade com o formato aberto deles; avisar sem bloquear quando o PC
-      não atende.
+- [x] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
+      ajustes, requisitos do sistema, preparação, dumps, ações, mods, filtros e códigos de saída.
+- [ ] `recomplauncher.json`: vários jogos numa release (`games`), e as chaves compartilhadas e o DLSS que o launcher
+      baixaria sozinho.
 - [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
 - [x] Achar jogos nas pastas que os emuladores já conhecem (Dolphin, PCSX2, DuckStation, PPSSPP, RPCS3, Cemu), só lendo, e instalar esses emuladores das páginas oficiais. Ryujinx ficou de fora: o projeto foi encerrado.
 - [x] Reconhecer o console de cada imagem de disco pelo próprio disco (PS1, PS2, PSP, GameCube, Wii, Xbox, Xbox 360) ou pelo nome da pasta.

@@ -153,7 +153,7 @@ impl Offer {
 
 /// A place the catalog names may only be inside the game's folder or the
 /// player's own folders, never `..` out of them.
-fn safe_place(path: &str) -> bool {
+pub(crate) fn safe_place(path: &str) -> bool {
     let path = path.trim().replace('\\', "/");
     let roots = ["{install}/", "{local}/", "{appdata}/", "{config}/", "{documents}/", "{home}/"];
     roots.iter().any(|root| path.starts_with(root)) && !path.split('/').any(|part| part == "..")
@@ -433,6 +433,12 @@ impl Offer {
             }
         }
         Ok(())
+    }
+
+    /// A key's value in one of the game's settings files.
+    pub fn value(&self, install: &Path, config: &str, key: &str) -> Option<String> {
+        let spec = self.configs.iter().find(|c| c.id == config)?;
+        ConfigFile::open(self.path_of(spec, install)?, &spec.format).get(key).map(|v| v.trim().trim_matches(['"', '\'']).to_string())
     }
 
     fn files(&self, install: &Path) -> BTreeMap<String, ConfigFile> {

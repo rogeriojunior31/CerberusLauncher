@@ -308,45 +308,101 @@ pub fn prepare_start(game: &Game) -> Result<(), String> {
 pub struct Preparation {
     pub program: PathBuf,
     pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
     pub label: String,
-    pub timeout: std::time::Duration,
-    /// Written when it went well: the copy it was done with.
+    /// A hard limit, when the developer gives one.
+    pub timeout: Option<std::time::Duration>,
+    /// Written when it went well: what it was done with.
     pub marker: PathBuf,
-    pub copy: String,
+    pub done_with: String,
+    /// Its scratch folder: emptied before, taken away after.
+    pub temp: Option<PathBuf>,
 }
 
 const PREPARED: &str = ".cerberus-prepared";
 
+/// The developer's setup ticks for this game, each on or off.
+pub fn prepare_options(game: &Game) -> Vec<cerberus_shared::PrepareOption> {
+    let Some(prepare) = entry_for(game).and_then(|e| e.manifest).and_then(|m| m.prepare.clone()) else { return Vec::new() };
+    prepare
+        .options
+        .iter()
+        .filter(|o| o.here() && !o.id.is_empty() && !o.args.is_empty())
+        .map(|o| cerberus_shared::PrepareOption {
+            id: o.id.clone(),
+            label: o.label.clone(),
+            note: o.note.clone(),
+            license: o.license.as_ref().filter(|l| l.url.starts_with("https://")).map(|l| (l.name.clone(), l.url.clone())),
+            required: o.required,
+            on: game.setting_picks.get(&format!("prepare:{}", o.id)).map_or(o.starts_on(), |v| *v == 1),
+        })
+        .collect()
+}
+
 /// The setup step this game still needs, if any. It runs again when the
-/// player picks another copy, or when what it makes is gone.
+/// player picks another copy, turns an option on or off, after a new release,
+/// or when what it makes is gone.
 pub fn preparation(game: &Game) -> Result<Option<Preparation>, String> {
     let Some(entry) = entry_for(game) else { return Ok(None) };
-    let Some(copy) = game.game_copy.clone() else { return Ok(None) };
     let install = Path::new(&game.install_dir);
     let marker = install.join(PREPARED);
-    let done_with = fs::read_to_string(&marker).ok();
-    let made = !entry.makes.is_empty() && entry.makes.iter().filter_map(|m| manifest::inside(m)).all(|m| install.join(m).exists());
-    let current = done_with.as_deref().map(str::trim) == Some(copy.as_str());
+    let last = fs::read_to_string(&marker).ok();
+    let version = match &game.source {
+        Source::Recomp { version, .. } => version.clone(),
+        _ => String::new(),
+    };
     if let Some(manifest) = &entry.manifest {
         let Some(prepare) = &manifest.prepare else { return Ok(None) };
-        if current || (done_with.is_none() && made) {
+        let options = prepare_options(game);
+        if let Some(needed) = options.iter().find(|o| o.required && !o.on) {
+            return Err(tr!("Marque “{}” na configuração do jogo: a preparação não roda sem isso.", needed.label));
+        }
+        let on: Vec<&str> = options.iter().filter(|o| o.on).map(|o| o.id.as_str()).collect();
+        let copy = game.game_copy.clone().filter(|c| Path::new(c).exists());
+        let key = format!("{version}\n{}\n{}", copy.clone().unwrap_or_default(), on.join(","));
+        let built = manifest::done(prepare, install);
+        let unchanged = last.as_deref() == Some(key.as_str());
+        // A game brought in with its build already made counts as set up.
+        if (unchanged && (prepare.done.is_empty() || built)) || (last.is_none() && built) {
+            return Ok(None);
+        }
+        // Without the copy, only a step that keeps what it needs can run.
+        if copy.is_none() && !prepare.keeps_copy {
             return Ok(None);
         }
         // A copy picked before Cerberus read the developer's checks gets them now.
-        if let Some(main) = manifest.main_input() {
-            manifest::check(main, Path::new(&copy))?;
+        if let (Some(main), Some(copy)) = (manifest.main_input(), &copy) {
+            manifest::check(main, Path::new(copy))?;
         }
         let program = prepare.program.iter().filter_map(|p| manifest::inside(p)).map(|p| install.join(p)).find(|p| p.is_file());
         let Some(program) = program else { return Ok(None) };
-        let picked = picked_inputs(game, manifest);
+        let mut picked = picked_inputs(game, manifest);
+        if copy.is_none() {
+            if let Some(main) = manifest.main_input() {
+                picked.remove(&main.id);
+            }
+        }
         let fill = manifest::Fill { install, inputs: &picked };
-        let args = prepare.args.iter().filter_map(|a| fill.text(a)).collect();
+        let mut args: Vec<String> = prepare.args.iter().filter_map(|a| fill.text(a)).collect();
+        for option in prepare.options.iter().filter(|o| on.contains(&o.id.as_str())) {
+            args.extend(option.args.iter().filter_map(|a| fill.text(a)));
+        }
+        let temp = install.join(".recomplauncher-tmp");
+        let data = manifest::data_dir(install);
+        let mut env: Vec<(String, String)> = prepare.env.iter().filter(|(k, _)| manifest::settable(k)).filter_map(|(k, v)| Some((k.clone(), fill.text(v)?))).collect();
+        env.push(("RECOMPLAUNCHER".into(), "1".into()));
+        env.push(("RECOMPLAUNCHER_DATA".into(), data.display().to_string()));
+        for name in ["TEMP", "TMP", "TMPDIR"] {
+            env.push((name.into(), temp.display().to_string()));
+        }
         let label = if prepare.label.trim().is_empty() { tr!("Preparando o jogo").to_string() } else { prepare.label.clone() };
-        let timeout = std::time::Duration::from_secs(if prepare.timeout > 0 { prepare.timeout.min(4 * 3600) } else { 1800 });
-        return Ok(Some(Preparation { program, args, label, timeout, marker, copy }));
+        let timeout = (prepare.timeout > 0).then(|| std::time::Duration::from_secs(prepare.timeout));
+        return Ok(Some(Preparation { program, args, env, label, timeout, marker, done_with: key, temp: Some(temp) }));
     }
+    let Some(copy) = game.game_copy.clone() else { return Ok(None) };
     let Some(setup) = entry.setup.as_deref().and_then(manifest::inside) else { return Ok(None) };
-    if current || made {
+    let made = !entry.makes.is_empty() && entry.makes.iter().filter_map(|m| manifest::inside(m)).all(|m| install.join(m).exists());
+    if made || last.as_deref().map(str::trim) == Some(copy.as_str()) {
         return Ok(None);
     }
     let program = install.join(setup);
@@ -355,7 +411,101 @@ pub fn preparation(game: &Game) -> Result<Option<Preparation>, String> {
     }
     // `--install <disc>`: unpacks it beside the game with no window, and checks it ran.
     let args = vec!["--install".to_string(), copy.clone()];
-    Ok(Some(Preparation { program, args, label: tr!("Preparando o jogo a partir do seu disco").to_string(), timeout: std::time::Duration::from_secs(1800), marker, copy }))
+    let label = tr!("Preparando o jogo a partir do seu disco").to_string();
+    Ok(Some(Preparation { program, args, env: Vec::new(), label, timeout: None, marker, done_with: copy, temp: None }))
+}
+
+/// Turns one of the setup step's ticks on or off; the step runs again on the next Play.
+pub fn set_prepare_option(library: &LocalLibrary, game_id: &str, option: &str, on: bool) -> Result<Game, String> {
+    let game = library.get(game_id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    if !prepare_options(&game).iter().any(|o| o.id == option) {
+        return Err(tr!("Essa opção não existe.").into());
+    }
+    library.update(game_id, |g| {
+        g.setting_picks.insert(format!("prepare:{option}"), usize::from(on));
+    })
+}
+
+/// The buttons the game's developer adds under its settings.
+pub fn game_actions(game: &Game) -> Vec<cerberus_shared::GameAction> {
+    let Some(manifest) = entry_for(game).and_then(|e| e.manifest) else { return Vec::new() };
+    manifest
+        .actions
+        .iter()
+        .map(|a| cerberus_shared::GameAction { id: a.id.clone(), label: a.label.clone(), help: a.help.clone(), clear: a.open.is_empty() })
+        .collect()
+}
+
+/// The folder an action opens or empties. Only the game's folder and the
+/// player's own folders, never a whole one of those.
+pub fn action_folder(game: &Game, action: &str) -> Result<(PathBuf, bool), String> {
+    let manifest = entry_for(game).and_then(|e| e.manifest).ok_or(tr!("Esse jogo não tem essa ação."))?;
+    let action = manifest.actions.iter().find(|a| a.id == action).ok_or(tr!("Esse jogo não tem essa ação."))?;
+    let install = Path::new(&game.install_dir);
+    let (name, sub, clear) = if action.open.is_empty() {
+        let (name, sub) = action.clear.split_once('/').unwrap_or((action.clear.as_str(), ""));
+        (name, sub, true)
+    } else {
+        (action.open.as_str(), "", false)
+    };
+    let templates = manifest.folders.get(name).cloned().unwrap_or_default();
+    let template = templates.iter().find(|t| crate::game_settings::safe_place(t)).ok_or(tr!("Essa pasta do jogo não está num lugar seguro."))?;
+    let none = std::collections::BTreeMap::new();
+    let base = PathBuf::from(manifest::Fill { install, inputs: &none }.text(template).unwrap_or_default());
+    let sub = manifest::inside(sub).unwrap_or_default();
+    let folder = base.join(sub);
+    // Emptying a whole system folder (Documents, AppData) or the game's own is never what a game means.
+    let root = template.split_once('}').and_then(|(token, _)| saves::resolve(&format!("{token}}}"), install));
+    if clear && (root.as_ref() == Some(&folder) || folder == install) {
+        return Err(tr!("Essa pasta não pode ser esvaziada daqui.").into());
+    }
+    Ok((folder, clear))
+}
+
+/// Empties a folder an action names: what's inside goes, the folder stays.
+pub fn clear_folder(folder: &Path) -> Result<(), String> {
+    let Ok(entries) = fs::read_dir(folder) else { return Ok(()) };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let gone = if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) };
+        gone.map_err(|e| tr!("Não foi possível apagar {0}: {1}", path.display(), e))?;
+    }
+    Ok(())
+}
+
+/// Whether picture filters can go on the game, by what its developer says.
+/// `None`: the developer says nothing, and the program is looked at.
+pub fn look_rule(game: &Game) -> Option<Result<(), String>> {
+    let entry = entry_for(game)?;
+    let looks = entry.manifest.as_ref()?.looks.clone()?;
+    if looks.allowed == Some(false) {
+        let reason = looks.reason.filter(|r| !r.trim().is_empty()).unwrap_or_else(|| tr!("O desenvolvedor desligou os filtros para esse jogo.").to_string());
+        return Some(Err(reason));
+    }
+    // The API from the game's own settings file, else the one the developer names.
+    let from_file = looks.graphics_key.as_deref().and_then(|key| entry.settings.value(Path::new(&game.install_dir), looks.file.as_deref().unwrap_or("main"), key));
+    let api = from_file.or(looks.graphics)?.to_lowercase();
+    if api.contains("d3d12") || api.contains("d3d11") || api.contains("dx12") || api.contains("dx11") {
+        return Some(Ok(()));
+    }
+    let name = if api.contains("vulkan") { "Vulkan" } else if api.contains("opengl") { "OpenGL" } else if api.contains("d3d9") { "Direct3D 9" } else { return None };
+    Some(Err(tr!("Esse jogo usa {}. Por enquanto os filtros funcionam em jogos com Direct3D 10, 11 ou 12.", name)))
+}
+
+/// The Windows build of this PC (CurrentBuildNumber), read once.
+pub fn this_windows_build() -> Option<u32> {
+    #[cfg(windows)]
+    {
+        static BUILD: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+        *BUILD.get_or_init(|| {
+            let key = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE).open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion").ok()?;
+            key.get_value::<String, _>("CurrentBuildNumber").ok()?.parse().ok()
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
 }
 
 /// The files besides the copy a recomp's `recomplauncher.json` asks for.
@@ -536,8 +686,12 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
         if let Some(main) = manifest.main_input() {
             manifest::check(main, copy)?;
             manifest::place(main, Path::new(&game.install_dir), copy)?;
+            let verified = manifest::verified(main, copy);
             let path = copy.to_string_lossy().into_owned();
-            return library.update(game_id, |game| game.game_copy = Some(path));
+            return library.update(game_id, |game| {
+                game.game_copy = Some(path);
+                game.copy_verified = verified;
+            });
         }
     }
     if let Some(entry) = &entry {
@@ -552,7 +706,10 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
         _ => {}
     }
     let path = copy.to_string_lossy().into_owned();
-    library.update(game_id, |game| game.game_copy = Some(path))
+    library.update(game_id, |game| {
+        game.game_copy = Some(path);
+        game.copy_verified = None;
+    })
 }
 
 /// Whether a copy the player picked can be this recomp's game: a cartridge of
@@ -687,8 +844,12 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         _ => None,
     };
     let host = entry.forge().map(|f| f.name()).unwrap_or_default();
+    let system_needs = entry.manifest.as_deref().map(manifest::system_needs).unwrap_or_default();
+    let system_problem = entry.manifest.as_deref().and_then(|m| manifest::system_problem(m, this_windows_build()));
     let entry = entry.clone();
     RecompEntry {
+        system_needs,
+        system_problem,
         owned_copy: owned.get(&entry.id).cloned(),
         handoff: entry.handoff.clone(),
         accepts_folder: entry.accepts_folder || entry.copy_accepts == "folder",
@@ -828,6 +989,7 @@ async fn install_now(
         result
     }).await.map_err(|e| e.to_string())?;
     let (program, transaction) = prepared?;
+    fetch_repo_manifest(client, entry, &target).await;
     let result = register(library, entry, installed.as_ref(), &version, &program, &target, entry.kind == "installer");
     let game = match transaction {
         Some(tx) => tx.finish(result)?,
@@ -924,6 +1086,31 @@ fn installed_game(library: &LocalLibrary, entry: &CatalogEntry) -> Result<Option
     }))
 }
 
+/// A project on its own Forgejo or Gitea server may keep `recomplauncher.json`
+/// at the top of its repo instead of in the release: fetched once per install.
+/// Not being able to fetch it only means playing by the catalog.
+async fn fetch_repo_manifest(client: &Client, entry: &CatalogEntry, install: &Path) {
+    let has_own = install.join(manifest::FILE).is_file();
+    let Some(forge::Forge::Forgejo { server, path }) = entry.forge() else { return };
+    if has_own {
+        return;
+    }
+    let url = format!("https://{server}/api/v1/repos/{path}/raw/{}", manifest::FILE);
+    let Ok(response) = crate::net::send(client.get(&url)).await else { return };
+    if !response.status().is_success() {
+        return;
+    }
+    let Ok(text) = response.text().await else { return };
+    if text.len() > 1024 * 1024 || manifest::Manifest::parse(&text).is_none() {
+        return;
+    }
+    let target = install.join(manifest::FROM_REPO);
+    if let Some(dir) = target.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let _ = fs::write(target, text);
+}
+
 /// Adds the recomp to the library, or updates the entry already there while
 /// keeping the name and cover the player may have changed, and the id its save
 /// backups are kept under.
@@ -967,6 +1154,7 @@ fn register(
         launch_args: String::new(),
         tracking_exe: None,
         game_copy: None,
+        copy_verified: None,
         inputs: Default::default(),
         setup_pending,
         next_step: Default::default(),

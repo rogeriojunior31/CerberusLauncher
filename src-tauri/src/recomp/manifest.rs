@@ -5,8 +5,8 @@
 //! game, each disc, DLC, an update), how to tell they're the right ones, the
 //! settings files, where it saves, and what its exit codes mean.
 //!
-//! Anything the file says that Cerberus can't do yet is left alone (`prepare`,
-//! `dumps`, `mods`, `looks`, `games`, `system`): the game still plays.
+//! Anything the file says that Cerberus can't do yet is left alone (`games`,
+//! shared keys the launcher would fetch itself): the game still plays.
 
 use cerberus_shared::tr;
 use serde::Deserialize;
@@ -18,6 +18,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 pub const FILE: &str = "recomplauncher.json";
+/// The copy fetched from the project's repo, when its release has none.
+pub const FROM_REPO: &str = ".cerberus/recomplauncher.json";
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
@@ -56,6 +58,16 @@ pub struct Input {
     pub sha256: Option<String>,
     /// A key or runtime shared by every game (switch.prod-keys, nvidia.dlss).
     pub shared: Option<String>,
+    /// Known good copies (from Redump): a match earns the verified badge.
+    pub dumps: Vec<Dump>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct Dump {
+    pub name: String,
+    pub size: u64,
+    pub crc32: String,
 }
 
 impl Input {
@@ -91,9 +103,85 @@ pub struct Start {
 pub struct Prepare {
     pub program: Vec<String>,
     pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
     pub label: String,
-    /// Seconds it may take.
+    /// Seconds it may take; none means no limit (a step silent for an hour is stopped).
     pub timeout: u64,
+    /// What it leaves when finished: all there means it's done.
+    pub done: Vec<String>,
+    /// It can run again from what it kept, without the player's copy.
+    pub keeps_copy: bool,
+    pub options: Vec<PrepareOption>,
+}
+
+/// A tick on the setup screen whose `args` are added to the step's (a vendor's SDK).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct PrepareOption {
+    pub id: String,
+    pub label: String,
+    pub note: String,
+    pub gpu: Option<String>,
+    pub os: Vec<String>,
+    pub args: Vec<String>,
+    pub license: Option<License>,
+    pub required: bool,
+    pub default: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct License {
+    pub name: String,
+    pub url: String,
+}
+
+impl PrepareOption {
+    /// Shown on this PC: its system, when it names some.
+    pub fn here(&self) -> bool {
+        let os = if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
+        self.os.is_empty() || self.os.iter().any(|o| o == os)
+    }
+
+    /// Ticked before the player says: never when it carries a license to accept.
+    pub fn starts_on(&self) -> bool {
+        self.license.is_none() && self.default.unwrap_or(true)
+    }
+}
+
+/// Where the game's mods come from: Thunderstore or GameBanana.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct Mods {
+    pub thunderstore: Option<String>,
+    pub data: Option<String>,
+    pub gamebanana: Option<u64>,
+    /// nrm, otr or hmm.
+    pub loader: Option<String>,
+    /// For hmm: the game's folder in AppData\Roaming.
+    pub user: Option<String>,
+}
+
+/// What the picture filters should know about the game.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct Looks {
+    pub graphics_key: Option<String>,
+    #[serde(rename = "in")]
+    pub file: Option<String>,
+    pub graphics: Option<String>,
+    pub lines: Option<u32>,
+    pub allowed: Option<bool>,
+    pub reason: Option<String>,
+}
+
+/// What one build needs from the PC.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct SystemPart {
+    pub version: Option<String>,
+    pub glibc: Option<String>,
+    pub graphics: BTreeMap<String, String>,
 }
 
 /// A button under the settings: opens one of the game's folders.
@@ -104,6 +192,8 @@ pub struct Action {
     pub label: String,
     pub help: String,
     pub open: String,
+    /// A folder name and a subfolder to empty (`saves/cache`); asked first.
+    pub clear: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -111,6 +201,10 @@ pub struct Manifest {
     pub inputs: Vec<Input>,
     pub start: Option<Start>,
     pub prepare: Option<Prepare>,
+    pub mods: Option<Mods>,
+    pub looks: Option<Looks>,
+    /// windows, linux, macos -> what that build needs.
+    pub system: BTreeMap<String, SystemPart>,
     /// Exit code -> message, or "ok" for a normal close.
     pub exit_codes: BTreeMap<String, String>,
     pub saves: Vec<String>,
@@ -187,9 +281,16 @@ impl Manifest {
         let actions = object
             .get("actions")
             .and_then(Value::as_array)
-            .map(|l| l.iter().filter_map(|a| serde_json::from_value::<Action>(a.clone()).ok()).filter(|a| !a.open.is_empty()).collect())
+            .map(|l| l.iter().filter_map(|a| serde_json::from_value::<Action>(a.clone()).ok()).filter(|a| !a.open.is_empty() || !a.clear.is_empty()).collect())
             .unwrap_or_default();
-        Some(Manifest { inputs, start, prepare, exit_codes, saves, folders, actions, raw })
+        let mods = object.get("mods").and_then(|m| serde_json::from_value::<Mods>(m.clone()).ok());
+        let looks = object.get("looks").and_then(|m| serde_json::from_value::<Looks>(m.clone()).ok());
+        let system = object
+            .get("system")
+            .and_then(Value::as_object)
+            .map(|m| m.iter().filter_map(|(k, v)| Some((k.clone(), serde_json::from_value::<SystemPart>(v.clone()).ok()?))).collect())
+            .unwrap_or_default();
+        Some(Manifest { inputs, start, prepare, mods, looks, system, exit_codes, saves, folders, actions, raw })
     }
 
     /// The player's copy: the input with role `game`, else the first disc.
@@ -237,6 +338,8 @@ pub fn read(install: &Path, exe: Option<&Path>) -> Option<Arc<Manifest>> {
     if let Some(dir) = exe.and_then(Path::parent).filter(|d| *d != install) {
         places.push(dir.join(FILE));
     }
+    // A project on a Forgejo or Gitea server can keep it in its repo instead: fetched at install.
+    places.push(install.join(FROM_REPO));
     places.into_iter().find_map(|p| cached(&p))
 }
 
@@ -310,7 +413,7 @@ impl Fill<'_> {
 }
 
 /// Names the game may not set: the system's own, and ones that change which code loads.
-fn settable(name: &str) -> bool {
+pub fn settable(name: &str) -> bool {
     const SYSTEM: &[&str] = &[
         "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
         "PROGRAMDATA", "PROGRAMFILES", "HOME", "USER", "SHELL", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "WINEPREFIX",
@@ -347,10 +450,16 @@ pub fn launch(manifest: &Manifest, fill: &Fill) -> Launch {
 
 /// The required files the player hasn't given yet (or that are gone since).
 pub fn missing<'a>(manifest: &'a Manifest, install: &Path, inputs: &BTreeMap<String, String>) -> Vec<&'a Input> {
+    // Built from the copy, with all it leaves there: the copy isn't needed any more,
+    // unless the start line passes it.
+    let main = manifest.main_input().map(|m| m.id.clone());
+    let built = manifest.prepare.as_ref().is_some_and(|p| done(p, install));
+    let passed = |id: &str| manifest.start.as_ref().is_some_and(|s| s.args.iter().chain(s.env.values()).any(|a| a.contains(&format!("{{input:{id}}}")) || (id == "game" && a.contains("{game}"))));
     manifest
         .inputs
         .iter()
         .filter(|i| !i.optional && !i.fetched())
+        .filter(|i| !(built && Some(&i.id) == main.as_ref() && !passed(&i.id)))
         .filter(|i| {
             if let Some(target) = placed_at(i, install, None) {
                 return !target.exists();
@@ -358,6 +467,82 @@ pub fn missing<'a>(manifest: &'a Manifest, install: &Path, inputs: &BTreeMap<Str
             !inputs.get(&i.id).is_some_and(|p| Path::new(p).exists())
         })
         .collect()
+}
+
+/// Every file the step says it leaves is there.
+pub fn done(prepare: &Prepare, install: &Path) -> bool {
+    let none = BTreeMap::new();
+    let fill = Fill { install, inputs: &none };
+    !prepare.done.is_empty() && prepare.done.iter().filter_map(|d| fill.text(d)).all(|d| Path::new(&d).exists())
+}
+
+/// The player's copy matches one of the known good dumps: its name ("USA").
+/// Only a file whose size matches one is read whole.
+pub fn verified(input: &Input, copy: &Path) -> Option<String> {
+    if input.dumps.is_empty() || !copy.is_file() {
+        return None;
+    }
+    let size = fs::metadata(copy).ok()?.len();
+    let same_size: Vec<&Dump> = input.dumps.iter().filter(|d| d.size == 0 || d.size == size).collect();
+    if same_size.is_empty() {
+        return None;
+    }
+    use std::io::Read;
+    let mut file = fs::File::open(copy).ok()?;
+    let mut hasher = crc32fast::Hasher::new();
+    let mut buffer = vec![0u8; 1 << 20];
+    loop {
+        let n = file.read(&mut buffer).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    let crc = format!("{:08x}", hasher.finalize());
+    same_size.iter().find(|d| d.crc32.trim().eq_ignore_ascii_case(&crc)).map(|d| if d.name.trim().is_empty() { "?".into() } else { d.name.trim().to_string() })
+}
+
+/// What the PC needs, for the game's page: "Windows 10 ou mais novo", "Direct3D 12 (12_0)".
+pub fn system_needs(manifest: &Manifest) -> Vec<String> {
+    let os = if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
+    let Some(part) = manifest.system.get(os) else { return Vec::new() };
+    let mut needs = Vec::new();
+    if let Some(v) = &part.version {
+        let name = if os == "macos" { "macOS" } else { "Windows" };
+        needs.push(tr!("{0} {1} ou mais novo", name, v));
+    }
+    if let Some(g) = &part.glibc {
+        needs.push(tr!("glibc {} ou mais novo", g));
+    }
+    for (api, version) in &part.graphics {
+        let name = match api.as_str() {
+            "vulkan" => "Vulkan",
+            "opengl" => "OpenGL",
+            "d3d12" => "Direct3D 12",
+            "d3d11" => "Direct3D 11",
+            "d3d9" => "Direct3D 9",
+            "metal" => "Metal",
+            other => other,
+        };
+        needs.push(format!("{name} {version}"));
+    }
+    needs
+}
+
+/// The Windows build a version names: "10" is 10240, "11" is 22000, "10.0.19041" is 19041.
+fn windows_build(version: &str) -> Option<u32> {
+    match version.trim() {
+        "10" => Some(10240),
+        "11" => Some(22000),
+        v => v.rsplit('.').next()?.parse().ok().filter(|b| *b > 1000),
+    }
+}
+
+/// Why this PC is older than the game asks, when it is. The game still starts.
+pub fn system_problem(manifest: &Manifest, this_build: Option<u32>) -> Option<String> {
+    let wanted = manifest.system.get("windows")?.version.as_deref()?;
+    let (need, have) = (windows_build(wanted)?, this_build?);
+    (have < need).then(|| tr!("Esse jogo pede o Windows {} ou mais novo; este PC tem uma versão mais antiga e ele pode não abrir.", wanted))
 }
 
 /// Where an input with `into` goes in the game's folder (with `name`, or the picked file's own).
@@ -639,6 +824,70 @@ mod tests {
         assert!(check(&input, dir.path()).is_ok());
         let wrong: Input = serde_json::from_str(r#"{"id":"game","label":"x","formats":[{"type":"folder"}],"check":{"ids":["BLES00932"]}}"#).unwrap();
         assert!(check(&wrong, dir.path()).unwrap_err().contains("BLUS30443"));
+    }
+
+    #[test]
+    fn a_copy_matching_a_known_dump_is_verified() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("game.iso");
+        fs::write(&file, b"hello").unwrap();
+        let crc = format!("{:08x}", crc32fast::hash(b"hello"));
+        let input: Input = serde_json::from_value(serde_json::json!({"id": "game", "label": "x",
+            "dumps": [{"name": "Europe", "size": 5, "crc32": "00000000"}, {"name": "USA", "size": 5, "crc32": crc}]})).unwrap();
+        assert_eq!(verified(&input, &file).as_deref(), Some("USA"));
+        let other: Input = serde_json::from_value(serde_json::json!({"id": "game", "label": "x", "dumps": [{"name": "USA", "size": 9, "crc32": crc}]})).unwrap();
+        assert_eq!(verified(&other, &file), None, "another size isn't read");
+    }
+
+    #[test]
+    fn a_finished_build_plays_without_the_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = Manifest::parse(r#"{"format":1,"inputs":[{"id":"game","label":"Disc"}],
+            "start":{"program":["g.exe"],"args":["--play","{install}/Game"]},
+            "prepare":{"program":["g.exe"],"args":["--prepare","--game={input:game}"],"done":["{install}/Game/game.pak"],"keeps_copy":true}}"#).unwrap();
+        assert_eq!(missing(&m, dir.path(), &BTreeMap::new()).len(), 1, "not built yet: the copy is needed");
+        fs::create_dir_all(dir.path().join("Game")).unwrap();
+        fs::write(dir.path().join("Game/game.pak"), b"x").unwrap();
+        assert!(missing(&m, dir.path(), &BTreeMap::new()).is_empty(), "built: plays without it");
+    }
+
+    #[test]
+    fn what_the_pc_needs() {
+        let m = Manifest::parse(r#"{"format":1,"system":{"windows":{"version":"11","graphics":{"d3d12":"12_0"}}}}"#).unwrap();
+        if cfg!(windows) {
+            assert_eq!(system_needs(&m), ["Windows 11 ou mais novo", "Direct3D 12 12_0"]);
+        }
+        assert!(system_problem(&m, Some(19045)).is_some(), "Windows 10 is older than 11");
+        assert!(system_problem(&m, Some(26100)).is_none());
+        assert_eq!(windows_build("10.0.19041"), Some(19041));
+    }
+
+    #[test]
+    fn mods_looks_and_options_read() {
+        let m = Manifest::parse(r#"{"format":1,"mods":{"gamebanana":12345,"loader":"otr"},
+            "looks":{"allowed":false,"reason":"Has its own CRT filter."},
+            "actions":[{"id":"cache","label":"Clear cache","clear":"saves/cache"}],
+            "prepare":{"program":["x.exe"],"options":[{"id":"dlss","label":"DLSS","args":["--fetch"],"license":{"name":"NVIDIA","url":"https://x"}}]}}"#).unwrap();
+        assert_eq!(m.mods.as_ref().unwrap().gamebanana, Some(12345));
+        assert_eq!(m.looks.as_ref().unwrap().allowed, Some(false));
+        assert_eq!(m.actions[0].clear, "saves/cache");
+        let option = &m.prepare.as_ref().unwrap().options[0];
+        assert!(!option.starts_on(), "a license is only ever accepted by the player");
+    }
+
+    #[test]
+    #[ignore = "reads recomps and a disc on this PC"]
+    fn real_installs() {
+        let base = PathBuf::from(std::env::var("APPDATA").unwrap()).join("app.cerberus.launcher/recomps");
+        let bt4 = read(&base.join("dbz-bt4-tag-team-decomp"), None).expect("BT4 has its own file");
+        let main = bt4.main_input().unwrap();
+        println!("BT4 copy: {} / {:?}", main.label, main.check);
+        let bt3_disc = Path::new(r"D:\ROMS\Playstation 2\Dragon Ball Z - Budokai Tenkaichi 3 (USA) (EnJa)\Dragon Ball Z - Budokai Tenkaichi 3 (USA) (En,Ja).iso");
+        let refused = check(main, bt3_disc);
+        println!("BT3 disc for BT4: {refused:?}");
+        assert!(refused.is_err());
+        println!("BT3 disc ids: {:?}", ids_of(bt3_disc));
+        println!("prepare: {:?}", bt4.prepare);
     }
 
     #[test]

@@ -45,7 +45,7 @@ pub fn slug(name: &str) -> String {
     words.join("-")
 }
 
-fn plain(name: &str) -> bool {
+pub fn plain(name: &str) -> bool {
     !name.is_empty() && name.len() < 80 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && !name.contains("..")
 }
 

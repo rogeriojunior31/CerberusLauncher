@@ -136,6 +136,11 @@ pub fn on_install_progress(handler: impl FnMut(InstallProgress) + 'static) {
     on_event("recomp-progress", handler);
 }
 
+/// How a game's setup step is going.
+pub fn on_prepare_progress(handler: impl FnMut(cerberus_shared::PrepareProgress) + 'static) {
+    on_event("prepare-progress", handler);
+}
+
 /// A game the launcher started opened or closed.
 pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
@@ -906,6 +911,39 @@ struct CopyArgs<'a> {
 /// files. `None` when cancelled.
 pub async fn set_game_copy(id: &str, use_found: bool, folder: bool) -> Result<Option<Game>, String> {
     call("set_game_copy", &CopyArgs { id, use_found, folder }).await
+}
+
+pub async fn prepare_options(id: &str) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
+    call("prepare_options", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct OptionArgs<'a> {
+    id: &'a str,
+    option: &'a str,
+    on: bool,
+}
+
+pub async fn set_prepare_option(id: &str, option: &str, on: bool) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
+    call("set_prepare_option", &OptionArgs { id, option, on }).await
+}
+
+pub async fn open_prepare_license(id: &str, option: &str) -> Result<(), String> {
+    call("open_prepare_license", &OptionArgs { id, option, on: true }).await
+}
+
+pub async fn game_actions(id: &str) -> Result<Vec<cerberus_shared::GameAction>, String> {
+    call("game_actions", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct ActionArgs<'a> {
+    id: &'a str,
+    action: &'a str,
+}
+
+pub async fn run_game_action(id: &str, action: &str) -> Result<(), String> {
+    call("run_game_action", &ActionArgs { id, action }).await
 }
 
 /// The files besides the copy the game's `recomplauncher.json` asks for.

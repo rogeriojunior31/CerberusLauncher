@@ -1937,3 +1937,20 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .need.inp b { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .need.inp .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inp-act { display: flex !important; flex-direction: row !important; align-items: center; gap: 6px !important; flex: none; }
+
+/* Configuração fácil: the verified badge, the setup ticks and the setup step running. */
+.verified { display: flex; align-items: center; gap: 8px; color: #9be8bc; font-size: 14px; font-weight: 700; }
+.tick { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.tick input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.tick span { display: flex; flex-direction: column; gap: 2px; }
+.tick b { display: flex; align-items: center; gap: 8px; }
+.tick small { color: var(--muted); font-size: 12.5px; }
+.prep { display: flex; flex-direction: column; gap: 8px; }
+.prep .bar { height: 6px; border-radius: 3px; background: var(--fill2); overflow: hidden; }
+.prep .bar i { display: block; height: 100%; background: var(--grad); border-radius: 3px; transition: width 0.3s var(--ease); }
+.prep .bar.busy i { width: 30%; animation: prep-busy 1.2s ease-in-out infinite; }
+@keyframes prep-busy { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .prep .bar.busy i { animation: none; width: 100%; opacity: 0.5; } }
+.acts { display: flex; flex-direction: column; gap: 10px; }
+.act-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.linkish { padding: 0; color: var(--accent); text-decoration: underline; font: inherit; }
