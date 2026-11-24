@@ -22,6 +22,9 @@ use crate::recomp::saves::resolve;
 #[derive(Debug, Clone, Deserialize)]
 struct Place {
     path: String,
+    /// Used only when this path exists.
+    #[serde(default, rename = "if")]
+    when: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -30,6 +33,24 @@ pub struct ConfigSpec {
     id: String,
     format: String,
     file: Vec<Place>,
+    /// The key that holds the path to the player's copy, written on every start.
+    #[serde(default)]
+    game_path: Option<String>,
+    /// Keys set when missing or empty, on every start, and when the file is new.
+    #[serde(default)]
+    ensure: BTreeMap<String, Value>,
+    #[serde(default)]
+    always: BTreeMap<String, Value>,
+    #[serde(default)]
+    new: BTreeMap<String, Value>,
+}
+
+/// A value written exactly as given: TOML strings keep their quotes.
+fn written(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
 }
 
 fn main_id() -> String {
@@ -159,6 +180,19 @@ pub fn offer_of(value: Option<&Value>) -> Offer {
         .filter(|s| s.choices.len() >= 2 || s.slider.as_ref().is_some_and(|sl| sl.min < sl.max && sl.min.is_finite() && sl.max.is_finite()))
         // A slider is only offered for a settings file; on the command line it would need more rules.
         .filter(|s| if s.target == "args" { s.slider.is_none() && s.choices.iter().any(|c| !c.args.is_empty()) } else { configs.iter().any(|c| c.id == s.target) })
+        .collect::<Vec<_>>();
+    // A whole group can be hidden behind Show Advanced Options.
+    let advanced: Vec<&str> = value
+        .get("groups")
+        .and_then(Value::as_array)
+        .map(|g| g.iter().filter(|g| g.get("advanced").and_then(Value::as_bool) == Some(true)).filter_map(|g| g.get("id").and_then(Value::as_str)).collect())
+        .unwrap_or_default();
+    let settings = settings
+        .into_iter()
+        .map(|mut s| {
+            s.advanced |= advanced.contains(&s.group.as_str());
+            s
+        })
         .collect();
     Offer { configs, settings }
 }
@@ -350,10 +384,55 @@ impl ConfigFile {
 }
 
 impl Offer {
-    /// The first of a config's places that exists, else the first that resolves here.
+    /// The place whose `if` exists, then the first that exists, else the first
+    /// without a condition.
     fn path_of(&self, config: &ConfigSpec, install: &Path) -> Option<PathBuf> {
-        let places: Vec<PathBuf> = config.file.iter().filter_map(|p| resolve(&p.path.replace('\\', "/"), install)).collect();
-        places.iter().find(|p| p.is_file()).cloned().or_else(|| places.into_iter().next())
+        let at = |t: &str| resolve(&t.replace('\\', "/"), install);
+        if let Some(p) = config.file.iter().find(|p| p.when.as_deref().and_then(at).is_some_and(|w| w.exists())) {
+            return at(&p.path);
+        }
+        let open: Vec<PathBuf> = config.file.iter().filter(|p| p.when.is_none()).filter_map(|p| at(&p.path)).collect();
+        open.iter().find(|p| p.is_file()).cloned().or_else(|| open.into_iter().next())
+    }
+
+    /// Before the game starts: the keys its developer keeps set, and where the
+    /// player's copy is. A file nothing needs to change is left as it is.
+    pub fn before_start(&self, install: &Path, copy: Option<&str>) -> Result<(), String> {
+        for config in &self.configs {
+            let path_key = config.game_path.as_deref().filter(|_| copy.is_some());
+            if path_key.is_none() && config.ensure.is_empty() && config.always.is_empty() && config.new.is_empty() {
+                continue;
+            }
+            let Some(path) = self.path_of(config, install) else { continue };
+            let fresh = !path.is_file();
+            let mut file = ConfigFile::open(path, &config.format);
+            let before = (file.lines.clone(), file.json.clone());
+            if fresh {
+                for (k, v) in &config.new {
+                    file.set(k, &written(v));
+                }
+            }
+            for (k, v) in &config.ensure {
+                if file.get(k).is_none_or(|now| now.trim().trim_matches(['"', '\'']).is_empty()) {
+                    file.set(k, &written(v));
+                }
+            }
+            for (k, v) in &config.always {
+                file.set(k, &written(v));
+            }
+            if let (Some(key), Some(copy)) = (path_key, copy) {
+                let value = match config.format.as_str() {
+                    "toml" => format!("\"{}\"", copy.replace('\\', "\\\\").replace('"', "\\\"")),
+                    "json" => Value::String(copy.to_string()).to_string(),
+                    _ => copy.to_string(),
+                };
+                file.set(key, &value);
+            }
+            if fresh || (file.lines.clone(), file.json.clone()) != before {
+                file.save()?;
+            }
+        }
+        Ok(())
     }
 
     fn files(&self, install: &Path) -> BTreeMap<String, ConfigFile> {
@@ -487,6 +566,36 @@ impl Offer {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_manifest_keeps_its_settings_files_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest: Value = serde_json::json!({
+            "config": [
+                { "id": "main", "format": "toml", "file": [{ "path": "{install}/game.toml" }], "game_path": "paths/iso",
+                  "new": { "volume": "80" }, "ensure": { "renderer": "\"vulkan\"" }, "always": { "launcher": "true" } },
+                { "id": "js", "format": "json", "file": [{ "path": "{install}/p.json", "if": "{install}/portable.txt" }, { "path": "{install}/other.json" }], "game_path": "disc" }
+            ],
+            "settings": [{ "id": "v", "label": "Volume", "group": "Sound", "choices": [{ "label": "a", "set": { "volume": "1" } }, { "label": "b", "set": { "volume": "2" } }] }],
+            "groups": [{ "id": "Sound", "advanced": true }]
+        });
+        let offer = offer_of(Some(&manifest));
+        assert!(offer.settings[0].advanced, "its group is advanced");
+        offer.before_start(dir.path(), Some("C:\\Games\\a.iso")).unwrap();
+        let toml = fs::read_to_string(dir.path().join("game.toml")).unwrap();
+        assert!(toml.contains("volume = 80") && toml.contains("renderer = \"vulkan\"") && toml.contains("launcher = true"), "{toml}");
+        assert!(toml.contains(r#"iso = "C:\\Games\\a.iso""#), "{toml}");
+        assert!(dir.path().join("other.json").is_file(), "no portable.txt: the place without a condition");
+        // The player's own value stays; `new` only on a new file.
+        fs::write(dir.path().join("game.toml"), "volume = 30\nrenderer = \"dx12\"\n").unwrap();
+        offer.before_start(dir.path(), Some("C:\\Games\\a.iso")).unwrap();
+        let toml = fs::read_to_string(dir.path().join("game.toml")).unwrap();
+        assert!(toml.contains("volume = 30") && toml.contains("\"dx12\""), "{toml}");
+        fs::write(dir.path().join("portable.txt"), "").unwrap();
+        offer.before_start(dir.path(), Some("C:/a.iso")).unwrap();
+        let json = fs::read_to_string(dir.path().join("p.json")).unwrap();
+        assert!(json.contains("\"disc\": \"C:/a.iso\""), "{json}");
+    }
 
     fn offer(format: &str, file: &str, settings: Value) -> Offer {
         offer_of(Some(&json!({

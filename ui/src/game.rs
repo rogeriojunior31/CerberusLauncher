@@ -660,8 +660,84 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
             <h3>{tr!("Easy Setup")}</h3>
             {warning}
             {body}
+            <MoreInputs game_id=id.get_value() />
             <p class="muted small">{tr!("O Cerberus entrega sua cópia ao jogo do jeito que ele espera. Nada sai do seu PC.")}</p>
         </aside>
+    }
+}
+
+/// The other files the game's developer asks for (the other discs, DLC, an
+/// update, keys), one row each: required ones first, add-ons after.
+#[component]
+fn MoreInputs(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let refresh = RwSignal::new(0u32);
+    let busy = RwSignal::new(None::<String>);
+    let list = LocalResource::new(move || {
+        refresh.track();
+        let id = id.get_value();
+        async move { api::game_inputs(&id).await.unwrap_or_default() }
+    });
+    let act = move |input: String, clear: bool| {
+        busy.set(Some(input.clone()));
+        spawn_local(async move {
+            let done = library.report(api::pick_game_input(&id.get_value(), &input, clear).await).flatten();
+            busy.set(None);
+            if done.is_some() {
+                refresh.update(|n| *n += 1);
+                library.games.refetch();
+            }
+        });
+    };
+    let role_name = |role: &str| match role {
+        "disc" => tr!("Disco"),
+        "dlc" => tr!("DLC"),
+        "update" => tr!("Atualização"),
+        "key" => tr!("Chave"),
+        _ => tr!("Arquivo"),
+    };
+    let row = move |input: cerberus_shared::SetupInput| {
+        let key = input.id.clone();
+        let (pick_key, clear_key) = (key.clone(), key.clone());
+        let working = move || busy.get().as_deref() == Some(key.as_str());
+        let chosen = input.chosen.clone();
+        let label = if chosen.is_some() { tr!("Trocar...") } else if input.folder { tr!("Escolher pasta...") } else { tr!("Escolher arquivo...") };
+        view! {
+            <div class="need inp" class:found=chosen.is_some()>
+                <Svg icon=Icon::Check size=18 />
+                <div>
+                    <b>{input.label.clone()}<span class="vtag">{role_name(&input.role)}</span></b>
+                    <span class="path">{chosen.clone().unwrap_or_else(|| if input.optional { tr!("Opcional").to_string() } else { tr!("Falta escolher").to_string() })}</span>
+                </div>
+                <div class="inp-act">
+                    <button type="button" class="btn sm" disabled=move || busy.get().is_some() on:click=move |_| act(pick_key.clone(), false)>
+                        {move || if working() { tr!("Conferindo...") } else { label }}
+                    </button>
+                    {chosen.is_some().then(|| view! {
+                        <button type="button" class="icon-btn sm" title=tr!("Tirar") aria-label=tr!("Tirar") disabled=move || busy.get().is_some()
+                            on:click=move |_| act(clear_key.clone(), true)>
+                            <Svg icon=Icon::Close size=16 />
+                        </button>
+                    })}
+                </div>
+            </div>
+        }
+    };
+    move || {
+        let all = list.get().unwrap_or_default();
+        if all.is_empty() {
+            return None;
+        }
+        let (needed, extra): (Vec<_>, Vec<_>) = all.into_iter().partition(|i| !i.optional);
+        Some(view! {
+            <div class="inputs">
+                {(!needed.is_empty()).then(|| view! { <span class="ver-label">{tr!("O jogo também precisa")}</span> })}
+                {needed.into_iter().map(row).collect_view()}
+                {(!extra.is_empty()).then(|| view! { <span class="ver-label">{tr!("Extras opcionais")}</span> })}
+                {extra.into_iter().map(row).collect_view()}
+            </div>
+        })
     }
 }
 

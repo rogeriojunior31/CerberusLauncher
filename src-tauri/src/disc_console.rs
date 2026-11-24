@@ -210,6 +210,77 @@ pub fn console_of(path: &Path) -> Option<&'static str> {
     from_contents(path, &ext).or_else(|| from_folders(path))
 }
 
+/// A disc's sectors, however it is kept: a cue's raw track, a raw `.bin`, or a
+/// plain (or compressed) image.
+fn sectors_of(path: &Path) -> Option<Box<dyn Sectors>> {
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if ext == "cue" {
+        let (bin, offset) = cue_track(path)?;
+        return Some(match offset {
+            Some(offset) => Box::new(Raw { file: File::open(&bin).ok()?, offset }),
+            None => Box::new(Cooked(crate::disc_image::open(&bin).ok()?)),
+        });
+    }
+    let mut cooked = Cooked(crate::disc_image::open(path).ok()?);
+    let is_iso = |d: &mut dyn Sectors| d.sector(16).is_ok_and(|s| s[0] == 1 && &s[1..6] == b"CD001");
+    if is_iso(&mut cooked) || ext != "bin" {
+        return Some(Box::new(cooked));
+    }
+    // A raw `.bin` of 2352-byte sectors: Mode 2 (PlayStation) or Mode 1.
+    for offset in [24, 16] {
+        let mut raw = Raw { file: File::open(path).ok()?, offset };
+        if is_iso(&mut raw) {
+            return Some(Box::new(raw));
+        }
+    }
+    Some(Box::new(cooked))
+}
+
+/// The names in an ISO 9660 disc's top folder, upper case and without `;1`.
+pub fn root_files(path: &Path) -> Option<Vec<String>> {
+    let mut disc = sectors_of(path)?;
+    Some(root_names(&mut *disc)?.into_iter().map(|(name, ..)| name).collect())
+}
+
+/// Letters and digits only, upper case: `SLUS_215.27` and `SLUS-21527` read the same.
+pub fn plain_id(id: &str) -> String {
+    id.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_uppercase()).collect()
+}
+
+/// The IDs a disc carries, as plain ids: a PlayStation or PS2 serial (from
+/// `SYSTEM.CNF`), a PSP's (from `UMD_DATA.BIN`), a GameCube or Wii disc's.
+pub fn disc_ids(path: &Path) -> Vec<String> {
+    let Some(mut disc) = sectors_of(path) else { return Vec::new() };
+    let mut ids = Vec::new();
+    if nintendo(&mut *disc).is_some() {
+        if let Ok(head) = disc.sector(0) {
+            ids.push(plain_id(&String::from_utf8_lossy(&head[..6])));
+        }
+        return ids;
+    }
+    let Some(names) = root_names(&mut *disc) else { return ids };
+    let text_of = |disc: &mut dyn Sectors, name: &str| -> Option<String> {
+        let (_, extent, size) = names.iter().find(|(n, ..)| n == name)?;
+        let block = disc.sector(*extent).ok()?;
+        Some(String::from_utf8_lossy(&block[..(*size as usize).min(2048)]).into_owned())
+    };
+    if let Some(cnf) = text_of(&mut *disc, "SYSTEM.CNF") {
+        // BOOT2 = cdrom0:\SLUS_215.27;1
+        let boot = cnf.lines().find(|l| l.trim_start().to_ascii_uppercase().starts_with("BOOT"));
+        if let Some(name) = boot.and_then(|l| l.rsplit(['\\', ':', '/']).next()) {
+            let id = plain_id(name.split(';').next().unwrap_or_default());
+            if !id.is_empty() {
+                ids.push(id);
+            }
+        }
+    }
+    if let Some(umd) = text_of(&mut *disc, "UMD_DATA.BIN") {
+        ids.push(plain_id(umd.split('|').next().unwrap_or_default()));
+    }
+    ids.retain(|id| !id.is_empty());
+    ids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +343,17 @@ mod tests {
         // A cue pointing outside its folder isn't followed there.
         let sly = write(dir.path(), "sly.cue", b"FILE \"..\\..\\other.bin\" BINARY\r\n  TRACK 01 MODE2/2352\r\n");
         assert_eq!(cue_track(&sly).unwrap().0, dir.path().join("other.bin"));
+    }
+
+    #[test]
+    fn a_disc_tells_its_serial_and_top_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let ps2 = write(dir.path(), "a.iso", &iso("SYSTEM.CNF", b"BOOT2 = cdrom0:\\SLUS_206.51;1\r\nVER = 1.00\r\n"));
+        assert_eq!(disc_ids(&ps2), ["SLUS20651"]);
+        assert_eq!(root_files(&ps2).unwrap(), ["SYSTEM.CNF"]);
+        let psp = write(dir.path(), "c.iso", &iso("UMD_DATA.BIN", b"ULUS-10336|0001"));
+        assert_eq!(disc_ids(&psp), ["ULUS10336"]);
+        assert_eq!(plain_id("SLUS-21501"), plain_id("SLUS_215.01"));
     }
 
     #[test]

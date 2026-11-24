@@ -1750,7 +1750,7 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
         return Err(tr!("Só recomps usam uma cópia do jogo.").into());
     };
     // A recomp that takes only extracted folders always gets the folder picker.
-    let folder = folder || recomp::find(recomp_id).is_some_and(|e| e.copy_accepts == "folder");
+    let folder = folder || recomp::entry_for(&game).is_some_and(|e| e.copy_accepts == "folder");
     let copy = if use_found {
         let owned = owned_games(&app);
         let entry = recomp::find(recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
@@ -2181,8 +2181,34 @@ fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings:
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err(tr!("Só recomps têm ajustes do catálogo.").into());
     };
-    let offer = recomp::find(recomp_id).map(|e| e.settings).unwrap_or_default();
+    let _ = recomp_id;
+    let offer = recomp::entry_for(&game).map(|e| e.settings).unwrap_or_default();
     Ok((game, offer))
+}
+
+/// The files besides the copy the game's `recomplauncher.json` asks for:
+/// other discs, DLC, an update, keys.
+#[tauri::command]
+fn game_inputs(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::SetupInput>, String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    Ok(recomp::setup_inputs(&game))
+}
+
+/// Picks the file (or folder) for one of those inputs; `clear` takes it away.
+#[tauri::command]
+async fn pick_game_input(app: AppHandle, library: State<'_, LocalLibrary>, id: String, input: String, clear: bool) -> Result<Option<Game>, String> {
+    if clear {
+        return recomp::use_input(&library, &id, &input, None).map(Some);
+    }
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    let wanted = recomp::setup_inputs(&game).into_iter().find(|i| i.id == input).ok_or(tr!("Esse jogo não pede esse arquivo."))?;
+    let dialog = app.dialog().file().set_title(wanted.label.clone());
+    let picked = if wanted.folder { pick_folder(dialog).await? } else { pick_one(dialog).await? };
+    let Some(picked) = picked else { return Ok(None) };
+    // Checking a disc or copying an update can take a while: not on an async worker.
+    let handle = app.clone();
+    let done = tauri::async_runtime::spawn_blocking(move || recomp::use_input(&handle.state::<LocalLibrary>(), &id, &input, Some(&picked)));
+    done.await.map_err(|e| e.to_string())?.map(Some)
 }
 
 /// The game's own settings and the choice each is on. `None` when the catalog offers none.
@@ -2884,6 +2910,8 @@ fn main() {
             scan_roms,
             refresh_catalog,
             set_game_copy,
+            game_inputs,
+            pick_game_input,
             set_launch_args,
             tracking_mode,
             pick_tracking_exe,

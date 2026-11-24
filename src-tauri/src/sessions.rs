@@ -131,6 +131,19 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         if result.is_err() { release(app, &game.id); }
         return result;
     }
+    // A setup step the release runs once with the player's copy (unpacking the
+    // disc): it runs first, and the game starts when it's done.
+    match recomp::preparation(game) {
+        Ok(Some(step)) => {
+            notify(app, &game.id, true);
+            return prepare_then_start(app, game.clone(), exe.to_path_buf(), step);
+        }
+        Ok(None) => {}
+        Err(problem) => {
+            release(app, &game.id);
+            return Err(problem);
+        }
+    }
     // Newer saves from another PC go in place before the game reads them.
     if let Source::Recomp { recomp_id, .. } = &game.source {
         let folders = app.state::<recomp::Folders>();
@@ -148,8 +161,18 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         }
     }
     // Many games load their data relative to where they start, so start them in their own folder.
-    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_else(PathBuf::new);
     let plan = recomp::launch_plan(game);
+    // The program on record is gone, but the developer's file names one that's there.
+    let exe = match &plan.program {
+        Some(named) if !exe.is_file() => named.as_path(),
+        _ => exe,
+    };
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_else(PathBuf::new);
+    // The settings files the developer's file keeps up; a file that can't be
+    // written is noted, and the game starts anyway.
+    if let Err(error) = recomp::prepare_start(game) {
+        crate::trail::note(app, &game.id, tk!("Ajustes do jogo"), &Err(error));
+    }
     let mut command = Command::new(exe);
     command.current_dir(dir).args(plan.args).envs(plan.env);
     // The picture filter: ReShade beside the game until it closes. A look that
@@ -237,9 +260,59 @@ impl GameProcess {
     }
 }
 
+fn prepare_then_start(app: &AppHandle, game: Game, exe: PathBuf, step: recomp::Preparation) -> Result<(), String> {
+    let dir = step.program.parent().map(Path::to_path_buf).unwrap_or_default();
+    let mut child = Command::new(&step.program)
+        .args(&step.args)
+        .current_dir(dir)
+        .spawn()
+        .map_err(|e| {
+            release(app, &game.id);
+            tr!("Não foi possível abrir a preparação do jogo: {}", e)
+        })?;
+    let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let outcome = loop {
+            match child.try_wait() {
+                Ok(Some(status)) if status.success() => break Ok(()),
+                Ok(Some(status)) => break Err(tr!("A preparação do jogo terminou com o código {}.", status.code().unwrap_or(-1)).to_string()),
+                Ok(None) if started.elapsed() > step.timeout => {
+                    let _ = child.kill();
+                    break Err(tr!("A preparação do jogo demorou demais e foi interrompida.").to_string());
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(500)),
+                Err(e) => break Err(e.to_string()),
+            }
+        };
+        crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
+        release(&app, &game.id);
+        match outcome {
+            Ok(()) => {
+                let _ = std::fs::write(&step.marker, &step.copy);
+                if let Err(error) = start(&app, &game, &exe) {
+                    let _ = app.emit("toast", error);
+                }
+            }
+            Err(message) => {
+                let _ = app.emit("toast", tr!("{0}: {1}", game.name, message));
+            }
+        }
+    });
+    Ok(())
+}
+
 /// A game that ended badly: why, in the history and as a notice, with its log.
 fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
-    let Some(mut why) = crate::crash::reason(code, played.as_secs()) else { return };
+    // The developer's own words for this code, or "ok": the game's normal close.
+    let own = recomp::entry_for(game).and_then(|e| e.manifest).and_then(|m| m.exit_message(code));
+    let why = match own {
+        Some(None) => return,
+        Some(Some(message)) => Some(message),
+        None => crate::crash::reason(code, played.as_secs()),
+    };
+    let Some(mut why) = why else { return };
     // "A DLL is too old": find which one, when something stands out.
     if code as u32 == crate::crash::OLD_DLL {
         let program_dir = match &game.source {
@@ -252,7 +325,10 @@ fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
         }
     }
     let since = SystemTime::now() - played - Duration::from_secs(5);
-    let log = crate::crash::newest_log(Path::new(&game.install_dir), since);
+    // The developer's `logs` folder first, then the game's own.
+    let install = Path::new(&game.install_dir);
+    let logs = recomp::entry_for(game).and_then(|e| e.manifest).map(|m| m.folder("logs", install)).unwrap_or_default();
+    let log = logs.iter().find_map(|dir| crate::crash::newest_log(dir, since)).or_else(|| crate::crash::newest_log(install, since));
     let detail = match &log {
         Some(path) => tr!("{1} Log do jogo: {0}", path.display(), why),
         None => why.clone(),

@@ -86,6 +86,7 @@ fn base_folder(key: &str, install: &Path) -> Option<PathBuf> {
     let config = env("XDG_CONFIG_HOME").or_else(|| home.as_ref().map(|h| h.join(".config")));
     match key {
         "{install}" => Some(install.to_path_buf()),
+        "{data}" => Some(install.join("recompdata")),
         "{local}" if cfg!(windows) => env("LOCALAPPDATA"),
         "{appdata}" if cfg!(windows) => env("APPDATA"),
         "{local}" | "{appdata}" => config,

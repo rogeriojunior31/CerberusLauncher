@@ -1928,3 +1928,12 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 /* Browser surfaces in the product's colors. */
 ::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); color: #fff; }
 ::placeholder { color: #8b91a0; opacity: 1; }
+
+/* The other files a game's developer asks for: one row each. */
+.inputs { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.inputs .ver-label { margin-top: 4px; }
+.need.inp { align-items: center; }
+.need.inp > div:nth-child(2) { flex: 1; min-width: 0; }
+.need.inp b { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.need.inp .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inp-act { display: flex !important; flex-direction: row !important; align-items: center; gap: 6px !important; flex: none; }

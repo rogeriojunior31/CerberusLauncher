@@ -908,6 +908,23 @@ pub async fn set_game_copy(id: &str, use_found: bool, folder: bool) -> Result<Op
     call("set_game_copy", &CopyArgs { id, use_found, folder }).await
 }
 
+/// The files besides the copy the game's `recomplauncher.json` asks for.
+pub async fn game_inputs(id: &str) -> Result<Vec<cerberus_shared::SetupInput>, String> {
+    call("game_inputs", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct InputArgs<'a> {
+    id: &'a str,
+    input: &'a str,
+    clear: bool,
+}
+
+/// Picks the file for one of them (`clear` takes it away). `None` when cancelled.
+pub async fn pick_game_input(id: &str, input: &str, clear: bool) -> Result<Option<Game>, String> {
+    call("pick_game_input", &InputArgs { id, input, clear }).await
+}
+
 /// After an installer ran: the player points at the game's program. `None` when cancelled.
 pub async fn locate_game(id: &str) -> Result<Option<Game>, String> {
     call("locate_game", &Id { id }).await

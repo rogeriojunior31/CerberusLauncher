@@ -9,6 +9,7 @@ pub(crate) mod cloud;
 mod forge;
 mod releases;
 mod install;
+pub mod manifest;
 pub(crate) mod saves;
 pub mod sources;
 mod translate;
@@ -179,7 +180,7 @@ pub fn backup_saves(folders: &Folders, recomp_id: &str, install_dir: &Path, reas
 /// `to_cloud: false` for a safety copy of saves about to be replaced: sending
 /// it up would make the old saves the cloud's newest, and bring them back.
 fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str, to_cloud: bool) -> Result<Option<Backup>, String> {
-    let entry = find(recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
+    let entry = entry_at(recomp_id, install_dir).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let places = saves::places(&entry.saves);
     let backups = folders.backups_dir(recomp_id);
     let cloud = folders.cloud_dir(recomp_id).filter(|_| to_cloud);
@@ -201,7 +202,7 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let Some((cloud_newest, cloud_print)) = saves::newest_with_fingerprint(&cloud) else {
         return Ok(None);
     };
-    let entry = find(recomp_id).ok_or(tr!("Esse recomp não está no catálogo."))?;
+    let entry = entry_at(recomp_id, install_dir).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let places = saves::places(&entry.saves);
     if saves::current_fingerprint(&places, install_dir).as_deref() == Some(cloud_print.as_str()) {
         return Ok(None);
@@ -245,6 +246,27 @@ pub fn library_id(recomp_id: &str) -> String {
 /// Gives an installed recomp the catalog's current art, unless the player picked
 /// a cover of their own. Done on every listing, so art added to the catalog later
 /// reaches games installed before it.
+/// An installed recomp's catalog entry, with what its own `recomplauncher.json` says.
+pub fn entry_for(game: &Game) -> Option<CatalogEntry> {
+    let Source::Recomp { recomp_id, exe, .. } = &game.source else { return None };
+    let entry = find(recomp_id)?;
+    Some(catalog::with_manifest(entry, manifest::read(Path::new(&game.install_dir), Some(Path::new(exe)))))
+}
+
+/// The same, by the recomp and the folder it's installed in.
+pub fn entry_at(recomp_id: &str, install_dir: &Path) -> Option<CatalogEntry> {
+    Some(catalog::with_manifest(find(recomp_id)?, manifest::read(install_dir, None)))
+}
+
+/// Every file the player gave a manifest's inputs: the copy under the main input's id.
+fn picked_inputs(game: &Game, manifest: &manifest::Manifest) -> std::collections::BTreeMap<String, String> {
+    let mut picked = game.inputs.clone();
+    if let (Some(main), Some(copy)) = (manifest.main_input(), &game.game_copy) {
+        picked.insert(main.id.clone(), copy.clone());
+    }
+    picked
+}
+
 pub fn apply_art(game: &mut Game) {
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return;
@@ -263,18 +285,130 @@ pub fn apply_art(game: &mut Game) {
 pub struct LaunchPlan {
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// The program the developer's file names, when the one on record is gone.
+    pub program: Option<PathBuf>,
+}
+
+/// Before every start: the settings files the developer's file keeps up
+/// (the path to the player's copy, keys set once or every time).
+pub fn prepare_start(game: &Game) -> Result<(), String> {
+    let Some(entry) = entry_for(game) else { return Ok(()) };
+    let Some(manifest) = &entry.manifest else { return Ok(()) };
+    let configs = crate::game_settings::offer_of(Some(&manifest.raw));
+    let picked = picked_inputs(game, manifest);
+    let copy = manifest.main_input().and_then(|m| picked.get(&m.id)).map(String::as_str);
+    let install = Path::new(&game.install_dir);
+    let _ = fs::create_dir_all(manifest::data_dir(install));
+    configs.before_start(install, copy)
+}
+
+/// A setup step the game's release runs once with the player's copy, before
+/// the first start: unpacking the disc, building a cache.
+#[derive(Debug, Clone)]
+pub struct Preparation {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub label: String,
+    pub timeout: std::time::Duration,
+    /// Written when it went well: the copy it was done with.
+    pub marker: PathBuf,
+    pub copy: String,
+}
+
+const PREPARED: &str = ".cerberus-prepared";
+
+/// The setup step this game still needs, if any. It runs again when the
+/// player picks another copy, or when what it makes is gone.
+pub fn preparation(game: &Game) -> Result<Option<Preparation>, String> {
+    let Some(entry) = entry_for(game) else { return Ok(None) };
+    let Some(copy) = game.game_copy.clone() else { return Ok(None) };
+    let install = Path::new(&game.install_dir);
+    let marker = install.join(PREPARED);
+    let done_with = fs::read_to_string(&marker).ok();
+    let made = !entry.makes.is_empty() && entry.makes.iter().filter_map(|m| manifest::inside(m)).all(|m| install.join(m).exists());
+    let current = done_with.as_deref().map(str::trim) == Some(copy.as_str());
+    if let Some(manifest) = &entry.manifest {
+        let Some(prepare) = &manifest.prepare else { return Ok(None) };
+        if current || (done_with.is_none() && made) {
+            return Ok(None);
+        }
+        // A copy picked before Cerberus read the developer's checks gets them now.
+        if let Some(main) = manifest.main_input() {
+            manifest::check(main, Path::new(&copy))?;
+        }
+        let program = prepare.program.iter().filter_map(|p| manifest::inside(p)).map(|p| install.join(p)).find(|p| p.is_file());
+        let Some(program) = program else { return Ok(None) };
+        let picked = picked_inputs(game, manifest);
+        let fill = manifest::Fill { install, inputs: &picked };
+        let args = prepare.args.iter().filter_map(|a| fill.text(a)).collect();
+        let label = if prepare.label.trim().is_empty() { tr!("Preparando o jogo").to_string() } else { prepare.label.clone() };
+        let timeout = std::time::Duration::from_secs(if prepare.timeout > 0 { prepare.timeout.min(4 * 3600) } else { 1800 });
+        return Ok(Some(Preparation { program, args, label, timeout, marker, copy }));
+    }
+    let Some(setup) = entry.setup.as_deref().and_then(manifest::inside) else { return Ok(None) };
+    if current || made {
+        return Ok(None);
+    }
+    let program = install.join(setup);
+    if !program.is_file() {
+        return Ok(None);
+    }
+    // `--install <disc>`: unpacks it beside the game with no window, and checks it ran.
+    let args = vec!["--install".to_string(), copy.clone()];
+    Ok(Some(Preparation { program, args, label: tr!("Preparando o jogo a partir do seu disco").to_string(), timeout: std::time::Duration::from_secs(1800), marker, copy }))
+}
+
+/// The files besides the copy a recomp's `recomplauncher.json` asks for.
+pub fn setup_inputs(game: &Game) -> Vec<cerberus_shared::SetupInput> {
+    let Some(manifest) = entry_for(game).and_then(|e| e.manifest) else { return Vec::new() };
+    manifest
+        .other_inputs()
+        .map(|input| cerberus_shared::SetupInput {
+            id: input.id.clone(),
+            label: input.label.clone(),
+            role: input.role.clone(),
+            optional: input.optional,
+            folder: input.takes_folder() && !input.takes_file(),
+            chosen: match manifest::placed_at(input, Path::new(&game.install_dir), None) {
+                Some(target) if input.name.is_some() => target.exists().then(|| target.display().to_string()),
+                _ => game.inputs.get(&input.id).cloned(),
+            },
+        })
+        .collect()
+}
+
+/// Gives one of a manifest's inputs its file (or takes it away with `None`):
+/// checked, put in the game's folder when the developer asks, and kept.
+pub fn use_input(library: &LocalLibrary, game_id: &str, input_id: &str, picked: Option<&Path>) -> Result<Game, String> {
+    let game = library.get(game_id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    let manifest = entry_for(&game).and_then(|e| e.manifest).ok_or(tr!("Esse jogo não pede outros arquivos."))?;
+    let input = manifest.input(input_id).ok_or(tr!("Esse jogo não pede esse arquivo."))?;
+    let Some(path) = picked else {
+        return library.update(game_id, |g| {
+            g.inputs.remove(input_id);
+        });
+    };
+    manifest::check(input, path)?;
+    manifest::place(input, Path::new(&game.install_dir), path)?;
+    let path = path.to_string_lossy().into_owned();
+    library.update(game_id, |g| {
+        g.inputs.insert(input_id.to_string(), path);
+    })
 }
 
 /// What stands between the player and the game. One answer for every screen
 /// and for Play itself, so a button never offers what Play would refuse.
 /// `found` is the player's copy from the ROM folders, if the scan saw one.
 pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
-    let entry = match &game.source {
-        Source::Recomp { recomp_id, .. } => find(recomp_id),
-        _ => None,
-    };
+    let entry = entry_for(game);
     let handoff = entry.as_ref().and_then(|e| e.handoff.clone());
     let step = next_step_with(game, handoff.as_ref(), found);
+    // The developer's file names every file the game needs: all must be there.
+    if let (NextStep::Play, Some(manifest)) = (&step, entry.as_ref().and_then(|e| e.manifest.as_ref())) {
+        if !manifest::missing(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest)).is_empty() {
+            return NextStep::ChooseCopy { found: found.cloned() };
+        }
+    }
     // A folder copy the recomp reads named parts from: they must be in its folder.
     if let (NextStep::Play, Some(entry), Some(CopyHandoff::Folder { folder, file_name: None, .. })) = (&step, &entry, &handoff) {
         let dir = Path::new(&game.install_dir).join(folder);
@@ -307,6 +441,8 @@ fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&Str
             !Path::new(&game.install_dir).join(folder).join(name).is_file()
         }
         (Some(CopyHandoff::Folder { .. }), copy) => copy.is_none(),
+        // The copy, given to the developer's arguments or setup step; the rest is checked input by input.
+        (Some(CopyHandoff::Inputs), copy) => !copy.as_deref().is_some_and(|c| Path::new(c).exists()),
         (Some(CopyHandoff::AsksItself) | None, _) => false,
     };
     if copy_missing {
@@ -318,26 +454,30 @@ fn next_step_with(game: &Game, handoff: Option<&CopyHandoff>, found: Option<&Str
 pub fn launch_plan(game: &Game) -> LaunchPlan {
     let mut args = Vec::new();
     let mut env = Vec::new();
-    let handoff = match &game.source {
-        Source::Recomp { recomp_id, .. } => find(recomp_id).and_then(|e| e.handoff),
-        _ => None,
-    };
-    if let (Some(copy), Some(handoff)) = (&game.game_copy, handoff) {
+    let mut program = None;
+    let entry = entry_for(game);
+    // The developer's own start line comes first, with the player's files filled in.
+    if let Some(manifest) = entry.as_ref().and_then(|e| e.manifest.as_ref()) {
+        let picked = picked_inputs(game, manifest);
+        let launch = manifest::launch(manifest, &manifest::Fill { install: Path::new(&game.install_dir), inputs: &picked });
+        args.extend(launch.args);
+        env.extend(launch.env);
+        program = launch.program;
+    }
+    if let (Some(copy), Some(handoff)) = (&game.game_copy, entry.as_ref().and_then(|e| e.handoff.clone())) {
         match handoff {
             CopyHandoff::Flag { flag } => args.extend([flag, copy.clone()]),
             CopyHandoff::Env { name } => env.push((name, copy.clone())),
-            // Already in the game's folder, or asked for by the game itself.
-            CopyHandoff::Folder { .. } | CopyHandoff::AsksItself => {}
+            // Already in the game's folder, asked for by the game itself, or in the developer's arguments.
+            CopyHandoff::Folder { .. } | CopyHandoff::AsksItself | CopyHandoff::Inputs => {}
         }
     }
     // The game's own command-line settings, picked in its Ajustes tab.
-    if let Source::Recomp { recomp_id, .. } = &game.source {
-        if let Some(entry) = find(recomp_id) {
-            args.extend(entry.settings.args(&game.setting_picks));
-        }
+    if let Some(entry) = &entry {
+        args.extend(entry.settings.args(&game.setting_picks));
     }
     args.extend(split_args(&game.launch_args));
-    LaunchPlan { args, env }
+    LaunchPlan { args, env, program }
 }
 
 /// Splits launch options like a command line: spaces separate, quotes keep
@@ -380,15 +520,24 @@ pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Resu
         return Err(tr!("{} não existe mais.", copy.display()));
     }
     let game = library.get(game_id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
-    let Source::Recomp { recomp_id, .. } = &game.source else {
+    let Source::Recomp { .. } = &game.source else {
         return Err(tr!("Só recomps usam uma cópia do jogo.").into());
     };
-    let entry = find(recomp_id);
+    let entry = entry_for(&game);
     // The wrong region or revision of an N64 game opens to a black screen; say so now instead.
     let wanted = entry.as_ref().and_then(|e| e.n64.clone());
     if let (Some(wanted), Some(code)) = (wanted, crate::roms::n64_code_of(copy)) {
         if let Some(problem) = crate::roms::version_problem(&code, &wanted) {
             return Err(problem);
+        }
+    }
+    // The developer's file says what the copy must be, and where it goes.
+    if let Some(manifest) = entry.as_ref().and_then(|e| e.manifest.clone()) {
+        if let Some(main) = manifest.main_input() {
+            manifest::check(main, copy)?;
+            manifest::place(main, Path::new(&game.install_dir), copy)?;
+            let path = copy.to_string_lossy().into_owned();
+            return library.update(game_id, |game| game.game_copy = Some(path));
         }
     }
     if let Some(entry) = &entry {
@@ -496,8 +645,20 @@ pub(crate) fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 /// `owned` maps a recomp id to the player's copy of its game, found in their ROM folders.
 pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Result<Vec<RecompEntry>, String> {
     let installed = installed_versions(library)?;
+    let games = library.games()?;
     let all = catalog::all();
-    Ok(all.iter().filter(|entry| !entry.soon).map(|entry| to_entry(entry, &installed, owned)).collect())
+    Ok(all
+        .iter()
+        .filter(|entry| !entry.soon)
+        .map(|entry| {
+            // An installed game shows what its own file says.
+            let game = games.iter().find(|g| matches!(&g.source, Source::Recomp { recomp_id, .. } if entry.is(recomp_id)));
+            match game.and_then(entry_for) {
+                Some(own) => to_entry(&own, &installed, owned),
+                None => to_entry(entry, &installed, owned),
+            }
+        })
+        .collect())
 }
 
 /// Why a recomp can't be installed here, if it can't.
@@ -806,6 +967,7 @@ fn register(
         launch_args: String::new(),
         tracking_exe: None,
         game_copy: None,
+        inputs: Default::default(),
         setup_pending,
         next_step: Default::default(),
         setting_picks: Default::default(),

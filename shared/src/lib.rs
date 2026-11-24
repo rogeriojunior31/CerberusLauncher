@@ -40,6 +40,9 @@ pub struct Game {
     /// The player's copy of the original game (ROM or disc image) a recomp is set up with.
     #[serde(default)]
     pub game_copy: Option<String>,
+    /// The other files a recomp's `recomplauncher.json` asks for: input id -> path.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub inputs: std::collections::BTreeMap<String, String>,
     /// The release was an installer that hasn't run yet: the first Play runs it,
     /// and `exe` points at the installer until then.
     #[serde(default)]
@@ -122,6 +125,23 @@ pub enum CopyHandoff {
         #[serde(default)]
         extract: bool,
     },
+    /// The developer's `recomplauncher.json` says which files the game takes
+    /// (the copy, each disc, DLC, an update) and how each is passed.
+    Inputs,
+}
+
+/// A file a recomp's `recomplauncher.json` asks the player for, besides the copy.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SetupInput {
+    pub id: String,
+    pub label: String,
+    /// disc, dlc, update or key.
+    pub role: String,
+    pub optional: bool,
+    /// Takes a folder (an extracted game) rather than a file.
+    pub folder: bool,
+    /// What the player picked, when they did.
+    pub chosen: Option<String>,
 }
 
 /// A game's own settings, as its Ajustes tab shows them.

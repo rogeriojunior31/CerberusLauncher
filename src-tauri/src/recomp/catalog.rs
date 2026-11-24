@@ -107,6 +107,39 @@ pub struct CatalogEntry {
     pub player_note: String,
     /// "local", "online" or "both"; empty for single player.
     pub multiplayer: String,
+    /// The developer's own `recomplauncher.json`, beside an installed game.
+    #[serde(skip)]
+    pub manifest: Option<Arc<super::manifest::Manifest>>,
+    /// The release's own setup program, given the player's disc once before
+    /// the first start (`Tenkaichi3Decomp-setup.exe --install <disc>`).
+    pub setup: Option<String>,
+    /// What that setup leaves behind; missing means it hasn't run yet.
+    pub makes: Vec<String>,
+}
+
+/// An entry with what the game's own `recomplauncher.json` says, which wins over
+/// the catalog: how it takes the player's copy, its settings, where it saves.
+pub fn with_manifest(mut entry: CatalogEntry, manifest: Option<Arc<super::manifest::Manifest>>) -> CatalogEntry {
+    let Some(manifest) = manifest else { return entry };
+    if let Some(main) = manifest.main_input() {
+        entry.handoff = Some(CopyHandoff::Inputs);
+        entry.accepts_folder = main.takes_folder();
+        entry.copy_accepts = match (main.takes_file(), main.takes_folder()) {
+            (false, true) => "folder".into(),
+            (true, true) => "folder or file".into(),
+            _ => "file".into(),
+        };
+        entry.copy_contains = Vec::new();
+        entry.needs = main.label.trim().to_string();
+    }
+    if manifest.has_settings() {
+        entry.settings = crate::game_settings::offer_of(Some(&manifest.raw));
+    }
+    if !manifest.saves.is_empty() {
+        entry.saves = manifest.saves.clone();
+    }
+    entry.manifest = Some(manifest);
+    entry
 }
 
 impl CatalogEntry {
@@ -474,6 +507,8 @@ struct Boot {
     copy_contains: Vec<String>,
     player_note: String,
     multiplayer: String,
+    setup: Option<String>,
+    makes: Vec<String>,
 }
 
 /// The Windows release is a lone setup program ("srb2kart-v16-Installer.exe").
@@ -505,6 +540,8 @@ fn boot_of(boot: Option<Value>) -> Boot {
             .map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
             .unwrap_or_default(),
         player_note: value.get("player_note").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
+        setup: value.get("setup").and_then(Value::as_str).map(str::to_string).filter(|_| files.and_then(|f| f.get("how")).and_then(Value::as_str) == Some("setup")),
+        makes: value.get("makes").and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
         multiplayer: value.get("multiplayer").and_then(Value::as_str).unwrap_or_default().to_string(),
     }
 }
@@ -528,6 +565,8 @@ fn handoff_of(files: &Value) -> Option<CopyHandoff> {
     let text = |key: &str| files.get(key).and_then(Value::as_str).map(str::to_string);
     let handoff = match files.get("how")?.as_str()? {
         "self" => CopyHandoff::AsksItself,
+        // The release's setup program takes the disc, once, before the first start.
+        "setup" => CopyHandoff::Inputs,
         "flag" => CopyHandoff::Flag { flag: text("flag").unwrap_or_else(|| "--rom".into()) },
         "env" => CopyHandoff::Env { name: text("env")? },
         // Xbox disc images are unpacked by Cerberus; other kinds of unpacking are left to the player.
@@ -567,7 +606,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
     let mut list: Vec<CatalogEntry> = Vec::new();
     let more = catalog.apps_min.into_iter().flat_map(|group| group.apps);
     for app in catalog.apps.into_iter().chain(more) {
-        let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer } = boot_of(app.boot);
+        let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer, setup, makes } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
             continue;
         }
@@ -629,6 +668,9 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             copy_contains,
             player_note,
             multiplayer,
+            manifest: None,
+            setup,
+            makes,
             saves: Vec::new(),
             // Games installed under an old name still find their recomp.
             aliases: renamed.iter().filter(|(_, new)| **new == app.id).map(|(old, _)| old.clone()).collect(),
@@ -757,7 +799,19 @@ mod tests {
             Some(CopyHandoff::Folder { folder: "WWE 13".into(), file_name: None, extract: true })
         );
         assert_eq!(parse(r#"{"how": "folder", "extract": "wad"}"#), None, "other unpacking is left to the player");
-        assert_eq!(parse(r#"{"how": "setup"}"#), None);
+        assert_eq!(parse(r#"{"how": "setup"}"#), Some(CopyHandoff::Inputs), "the release's setup takes the disc");
+    }
+
+    #[test]
+    fn a_release_setup_step_is_read_with_what_it_makes() {
+        let boot = boot_of(Some(serde_json::json!({"kind": "portable", "start": "Tenkaichi3Decomp.exe", "setup": "Tenkaichi3Decomp-setup.exe",
+            "files": {"how": "setup", "accepts": "iso"}, "makes": ["gamedata/disc/SLUS_216.78"]})));
+        assert_eq!(boot.setup.as_deref(), Some("Tenkaichi3Decomp-setup.exe"));
+        assert_eq!(boot.makes, ["gamedata/disc/SLUS_216.78"]);
+        assert_eq!(boot.handoff, Some(CopyHandoff::Inputs));
+        // A setup the files don't hand the disc to isn't run by Cerberus.
+        let other = boot_of(Some(serde_json::json!({"setup": "x-setup.exe", "files": {"how": "self"}})));
+        assert_eq!(other.setup, None);
     }
 
     #[test]

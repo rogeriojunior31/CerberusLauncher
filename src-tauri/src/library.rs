@@ -118,6 +118,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         launch_args: String::new(),
         tracking_exe: None,
         game_copy: None,
+        inputs: Default::default(),
         setup_pending: false,
         next_step: Default::default(),
         setting_picks: Default::default(),

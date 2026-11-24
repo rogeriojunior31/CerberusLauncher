@@ -60,6 +60,42 @@ fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
 }
 
+/// The names in an Xbox disc image's top folder.
+pub fn root_files(path: &Path) -> Option<Vec<String>> {
+    let mut file = crate::disc_image::open(path).ok()?;
+    let start = partition(&mut *file)?;
+    let mut header = [0u8; 28];
+    file.seek(SeekFrom::Start(start + 32 * SECTOR)).ok()?;
+    file.read_exact(&mut header).ok()?;
+    let (sector, size) = (u32_at(&header, 20)? as u64, u32_at(&header, 24)? as u64);
+    if size == 0 || size > 16 * 1024 * 1024 {
+        return None;
+    }
+    let mut table = vec![0u8; size as usize];
+    file.seek(SeekFrom::Start(start + sector * SECTOR)).ok()?;
+    file.read_exact(&mut table).ok()?;
+    let mut names = Vec::new();
+    let (mut pending, mut visited) = (vec![0usize], HashSet::new());
+    while let Some(at) = pending.pop() {
+        if !visited.insert(at) || at + 14 > table.len() {
+            continue;
+        }
+        let left = u16_at(&table, at)?;
+        if left == 0xFFFF {
+            continue;
+        }
+        let right = u16_at(&table, at + 2)?;
+        let len = table[at + 13] as usize;
+        names.push(String::from_utf8_lossy(table.get(at + 14..at + 14 + len)?).into_owned());
+        for next in [left, right] {
+            if next != 0 {
+                pending.push(next as usize * 4);
+            }
+        }
+    }
+    Some(names)
+}
+
 /// Unpacks every file of the disc image into `to`. Returns how many were written.
 pub fn extract(image: &Path, to: &Path) -> Result<usize, String> {
     let mut file = crate::disc_image::open(image).map_err(|e| e.to_string())?;
