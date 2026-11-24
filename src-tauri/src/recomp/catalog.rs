@@ -612,6 +612,36 @@ fn some(text: Option<String>) -> Option<String> {
     text.filter(|t| !t.trim().is_empty())
 }
 
+/// One id per console: lists name the same one in different ways ("nds", "ds").
+pub fn origin_id(raw: &str) -> String {
+    let id = raw.trim().to_lowercase();
+    match id.as_str() {
+        "nds" | "nintendods" => "ds",
+        "n3ds" | "nintendo3ds" => "3ds",
+        "megadrive" | "md" | "segagenesis" => "genesis",
+        "32x" | "sega32x" => "s32x",
+        "psx" | "ps" => "ps1",
+        "ngc" | "gamecube" => "gc",
+        "famicom" => "nes",
+        "superfamicom" | "sfc" => "snes",
+        "windows" | "win" => "pc",
+        "" => "pc",
+        _ => return id,
+    }
+    .to_string()
+}
+
+/// The console's name as the player reads it; lists' own names otherwise.
+pub fn origin_name(origin: &str, listed: Option<&str>) -> String {
+    match origin {
+        "other" => tr!("Outros").to_string(),
+        "ds" => "Nintendo DS".into(),
+        "3ds" => "Nintendo 3DS".into(),
+        "pc" => "PC".into(),
+        _ => listed.map(str::to_string).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| origin.to_uppercase()),
+    }
+}
+
 pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
     let catalog: RlCatalog = serde_json::from_str(text).map_err(|e| tr!("Catálogo ilegível: {}", e))?;
     let consoles: HashMap<String, String> = catalog.origins.into_iter().map(|o| (o.id, o.name)).collect();
@@ -639,7 +669,8 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
         if !plain_id || list.iter().any(|e| e.id == app.id) {
             continue;
         }
-        let origin = app.origin.unwrap_or_default();
+        let listed = app.origin.unwrap_or_default();
+        let origin = origin_id(&listed);
         let (title, recommended, why) = match title_of.remove(&app.id) {
             Some(found) => found,
             None => (some(app.title).unwrap_or_else(|| app.id.clone()), false, String::new()),
@@ -648,7 +679,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             title,
             recommended,
             why: if recommended { why } else { String::new() },
-            console: consoles.get(&origin).cloned().unwrap_or_else(|| origin.to_uppercase()),
+            console: origin_name(&origin, consoles.get(&listed).map(String::as_str)),
             origin,
             name: app.name,
             game: app.game.unwrap_or_default(),

@@ -387,7 +387,8 @@ pub fn console_fits(system: &str, origin: &str) -> bool {
     }
     let game_boy = matches!((system, origin), ("gb", "gbc") | ("gbc", "gb"));
     let switch = system == "switch" && origin == "switch2";
-    system == origin || game_boy || switch
+    let sega_32x = system == "32x" && origin == "s32x";
+    system == origin || game_boy || switch || sega_32x
 }
 
 /// The console a cartridge file is for, by its extension; `None` for disc

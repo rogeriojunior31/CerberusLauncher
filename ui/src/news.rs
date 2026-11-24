@@ -1,7 +1,8 @@
 //! Novidades: what changed since the player last looked. Updates waiting for
-//! their recomps, and what happened lately across every game (installs,
-//! sessions, achievements, problems), from the same history each game's page
-//! shows.
+//! their recomps, what went wrong and wasn't seen yet, the developers' news,
+//! and then the history (installs, sessions, achievements) by day, from the
+//! same record each game's page shows. Only updates and problems are news: the
+//! player's own sessions aren't.
 
 use cerberus_shared::tr;
 use cerberus_shared::{Game, RecompEntry, Source, TrailEntry};
@@ -60,10 +61,15 @@ impl Activity {
         Self { list, seen: RwSignal::new(seen) }
     }
 
-    /// Rows that happened after the last "mark all as read".
-    pub fn unread(self) -> usize {
+    /// What went wrong after the last "Entendi", newest first.
+    pub fn problems(self) -> Vec<Row> {
         let seen = self.seen.get();
-        self.list.get().map(|l| fold(&l).iter().filter(|r| r.entry.at > seen).count()).unwrap_or(0)
+        self.list.get().map(|l| fold(&l).into_iter().filter(|r| !r.entry.ok && r.entry.at > seen).collect()).unwrap_or_default()
+    }
+
+    /// How many problems the side menu counts.
+    pub fn unread(self) -> usize {
+        self.problems().len()
     }
 
     pub fn mark_read(self) {
@@ -90,6 +96,9 @@ pub struct Row {
 
 const SESSION_STEP: &str = "Partida";
 const BACKUP_STEP: &str = "Backup depois de jogar";
+const CLASSIC_STEP: &str = "Jogar clássico";
+/// A backup that found nothing to copy says nothing worth a line.
+const NOTHING_NEW: &str = "Nada novo para copiar";
 
 /// The history (newest first) folded for reading: a session and its backup
 /// become one line, and the same result for the same game within a day is
@@ -97,6 +106,11 @@ const BACKUP_STEP: &str = "Backup depois de jogar";
 pub fn fold(list: &[TrailEntry]) -> Vec<Row> {
     let mut rows: Vec<Row> = Vec::new();
     for e in list {
+        // A classic opened and then played is the session's line alone.
+        let played = |r: &Row| r.entry.game_id == e.game_id && r.entry.step == SESSION_STEP && (e.at..=e.at + 6 * 3600).contains(&r.entry.at);
+        if e.ok && e.step == CLASSIC_STEP && rows.iter().any(played) {
+            continue;
+        }
         if let Some(r) = rows.iter_mut().find(|r| {
             r.entry.game_id == e.game_id && r.entry.step == e.step && r.entry.message == e.message && r.entry.ok == e.ok && r.oldest.saturating_sub(e.at) <= 24 * 3600
         }) {
@@ -179,6 +193,7 @@ fn news_games(games: &[Game]) -> Vec<(u32, String)> {
 fn SteamNews() -> impl IntoView {
     let library = expect_context::<Library>();
     let wanted = Memo::new(move |_| library.games.get().and_then(Result::ok).map(|g| news_games(&g)));
+    let shown = RwSignal::new(6usize);
     let news = LocalResource::new(move || {
         let games = wanted.get();
         async move {
@@ -197,8 +212,10 @@ fn SteamNews() -> impl IntoView {
             return view! { <p class="muted">{tr!("Nenhuma notícia recente dos seus jogos da Steam.")}</p> }.into_any();
         }
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let total = list.len();
         let cards = list
             .into_iter()
+            .take(shown.get())
             .map(|n| {
                 let game = games.iter().find(|g| matches!(g.source, Source::Steam { app_id } if app_id == n.app_id)).cloned();
                 let art = game.as_ref().map(cover_sources).unwrap_or_default();
@@ -221,9 +238,89 @@ fn SteamNews() -> impl IntoView {
                 }
             })
             .collect_view();
-        view! { <div class="news-grid">{cards}</div> }.into_any()
+        let more = (total > shown.get()).then(|| view! {
+            <button type="button" class="btn sm more" on:click=move |_| shown.set(usize::MAX)>
+                {tr!("Mostrar mais ({})", total - shown.get_untracked())}
+            </button>
+        });
+        view! { <div class="news-grid">{cards}</div>{more} }.into_any()
     }
 }
+
+/// The local day of a moment, as a key ("Tue Nov 24 2026") and as words
+/// ("Hoje", "Ontem", "segunda-feira, 16 de novembro").
+fn day_of(seconds: u64) -> (String, String) {
+    let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(seconds as f64 * 1000.0));
+    let key: String = date.to_date_string().into();
+    let today = js_sys::Date::new_0();
+    let yesterday = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(today.get_time() - 86_400_000.0));
+    let words = if key == String::from(today.to_date_string()) {
+        tr!("Hoje").to_string()
+    } else if key == String::from(yesterday.to_date_string()) {
+        tr!("Ontem").to_string()
+    } else {
+        let options = js_sys::Object::new();
+        let set = |k: &str, v: &str| js_sys::Reflect::set(&options, &k.into(), &v.into());
+        let _ = set("weekday", "long");
+        let _ = set("day", "numeric");
+        let _ = set("month", "long");
+        let locale = if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::En { "en-US" } else { "pt-BR" };
+        let text: String = date.to_locale_date_string(locale, &options).into();
+        let mut chars = text.chars();
+        chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+    };
+    (key, words)
+}
+
+/// The clock time of a moment, "14:05".
+fn clock(seconds: u64) -> String {
+    format::date_time(seconds).rsplit(", ").next().unwrap_or_default().to_string()
+}
+
+/// One history line; `when` is its time ("14:05", or "há 3 h" outside a day group).
+fn activity_row(library: Library, row: Row, when: String, games: &[Game], recomps: &[RecompEntry]) -> impl IntoView {
+    let e = row.entry;
+    let mut detail = e.message.clone();
+    if let Some(b) = row.backup.as_ref().filter(|b| b.as_str() != NOTHING_NEW && b.as_str() != tr!("Nada novo para copiar")) {
+        detail = tr!("{} · backup: {}", detail, b);
+    }
+    if row.count > 1 {
+        detail = tr!("{} ({}x)", detail, row.count);
+    }
+    let tip = detail.clone();
+    let name = whose(&e.game_id, games, recomps);
+    let icon = if !e.ok {
+        Icon::Info
+    } else if e.step == "Conquista" {
+        Icon::Trophy
+    } else if e.step == SESSION_STEP || e.step == "Jogar clássico" {
+        Icon::Play
+    } else if e.step.starts_with("Instal") {
+        Icon::Download
+    } else {
+        Icon::Check
+    };
+    let open = page_of(&e.game_id, games);
+    let clickable = open.is_some();
+    let go = move |_| {
+        if let Some(route) = open.clone() {
+            library.go(route);
+        }
+    };
+    view! {
+        <li class="act" class:bad=!e.ok class:clickable=clickable on:click=go>
+            <Svg icon size=18 />
+            <div>
+                <b>{format!("{} · {}", name, cerberus_shared::i18n::translate(&e.step))}</b>
+                <span title=tip>{detail}</span>
+            </div>
+            <time>{when}</time>
+        </li>
+    }
+}
+
+/// History lines shown before "Mostrar mais".
+const HISTORY_PAGE: usize = 12;
 
 #[component]
 pub fn NewsPage() -> impl IntoView {
@@ -237,7 +334,7 @@ pub fn NewsPage() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let list = updates(&games, &recomps);
         if list.is_empty() {
-            return view! { <p class="muted">{tr!("Todos os seus recomps estão na versão mais nova.")}</p> }.into_any();
+            return ().into_any();
         }
         let rows = list
             .into_iter()
@@ -264,9 +361,46 @@ pub fn NewsPage() -> impl IntoView {
                 }
             })
             .collect_view();
-        view! { <div class="dl-list">{rows}</div> }.into_any()
+        view! {
+            <section class="news-sec">
+                <h2><Svg icon=Icon::Download />{tr!("Atualizações disponíveis")}</h2>
+                <div class="dl-list">{rows}</div>
+            </section>
+        }
+        .into_any()
+    };
+    let all_current = move || {
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        updates(&games, &recomps).is_empty() && news.problems().is_empty()
     };
 
+    // What went wrong and wasn't seen: the only activity that is news.
+    let attention = move || {
+        let problems = news.problems();
+        if problems.is_empty() {
+            return ().into_any();
+        }
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let rows = problems.into_iter().map(|row| {
+            let when = format::ago(row.entry.at);
+            activity_row(library, row, when, &games, &recomps)
+        }).collect_view();
+        view! {
+            <section class="news-sec">
+                <div class="news-h">
+                    <h2><Svg icon=Icon::Info />{tr!("Precisa de atenção")}</h2>
+                    <button type="button" class="btn sm" on:click=move |_| news.mark_read()><Svg icon=Icon::Check size=16 />{tr!("Entendi")}</button>
+                </div>
+                <ul class="activity card">{rows}</ul>
+            </section>
+        }
+        .into_any()
+    };
+
+    // The history, by day; it's a record to look back on, not news.
+    let shown = RwSignal::new(HISTORY_PAGE);
     let lately = move || {
         let Some(list) = activity.get() else {
             return view! { <p class="muted" role="status">{tr!("Carregando...")}</p> }.into_any();
@@ -276,42 +410,34 @@ pub fn NewsPage() -> impl IntoView {
         }
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
-        let seen = news.seen.get();
-        let rows = fold(&list)
-            .into_iter()
-            .map(|row: Row| {
-                let e = row.entry;
-                let fresh = e.at > seen;
-                let mut detail = e.message.clone();
-                if let Some(b) = &row.backup {
-                    detail = tr!("{} · backup: {}", detail, b);
-                }
-                if row.count > 1 {
-                    detail = tr!("{} ({}x)", detail, row.count);
-                }
-                let tip = detail.clone();
-                let name = whose(&e.game_id, &games, &recomps);
-                let icon = if !e.ok { Icon::Info } else if e.step == "Conquista" { Icon::Trophy } else { Icon::Check };
-                let open = page_of(&e.game_id, &games);
-                let clickable = open.is_some();
-                let go = move |_| {
-                    if let Some(route) = open.clone() {
-                        library.go(route);
-                    }
-                };
-                view! {
-                    <li class="act" class:bad=!e.ok class:clickable=clickable class:fresh=fresh on:click=go>
-                        <Svg icon size=18 />
-                        <div>
-                            <b>{format!("{} · {}", name, cerberus_shared::i18n::translate(&e.step))}</b>
-                            <span title=tip>{detail}</span>
-                        </div>
-                        <time>{format::ago(e.at)}</time>
-                    </li>
-                }
-            })
-            .collect_view();
-        view! { <ul class="activity card">{rows}</ul> }.into_any()
+        let all = fold(&list);
+        let total = all.len();
+        let mut days: Vec<(String, String, Vec<Row>)> = Vec::new();
+        for row in all.into_iter().take(shown.get()) {
+            let (key, words) = day_of(row.entry.at);
+            match days.last_mut() {
+                Some((k, _, rows)) if *k == key => rows.push(row),
+                _ => days.push((key, words, vec![row])),
+            }
+        }
+        let groups = days.into_iter().map(|(_, words, rows)| {
+            let rows = rows.into_iter().map(|row| {
+                let when = clock(row.entry.at);
+                activity_row(library, row, when, &games, &recomps)
+            }).collect_view();
+            view! {
+                <div class="act-day">
+                    <h3>{words}</h3>
+                    <ul class="activity card">{rows}</ul>
+                </div>
+            }
+        }).collect_view();
+        let more = (total > shown.get()).then(|| view! {
+            <button type="button" class="btn sm more" on:click=move |_| shown.set(shown.get_untracked() + HISTORY_PAGE * 2)>
+                {tr!("Mostrar mais ({})", total - shown.get_untracked())}
+            </button>
+        });
+        view! { {groups}{more} }.into_any()
     };
 
     view! {
@@ -319,24 +445,20 @@ pub fn NewsPage() -> impl IntoView {
             <header class="page-h">
                 <div>
                     <h1>{tr!("Novidades")}</h1>
-                    <p class="muted">{tr!("Atualizações dos seus recomps e o que aconteceu com os seus jogos.")}</p>
+                    <p class="muted">{tr!("Atualizações dos seus recomps, o que precisa da sua atenção e as notícias dos seus jogos.")}</p>
+                    <Show when=all_current>
+                        <p class="news-ok"><Svg icon=Icon::Check size=16 />{tr!("Tudo em dia: seus recomps estão na versão mais nova e nada precisa da sua atenção.")}</p>
+                    </Show>
                 </div>
             </header>
-            <section class="news-sec">
-                <h2><Svg icon=Icon::Download />{tr!("Atualizações disponíveis")}</h2>
-                {waiting}
-            </section>
+            {waiting}
+            {attention}
             <section class="news-sec">
                 <h2><Svg icon=Icon::Bell />{tr!("Notícias dos seus jogos")}</h2>
                 <SteamNews />
             </section>
             <section class="news-sec">
-                <div class="news-h">
-                    <h2><Svg icon=Icon::Clock />{tr!("Atividade recente")}</h2>
-                    {move || (news.unread() > 0).then(|| view! {
-                        <button type="button" class="btn sm" on:click=move |_| news.mark_read()><Svg icon=Icon::Check size=16 />{tr!("Marcar tudo como lido")}</button>
-                    })}
-                </div>
+                <h2><Svg icon=Icon::Clock />{tr!("Seu histórico")}</h2>
                 {lately}
             </section>
         </div>
@@ -349,6 +471,19 @@ mod tests {
 
     fn step(at: u64, game: &str, step: &str, ok: bool, message: &str) -> TrailEntry {
         TrailEntry { at, game_id: game.into(), step: step.into(), ok, message: message.into() }
+    }
+
+    #[test]
+    fn a_classic_opened_and_played_is_one_line() {
+        let list = vec![
+            step(2000, "classic:c", "Partida", true, "5 min"),
+            step(1700, "classic:c", "Jogar clássico", true, "Aberto no DuckStation"),
+            step(900, "classic:x", "Jogar clássico", false, "Sem emulador"),
+        ];
+        let rows = fold(&list);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].entry.step, "Partida");
+        assert!(!rows[1].entry.ok, "a classic that didn't open stays");
     }
 
     #[test]

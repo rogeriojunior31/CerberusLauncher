@@ -20,7 +20,21 @@ fn wiki_lang() -> &'static str {
 fn file(data_dir: &Path, title: &str) -> PathBuf {
     // The name as a file: letters and digits only, so any title is safe on disk.
     let safe: String = title.chars().map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
-    data_dir.join("cache").join("wiki").join(format!("{}-{}.json", wiki_lang(), safe.chars().take(120).collect::<String>()))
+    // "v2": copies from before titles had to match are asked again.
+    data_dir.join("cache").join("wiki").join(format!("v2-{}-{}.json", wiki_lang(), safe.chars().take(120).collect::<String>()))
+}
+
+/// Letters and digits only, lowercase, for comparing titles.
+fn plain(text: &str) -> String {
+    text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+/// The article is this game's own, not a sequel's: its title is the game's
+/// name, maybe with "(jogo eletrônico)" after it or the series before it.
+fn same_game(title: &str, game: &str) -> bool {
+    let bare = title.split(" (").next().unwrap_or(title);
+    let (bare, game) = (plain(bare), plain(game));
+    !game.is_empty() && (bare == game || (bare.ends_with(&game) && title.contains(':')))
 }
 
 /// An article about a game: its short description says so.
@@ -75,7 +89,7 @@ async fn find(http: &reqwest::Client, game: &str) -> Option<WikiAbout> {
     let v = get(http, &url).await?;
     let titles: Vec<String> =
         v.pointer("/query/search").and_then(Value::as_array).into_iter().flatten().filter_map(|r| r.get("title").and_then(Value::as_str)).map(str::to_string).collect();
-    for title in titles {
+    for title in titles.into_iter().filter(|t| same_game(t, game)) {
         if let Some(found) = summary(http, &title).await {
             return Some(found);
         }
@@ -105,6 +119,15 @@ pub async fn about(http: &reqwest::Client, data_dir: &Path, game: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_search_result_counts_only_with_the_games_own_title() {
+        assert!(same_game("Crash Bandicoot (jogo eletrônico)", "Crash Bandicoot"));
+        assert!(same_game("Crash Bandicoot", "Crash Bandicoot"));
+        assert!(!same_game("Crash Bandicoot: Warped", "Crash Bandicoot"), "a sequel isn't the game");
+        assert!(same_game("The Legend of Zelda: Majora's Mask", "Majora's Mask"));
+        assert!(!same_game("Crash Bandicoot", ""));
+    }
 
     #[test]
     fn only_articles_about_games_are_kept() {

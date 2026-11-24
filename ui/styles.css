@@ -1345,12 +1345,15 @@ button.emu-chip:hover:not(:disabled) { border-color: var(--accent); }
 .news-sec h2 svg { color: var(--accent); }
 .dl-row .row { margin-left: auto; flex: none; }
 .activity { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; }
-.act { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; }
+.act { display: flex; align-items: center; gap: 14px; padding: 9px 14px; border-radius: 12px; }
 .act + .act { border-top: 1px solid var(--line); }
 .act.clickable { cursor: pointer; }
 .act { position: relative; }
-.act:not(.fresh) { opacity: 0.72; }
-.act.fresh::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--accent); }
+.act-day + .act-day { margin-top: 18px; }
+.news-ok { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+.news-ok svg { color: var(--ok, #3ccf8e); flex: none; }
+.act-day h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px 4px; }
+.news-sec .more { margin-top: 14px; }
 .news-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .news-h h2 { margin: 0; }
 .act.clickable:hover { background: var(--card2); }

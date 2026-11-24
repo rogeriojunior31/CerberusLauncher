@@ -134,10 +134,10 @@ fn parse_projects(text: &str, value: Value) -> Result<(String, Vec<CatalogEntry>
         if own_links || !is_github_repo(&game.repo) || !plain_id(&game.id) || game.name.is_empty() {
             continue;
         }
-        let origin = if game.origin.is_empty() { "pc".to_string() } else { game.origin };
+        let origin = catalog::origin_id(&game.origin);
         list.push(CatalogEntry {
             title: game.id.clone(),
-            console: if game.console.is_empty() { "PC".to_string() } else { game.console },
+            console: catalog::origin_name(&origin, Some(&game.console)),
             game: if game.game.is_empty() { game.name.clone() } else { game.game },
             id: game.id,
             name: game.name,
