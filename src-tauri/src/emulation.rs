@@ -427,32 +427,6 @@ pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
     fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
 }
 
-/// An achievement RetroArch unlocked, from a line of its log:
-/// `[INFO] [RCHEEVOS]: Awarding achievement 1234: Title (description)`.
-pub fn unlocked(line: &str) -> Option<String> {
-    let at = line.find("chievement ")?;
-    let before = line[..at].to_lowercase();
-    if !(before.ends_with("awarding a") || before.ends_with("awarded a")) || before.contains("error") {
-        return None;
-    }
-    let rest = &line[at + "chievement ".len()..];
-    let (id, text) = rest.split_once(':')?;
-    if !id.trim().chars().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    // RetroAchievements "awards" its own warnings (101000001 "Warning: Unsupported
-    // Core", and the others from that number up): not the game's achievements.
-    if id.trim().parse::<u64>().is_ok_and(|n| n >= 101_000_000) || text.trim_start().starts_with("Warning:") {
-        return None;
-    }
-    let text = text.trim();
-    let title = match text.rfind(" (") {
-        Some(i) if text.ends_with(')') => &text[..i],
-        _ => text,
-    };
-    (!title.is_empty()).then(|| title.to_string())
-}
-
 /// Time played and when, per classic (by its file), kept in `classics.json`.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Played {
@@ -518,19 +492,7 @@ mod tests {
         assert!(import_bios(&exe, &empty).is_err());
     }
 
-    #[test]
-    fn achievements_are_read_from_the_log() {
-        assert_eq!(unlocked("[INFO] [RCHEEVOS]: Awarding achievement 12345: First Blood (Win a race)").as_deref(), Some("First Blood"));
-        assert_eq!(unlocked("[RCHEEVOS] Awarded achievement 9: Speedy").as_deref(), Some("Speedy"));
-        assert_eq!(unlocked("[INFO] [RCHEEVOS]: Achievement 12 primed"), None);
-        assert_eq!(unlocked("[INFO] Loading achievement list"), None);
-        // A failed award isn't an unlock.
-        assert_eq!(unlocked("[RCHEEVOS]: Error awarding achievement 12: Speedy, retrying in 5 seconds"), None);
-        // Seen in a real session: RetroAchievements' own warning, not an achievement.
-        assert_eq!(unlocked("[INFO] [RCHEEVOS] Awarding achievement 101000001: Warning: Unsupported Core"), None);
-    }
-
-    #[test]
+        #[test]
     fn play_time_adds_up_per_classic_and_survives_a_restart() {
         let dir = tempfile::tempdir().unwrap();
         add_played(dir.path(), "D:/a.z64", 60, 10).unwrap();

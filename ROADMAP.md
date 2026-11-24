@@ -475,6 +475,11 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 ### 5.4 Durante o jogo e integração (prioridade 4)
 
+- [x] Conquistas dos emuladores só no Cerberus: RetroArch, DuckStation e PCSX2 entram na conta com o token,
+  os avisos deles ficam desligados durante a partida (e voltam depois) e o Cerberus lê o log e mostra o próprio aviso.
+- [ ] O mesmo para PPSSPP e Dolphin (confirmar os nomes das opções de aviso no código de cada um).
+- [ ] Troféus do RPCS3 (PS3) no hub de conquistas.
+
 - [x] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
 - [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
 - [x] Menu da bandeja com os jogos recentes.

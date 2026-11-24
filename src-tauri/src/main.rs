@@ -30,6 +30,7 @@ mod disc_image;
 mod screenshots;
 mod monitors;
 mod net;
+mod cheevos;
 mod collections;
 mod notify;
 mod crash;
@@ -580,43 +581,49 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     let exe = retroarch.ok_or(tr!("Instale o RetroArch, ou um emulador para esse console, em Configurações › Emulação para jogar os clássicos."))?;
     let log = data.join("emulators").join("retroarch-session.log");
     connect_retroarch(&data, &exe);
+    let mut session = cheevos::prepare(&data, "retroarch", &exe, None, Some(&log));
+    session.from = 0;
     let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| emulation::launch(&exe, &opened, &console, Some(&log)));
     let id = format!("classic:{path}");
     trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no RetroArch").to_string()).map_err(Clone::clone));
-    let mut child = result?;
+    let child = match result {
+        Ok(child) => child,
+        Err(e) => {
+            cheevos::finish(&data, &session);
+            return Err(e);
+        }
+    };
+    watch_classic(app, path, child, session);
+    Ok(())
+}
+
+/// While a classic runs: its achievements, from the emulator's log, shown by
+/// Cerberus alone. When it closes: the time played is kept and the emulator's
+/// settings go back to what the player had.
+fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, session: cheevos::Session) {
+    let data = app.state::<DataDir>().0.clone();
+    let id = format!("classic:{path}");
     let started = std::time::Instant::now();
     background::classic_started();
-    // While it runs: achievements from RetroArch's log appear at once. When it
-    // closes: the time played is kept.
     std::thread::spawn(move || {
-        let mut read = 0usize;
+        let mut at = session.from;
         loop {
             let done = child.try_wait().ok().flatten().is_some();
-            if let Ok(text) = fs::read_to_string(&log) {
-                if text.len() > read {
-                    for line in text[read..].lines() {
-                        if let Some(title) = emulation::unlocked(line) {
-                            trail::note(&app, &id, tk!("Conquista"), &Ok(title.clone()));
-                            unlock_toast::show(
-                                &app,
-                                cerberus_shared::UnlockNotice {
-                                    title: tr!("Conquista desbloqueada").to_string(),
-                                    name: title.clone(),
-                                    description: String::new(),
-                                    icon: None,
-                                    kind: cerberus_shared::UnlockKind::Normal,
-                                },
-                            );
-                        }
-                    }
-                    read = text.len();
+            if let (Some(log), Some(format)) = (&session.log, session.format) {
+                let (lines, next) = cheevos::read_new(log, at);
+                at = next;
+                for unlock in lines.iter().filter_map(|l| cheevos::parse(format, l)) {
+                    trail::note(&app, &id, tk!("Conquista"), &Ok(unlock.title.clone()));
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move { announce(&app, unlock).await });
                 }
             }
             if done {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(700));
+            std::thread::sleep(Duration::from_millis(500));
         }
+        cheevos::finish(&data, &session);
         let seconds = started.elapsed().as_secs();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
         let saved = emulation::add_played(&data, &path, seconds, now);
@@ -625,7 +632,54 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         let _ = app.emit("catalog-changed", ());
         background::classic_ended(&app);
     });
-    Ok(())
+}
+
+/// Cerberus's notice for an achievement unlocked in an emulator: with its
+/// picture and description from the game's list on RetroAchievements when
+/// they come quickly, with just its name otherwise.
+async fn announce(app: &AppHandle, unlock: cheevos::Unlock) {
+    let http = app.state::<reqwest::Client>().inner().clone();
+    let data = app.state::<DataDir>().0.clone();
+    let account = retro_account(app);
+    let details = async {
+        let (user, key) = account.clone()?;
+        let game = match unlock.game {
+            Some(g) => g,
+            // RetroArch's log doesn't say the game: RetroAchievements does.
+            None => {
+                let v = retroachievements::get(&http, "API_GetAchievementUnlocks.php", &user, &key, &format!("&a={}&c=1", unlock.id)).await.ok()?;
+                v.pointer("/Game/ID").and_then(|g| g.as_u64().or_else(|| g.as_str()?.parse().ok()))?
+            }
+        };
+        let list = achievements::game(&http, &data, cerberus_shared::AchievementSource::Retro, &game.to_string(), Some((user, key)), None).await.ok()?;
+        let all_done = list.achievements.iter().all(|a| a.unlocked_at.is_some() || a.id == unlock.id.to_string());
+        let found = list.achievements.into_iter().find(|a| a.id == unlock.id.to_string())?;
+        Some((found, all_done))
+    };
+    let details = tokio::time::timeout(Duration::from_secs(4), details).await.ok().flatten();
+    let notice = match details {
+        Some((a, all_done)) => cerberus_shared::UnlockNotice {
+            title: if all_done { tr!("Jogo completo!").to_string() } else { tr!("Conquista desbloqueada").to_string() },
+            name: a.name,
+            description: a.description,
+            icon: a.icon,
+            kind: if all_done {
+                cerberus_shared::UnlockKind::Complete
+            } else if a.rarity.is_some_and(|r| r < 10.0) {
+                cerberus_shared::UnlockKind::Rare
+            } else {
+                cerberus_shared::UnlockKind::Normal
+            },
+        },
+        None => cerberus_shared::UnlockNotice {
+            title: tr!("Conquista desbloqueada").to_string(),
+            name: unlock.title,
+            description: String::new(),
+            icon: None,
+            kind: cerberus_shared::UnlockKind::Normal,
+        },
+    };
+    unlock_toast::show(app, notice);
 }
 
 /// The standalone emulator that opens a console's games, when it's not RetroArch:
@@ -640,25 +694,23 @@ fn standalone_for(data: &Path, chosen: &settings::Settings, console: &str, have_
     }
 }
 
-/// Plays a classic in a standalone emulator and counts the time, as with RetroArch.
+/// Plays a classic in a standalone emulator, with achievements and play time as with RetroArch.
 fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'static standalone::Emulator, exe: &Path) -> Result<(), String> {
     let data = app.state::<DataDir>().0.clone();
+    let chosen = settings::load(&data);
+    let account = chosen.ra_user.as_deref().zip(chosen.ra_token.as_deref()).map(|(user, token)| cheevos::Account { user, token });
+    let session = cheevos::prepare(&data, emulator.id, exe, account, None);
     let id = format!("classic:{path}");
     let result = standalone::launch(exe, emulator, &rom);
     trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no {}", emulator.name)).map_err(Clone::clone));
-    let mut child = result?;
-    let started = std::time::Instant::now();
-    background::classic_started();
-    std::thread::spawn(move || {
-        let _ = child.wait();
-        let seconds = started.elapsed().as_secs();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
-        let saved = emulation::add_played(&data, &path, seconds, now);
-        play_log::record(&data, &id, seconds, now);
-        trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { format!("{} min jogados", seconds / 60) }));
-        let _ = app.emit("catalog-changed", ());
-        background::classic_ended(&app);
-    });
+    let child = match result {
+        Ok(child) => child,
+        Err(e) => {
+            cheevos::finish(&data, &session);
+            return Err(e);
+        }
+    };
+    watch_classic(app, path, child, session);
     Ok(())
 }
 
@@ -2601,6 +2653,7 @@ fn main() {
             // Filters left beside a game by a crash or a forced close go now.
             looks::take_back_all(&data_dir);
             app.manage(trail::Trail::new(&data_dir));
+            cheevos::restore_pending(&data_dir);
             app.manage(unlock_toast::Queue::default());
             app.manage(self_update::Found::default());
             let folders = recomp::Folders::new(&data_dir, chosen.recomps_dir.clone());
