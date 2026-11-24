@@ -1968,3 +1968,6 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .set-row small.ref-only { color: var(--ink); }
 .sv-ver { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--dim); }
 .lang-note { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--dim); text-transform: none; letter-spacing: 0; }
+.chip-btn.hidden { display: none; }
+.hydra-lists.hidden { display: none; }
+.hydra-lists { padding-left: 16px; }

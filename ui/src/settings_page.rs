@@ -1744,9 +1744,13 @@ fn Sources(
         let value = url.get_untracked();
         if !busy.get_untracked() && !value.trim().is_empty() { apply_source(value, true); }
     };
-    let rows = sources
-        .into_iter()
-        .map(|source| {
+    // Hydra lists are reference only: one folded group under the project sources, said once.
+    let (hydra, projects): (Vec<SourceView>, Vec<SourceView>) = sources.into_iter().partition(|s| s.hydra);
+    let hydra_total: usize = hydra.iter().map(|s| s.games).sum();
+    let hydra_count = hydra.len();
+    let unfolded = RwSignal::new(false);
+    let row = move |source: SourceView| {
+        {
             let target = StoredValue::new(source.url.clone());
             let opened = RwSignal::new(false);
             let count = if source.hydra { tr!("Hydra · {} publicações", source.games) }
@@ -1761,9 +1765,6 @@ fn Sources(
                             <small>{count}</small>
                             {source.synced_at.map(|t| view! { <small>{tr!("Última sincronização em {}", format::date_time(t))}</small> })}
                             {source.error.map(|e| view! { <small role="status">{e}</small> })}
-                            {source.hydra.then(|| view! {
-                                <small class="ref-only">{tr!("Só consulta: estes títulos não aparecem no Descobrir nem na Biblioteca, e o Cerberus não baixa nada deles.")}</small>
-                            })}
                         </div>
                         <div class="row">
                             {source.hydra.then(|| view! {
@@ -1781,8 +1782,25 @@ fn Sources(
                     {move || opened.get().then(|| view! { <HydraListings url=target.get_value() /> })}
                 </div>
             }
-        })
-        .collect_view();
+        }
+    };
+    let rows = projects.into_iter().map(row).collect_view();
+    let hydra_rows = hydra.into_iter().map(row).collect_view();
+    let hydra_group = (hydra_count > 0).then(|| view! {
+        <div class="set-row sub hydra-group">
+            <div>
+                <b>{if hydra_count == 1 { tr!("1 lista do Hydra").to_string() } else { tr!("{} listas do Hydra", hydra_count) }}</b>
+                <small>{tr!("{} publicações, só para consulta: não aparecem no Descobrir nem na Biblioteca, e o Cerberus não baixa nada delas.", format::count(hydra_total as u64))}</small>
+            </div>
+            <div class="row">
+                <button type="button" class="btn sm" aria-expanded=move || unfolded.get().to_string()
+                    on:click=move |_| unfolded.update(|v| *v = !*v)>
+                    {move || if unfolded.get() { tr!("Recolher") } else { tr!("Mostrar listas") }}
+                </button>
+            </div>
+        </div>
+        <div class="hydra-lists" class:hidden=move || !unfolded.get()>{hydra_rows}</div>
+    });
     view! {
         <section class="card set">
             <h3>{tr!("Fontes de catálogo")}</h3>
@@ -1797,6 +1815,7 @@ fn Sources(
                 </div>
             </form>
             {rows}
+            {hydra_group}
         </section>
     }
 }

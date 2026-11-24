@@ -362,6 +362,11 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool)
                     </button>
                     {move || more_open.get().then(|| {
                         let (copy, console) = (copy.clone(), console.clone());
+                        let players = library.players.get_untracked().unwrap_or_default();
+                        let how = match crate::classics::ready_player(&players, &console) {
+                            Some(emulator) => tr!("A sua cópia do jogo, no {}", emulator),
+                            None => tr!("A sua cópia do jogo, no emulador").to_string(),
+                        };
                         view! {
                             <div class="vm-scrim" on:click=move |_| more_open.set(false)></div>
                             <div class="split-menu" role="menu" on:keydown=move |e| if e.key() == "Escape" { more_open.set(false) }>
@@ -370,7 +375,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool)
                                     crate::classics::play_original(library, copy.clone(), console.clone());
                                 }>
                                     <Svg icon=Icon::Gamepad size=18 />
-                                    <span><b>{tr!("Jogar o original")}</b><small>{tr!("A sua cópia do jogo, no emulador")}</small></span>
+                                    <span><b>{tr!("Jogar o original")}</b><small>{how}</small></span>
                                 </button>
                             </div>
                         }

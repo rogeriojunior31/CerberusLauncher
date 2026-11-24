@@ -113,6 +113,27 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry]) -
     crate::tiles::classic_tile(display_name(rom), classic_sub(rom, console, players), box_art(rom, console), rom.path.clone(), badge)
 }
 
+/// The classic is a version of an installed recomp (the recomp was given this
+/// very file, or found it): it is that game, played from its page ("Jogar o
+/// original"), not a second entry next to it.
+pub fn merged(rom: &RomView, games: &[cerberus_shared::Game], recomps: &[RecompEntry]) -> bool {
+    games.iter().any(|g| match &g.source {
+        cerberus_shared::Source::Recomp { recomp_id, .. } => {
+            g.game_copy.as_deref() == Some(rom.path.as_str())
+                || recomps.iter().any(|e| e.id == *recomp_id && e.owned_copy.as_deref() == Some(rom.path.as_str()))
+        }
+        _ => false,
+    })
+}
+
+/// The player's classics that stand on their own: every ROM but those an
+/// installed recomp already plays.
+pub fn standalone(library: Library) -> Vec<RomView> {
+    let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+    let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+    library.roms.get().unwrap_or_default().into_iter().filter(|r| !merged(r, &games, &recomps)).collect()
+}
+
 /// The classics whose name has the words searched, A to Z.
 pub fn matching(roms: Vec<RomView>, needle: &str) -> Vec<RomView> {
     let mut list: Vec<RomView> = roms.into_iter().filter(|r| needle.is_empty() || {

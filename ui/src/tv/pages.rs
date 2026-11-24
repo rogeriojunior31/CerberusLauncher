@@ -170,7 +170,7 @@ pub fn Home() -> impl IntoView {
 
     library.roms.refetch();
     let shelves = Memo::new(move |_| {
-        let classic_items = classics(&library.roms.get().unwrap_or_default(), &library.players.get().unwrap_or_default());
+        let classic_items = classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default());
         let mut games = library_games(library);
         games.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         let dock: Vec<Item> = games.iter().take(12).cloned().map(Item::Game).collect();
@@ -368,7 +368,7 @@ pub fn LibraryGrid() -> impl IntoView {
             .collect();
         // Todos is every game, as on the desktop; Clássicos is only them.
         if matches!(which, 0 | 3) {
-            list.extend(classics(&library.roms.get().unwrap_or_default(), &library.players.get().unwrap_or_default()));
+            list.extend(classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default()));
         }
         let stats = |i: &Item| match i {
             Item::Game(g) => (g.last_played, g.playtime_secs),

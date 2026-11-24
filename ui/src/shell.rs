@@ -100,10 +100,7 @@ fn SideGames() -> impl IntoView {
     // The classics an emulator here opens, played lately first.
     let classics = Memo::new(move |_| {
         let players = library.players.get().unwrap_or_default();
-        let mut list: Vec<(cerberus_shared::RomView, &'static str, String)> = library
-            .roms
-            .get()
-            .unwrap_or_default()
+        let mut list: Vec<(cerberus_shared::RomView, &'static str, String)> = crate::classics::standalone(library)
             .into_iter()
             .filter_map(|r| {
                 let console = crate::classics::console_of(&r);

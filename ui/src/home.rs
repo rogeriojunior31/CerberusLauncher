@@ -139,7 +139,7 @@ pub fn Home() -> impl IntoView {
             .collect();
         let players = library.players.get().unwrap_or_default();
         recent.extend(
-            library.roms.get().unwrap_or_default().iter()
+            crate::classics::standalone(library).iter()
                 .filter(|r| r.last_played.is_some())
                 .map(|r| (r.last_played, crate::classics::tile(r, &players, &recomps))),
         );
