@@ -34,7 +34,7 @@ struct Feature {
     steam_app: Option<u32>,
 }
 
-fn game_feature(game: &Game) -> Feature {
+fn game_feature(game: &Game, recomps: &[RecompEntry]) -> Feature {
     let mut facts = Vec::new();
     if let Some(last) = game.last_played {
         facts.push(tr!("Jogado {}", crate::format::ago(last)));
@@ -55,10 +55,15 @@ fn game_feature(game: &Game) -> Feature {
     let logo = game.logo_path.as_deref().map(crate::art::src).or_else(|| {
         steam_app.map(|id| format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png"))
     });
+    let entry = match &game.source {
+        Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id),
+        _ => None,
+    };
+    let (title, version) = crate::tiles::names_of(&game.name, entry);
     Feature {
         kicker: tr!("Continue jogando").to_string(),
-        title: game.name.clone(),
-        based: source_name(&game.source).to_string(),
+        title,
+        based: version.unwrap_or_else(|| source_name(&game.source).to_string()),
         facts,
         logo,
         steam_app,
@@ -72,10 +77,11 @@ fn game_feature(game: &Game) -> Feature {
 }
 
 fn recomp_feature(entry: &RecompEntry) -> Feature {
+    let (title, version) = crate::tiles::entry_names(entry);
     Feature {
         kicker: tr!("Recomp · {}", entry.console),
-        title: entry.name.clone(),
-        based: tr!("Baseado em {}", entry.game),
+        title,
+        based: version.unwrap_or_default(),
         facts: Vec::new(),
         logo: entry.logo.as_deref().map(crate::art::src),
         steam_app: None,
@@ -93,7 +99,7 @@ fn features(games: &[Game], recomps: &[RecompEntry]) -> Vec<Feature> {
     let mut played: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some()).collect();
     played.sort_by_key(|g| std::cmp::Reverse(g.last_played));
     let with_art = played.into_iter().filter(|g| !hero_sources(g).is_empty());
-    let mut list: Vec<Feature> = with_art.take(2).map(game_feature).collect();
+    let mut list: Vec<Feature> = with_art.take(2).map(|g| game_feature(g, recomps)).collect();
     // Then the most played recomps you don't have yet, games you own first.
     let mut games_once: Vec<RecompEntry> = one_each(recomps).into_iter().map(|(r, _)| r).collect();
     games_once.retain(|r| r.installed.is_none() && r.hero.is_some() && r.problem.is_none());

@@ -161,7 +161,8 @@ fn by_game_saved() -> bool {
     web_sys::window()
         .and_then(|w| w.local_storage().ok().flatten())
         .and_then(|s| s.get_item(BY_GAME_KEY).ok().flatten())
-        .is_some_and(|v| v == "1")
+        // By game unless the player chose recomps: players look for the game they know.
+        .is_none_or(|v| v != "0")
 }
 
 fn save_by_game(on: bool) {
@@ -337,8 +338,8 @@ pub fn DiscoverPage() -> impl IntoView {
             .take(shown.get())
             .map(|(entry, versions)| {
                 let mut info = recomp_tile(&entry);
-                if by_game.get() && !entry.game.is_empty() {
-                    info.title = entry.game.clone();
+                if !by_game.get() {
+                    info.title = entry.name.clone();
                 }
                 info.sub = match (&entry.latest, &entry.problem) {
                     _ if by_game.get() => format!("{} · {}", entry.console, if versions > 1 { format!("{versions} recomps") } else { entry.name.clone() }),

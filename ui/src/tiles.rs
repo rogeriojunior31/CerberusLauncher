@@ -56,12 +56,42 @@ fn has_update(game: &Game, library: Library) -> bool {
     })
 }
 
+/// A recomp's game and version: the original game's name players know
+/// ("Mario Kart 64"), and the recomp's own ("SpaghettiKart") when it differs.
+pub fn names_of(name: &str, entry: Option<&RecompEntry>) -> (String, Option<String>) {
+    let Some(entry) = entry.filter(|e| !e.game.trim().is_empty()) else { return (name.to_string(), None) };
+    let game = entry.game.trim().to_string();
+    let version = (!name.trim().eq_ignore_ascii_case(&game)).then(|| name.to_string());
+    (game, version)
+}
+
+/// The names a library game shows: the original game's first, the recomp after.
+pub fn game_names(game: &Game, library: Library) -> (String, Option<String>) {
+    let Source::Recomp { recomp_id, .. } = &game.source else { return (game.name.clone(), None) };
+    // Tracked: lists drawn before the catalog arrives show the game's name once it does.
+    library.recomps.with(|r| {
+        let entry = r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == *recomp_id));
+        names_of(&game.name, entry)
+    })
+}
+
+/// A recomp of the catalog: its game first, the recomp after.
+pub fn entry_names(entry: &RecompEntry) -> (String, Option<String>) {
+    names_of(&entry.name, Some(entry))
+}
+
 pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     let running = library.running.with_untracked(|all| all.contains(&game.id));
     let sub = match game.last_played {
         _ if running => tr!("Jogando agora").to_string(),
         Some(when) => tr!("Jogado {}", format::ago(when)),
         None => source_name(&game.source).to_string(),
+    };
+    // A recomp shows its game's name; which recomp it is comes first on the line under it.
+    let (title, version) = game_names(game, library);
+    let sub = match version {
+        Some(v) => format!("{v} · {sub}"),
+        None => sub,
     };
     let badge = if running {
         Some(tr!("Jogando").to_string())
@@ -73,7 +103,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         None
     };
     TileInfo {
-        title: game.name.clone(),
+        title,
         sub,
         covers: cover_sources(game),
         badge,
@@ -98,9 +128,10 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
     } else {
         None
     };
+    let (title, version) = entry_names(entry);
     TileInfo {
-        title: entry.name.clone(),
-        sub: entry.console.clone(),
+        title,
+        sub: version.map_or_else(|| entry.console.clone(), |v| format!("{v} · {}", entry.console)),
         covers: recomp_covers(entry),
         badge,
         favorite: false,
@@ -109,6 +140,27 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         recomp_id: Some(entry.id.clone()),
         absent: false,
         progress: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, game: &str) -> RecompEntry {
+        serde_json::from_value(serde_json::json!({
+            "id": "x", "title": game, "name": name, "game": game, "console": "Nintendo 64", "origin": "n64",
+            "stars": 0, "recommended": false, "installed": null, "icon": null, "cover": null, "hero": null, "adds": "", "needs": "", "tags": [], "features": [], "setup_steps": [], "why": "", "released": "", "added": "", "owned_copy": null, "handoff": null, "accepts_folder": false, "latest": null, "problem": null, "author": "", "repo": "", "about": "", "downloads": 0
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_recomp_is_shown_by_its_game_with_the_recomp_after() {
+        assert_eq!(names_of("SpaghettiKart", Some(&entry("SpaghettiKart", "Mario Kart 64"))), ("Mario Kart 64".into(), Some("SpaghettiKart".into())));
+        assert_eq!(names_of("StepMania", Some(&entry("StepMania", "StepMania"))), ("StepMania".into(), None), "a PC port named like its game");
+        assert_eq!(names_of("My Port", Some(&entry("My Port", " "))), ("My Port".into(), None), "no game in the catalog: its own name");
+        assert_eq!(names_of("Hollow Knight", None), ("Hollow Knight".into(), None));
     }
 }
 

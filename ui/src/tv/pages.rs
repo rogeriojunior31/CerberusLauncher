@@ -30,8 +30,8 @@ impl Item {
     }
     pub fn name(&self) -> String {
         match self {
-            Item::Game(g) => g.name.clone(),
-            Item::Entry(e) => e.name.clone(),
+            Item::Game(g) => crate::tiles::game_names(g, expect_context::<Library>()).0,
+            Item::Entry(e) => crate::tiles::entry_names(e).0,
             Item::Classic(r, _) => crate::classics::display_name(r),
         }
     }

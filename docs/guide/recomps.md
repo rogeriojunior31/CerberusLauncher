@@ -57,7 +57,11 @@ Before updating, Cerberus backs up your saves. It then prepares the new version 
 
 ## Versions of the same game
 
-Some games have several recomps or ports, like Majora's Mask with Zelda 64: Recompiled and 2 Ship 2 Harkinian. The game page shows **N versions**, where one of them is marked **Recommended**.
+Cerberus shows a recomp by **the game it brings**: covers, the side menu, Home, Discover and the game page say "Mario Kart 64", with the recomp ("SpaghettiKart") on the line under it. Searching finds either name, and **A to Z** puts it under the game's letter. Discover can still list by recomp with **Recomps** at the top.
+
+Some games have several recomps or ports, like Majora's Mask with Zelda 64: Recompiled and 2 Ship 2 Harkinian. On the game page, the line under the title says which version you're on ("SpaghettiKart · Nintendo 64 · by HarbourMasters"); with more than one, it opens the others: the one you have first, then the **Recommended** one, then the most downloaded, each with what it adds, its version, size and downloads (two with the same name also show their project). Arrow keys move, Enter picks, Escape closes. Picking one changes only what belongs to the version (buttons, details, what it adds); the game's art stays, and **Install** says which version it installs.
+
+The Overview starts with the game (its Wikipedia and IGDB facts), then **This version** (what it adds, its features, how to start), then what it needs. If the recomp has the original game's copy, **Play ▾** also offers **Play the original** in the emulator.
 
 ## Recomps you already have
 

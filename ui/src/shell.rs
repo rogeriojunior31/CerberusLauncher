@@ -94,7 +94,7 @@ fn SideGames() -> impl IntoView {
             .into_iter()
             .filter(|g| !g.hidden && matches!(g.next_step, cerberus_shared::NextStep::Play | cerberus_shared::NextStep::RunInstaller))
             .collect();
-        list.sort_by_key(|g| (!g.favorite, std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
+        list.sort_by_cached_key(|g| (!g.favorite, std::cmp::Reverse(g.last_played), crate::tiles::game_names(g, library).0.to_lowercase()));
         list
     });
     // The tray icon's menu offers the games played most recently.
@@ -111,7 +111,14 @@ fn SideGames() -> impl IntoView {
     });
     let shown = move || {
         let q = query.get().to_lowercase();
-        ready.get().into_iter().filter(|g| q.is_empty() || g.name.to_lowercase().contains(&q)).collect::<Vec<_>>()
+        ready
+            .get()
+            .into_iter()
+            .filter(|g| {
+                let (name, version) = crate::tiles::game_names(g, library);
+                q.is_empty() || format!("{name} {}", version.unwrap_or_default()).to_lowercase().contains(&q)
+            })
+            .collect::<Vec<_>>()
     };
     let rows = move || {
         shown()
@@ -123,11 +130,13 @@ fn SideGames() -> impl IntoView {
                 let gid = g.id.clone();
                 let running = move || library.running.with(|r| r.contains(&gid));
                 let game = StoredValue::new(g.clone());
+                let (name, version) = crate::tiles::game_names(&g, library);
+                let tip = version.as_ref().map_or_else(|| name.clone(), |v| format!("{name} · {v}"));
                 view! {
                     <div class="sg-item" class:on=on>
-                        <button type="button" class="sg-open" title=g.name.clone() on:click=move |_| library.go(route.clone())>
-                            <span class="fav-thumb"><crate::art::Poster sources=crate::art::cover_sources(&g) title=g.name.clone() /></span>
-                            <span class="sg-name">{g.name.clone()}</span>
+                        <button type="button" class="sg-open" title=tip on:click=move |_| library.go(route.clone())>
+                            <span class="fav-thumb"><crate::art::Poster sources=crate::art::cover_sources(&g) title=name.clone() /></span>
+                            <span class="sg-name">{name}</span>
                             {g.favorite.then(|| view! { <span class="sg-fav"><Svg icon=Icon::HeartFill size=11 /></span> })}
                             <Show when=running><i class="sg-live" title=tr!("Jogando agora")></i></Show>
                         </button>

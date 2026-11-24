@@ -402,7 +402,11 @@ pub fn LibraryPage() -> impl IntoView {
                 && source.keeps(g)
                 && is_absent(g) == away
                 && only.is_none_or(|s| g.status == Some(s))
-                && (needle.is_empty() || g.name.to_lowercase().contains(&needle))
+                && (needle.is_empty() || {
+                    // Both names find it: the game's and the recomp's.
+                    let (name, version) = crate::tiles::game_names(g, library);
+                    format!("{name} {}", version.unwrap_or_default()).to_lowercase().contains(&needle)
+                })
         });
         if games.is_empty() && kind == Category::Hidden && needle.is_empty() {
             return view! {
@@ -443,7 +447,8 @@ pub fn LibraryPage() -> impl IntoView {
         let progress = progress_of();
         // list_games already returns alphabetical order, including ties below.
         match sort.get() {
-            Sort::Name => {}
+            // A to Z by the name shown: a recomp sits under its game's letter.
+            Sort::Name => games.sort_by_cached_key(|g| crate::tiles::game_names(g, library).0.to_lowercase()),
             Sort::Recent => games.sort_by_key(|g| std::cmp::Reverse(g.last_played)),
             Sort::Playtime => games.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
             Sort::Rating => games.sort_by_key(|g| std::cmp::Reverse(g.rating)),
