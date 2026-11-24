@@ -1052,6 +1052,9 @@ pub struct RecompEntry {
     /// This PC is older than that: why. The game still starts.
     #[serde(default)]
     pub system_problem: Option<String>,
+    /// The games a release carries, by name, when it carries more than one.
+    #[serde(default)]
+    pub parts: Vec<String>,
     /// What the player should know before the first start, from the catalog (in English).
     #[serde(default)]
     pub player_note: String,

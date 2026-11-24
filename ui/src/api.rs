@@ -936,6 +936,14 @@ pub async fn open_prepare_license(id: &str, option: &str) -> Result<(), String> 
     call("open_prepare_license", &OptionArgs { id, option, on: true }).await
 }
 
+pub async fn preparation_pending(id: &str) -> Result<bool, String> {
+    call("preparation_pending", &Id { id }).await
+}
+
+pub async fn prepare_game(id: &str) -> Result<bool, String> {
+    call("prepare_game", &Id { id }).await
+}
+
 pub async fn game_actions(id: &str) -> Result<Vec<cerberus_shared::GameAction>, String> {
     call("game_actions", &Id { id }).await
 }

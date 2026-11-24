@@ -2235,6 +2235,20 @@ fn open_prepare_license(app: AppHandle, library: State<'_, LocalLibrary>, id: St
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// The game's setup step hasn't run yet (or must run again).
+#[tauri::command]
+fn preparation_pending(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<bool, String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    Ok(!app.state::<sessions::Sessions>().is_running(&id) && recomp::needs_preparation(&game))
+}
+
+/// Runs the setup step now, without starting the game after.
+#[tauri::command]
+fn prepare_game(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<bool, String> {
+    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    sessions::prepare_now(&app, &game)
+}
+
 /// The buttons the game's developer adds under its settings.
 #[tauri::command]
 fn game_actions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::GameAction>, String> {
@@ -2993,6 +3007,8 @@ fn main() {
             set_prepare_option,
             open_prepare_license,
             game_actions,
+            preparation_pending,
+            prepare_game,
             run_game_action,
             set_launch_args,
             tracking_mode,

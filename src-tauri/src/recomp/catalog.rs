@@ -152,6 +152,12 @@ pub fn with_manifest(mut entry: CatalogEntry, manifest: Option<Arc<super::manife
     if !manifest.saves.is_empty() {
         entry.saves = manifest.saves.clone();
     }
+    // A release's backup keeps every one of its games' own saves too.
+    for place in manifest.games.iter().flat_map(|g| &g.saves) {
+        if !entry.saves.contains(place) {
+            entry.saves.push(place.clone());
+        }
+    }
     entry.manifest = Some(manifest);
     entry
 }

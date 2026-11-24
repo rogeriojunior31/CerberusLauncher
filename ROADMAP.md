@@ -466,8 +466,10 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 - [ ] **Recomps com vários jogos** numa instalação só, cada um com a própria capa, tempo, conquistas e atalhos.
 - [x] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
       ajustes, requisitos do sistema, preparação, dumps, ações, mods, filtros e códigos de saída.
-- [ ] `recomplauncher.json`: vários jogos numa release (`games`), e as chaves compartilhadas e o DLSS que o launcher
-      baixaria sozinho.
+- [x] `recomplauncher.json`: vários jogos numa release (`games`, com os saves de cada um no backup), chaves
+      compartilhadas, modo Big Picture e controle, `lines` do filtro CRT e "Preparar agora" no cartão do jogo.
+- [ ] `recomplauncher.json`: o DLSS que o launcher baixaria sozinho (precisa de aprovação), conquistas pelo
+      `title_id` (o Cerberus ainda não lê Recomp Achievements).
 - [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
 - [x] Achar jogos nas pastas que os emuladores já conhecem (Dolphin, PCSX2, DuckStation, PPSSPP, RPCS3, Cemu), só lendo, e instalar esses emuladores das páginas oficiais. Ryujinx ficou de fora: o projeto foi encerrado.
 - [x] Reconhecer o console de cada imagem de disco pelo próprio disco (PS1, PS2, PSP, GameCube, Wii, Xbox, Xbox 360) ou pelo nome da pasta.

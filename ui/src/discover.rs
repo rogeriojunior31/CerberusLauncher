@@ -175,7 +175,7 @@ fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
     }
-    let haystack = format!("{} {} {}", entry.name, entry.game, entry.author).to_lowercase();
+    let haystack = format!("{} {} {} {}", entry.name, entry.game, entry.author, entry.parts.join(" ")).to_lowercase();
     needle.split_whitespace().all(|word| haystack.contains(word))
 }
 

@@ -183,7 +183,7 @@ pub struct Prepared {
 }
 
 /// ReShade's settings for one game: where our shaders are and which look is on.
-fn write_settings(data: &Path, base: &Path, look: &Look, technique: &str) -> Result<(), String> {
+fn write_settings(data: &Path, base: &Path, look: &Look, technique: &str, lines: Option<u32>) -> Result<(), String> {
     let shaders = reshade_dir(data).join("shaders");
     fs::create_dir_all(&shaders).map_err(|e| e.to_string())?;
     let shader = shaders.join(SHADER_FILE);
@@ -195,7 +195,8 @@ fn write_settings(data: &Path, base: &Path, look: &Look, technique: &str) -> Res
     let path = |p: &Path| p.display().to_string().replace(',', ",,");
     let preset = base.join("Cerberus.ini");
     let strength = f32::from(look.strength.min(100)) / 100.0;
-    fs::write(&preset, format!("Techniques={technique}@{SHADER_FILE}\nTechniqueSorting={technique}@{SHADER_FILE}\n\n[{SHADER_FILE}]\nStrength={strength:.2}\n"))
+    let lines = lines.filter(|n| (1..=1200).contains(n)).unwrap_or(0);
+    fs::write(&preset, format!("Techniques={technique}@{SHADER_FILE}\nTechniqueSorting={technique}@{SHADER_FILE}\n\n[{SHADER_FILE}]\nStrength={strength:.2}\nLines={lines}\n"))
         .map_err(|e| e.to_string())?;
     let ini = format!(
         "[GENERAL]\nEffectSearchPaths={}\nTextureSearchPaths={}\nPresetPath={}\nIntermediateCachePath={}\nNoReloadOnInit=0\n\n[OVERLAY]\nTutorialProgress=4\n\n[INPUT]\nKeyScreenshot=0,0,0,0\n",
@@ -212,8 +213,9 @@ fn note_file(data: &Path, game_id: &str) -> PathBuf {
 }
 
 /// Gets a game start ready for its look: ReShade beside the program, unless a
-/// `dxgi.dll` that isn't ours is there already.
-pub fn prepare(data: &Path, game_id: &str, exe: &Path, look: &Look) -> Result<Prepared, String> {
+/// `dxgi.dll` that isn't ours is there already. `lines`: the game's own line
+/// count for the CRT look, when its developer gives one.
+pub fn prepare(data: &Path, game_id: &str, exe: &Path, look: &Look, lines: Option<u32>) -> Result<Prepared, String> {
     let technique = technique(&look.id).ok_or(tr!("Esse filtro não existe mais."))?;
     let Route::Dxgi { x64 } = route(exe) else {
         return Err(tr!("Esse jogo não aceita filtros.").into());
@@ -221,7 +223,7 @@ pub fn prepare(data: &Path, game_id: &str, exe: &Path, look: &Look) -> Result<Pr
     let dll = fs::read(reshade_dir(data).join(if x64 { "ReShade64.dll" } else { "ReShade32.dll" }))
         .map_err(|_| tr!("O ReShade ainda não foi baixado. Escolha o filtro de novo na aba Ajustes.").to_string())?;
     let base = game_dir(data, game_id);
-    write_settings(data, &base, look, technique)?;
+    write_settings(data, &base, look, technique, lines)?;
     let target = exe.parent().ok_or(tr!("O jogo não está numa pasta."))?.join(PROXY);
     let note = note_file(data, game_id);
     if target.exists() && !placed_by_us(&note, &target) {
@@ -313,18 +315,18 @@ mod tests {
         let exe = program(&game, b"d3d11.dll");
         let look = Look { id: "crt".into(), strength: 60 };
 
-        let run = prepare(&data, "recomp:x", &exe, &look).unwrap();
+        let run = prepare(&data, "recomp:x", &exe, &look, Some(448)).unwrap();
         assert_eq!(fs::read(game.join(PROXY)).unwrap(), b"MZ reshade 64");
         let base = PathBuf::from(&run.env[0].1);
         assert!(fs::read_to_string(base.join("Cerberus.ini")).unwrap().contains("Techniques=CerberusCrt@CerberusLooks.fx"));
-        assert!(fs::read_to_string(base.join("Cerberus.ini")).unwrap().contains("Strength=0.60"));
+        assert!(fs::read_to_string(base.join("Cerberus.ini")).unwrap().contains("Strength=0.60\nLines=448"));
         take_back(&data, "recomp:x");
         assert!(!game.join(PROXY).exists());
         assert_eq!(fs::read_dir(&game).unwrap().count(), 1, "only the game's own program is left");
 
         // The player's own dxgi.dll: never replaced, never deleted.
         fs::write(game.join(PROXY), b"MZ their own").unwrap();
-        assert!(prepare(&data, "recomp:x", &exe, &look).unwrap_err().contains("já tem um dxgi.dll"));
+        assert!(prepare(&data, "recomp:x", &exe, &look, None).unwrap_err().contains("já tem um dxgi.dll"));
         take_back(&data, "recomp:x");
         take_back_all(&data);
         assert_eq!(fs::read(game.join(PROXY)).unwrap(), b"MZ their own");
@@ -338,7 +340,7 @@ mod tests {
         fs::create_dir_all(&game).unwrap();
         fake_reshade(&data);
         let exe = program(&game, b"dxgi.dll");
-        prepare(&data, "local:y", &exe, &Look { id: "vivid".into(), strength: 100 }).unwrap();
+        prepare(&data, "local:y", &exe, &Look { id: "vivid".into(), strength: 100 }, None).unwrap();
         take_back_all(&data);
         assert!(!game.join(PROXY).exists());
     }

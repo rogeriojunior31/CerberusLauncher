@@ -1119,6 +1119,10 @@ mod tests {
         let ids = |l: Vec<&Input>| l.into_iter().map(|i| i.id.clone()).collect::<Vec<_>>();
         assert_eq!(ids(missing_for(&m, dir.path(), &BTreeMap::new(), Some("gow3"))), ["disc1", "disc3"], "its own and the shared");
         assert_eq!(ids(missing_for(&m, dir.path(), &BTreeMap::new(), None)), ["disc1"]);
+        let with_saves = Manifest::parse(r#"{"format":1,"saves":["{data}/saves"],
+            "games":[{"id":"a","name":"A","saves":["{data}/a"]},{"id":"b","name":"B","saves":["{data}/saves"]}]}"#).unwrap();
+        let entry = super::super::catalog::with_manifest(Default::default(), Some(std::sync::Arc::new(with_saves)));
+        assert_eq!(entry.saves, ["{data}/saves", "{data}/a"], "the release's backup keeps each game's saves");
     }
 
     #[test]

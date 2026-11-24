@@ -416,6 +416,11 @@ pub fn prepare_options(game: &Game) -> Vec<cerberus_shared::PrepareOption> {
 /// The setup step this game still needs, if any. It runs again when the
 /// player picks another copy, turns an option on or off, after a new release,
 /// or when what it makes is gone.
+/// The setup step still has to run before the game can start.
+pub fn needs_preparation(game: &Game) -> bool {
+    matches!(preparation(game), Ok(Some(_)))
+}
+
 pub fn preparation(game: &Game) -> Result<Option<Preparation>, String> {
     let Some(entry) = entry_for(game) else { return Ok(None) };
     let install = Path::new(&game.install_dir);
@@ -564,6 +569,11 @@ pub fn look_rule(game: &Game) -> Option<Result<(), String>> {
     }
     let name = if api.contains("vulkan") { "Vulkan" } else if api.contains("opengl") { "OpenGL" } else if api.contains("d3d9") { "Direct3D 9" } else { return None };
     Some(Err(tr!("Esse jogo usa {}. Por enquanto os filtros funcionam em jogos com Direct3D 10, 11 ou 12.", name)))
+}
+
+/// The line count the developer gives for the CRT look.
+pub fn look_lines(game: &Game) -> Option<u32> {
+    entry_for(game)?.manifest.as_ref()?.looks.as_ref()?.lines
 }
 
 /// The Windows build of this PC (CurrentBuildNumber), read once.
@@ -945,8 +955,13 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     let host = entry.forge().map(|f| f.name()).unwrap_or_default();
     let system_needs = entry.manifest.as_deref().map(manifest::system_needs).unwrap_or_default();
     let system_problem = entry.manifest.as_deref().and_then(|m| manifest::system_problem(m, this_windows_build()));
+    // The developer's list once installed, the site's before.
+    let own: Vec<String> = entry.manifest.as_ref().map(|m| m.games.iter().map(|g| g.name.clone()).collect()).unwrap_or_default();
+    let parts = if own.len() >= 2 { own } else { entry.parts.iter().map(|p| p.name.clone()).collect() };
+    let parts = if parts.len() >= 2 { parts } else { Vec::new() };
     let entry = entry.clone();
     RecompEntry {
+        parts,
         system_needs,
         system_problem,
         // Found by its name, and not refused by the developer's checks.

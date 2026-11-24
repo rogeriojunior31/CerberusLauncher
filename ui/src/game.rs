@@ -528,6 +528,13 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
                         {problem}
                         {tags}
                         {features}
+                        {(!e.parts.is_empty()).then(|| view! {
+                            <div class="ver-part">
+                                <span class="ver-label">{tr!("Jogos nesta release ({})", e.parts.len())}</span>
+                                <div class="tags">{e.parts.iter().map(|n| view! { <span class="tag">{n.clone()}</span> }).collect_view()}</div>
+                                <p class="muted small">{tr!("Depois de instalar, cada um aparece na biblioteca como um jogo próprio.")}</p>
+                            </div>
+                        })}
                         {(!e.system_needs.is_empty()).then(|| view! {
                             <div class="ver-part">
                                 <span class="ver-label">{tr!("O que o PC precisa")}</span>
@@ -810,8 +817,22 @@ pub struct Preparing(pub RwSignal<std::collections::HashMap<String, cerberus_sha
 #[component]
 fn PrepareStatus(game_id: String) -> impl IntoView {
     let preparing = expect_context::<Preparing>();
-    move || {
-        preparing.0.with(|all| all.get(&game_id).cloned()).map(|p| {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let running = move || preparing.0.with(|all| all.get(&id.get_value()).cloned());
+    // Asked again when a run ends or the game changes (a new copy, a tick).
+    let pending = LocalResource::new(move || {
+        let _ = running().is_some();
+        library.games.track();
+        async move { api::preparation_pending(&id.get_value()).await.unwrap_or(false) }
+    });
+    let start = move |_| {
+        spawn_local(async move {
+            library.report(api::prepare_game(&id.get_value()).await);
+        });
+    };
+    move || match running() {
+        Some(p) => {
             let width = p.fraction.map(|f| format!("width: {:.0}%", f * 100.0));
             let busy = width.is_none();
             view! {
@@ -821,7 +842,21 @@ fn PrepareStatus(game_id: String) -> impl IntoView {
                     <small class="muted">{p.text}</small>
                 </div>
             }
-        })
+            .into_any()
+        }
+        None => pending
+            .get()
+            .unwrap_or(false)
+            .then(|| view! {
+                <div class="prep">
+                    <span class="ver-label">{tr!("Falta preparar")}</span>
+                    <div class="act-row">
+                        <button type="button" class="btn sm" on:click=start>{tr!("Preparar agora")}</button>
+                        <small class="muted">{tr!("Roda uma vez só. Se preferir, ela roda sozinha no primeiro Jogar.")}</small>
+                    </div>
+                </div>
+            })
+            .into_any(),
     }
 }
 

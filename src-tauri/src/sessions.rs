@@ -136,7 +136,7 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     match recomp::preparation(game) {
         Ok(Some(step)) => {
             notify(app, &game.id, true);
-            return prepare_then_start(app, game.clone(), exe.to_path_buf(), step);
+            return prepare_then_start(app, game.clone(), Some(exe.to_path_buf()), step);
         }
         Ok(None) => {}
         Err(problem) => {
@@ -192,7 +192,7 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     };
     if let Some(look) = look {
         let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        match crate::looks::prepare(&data, &game.id, exe, look) {
+        match crate::looks::prepare(&data, &game.id, exe, look, recomp::look_lines(game)) {
             Ok(prepared) => {
                 command.envs(prepared.env);
             }
@@ -273,7 +273,25 @@ impl GameProcess {
     }
 }
 
-fn prepare_then_start(app: &AppHandle, game: Game, exe: PathBuf, step: recomp::Preparation) -> Result<(), String> {
+/// The setup step on its own, from the game's page: the game doesn't start after.
+/// `false` when there is nothing to prepare.
+pub fn prepare_now(app: &AppHandle, game: &Game) -> Result<bool, String> {
+    let sessions = app.state::<Sessions>();
+    sessions.reserve(game)?;
+    match recomp::preparation(game) {
+        Ok(Some(step)) => {
+            notify(app, &game.id, true);
+            prepare_then_start(app, game.clone(), None, step).map(|()| true)
+        }
+        other => {
+            release(app, &game.id);
+            other.map(|_| false)
+        }
+    }
+}
+
+/// `exe`: the game to start once the step is done; `None` to only prepare.
+fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: recomp::Preparation) -> Result<(), String> {
     let fail = |message: String| {
         release(app, &game.id);
         message
@@ -364,8 +382,15 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: PathBuf, step: recomp::P
         match outcome {
             Ok(()) => {
                 let _ = std::fs::write(&step.marker, &step.done_with);
-                if let Err(error) = start(&app, &game, &exe) {
-                    let _ = app.emit("toast", error);
+                match &exe {
+                    Some(exe) => {
+                        if let Err(error) = start(&app, &game, exe) {
+                            let _ = app.emit("toast", error);
+                        }
+                    }
+                    None => {
+                        let _ = app.emit("toast", tr!("{}: pronto para jogar.", game.name));
+                    }
                 }
             }
             Err(message) => {
