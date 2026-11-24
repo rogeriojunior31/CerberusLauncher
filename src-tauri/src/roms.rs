@@ -177,7 +177,8 @@ fn identify(path: &Path) -> Option<RomFile> {
     }
     let system = match cartridge_system(&ext) {
         Some(system) => system.to_string(),
-        None if DISC.contains(&ext.as_str()) => String::new(),
+        // A disc says which console it's from (or its folder does); a list of discs, by its first.
+        None if DISC.contains(&ext.as_str()) => crate::disc_console::console_of(path).unwrap_or_default().to_string(),
         None => return None,
     };
     Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })

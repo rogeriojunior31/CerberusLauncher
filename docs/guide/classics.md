@@ -9,6 +9,8 @@ Play the ROMs and disc images in your folders through [RetroArch](https://www.re
 
 A classic's page shows play time, last played, console, region and the game's files.
 
+Disc images say which console they're from: Cerberus reads it from the disc itself (PlayStation, PlayStation 2 and PSP by their `SYSTEM.CNF` or `PSP_GAME`, GameCube and Wii by the disc header, Xbox and Xbox 360 by the disc layout, `.cue` files through their `.bin`), or from the folder's name ("PlayStation 2", "Xbox 360"...) when the disc doesn't say.
+
 ## RetroArch
 
 Go to **Settings → Emulation**:

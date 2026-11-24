@@ -25,6 +25,7 @@ mod overlay;
 mod in_game;
 mod data_backup;
 mod unlock_toast;
+mod disc_console;
 mod disc_image;
 mod screenshots;
 mod monitors;

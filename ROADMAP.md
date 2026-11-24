@@ -469,7 +469,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       não atende.
 - [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
 - [x] Achar jogos nas pastas que os emuladores já conhecem (Dolphin, PCSX2, DuckStation, PPSSPP, RPCS3, Cemu), só lendo, e instalar esses emuladores das páginas oficiais. Ryujinx ficou de fora: o projeto foi encerrado.
-- [ ] Reconhecer jogos de PlayStation pelo ID do disco (não só pelo nome).
+- [x] Reconhecer o console de cada imagem de disco pelo próprio disco (PS1, PS2, PSP, GameCube, Wii, Xbox, Xbox 360) ou pelo nome da pasta.
 - [ ] Trazer recomps que já estão na Steam ou em outro launcher, além da pasta escolhida.
 - [ ] Notar uma instalação interrompida (cancelada, travada, falta de luz) e refazer antes de jogar.
 

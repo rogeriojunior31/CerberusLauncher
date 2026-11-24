@@ -38,6 +38,16 @@ fn partition(file: &mut dyn Disc) -> Option<u64> {
     None
 }
 
+/// "xbox" or "x360" by where the game partition sits; a trimmed image (at 0)
+/// could be either, so it says nothing.
+pub fn xbox_kind(path: &Path) -> Option<&'static str> {
+    match crate::disc_image::open(path).ok().as_mut().and_then(|f| partition(&mut **f))? {
+        0x1830_0000 => Some("xbox"),
+        0x0FD9_0000 | 0x0208_0000 => Some("x360"),
+        _ => None,
+    }
+}
+
 pub fn is_xbox_disc(path: &Path) -> bool {
     crate::disc_image::open(path).ok().as_mut().and_then(|f| partition(&mut **f)).is_some()
 }
