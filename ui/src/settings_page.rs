@@ -266,6 +266,17 @@ pub fn open_rom_folders(library: Library) {
     library.go(crate::Route::Settings);
 }
 
+thread_local! {
+    /// The console page to open in Emulação, when coming from a game.
+    static NEXT_CONSOLE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Settings › Emulação, on one console's page.
+pub fn open_console(library: Library, console: String) {
+    NEXT_CONSOLE.with(|n| *n.borrow_mut() = Some(console));
+    open_emulation(library);
+}
+
 pub fn open_emulation(library: Library) {
     NEXT.with(|n| n.set(Some(Section::Emulation)));
     library.go(crate::Route::Settings);
@@ -765,8 +776,8 @@ fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let roms = s.roms.clone();
-        let opens = |r: &cerberus_shared::RomView| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some();
-        let has_recomp = |r: &cerberus_shared::RomView| crate::classics::recomp_of(&recomps, r).is_some() || crate::classics::recomp_game(r, &games, &recomps).is_some();
+        let opens = |r: &cerberus_shared::RomView| crate::classics::resolve(r, &players, &games, &recomps).playable();
+        let has_recomp = |r: &cerberus_shared::RomView| crate::classics::resolve(r, &players, &games, &recomps).recomp.is_some();
         let playable = roms.iter().filter(|r| opens(r)).count();
         let with_recomp = roms.iter().filter(|r| has_recomp(r)).count();
 
@@ -831,16 +842,15 @@ fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
             let is_open = move || opened.get().as_deref() == Some(id.get_value().as_str());
             let toggle = move |_| opened.update(|o| *o = if o.as_deref() == Some(id.get_value().as_str()) { None } else { Some(id.get_value()) });
             let list = inside.into_iter().map(|r| {
-                let console = crate::classics::console_of(&r);
-                let player = crate::classics::ready_player(&players, console);
-                let recomp = crate::classics::recomp_game(&r, &games, &recomps).map(|g| g.name.clone())
-                    .or_else(|| crate::classics::recomp_of(&recomps, &r).map(|e| e.name.clone()));
-                let (class, how) = match (&player, &recomp, console.is_empty()) {
-                    (_, _, true) => ("warn", tr!("Console não reconhecido: o arquivo não diz de qual console é.").to_string()),
+                // The same answer as the game's tile and page.
+                let res = crate::classics::resolve(&r, &players, &games, &recomps);
+                let installed = res.recomp_game.as_ref().map(|g| g.name.clone());
+                let (class, how) = match (&res.emulator, &installed, &res.recomp) {
                     (Some(p), Some(rc), _) => ("ok", tr!("Abre no {} · também pelo recomp {}", p, rc)),
-                    (Some(p), None, _) => ("ok", tr!("Abre no {}", p)),
+                    (Some(p), None, Some(e)) => ("ok", tr!("Abre no {} · tem o recomp {} no catálogo", p, e.name)),
+                    (Some(p), None, None) => ("ok", tr!("Abre no {}", p)),
                     (None, Some(rc), _) => ("ok", tr!("Joga pelo recomp {}", rc)),
-                    (None, None, _) => ("warn", crate::classics::classic_sub(&r, console, &players)),
+                    (None, None, _) => ("warn", res.problem.clone()),
                 };
                 let path = r.path.clone();
                 let file = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_string();
@@ -1033,7 +1043,7 @@ enum Ready {
 
 /// A console's picture: pixel art from Hydra, and Cerberus's own where Hydra
 /// has none (see ui/emulation/LICENSE.md).
-fn console_art(id: &str) -> Option<&'static str> {
+pub fn console_art(id: &str) -> Option<&'static str> {
     Some(match id {
         "ps1" => "emulation/ps1.png",
         "ps2" => "emulation/ps2.png",
@@ -1107,8 +1117,8 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
     let st = RwSignal::new(None::<cerberus_shared::StandaloneStatus>);
     let busy = RwSignal::new(None::<String>);
     let progress = RwSignal::new((0u64, 0u64));
-    // The console open: None shows them all.
-    let open = RwSignal::new(None::<String>);
+    // The console open: None shows them all (a game's page may ask for its console).
+    let open = RwSignal::new(NEXT_CONSOLE.with(|n| n.borrow_mut().take()));
     // Consoles the player has no game of stay folded until asked for.
     let everything = RwSignal::new(false);
     let refresh = move || {

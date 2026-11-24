@@ -2104,3 +2104,17 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .sf-node.lit small { color: var(--muted); }
 .sf-line { flex: 1; height: 2px; margin: 0 6px 34px; background: repeating-linear-gradient(90deg, var(--line2) 0 6px, transparent 6px 12px); }
 .save-flow.on .sf-line { background: var(--grad); }
+
+/* Novidades: a history line is a button when it leads to the game; problems carry their own buttons. */
+.act { flex-wrap: wrap; }
+.act-b { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 0; }
+button.act-b { cursor: pointer; }
+.act:has(button.act-b):hover { background: var(--card2); }
+.act-do { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; padding-left: 32px; margin-top: 2px; }
+.act > .act-b, .act > .act-do { flex-direction: row; gap: 14px; }
+.act > .act-do { gap: 8px; }
+/* A classic's page: the console itself as the backdrop, not a blown-up box cover. */
+.cl-hero { background: radial-gradient(120% 90% at 78% 30%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), linear-gradient(180deg, #151a28, var(--bg)); overflow: hidden; }
+.cl-console { position: absolute; right: 6%; top: 46px; width: min(460px, 40vw); max-height: 300px; object-fit: contain; opacity: 0.5; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.6)); }
+.tab-body > .hidden { display: none; }
+.cl-manage { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }

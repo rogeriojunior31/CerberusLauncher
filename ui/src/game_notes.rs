@@ -46,12 +46,18 @@ pub fn class(status: GameStatus) -> &'static str {
 /// "Your game": status, stars and notes. Saved as they change.
 #[component]
 pub fn NoteCard(game: Game) -> impl IntoView {
+    view! { <NoteCardFor id=game.id.clone() status=game.status rating=game.rating notes=game.notes.clone() /> }
+}
+
+/// The same card for anything with an id: a library game or a classic.
+#[component]
+pub fn NoteCardFor(id: String, status: Option<GameStatus>, rating: u8, notes: String) -> impl IntoView {
     let library = expect_context::<Library>();
-    let id = StoredValue::new(game.id.clone());
-    let status = RwSignal::new(game.status);
-    let rating = RwSignal::new(game.rating);
-    let notes = RwSignal::new(game.notes.clone());
-    let saved_notes = StoredValue::new(game.notes.clone());
+    let id = StoredValue::new(id);
+    let status = RwSignal::new(status);
+    let rating = RwSignal::new(rating);
+    let saved_notes = StoredValue::new(notes.clone());
+    let notes = RwSignal::new(notes);
     let hover = RwSignal::new(0u8);
     let save = move || {
         CHANGED.store(true, Ordering::Relaxed);

@@ -692,6 +692,15 @@ pub async fn set_updates_paused(id: &str, on: bool) -> Result<(), String> {
     call("set_updates_paused", &Arg { id, on }).await
 }
 
+/// Status, rating, notes and favorite of a classic (any id outside the library).
+pub async fn player_note(id: &str) -> cerberus_shared::PlayerNote {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+    }
+    call("player_note", &Arg { id }).await.unwrap_or_default()
+}
+
 /// The player's status, rating and notes for a game.
 pub async fn set_game_note(id: &str, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
     #[derive(serde::Serialize)]

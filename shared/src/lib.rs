@@ -1150,3 +1150,13 @@ impl Default for Notices {
         Self { installed: true, crashed: true, screenshots: true, windows: true }
     }
 }
+
+/// The player's own word on a game kept apart from the library (a classic):
+/// status, rating, notes and favorite.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PlayerNote {
+    pub status: Option<GameStatus>,
+    pub rating: u8,
+    pub notes: String,
+    pub favorite: bool,
+}

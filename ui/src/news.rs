@@ -283,7 +283,9 @@ fn clock(seconds: u64) -> String {
 }
 
 /// One history line; `when` is its time ("14:05", or "há 3 h" outside a day group).
-fn activity_row(library: Library, row: Row, when: String, games: &[Game], recomps: &[RecompEntry]) -> impl IntoView {
+/// One history line; `act`: a problem the player should do something about,
+/// with its buttons (the game, its folder where the log is).
+fn activity_row(library: Library, row: Row, when: String, games: &[Game], recomps: &[RecompEntry], act: bool) -> impl IntoView {
     let e = row.entry;
     // Lines written before the singular was fixed.
     let mut detail = match e.message.strip_prefix("1 min jogados") {
@@ -310,20 +312,44 @@ fn activity_row(library: Library, row: Row, when: String, games: &[Game], recomp
         Icon::Check
     };
     let open = page_of(&e.game_id, games);
-    let clickable = open.is_some();
-    let go = move |_| {
-        if let Some(route) = open.clone() {
-            library.go(route);
+    // A crash names its log by path: the folder button opens it, the line says where.
+    let has_log = detail.contains("Log do jogo:") || detail.contains("Game log:");
+    if act && has_log {
+        detail = detail.split(" Log do jogo:").next().unwrap_or(&detail).split(" Game log:").next().unwrap_or_default().to_string();
+        detail = tr!("{} O log ficou na pasta do jogo.", detail);
+    }
+    let installed = games.iter().any(|g| g.id == e.game_id);
+    let body = view! {
+        <Svg icon size=18 />
+        <div>
+            <b>{format!("{} · {}", name, cerberus_shared::i18n::translate(&e.step))}</b>
+            <span title=tip>{detail}</span>
+        </div>
+        <time>{when}</time>
+    };
+    let actions = act.then(|| {
+        let (to_game, folder_id) = (open.clone(), e.game_id.clone());
+        view! {
+            <div class="act-do">
+                {to_game.map(|route| view! { <button type="button" class="btn sm" on:click=move |_| library.go(route.clone())>{tr!("Ir para o jogo")}</button> })}
+                {(installed && has_log).then(|| view! {
+                    <button type="button" class="btn sm" on:click=move |_| {
+                        let id = folder_id.clone();
+                        leptos::task::spawn_local(async move { library.report(api::open_folder(&id).await); });
+                    }><Svg icon=Icon::Folder size=16 />{tr!("Abrir pasta do jogo")}</button>
+                })}
+            </div>
         }
+    });
+    // A line that leads somewhere is a real button, for the keyboard too.
+    let main = match (act, open) {
+        (false, Some(route)) => view! { <button type="button" class="act-b" on:click=move |_| library.go(route.clone())>{body}</button> }.into_any(),
+        _ => view! { <div class="act-b">{body}</div> }.into_any(),
     };
     view! {
-        <li class="act" class:bad=!e.ok class:clickable=clickable on:click=go>
-            <Svg icon size=18 />
-            <div>
-                <b>{format!("{} · {}", name, cerberus_shared::i18n::translate(&e.step))}</b>
-                <span title=tip>{detail}</span>
-            </div>
-            <time>{when}</time>
+        <li class="act" class:bad=!e.ok class:has-do=act>
+            {main}
+            {actions}
         </li>
     }
 }
@@ -394,7 +420,7 @@ pub fn NewsPage() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let rows = problems.into_iter().map(|row| {
             let when = format::ago(row.entry.at);
-            activity_row(library, row, when, &games, &recomps)
+            activity_row(library, row, when, &games, &recomps, true)
         }).collect_view();
         view! {
             <section class="news-sec">
@@ -432,7 +458,7 @@ pub fn NewsPage() -> impl IntoView {
         let groups = days.into_iter().map(|(_, words, rows)| {
             let rows = rows.into_iter().map(|row| {
                 let when = clock(row.entry.at);
-                activity_row(library, row, when, &games, &recomps)
+                activity_row(library, row, when, &games, &recomps, false)
             }).collect_view();
             view! {
                 <div class="act-day">

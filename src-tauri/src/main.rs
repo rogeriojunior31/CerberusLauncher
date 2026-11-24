@@ -2406,6 +2406,14 @@ fn set_game_note(app: AppHandle, id: String, status: Option<cerberus_shared::Gam
     game_notes::set(&app.state::<DataDir>().0, &id, game_notes::Note { status, rating, notes })
 }
 
+/// Status, rating, notes and favorite for an id that isn't a library game (a classic).
+#[tauri::command]
+fn player_note(app: AppHandle, id: String) -> cerberus_shared::PlayerNote {
+    let data = &app.state::<DataDir>().0;
+    let note = game_notes::load(data).remove(&id).unwrap_or_default();
+    cerberus_shared::PlayerNote { status: note.status, rating: note.rating, notes: note.notes, favorite: favorites::load(data).contains(&id) }
+}
+
 #[tauri::command]
 fn set_favorite(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     favorites::set(&app.state::<DataDir>().0, &id, on)
@@ -3001,6 +3009,7 @@ fn main() {
             open_news,
             game_sessions,
             set_game_note,
+            player_note,
             set_updates_paused,
             set_download_limit,
             set_in_game,

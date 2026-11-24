@@ -101,26 +101,80 @@ pub fn classic_sub(rom: &RomView, console: &str, players: &[ClassicPlayer]) -> S
     }
 }
 
-/// The recomp that plays this very file natively, if one is in the catalog.
-pub fn recomp_of<'a>(recomps: &'a [RecompEntry], rom: &RomView) -> Option<&'a RecompEntry> {
-    recomps.iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str()))
+/// A recomp of this console: a 3DS file isn't a Switch game, even when it was
+/// picked as one's copy (the same rule as the backend's `console_fits`).
+fn fits(console: &str, origin: &str) -> bool {
+    origin.is_empty()
+        || matches!(origin, "other" | "arcade")
+        || console == origin
+        || matches!((console, origin), ("gb", "gbc") | ("gbc", "gb") | ("switch", "switch2") | ("32x", "s32x"))
 }
 
-/// A classic as a library tile.
-pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry]) -> crate::tiles::TileInfo {
+/// The recomp that plays this very file natively, if one is in the catalog.
+pub fn recomp_of<'a>(recomps: &'a [RecompEntry], rom: &RomView) -> Option<&'a RecompEntry> {
+    let console = console_of(rom);
+    recomps.iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str()) && fits(console, &e.origin))
+}
+
+/// How a classic plays here, the one answer every screen gives: the emulator
+/// that opens it, the recomp that plays it (installed or not), or why nothing
+/// does yet.
+pub struct Resolution {
+    pub emulator: Option<String>,
+    pub recomp: Option<RecompEntry>,
+    /// The recomp, installed in the library.
+    pub recomp_game: Option<cerberus_shared::Game>,
+    /// Why no emulator opens it (core missing, no emulator for the console).
+    pub problem: String,
+}
+
+impl Resolution {
+    /// Something here plays it: an emulator, or an installed recomp.
+    pub fn playable(&self) -> bool {
+        self.emulator.is_some() || self.recomp_game.is_some()
+    }
+}
+
+pub fn resolve(rom: &RomView, players: &[ClassicPlayer], games: &[cerberus_shared::Game], recomps: &[RecompEntry]) -> Resolution {
+    let console = console_of(rom);
+    let player = player_for(players, console);
+    let emulator = ready_player(players, console);
+    let recomp_game = recomp_game(rom, games, recomps).cloned();
+    let recomp = recomp_game
+        .as_ref()
+        .and_then(|g| match &g.source {
+            cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).cloned(),
+            _ => None,
+        })
+        .or_else(|| recomp_of(recomps, rom).cloned());
+    let problem = match player {
+        Some(p) if p.name.is_some() => p.problem.clone().unwrap_or_default(),
+        _ if console.is_empty() => tr!("O arquivo não diz de qual console é.").to_string(),
+        _ => tr!("O Cerberus ainda não tem emulador para {}.", console_name(console)),
+    };
+    Resolution { emulator, recomp, recomp_game, problem }
+}
+
+/// A classic as a library tile: its badge says what the page will say.
+pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry], games: &[cerberus_shared::Game]) -> crate::tiles::TileInfo {
     use crate::tiles::Tone;
     let console = console_of(rom);
-    let playable = ready_player(players, console).is_some();
-    // Why it won't open comes first; a recomp is good to know.
-    let badge = if !playable {
-        let core = player_for(players, console).is_some_and(|p| p.name.is_some());
-        Some((if core { tr!("Falta o núcleo") } else { tr!("Sem emulador") }.to_string(), Tone::Warn))
-    } else {
-        recomp_of(recomps, rom).map(|e| {
-            (if e.installed.is_some() { tr!("Recomp instalado") } else { tr!("Tem recomp") }.to_string(), Tone::Info)
-        })
+    let how = resolve(rom, players, games, recomps);
+    let badge = match (&how.emulator, &how.recomp_game, &how.recomp) {
+        (None, Some(_), _) => Some((tr!("Joga pelo recomp").to_string(), Tone::Info)),
+        (None, None, _) => {
+            let core = player_for(players, console).is_some_and(|p| p.name.is_some());
+            Some((if core { tr!("Falta o núcleo") } else { tr!("Sem emulador") }.to_string(), Tone::Warn))
+        }
+        (Some(_), Some(_), _) => Some((tr!("Recomp instalado").to_string(), Tone::Info)),
+        (Some(_), None, Some(_)) => Some((tr!("Tem recomp").to_string(), Tone::Info)),
+        (Some(_), None, None) => None,
     };
-    crate::tiles::classic_tile(display_name(rom), classic_sub(rom, console, players), box_art(rom, console), rom.path.clone(), badge, playable)
+    let sub = match (&how.emulator, &how.recomp_game) {
+        (None, Some(g)) => format!("{} · {}", console_name(console), g.name),
+        _ => classic_sub(rom, console, players),
+    };
+    crate::tiles::classic_tile(display_name(rom), sub, box_art(rom, console), rom.path.clone(), badge, how.playable())
 }
 
 /// The classic is a version of an installed recomp (the recomp was given this
@@ -141,7 +195,12 @@ pub fn recomp_game<'a>(rom: &RomView, games: &'a [cerberus_shared::Game], recomp
         recomp_id(g).is_some_and(|id| recomps.iter().any(|e| e.id == id && e.owned_copy.as_deref() == Some(rom.path.as_str())))
     };
     let given = |g: &&cerberus_shared::Game| recomp_id(g).is_some() && g.game_copy.as_deref() == Some(rom.path.as_str());
-    games.iter().find(matched).or_else(|| games.iter().find(given))
+    // Only a recomp of the file's own console: a 3DS game handed to a Switch recomp isn't that game.
+    let console = console_of(rom);
+    let same_console = |g: &&cerberus_shared::Game| {
+        recomp_id(g).and_then(|id| recomps.iter().find(|e| e.id == id)).is_none_or(|e| fits(console, &e.origin))
+    };
+    games.iter().filter(same_console).find(matched).or_else(|| games.iter().filter(same_console).find(given))
 }
 
 /// The player's classics that stand on their own: every ROM but those an
@@ -300,7 +359,8 @@ pub fn ClassicsGrid(needle: String, #[prop(optional)] embedded: bool) -> impl In
             .into_any();
         }
         let count = list.len();
-        let tiles = list.iter().map(|rom| view! { <crate::tiles::Tile info=tile(rom, &players, &recomps) /> }).collect_view();
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let tiles = list.iter().map(|rom| view! { <crate::tiles::Tile info=tile(rom, &players, &recomps, &games) /> }).collect_view();
         let heading = match (embedded, count) {
             (true, 1) => tr!("1 clássico nas suas pastas").to_string(),
             (true, n) => tr!("{} clássicos nas suas pastas", n),
@@ -335,11 +395,24 @@ mod tests {
     }
 }
 
-/// A classic's own page: its box art, how much it was played, and Play in RetroArch.
+/// A classic's page, built like every other game's: the head with the cover,
+/// the way to play and the favorite; tabs for the overview and its file; the
+/// player's own status, rating and notes. Its backdrop is the console itself,
+/// not a box cover stretched past its resolution.
 #[component]
 pub fn ClassicPage(path: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let wanted = StoredValue::new(path);
+    let manage = RwSignal::new(false);
+    // Status, rating, notes and favorite live apart from the ROM list.
+    let note_id = format!("classic:{}", wanted.get_value());
+    let note = LocalResource::new({
+        let id = note_id.clone();
+        move || {
+            let id = id.clone();
+            async move { crate::api::player_note(&id).await }
+        }
+    });
     // Play time may have changed since the list was read.
     library.roms.refetch();
     let content = move || {
@@ -350,56 +423,94 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let console = console_of(&rom);
         let title = display_name(&rom);
         let players = library.players.get().unwrap_or_default();
-        let player = player_for(&players, console).cloned();
-        let emulator = ready_player(&players, console);
-        let recomp = library.recomps.get().and_then(Result::ok).and_then(|all| recomp_of(&all, &rom).cloned());
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let how = resolve(&rom, &players, &games, &recomps);
+        let emulator = how.emulator.clone();
         let art = box_art(&rom, console);
+        let player_note = note.get().unwrap_or_default();
+        let id = format!("classic:{}", rom.path);
+
+        // ---------- the head ----------
         let (path, console_id) = (rom.path.clone(), console.to_string());
-        let play = emulator.clone().map(|name| view! {
-            <button type="button" class="btn big main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar no {}", name)}
-            </button>
-        });
-        let to_recomp = recomp.map(|e| {
-            let id = e.id.clone();
-            view! { <button type="button" class="btn big" on:click=move |_| library.go(Route::Game(format!("recomp:{id}")))>{tr!("Ver o recomp: {}", e.name)}</button> }
-        });
-        // Nothing opens it yet: why, and the way forward, where Play would be.
-        let blocked = emulator.is_none().then(|| {
-            let why = player.as_ref().and_then(|p| p.problem.clone()).unwrap_or_else(|| tr!("Esse console ainda não tem emulação no Cerberus.").to_string());
-            let fixable = player.as_ref().is_some_and(|p| p.name.is_some()) || emulation_exists(console);
-            view! {
-                <section class="card blocked" role="status">
-                    <h3>{tr!("Ainda não dá para jogar aqui")}</h3>
-                    <p>{why}</p>
-                    {fixable.then(|| view! {
-                        <button type="button" class="btn sm main" on:click=move |_| crate::settings_page::open_emulation(library)>{tr!("Abrir Emulação")}</button>
-                    })}
-                </section>
+        let action = match (&emulator, &how.recomp_game) {
+            (Some(name), _) => {
+                let name = name.clone();
+                view! {
+                    <button type="button" class="btn big main play" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
+                        <crate::icons::Svg icon=crate::icons::Icon::Play size=20 />{tr!("Jogar no {}", name)}
+                    </button>
+                }.into_any()
             }
-        });
-        let folder = rom.path.clone();
-        let open_folder = move |_| {
-            let folder = folder.clone();
-            leptos::task::spawn_local(async move {
-                library.report(crate::api::open_rom_folder(folder).await);
-            });
+            // No emulator here, but its recomp is installed: that is how it plays.
+            (None, Some(g)) => {
+                let g = g.clone();
+                view! {
+                    <button type="button" class="btn big main play" on:click=move |_| crate::play_game(library, g.clone())>
+                        <crate::icons::Svg icon=crate::icons::Icon::Play size=20 />{tr!("Jogar pelo recomp")}
+                    </button>
+                }.into_any()
+            }
+            (None, None) => ().into_any(),
         };
-        let facts = [
-            (tr!("Console"), console_name(console).to_string()),
-            (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
-        ]
-        .into_iter()
-        .chain((rom.discs.len() > 1).then(|| (tr!("Discos"), rom.discs.len().to_string())))
-        .map(|(label, value)| view! { <div><dt>{label}</dt><dd>{value}</dd></div> })
-        .collect_view();
-        let history_id = format!("classic:{}", rom.path);
+        let to_recomp = how.recomp.clone().map(|e| {
+            let route = how.recomp_game.as_ref().map(|g| Route::Game(g.id.clone())).unwrap_or_else(|| Route::Game(format!("recomp:{}", e.id)));
+            view! { <button type="button" class="btn big glass" on:click=move |_| library.go(route.clone())>{tr!("Ver o recomp")}</button> }
+        });
+        let heart = {
+            let (id, on) = (id.clone(), player_note.favorite);
+            let label = if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") };
+            view! {
+                <button type="button" class="btn glass icon-btn fav-btn" class:on=on title=label aria-label=label aria-pressed=on.to_string()
+                    on:click=move |_| {
+                        let id = id.clone();
+                        leptos::task::spawn_local(async move {
+                            if library.report(crate::api::set_favorite(id, !on).await).is_some() {
+                                note.refetch();
+                                library.toast(if on { tr!("Tirado dos favoritos.") } else { tr!("Adicionado aos favoritos.") });
+                            }
+                        });
+                    }>
+                    <crate::icons::Svg icon=if on { crate::icons::Icon::HeartFill } else { crate::icons::Icon::Heart } size=20 />
+                </button>
+            }
+        };
+        let who = match (&emulator, &how.recomp_game) {
+            (Some(name), _) => format!("{} · {}", console_name(console), name),
+            (None, Some(g)) => format!("{} · {}", console_name(console), g.name),
+            (None, None) => tr!("{} · sem emulador", console_name(console)),
+        };
         let played = match (rom.playtime_secs, rom.last_played) {
             (0, None) => tr!("Você ainda não jogou").to_string(),
             (t, Some(last)) => tr!("Jogou por {} · última vez {}", crate::format::playtime(t), crate::format::ago(last)),
             (t, None) => tr!("Jogou por {}", crate::format::playtime(t)),
         };
-        // RetroAchievements for this ROM, found by its hash or its name.
+
+        // ---------- nothing plays it yet: why, and where to go ----------
+        let blocked = (!how.playable()).then(|| {
+            let core = player_for(&players, console).is_some_and(|p| p.name.is_some());
+            let catalog_recomp = how.recomp.clone();
+            let console_id = console.to_string();
+            view! {
+                <section class="card blocked" role="status">
+                    <h3>{tr!("Ainda não dá para jogar aqui")}</h3>
+                    <p>{how.problem.clone()}</p>
+                    <div class="row">
+                        {catalog_recomp.map(|e| {
+                            let rid = e.id.clone();
+                            view! { <button type="button" class="btn sm main" on:click=move |_| library.go(Route::Game(format!("recomp:{rid}")))>{tr!("Ver o recomp {}", e.name)}</button> }
+                        })}
+                        {(core || emulation_exists(console)).then(|| view! {
+                            <button type="button" class="btn sm" on:click=move |_| crate::settings_page::open_console(library, console_id.clone())>{tr!("Escolher o emulador")}</button>
+                        })}
+                        <button type="button" class="btn sm" on:click=move |_| library.go(Route::Discover)>{tr!("Procurar no Descobrir")}</button>
+                    </div>
+                </section>
+            }
+        });
+
+        // ---------- the overview ----------
+        let history_id = format!("classic:{}", rom.path);
         let (ach_path, ach_console) = (rom.path.clone(), console.to_string());
         let achievements = LocalResource::new(move || {
             let (p, c) = (ach_path.clone(), ach_console.clone());
@@ -416,58 +527,112 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 library.go(Route::AchievementGame("retro".into(), d.game.key.clone()));
             }
         });
+        let facts = [
+            (tr!("Console"), console_name(console).to_string()),
+            (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
+        ]
+        .into_iter()
+        .chain((rom.discs.len() > 1).then(|| (tr!("Discos"), rom.discs.len().to_string())))
+        .chain(emulator.clone().map(|e| (tr!("Abre no"), e)))
+        .map(|(label, value)| view! { <div><dt>{label}</dt><dd>{value}</dd></div> })
+        .collect_view();
+        // The play chart once there's something to chart.
+        let has_played = rom.playtime_secs > 0 || rom.last_played.is_some();
+
+        // ---------- its file ----------
+        let folder = rom.path.clone();
+        let open_folder = move |_| {
+            let folder = folder.clone();
+            leptos::task::spawn_local(async move {
+                library.report(crate::api::open_rom_folder(folder).await);
+            });
+        };
+        let file_note = if rom.discs.len() > 1 {
+            match emulator.as_deref() {
+                Some("RetroArch") if matches!(console, "ps1" | "gc") => tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.").to_string(),
+                Some(name) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
+                None => tr!("O Cerberus nunca altera esses arquivos.").to_string(),
+            }
+        } else {
+            match emulator.as_deref() {
+                Some(name) => tr!("O {} abre esse arquivo como está; o Cerberus nunca o altera.", name),
+                None => tr!("O Cerberus nunca altera esse arquivo.").to_string(),
+            }
+        };
+        let files = if rom.discs.len() > 1 {
+            view! { <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol> }.into_any()
+        } else {
+            view! { <span class="path">{rom.path.clone()}</span> }.into_any()
+        };
+        let console_pick = console.to_string();
+        let file_card = view! {
+            <section class="card classic-file">
+                <div class="card-h">
+                    <h3>{if rom.discs.len() > 1 { tr!("Arquivos do jogo") } else { tr!("Arquivo do jogo") }}</h3>
+                    <button type="button" class="btn sm" on:click=open_folder>{tr!("Abrir pasta")}</button>
+                </div>
+                {files}
+                <p class="muted small">{file_note}</p>
+            </section>
+            <section class="card">
+                <div class="card-h">
+                    <h3>{tr!("Quem abre")}</h3>
+                    <button type="button" class="btn sm" on:click=move |_| crate::settings_page::open_console(library, console_pick.clone())>{tr!("Escolher o emulador")}</button>
+                </div>
+                <p class="muted small">{match &emulator {
+                    Some(name) => tr!("Os jogos de {} abrem no {}. Dá para trocar por outro emulador nas Configurações › Emulação.", console_name(console), name),
+                    None => how.problem.clone(),
+                }}</p>
+            </section>
+        };
+
+        let tab = move |on: bool, label: &'static str, icon: crate::icons::Icon| {
+            view! {
+                <button type="button" class="tab with-icon" role="tab" class:on=move || manage.get() == on aria-selected=move || (manage.get() == on).to_string()
+                    tabindex=move || if manage.get() == on { "0" } else { "-1" } on:click=move |_| manage.set(on)>
+                    <crate::icons::Svg icon size=16 />{label}
+                </button>
+            }
+        };
+        let overview = view! {
+            <div class="ov">
+                <div class="ov-main">
+                    {blocked}
+                    {has_played.then(|| view! { <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played /> })}
+                    <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
+                    <crate::game::History id=history_id.clone() />
+                </div>
+                <aside class="ov-rail">
+                    <crate::game_overview::AchievementsCard data=achievements on_all />
+                    <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{facts}</dl></section>
+                </aside>
+            </div>
+        };
+        let console_bg = crate::settings_page::console_art(console);
         Some(
             view! {
-                <div class="gp-hero">
-                    <crate::art::Backdrop sources=art.clone() soft=true />
+                <div class="gp-hero cl-hero">
+                    {console_bg.map(|src| view! { <img class="cl-console" src=src alt="" /> })}
                     <div class="gp-shade"></div>
                 </div>
                 <div class="page gp-page">
                     <section class="gp-head">
                         <div class="gp-cover"><Poster sources=art title=title.clone() /></div>
                         <div class="gp-info">
-                            <span class="kick">{tr!("Clássico · {}", console_name(console))}</span>
                             <h1>{title.clone()}</h1>
+                            <span class="gp-source">{who}</span>
                             <span class="gp-played"><crate::icons::Svg icon=crate::icons::Icon::Clock size=15 />{played}</span>
                         </div>
-                        <div class="gp-act">{to_recomp}{play}</div>
+                        <div class="gp-act">{heart}{to_recomp}{action}</div>
                     </section>
-                    <div class="ov">
-                    <div class="ov-main">
-                    <h2 class="vh">{tr!("Visão geral")}</h2>
-                    {blocked}
-                    <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played />
-                    <section class="card classic-file">
-                        <div class="card-h">
-                            <h3>{if rom.discs.len() > 1 { tr!("Arquivos do jogo") } else { tr!("Arquivo do jogo") }}</h3>
-                            <button type="button" class="btn sm" on:click=open_folder>{tr!("Abrir pasta")}</button>
-                        </div>
-                        {if rom.discs.len() > 1 {
-                            let swap = match emulator.as_deref() {
-                                Some("RetroArch") if matches!(console, "ps1" | "gc") => tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.").to_string(),
-                                Some(name) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
-                                None => tr!("O Cerberus nunca altera esses arquivos.").to_string(),
-                            };
-                            view! {
-                                <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol>
-                                <p class="muted small">{swap}</p>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <span class="path">{rom.path.clone()}</span>
-                                <p class="muted small">{match emulator.as_deref() {
-                                    Some(name) => tr!("O {} abre esse arquivo como está; o Cerberus nunca o altera.", name),
-                                    None => tr!("O Cerberus nunca altera esse arquivo.").to_string(),
-                                }}</p>
-                            }.into_any()
-                        }}
-                    </section>
-                    <crate::game::History id=history_id />
-                    </div>
-                    <aside class="ov-rail">
-                        <crate::game_overview::AchievementsCard data=achievements on_all />
-                        <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{facts}</dl></section>
-                    </aside>
+                    <nav class="tabs" role="tablist" aria-label=tr!("Seções do jogo")>
+                        {tab(false, tr!("Visão geral"), crate::icons::Icon::Info)}
+                        {tab(true, tr!("Gerenciar"), crate::icons::Icon::Edit)}
+                    </nav>
+                    <div class="tab-body" role="tabpanel">
+                        <h2 class="vh">{move || if manage.get() { tr!("Gerenciar") } else { tr!("Visão geral") }}</h2>
+                        <div class:hidden=move || manage.get()>{overview}</div>
+                        <div class="cl-manage" class:hidden=move || !manage.get()>{file_card}</div>
                     </div>
                 </div>
             }

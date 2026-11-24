@@ -503,6 +503,7 @@ pub fn LibraryPage() -> impl IntoView {
         // Classics join the same order: by the name shown, when played, how long.
         let players = library.players.get().unwrap_or_default();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let lib_games = library.games.get().and_then(Result::ok).unwrap_or_default();
         let mut rows: Vec<Row> = games.into_iter().map(Row::Game).collect();
         rows.extend(classic_rows.into_iter().map(Row::Classic));
         let name_of = |r: &Row| match r {
@@ -528,7 +529,7 @@ pub fn LibraryPage() -> impl IntoView {
             let g = match row {
                 Row::Game(g) => g,
                 Row::Classic(rom) => {
-                    let info = crate::classics::tile(rom, &players, &recomps);
+                    let info = crate::classics::tile(rom, &players, &recomps, &lib_games);
                     if !list {
                         return view! { <Tile info /> }.into_any();
                     }

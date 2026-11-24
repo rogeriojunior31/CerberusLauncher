@@ -141,7 +141,7 @@ pub fn Home() -> impl IntoView {
         recent.extend(
             crate::classics::standalone(library).iter()
                 .filter(|r| r.last_played.is_some())
-                .map(|r| (r.last_played, crate::classics::tile(r, &players, &recomps))),
+                .map(|r| (r.last_played, crate::classics::tile(r, &players, &recomps, &games))),
         );
         recent.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
         let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|(_, tile)| tile).collect();
