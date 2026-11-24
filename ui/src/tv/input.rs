@@ -38,6 +38,16 @@ pub enum PadKind {
     Nintendo,
 }
 
+/// The controller plugged in, for a game told about it: "playstation" or "xbox"
+/// (any other kind plays with Xbox glyphs). `None` with none connected.
+pub fn connected_pad() -> Option<&'static str> {
+    let pads = web_sys::window()?.navigator().get_gamepads().ok()?;
+    pads.iter().filter_map(|p| p.dyn_into::<web_sys::Gamepad>().ok()).find(|p| p.connected()).map(|p| match kind_of(&p.id()) {
+        PadKind::PlayStation => "playstation",
+        _ => "xbox",
+    })
+}
+
 fn kind_of(id: &str) -> PadKind {
     let id = id.to_lowercase();
     if id.contains("054c") || id.contains("playstation") || id.contains("dualsense") || id.contains("dualshock") || id.contains("wireless controller") {

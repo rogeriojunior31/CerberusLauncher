@@ -42,6 +42,10 @@ impl Category {
 
     /// Hidden games are only under Ocultos.
     fn keeps(self, game: &Game, shelf: Option<&str>) -> bool {
+        // A release carrying several games shows them, not itself.
+        if !game.part_ids.is_empty() {
+            return false;
+        }
         if game.hidden != (self == Category::Hidden) {
             return false;
         }

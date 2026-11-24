@@ -121,6 +121,9 @@ pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     }
 }
 
@@ -165,6 +168,9 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     })
 }
 

@@ -108,7 +108,7 @@ pub fn set_recent(app: &AppHandle, games: Vec<Game>) {
 /// Plays a game picked in the tray menu, telling the player when it can't open.
 fn play_recent(app: &AppHandle, index: usize) {
     let Some(game) = RECENT.lock().ok().and_then(|r| r.get(index).cloned()) else { return };
-    if let Err(e) = crate::play(app.clone(), game.clone()) {
+    if let Err(e) = crate::play(app.clone(), game.clone(), None, None) {
         crate::notify::tell(app, crate::notify::Kind::Reply, &tr!("{} não abriu", game.name), &e);
     }
 }

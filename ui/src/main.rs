@@ -234,7 +234,7 @@ pub fn play_game(library: Library, game: Game) {
             }
         };
         if let Some(game) = ready {
-            library.report(api::play(&game).await);
+            library.report(api::play(&game, library.route.get_untracked() == Route::BigPicture).await);
         }
     });
 }

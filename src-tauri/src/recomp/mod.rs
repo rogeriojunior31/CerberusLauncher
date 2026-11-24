@@ -258,11 +258,81 @@ pub fn entry_at(recomp_id: &str, install_dir: &Path) -> Option<CatalogEntry> {
     Some(catalog::with_manifest(find(recomp_id)?, manifest::read(install_dir, None)))
 }
 
+/// The games a release carries: the developer's list, with the site's art
+/// for each; the site's list when the release has none. Fewer than two: none.
+pub fn parts_of(game: &Game) -> Vec<catalog::CatalogPart> {
+    if game.part_of.is_some() {
+        return Vec::new();
+    }
+    let Some(entry) = entry_for(game) else { return Vec::new() };
+    let own = entry.manifest.as_ref().map(|m| m.games.clone()).unwrap_or_default();
+    let parts: Vec<catalog::CatalogPart> = if own.is_empty() {
+        entry.parts.clone()
+    } else {
+        own.iter()
+            .map(|p| {
+                let art = entry.parts.iter().find(|c| c.id == p.id).cloned().unwrap_or_default();
+                catalog::CatalogPart { id: p.id.clone(), name: p.name.clone(), ..art }
+            })
+            .collect()
+    };
+    if parts.len() < 2 { Vec::new() } else { parts }
+}
+
+/// A part's library id: `recomp:cogbox--gow2`.
+pub fn part_id(release: &str, part: &str) -> String {
+    format!("{release}--{part}")
+}
+
+/// One game of a release, as a game of its own: the release's files and
+/// setup, its own name, art and play time.
+pub fn part_view(release: &Game, part: &catalog::CatalogPart) -> Game {
+    let mut game = release.clone();
+    let state = release.parts.get(&part.id).cloned().unwrap_or_default();
+    game.id = part_id(&release.id, &part.id);
+    game.name = part.name.clone();
+    game.cover_path = None;
+    game.cover_url = part.cover.clone().or(part.icon.clone()).or(release.cover_url.clone());
+    game.hero_path = None;
+    game.hero_url = part.hero.clone().or(release.hero_url.clone());
+    game.logo_path = None;
+    game.playtime_secs = state.playtime_secs;
+    game.last_played = state.last_played;
+    game.last_session_secs = state.last_session_secs;
+    game.launch_args = state.launch_args;
+    game.part_of = Some(release.id.clone());
+    game.part_ids = Vec::new();
+    game.parts = Default::default();
+    game.favorite = false;
+    game.hidden = false;
+    game.collections = Vec::new();
+    game.status = None;
+    game.rating = 0;
+    game.notes = String::new();
+    game
+}
+
+/// The part a library game is, inside its release (`gow2`).
+fn part_of(game: &Game) -> Option<&str> {
+    let release = game.part_of.as_deref()?;
+    game.id.strip_prefix(release)?.strip_prefix("--")
+}
+
 /// Every file the player gave a manifest's inputs: the copy under the main input's id.
 fn picked_inputs(game: &Game, manifest: &manifest::Manifest) -> std::collections::BTreeMap<String, String> {
     let mut picked = game.inputs.clone();
     if let (Some(main), Some(copy)) = (manifest.main_input(), &game.game_copy) {
         picked.insert(main.id.clone(), copy.clone());
+    }
+    // Shared keys: the one copy the launcher keeps, when this game's copy needs it.
+    let copy = game.game_copy.as_deref();
+    for input in manifest.inputs.iter().filter(|i| i.shared_key().is_some()) {
+        picked.remove(&input.id);
+        if manifest.key_wanted(input, copy) {
+            if let Some(kept) = input.shared_key().and_then(manifest::shared_key) {
+                picked.insert(input.id.clone(), kept.display().to_string());
+            }
+        }
     }
     picked
 }
@@ -271,6 +341,10 @@ pub fn apply_art(game: &mut Game) {
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return;
     };
+    // A game of a several-game release has its own art.
+    if game.part_of.is_some() {
+        return;
+    }
     let Some(entry) = find(recomp_id) else {
         return;
     };
@@ -511,16 +585,22 @@ pub fn this_windows_build() -> Option<u32> {
 /// The files besides the copy a recomp's `recomplauncher.json` asks for.
 pub fn setup_inputs(game: &Game) -> Vec<cerberus_shared::SetupInput> {
     let Some(manifest) = entry_for(game).and_then(|e| e.manifest) else { return Vec::new() };
+    let copy = game.game_copy.as_deref();
     manifest
         .other_inputs()
+        // A key the copy's kind doesn't need isn't asked for, nor another game's disc.
+        .filter(|input| input.shared_key().is_none() || manifest.key_wanted(input, copy))
+        .filter(|input| manifest.belongs(&input.id, part_of(game)))
         .map(|input| cerberus_shared::SetupInput {
             id: input.id.clone(),
             label: input.label.clone(),
             role: input.role.clone(),
             optional: input.optional,
             folder: input.takes_folder() && !input.takes_file(),
-            chosen: match manifest::placed_at(input, Path::new(&game.install_dir), None) {
-                Some(target) if input.name.is_some() => target.exists().then(|| target.display().to_string()),
+            shared: input.shared_key().is_some(),
+            chosen: match (input.shared_key(), manifest::placed_at(input, Path::new(&game.install_dir), None)) {
+                (Some(kind), _) => manifest::shared_key(kind).map(|p| p.display().to_string()),
+                (None, Some(target)) if input.name.is_some() => target.exists().then(|| target.display().to_string()),
                 _ => game.inputs.get(&input.id).cloned(),
             },
         })
@@ -533,6 +613,16 @@ pub fn use_input(library: &LocalLibrary, game_id: &str, input_id: &str, picked: 
     let game = library.get(game_id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let manifest = entry_for(&game).and_then(|e| e.manifest).ok_or(tr!("Esse jogo não pede outros arquivos."))?;
     let input = manifest.input(input_id).ok_or(tr!("Esse jogo não pede esse arquivo."))?;
+    // A shared key is kept once, for every game asking for its kind.
+    if let Some(kind) = input.shared_key() {
+        match picked {
+            Some(path) => {
+                manifest::keep_shared_key(kind, path)?;
+            }
+            None => manifest::forget_shared_key(kind),
+        }
+        return Ok(game);
+    }
     let Some(path) = picked else {
         return library.update(game_id, |g| {
             g.inputs.remove(input_id);
@@ -551,11 +641,20 @@ pub fn use_input(library: &LocalLibrary, game_id: &str, input_id: &str, picked: 
 /// `found` is the player's copy from the ROM folders, if the scan saw one.
 pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
     let entry = entry_for(game);
+    // A copy found by its name that the developer's checks refuse isn't offered.
+    let main = entry.as_ref().and_then(|e| e.manifest.as_ref()).and_then(|m| m.main_input().cloned());
+    let found = found.filter(|f| main.as_ref().is_none_or(|m| manifest::still_fits(m, Path::new(f.as_str()))));
     let handoff = entry.as_ref().and_then(|e| e.handoff.clone());
     let step = next_step_with(game, handoff.as_ref(), found);
     // The developer's file names every file the game needs: all must be there.
     if let (NextStep::Play, Some(manifest)) = (&step, entry.as_ref().and_then(|e| e.manifest.as_ref())) {
-        if !manifest::missing(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest)).is_empty() {
+        // A copy picked before the developer's checks were read (another game's disc) is asked for again.
+        if let (Some(main), Some(copy)) = (manifest.main_input(), &game.game_copy) {
+            if !manifest::still_fits(main, Path::new(copy)) {
+                return NextStep::ChooseCopy { found: found.cloned() };
+            }
+        }
+        if !manifest::missing_for(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest), part_of(game)).is_empty() {
             return NextStep::ChooseCopy { found: found.cloned() };
         }
     }
@@ -609,7 +708,7 @@ pub fn launch_plan(game: &Game) -> LaunchPlan {
     // The developer's own start line comes first, with the player's files filled in.
     if let Some(manifest) = entry.as_ref().and_then(|e| e.manifest.as_ref()) {
         let picked = picked_inputs(game, manifest);
-        let launch = manifest::launch(manifest, &manifest::Fill { install: Path::new(&game.install_dir), inputs: &picked });
+        let launch = manifest::launch_part(manifest, &manifest::Fill { install: Path::new(&game.install_dir), inputs: &picked }, part_of(game));
         args.extend(launch.args);
         env.extend(launch.env);
         program = launch.program;
@@ -850,7 +949,10 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     RecompEntry {
         system_needs,
         system_problem,
-        owned_copy: owned.get(&entry.id).cloned(),
+        // Found by its name, and not refused by the developer's checks.
+        owned_copy: owned.get(&entry.id).cloned().filter(|f| {
+            entry.manifest.as_ref().and_then(|m| m.main_input()).is_none_or(|m| manifest::still_fits(m, Path::new(f)))
+        }),
         handoff: entry.handoff.clone(),
         accepts_folder: entry.accepts_folder || entry.copy_accepts == "folder",
         only_folder: entry.copy_accepts == "folder",
@@ -1169,6 +1271,9 @@ fn register(
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     };
     apply_art(&mut game);
     library.add(game.clone())?;

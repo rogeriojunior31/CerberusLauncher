@@ -92,7 +92,7 @@ fn SideGames() -> impl IntoView {
             .and_then(Result::ok)
             .unwrap_or_default()
             .into_iter()
-            .filter(|g| !g.hidden && matches!(g.next_step, cerberus_shared::NextStep::Play | cerberus_shared::NextStep::RunInstaller))
+            .filter(|g| !g.hidden && g.part_ids.is_empty() && matches!(g.next_step, cerberus_shared::NextStep::Play | cerberus_shared::NextStep::RunInstaller))
             .collect();
         list.sort_by_cached_key(|g| (!g.favorite, std::cmp::Reverse(g.last_played), crate::tiles::game_names(g, library).0.to_lowercase()));
         list

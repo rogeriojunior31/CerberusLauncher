@@ -110,11 +110,25 @@ pub struct CatalogEntry {
     /// The developer's own `recomplauncher.json`, beside an installed game.
     #[serde(skip)]
     pub manifest: Option<Arc<super::manifest::Manifest>>,
+    /// The games a release carries, as the site lists them (with their art).
+    pub parts: Vec<CatalogPart>,
     /// The release's own setup program, given the player's disc once before
     /// the first start (`Tenkaichi3Decomp-setup.exe --install <disc>`).
     pub setup: Option<String>,
     /// What that setup leaves behind; missing means it hasn't run yet.
     pub makes: Vec<String>,
+}
+
+/// One game of a several-game release, as the site lists it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct CatalogPart {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub cover: Option<String>,
+    pub hero: Option<String>,
+    pub logo: Option<String>,
 }
 
 /// An entry with what the game's own `recomplauncher.json` says, which wins over
@@ -434,6 +448,9 @@ struct RlApp {
     hero: Option<String>,
     #[serde(default)]
     logo: Option<String>,
+    /// A release carrying several games: each with its name and art.
+    #[serde(default)]
+    games: Vec<CatalogPart>,
     #[serde(default)]
     genre: Option<String>,
     /// The original game's facts (IGDB), read loosely.
@@ -632,6 +649,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             repo: app.repo,
             host: app.host.unwrap_or_default(),
             icon: some(app.icon),
+            parts: app.games.into_iter().filter(|g| super::manifest::valid_part_id(&g.id) && !g.name.trim().is_empty()).collect(),
             cover: some(app.cover),
             hero: some(app.hero),
             logo: some(app.logo),

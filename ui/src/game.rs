@@ -86,6 +86,17 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     });
     // Under the title: which version this is (a recomp), or where the game comes from.
     let meta = match (&game, &entry) {
+        // One game of a several-game release: it leads to the release's page.
+        (Some(g), Some(release)) if g.part_of.is_some() => {
+            let route = crate::Route::Game(g.part_of.clone().unwrap_or_default());
+            view! {
+                <button type="button" class="gp-ver" on:click=move |_| library.go(route.clone())>
+                    <span class="gp-ver-meta">{tr!("Parte de")}</span><b>{release.name.clone()}</b>
+                    <span class="gp-ver-more">{release.console.clone()}</span>
+                </button>
+            }
+            .into_any()
+        }
         (_, Some(current)) => view! { <VersionLine current=current.clone() covers=covers.clone() /> }.into_any(),
         (Some(g), None) => view! { <span class="gp-source">{source_name(&g.source)}</span> }.into_any(),
         (None, None) => ().into_any(),
@@ -631,7 +642,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
     let found = entry.owned_copy.clone();
     let what = if entry.needs.is_empty() { tr!("Sua cópia de {}.", entry.game) } else { entry.needs.clone() };
     let warning = move || lost.get().then(|| view! {
-        <p class="problem small">{tr!("A cópia escolhida não está mais onde o jogo procura. Escolha de novo.")}</p>
+        <p class="problem small">{tr!("A cópia escolhida não serve mais: ela mudou de lugar ou não é a que esse jogo pede. Escolha de novo.")}</p>
     });
     let body = move || match (current.get().filter(|_| !lost.get()), found.clone()) {
         (Some(path), _) => view! {
@@ -857,13 +868,14 @@ fn MoreInputs(game_id: String) -> impl IntoView {
                 <div>
                     <b>{input.label.clone()}<span class="vtag">{role_name(&input.role)}</span></b>
                     <span class="path">{chosen.clone().unwrap_or_else(|| if input.optional { tr!("Opcional").to_string() } else { tr!("Falta escolher").to_string() })}</span>
+                    {input.shared.then(|| view! { <small class="muted">{tr!("Guardada no Cerberus, só neste PC, e usada por todos os jogos que pedem essa chave.")}</small> })}
                 </div>
                 <div class="inp-act">
                     <button type="button" class="btn sm" disabled=move || busy.get().is_some() on:click=move |_| act(pick_key.clone(), false)>
                         {move || if working() { tr!("Conferindo...") } else { label }}
                     </button>
                     {chosen.is_some().then(|| view! {
-                        <button type="button" class="icon-btn sm" title=tr!("Tirar") aria-label=tr!("Tirar") disabled=move || busy.get().is_some()
+                        <button type="button" class="icon-btn sm" title=if input.shared { tr!("Tirar de todos os jogos") } else { tr!("Tirar") } aria-label=tr!("Tirar") disabled=move || busy.get().is_some()
                             on:click=move |_| act(clear_key.clone(), true)>
                             <Svg icon=Icon::Close size=16 />
                         </button>

@@ -216,10 +216,14 @@ pub async fn list_games() -> Result<Vec<Game>, String> {
 #[derive(Serialize)]
 struct PlayArgs<'a> {
     game: &'a Game,
+    /// "bigpicture" when Play was pressed in Big Picture mode, else "desktop".
+    mode: &'a str,
+    pad: Option<&'a str>,
 }
 
-pub async fn play(game: &Game) -> Result<(), String> {
-    call("play", &PlayArgs { game }).await
+pub async fn play(game: &Game, big_picture: bool) -> Result<(), String> {
+    let mode = if big_picture { "bigpicture" } else { "desktop" };
+    call("play", &PlayArgs { game, mode, pad: crate::tv::input::connected_pad() }).await
 }
 
 /// Opens a file picker; `None` when the user cancels.

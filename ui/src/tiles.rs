@@ -67,6 +67,10 @@ pub fn names_of(name: &str, entry: Option<&RecompEntry>) -> (String, Option<Stri
 
 /// The names a library game shows: the original game's first, the recomp after.
 pub fn game_names(game: &Game, library: Library) -> (String, Option<String>) {
+    // One game of a several-game release is that game.
+    if game.part_of.is_some() {
+        return (game.name.clone(), None);
+    }
     let Source::Recomp { recomp_id, .. } = &game.source else { return (game.name.clone(), None) };
     // Tracked: lists drawn before the catalog arrives show the game's name once it does.
     library.recomps.with(|r| {

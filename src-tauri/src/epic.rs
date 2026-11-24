@@ -116,6 +116,9 @@ fn to_game(install: Install, entry: Option<&CatalogItem>, id: String) -> Game {
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     }
 }
 

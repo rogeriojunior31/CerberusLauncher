@@ -27,6 +27,8 @@ pub struct Format {
     #[serde(rename = "type")]
     pub kind: String,
     pub extensions: Vec<String>,
+    /// Shared keys this kind of copy needs (an NSP needs `prod.keys`; a folder doesn't).
+    pub requires: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -70,7 +72,78 @@ pub struct Dump {
     pub crc32: String,
 }
 
+/// The shared keys a launcher keeps once for every game that asks for them.
+/// Only these: never BIOS, firmware or anything else (the SDK's own limit).
+pub const SHARED_KEYS: &[&str] = &["switch.prod-keys", "switch.title-keys", "wiiu.common-key"];
+
+static KEYS_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Where the shared keys are kept: the launcher's own folder, never a game's.
+pub fn set_keys_dir(dir: PathBuf) {
+    let _ = KEYS_DIR.set(dir);
+}
+
+/// The kept copy of a shared key, when the player gave one.
+pub fn shared_key(kind: &str) -> Option<PathBuf> {
+    if !SHARED_KEYS.contains(&kind) {
+        return None;
+    }
+    let dir = KEYS_DIR.get()?.join(kind);
+    fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.is_file())
+}
+
+/// Keeps a key file for every game that asks for its kind, after checking it
+/// looks like one (the launcher checks its shape, never that it decrypts).
+pub fn keep_shared_key(kind: &str, file: &Path) -> Result<PathBuf, String> {
+    let dir = KEYS_DIR.get().ok_or(tr!("A pasta das chaves não está pronta."))?.join(kind);
+    let bytes = fs::read(file).map_err(|e| e.to_string())?;
+    if !key_shape(kind, &bytes) {
+        return Err(tr!("Esse arquivo não parece ser um {}.", key_name(kind)));
+    }
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "key".into());
+    let target = dir.join(name);
+    fs::write(&target, bytes).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
+/// Takes a shared key away, for every game.
+pub fn forget_shared_key(kind: &str) {
+    if let (true, Some(dir)) = (SHARED_KEYS.contains(&kind), KEYS_DIR.get()) {
+        let _ = fs::remove_dir_all(dir.join(kind));
+    }
+}
+
+pub fn key_name(kind: &str) -> &'static str {
+    match kind {
+        "switch.prod-keys" => "prod.keys",
+        "switch.title-keys" => "title.keys",
+        _ => "Wii U common key",
+    }
+}
+
+/// `name = hex` lines for Switch keys; 16 bytes (or 32 hex digits) for the Wii U's.
+fn key_shape(kind: &str, bytes: &[u8]) -> bool {
+    if bytes.len() > 1024 * 1024 {
+        return false;
+    }
+    let hex = |t: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_hexdigit());
+    match kind {
+        "wiiu.common-key" => bytes.len() == 16 || std::str::from_utf8(bytes).is_ok_and(|t| t.trim().len() == 32 && hex(t.trim())),
+        _ => std::str::from_utf8(bytes).is_ok_and(|text| {
+            let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(';') && !l.starts_with('#')).collect();
+            !lines.is_empty() && lines.iter().all(|l| l.split_once('=').is_some_and(|(k, v)| !k.trim().is_empty() && hex(v.trim())))
+        }),
+    }
+}
+
 impl Input {
+    /// A key every game of that kind shares, kept once by the launcher.
+    pub fn shared_key(&self) -> Option<&str> {
+        self.shared.as_deref().filter(|s| SHARED_KEYS.contains(s))
+    }
+
     fn takes(&self, kind: &str) -> bool {
         self.formats.is_empty() || self.formats.iter().any(|f| f.kind == kind)
     }
@@ -85,7 +158,7 @@ impl Input {
 
     /// Something the launcher fetches itself (NVIDIA DLSS): not asked of the player.
     pub fn fetched(&self) -> bool {
-        self.role == "runtime"
+        self.role == "runtime" || self.shared.as_deref() == Some("nvidia.dlss")
     }
 }
 
@@ -184,6 +257,25 @@ pub struct SystemPart {
     pub graphics: BTreeMap<String, String>,
 }
 
+/// One game of a release that carries several.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct Part {
+    /// 1 to 16 of a-z and 0-9; the game's full id is `<recomp id>--<id>`.
+    pub id: String,
+    pub name: String,
+    /// Added after `start.args` when this game is played; none opens the release's own menu.
+    pub args: Vec<String>,
+    pub title_id: Option<String>,
+    /// The setup inputs this game needs; inputs no game lists are shared by all.
+    pub inputs: Vec<String>,
+    pub saves: Vec<String>,
+}
+
+pub fn valid_part_id(id: &str) -> bool {
+    (1..=16).contains(&id.len()) && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
 /// A button under the settings: opens one of the game's folders.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
@@ -203,6 +295,8 @@ pub struct Manifest {
     pub prepare: Option<Prepare>,
     pub mods: Option<Mods>,
     pub looks: Option<Looks>,
+    /// The games a release carries, each shown as a game of its own.
+    pub games: Vec<Part>,
     /// windows, linux, macos -> what that build needs.
     pub system: BTreeMap<String, SystemPart>,
     /// Exit code -> message, or "ok" for a normal close.
@@ -254,7 +348,11 @@ impl Manifest {
             if !inputs.iter().any(|i| i.id == "game") {
                 let kind = old.get("kind").and_then(Value::as_str).unwrap_or_default();
                 let formats = match kind {
-                    "file" | "folder" => vec![Format { kind: kind.into(), extensions: Vec::new() }],
+                    "file" | "folder" => vec![Format { kind: kind.into(), ..Format::default() }],
+                    // "iso", "chd"...: a file of that kind.
+                    other if !other.is_empty() && other.chars().all(|c| c.is_ascii_alphanumeric()) => {
+                        vec![Format { kind: "file".into(), extensions: vec![other.to_lowercase()], ..Format::default() }]
+                    }
                     _ => Vec::new(),
                 };
                 let check = old.get("check").and_then(|c| serde_json::from_value(c.clone()).ok()).unwrap_or_default();
@@ -290,7 +388,40 @@ impl Manifest {
             .and_then(Value::as_object)
             .map(|m| m.iter().filter_map(|(k, v)| Some((k.clone(), serde_json::from_value::<SystemPart>(v.clone()).ok()?))).collect())
             .unwrap_or_default();
-        Some(Manifest { inputs, start, prepare, mods, looks, system, exit_codes, saves, folders, actions, raw })
+        let mut games: Vec<Part> = Vec::new();
+        for value in object.get("games").and_then(Value::as_array).into_iter().flatten() {
+            if let Ok(part) = serde_json::from_value::<Part>(value.clone()) {
+                if valid_part_id(&part.id) && !part.name.trim().is_empty() && !games.iter().any(|g| g.id == part.id) {
+                    games.push(part);
+                }
+            }
+        }
+        Some(Manifest { inputs, start, prepare, mods, looks, games, system, exit_codes, saves, folders, actions, raw })
+    }
+
+    /// Whether a key input is asked for: always, unless a kind of copy names it
+    /// in `requires`; then only when the copy picked is that kind.
+    pub fn key_wanted(&self, key: &Input, copy: Option<&str>) -> bool {
+        let Some(main) = self.main_input() else { return true };
+        let conditional = main.formats.iter().any(|f| f.requires.contains(&key.id));
+        if !conditional {
+            return true;
+        }
+        let Some(copy) = copy.map(Path::new) else { return false };
+        let ext = copy.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        main.formats.iter().filter(|f| f.requires.contains(&key.id)).any(|f| match f.kind.as_str() {
+            "folder" => copy.is_dir(),
+            _ => copy.is_file() && (f.extensions.is_empty() || f.extensions.iter().any(|e| e.trim_start_matches('.').eq_ignore_ascii_case(&ext))),
+        })
+    }
+
+    /// Whether one of the release's games uses this input: inputs no game
+    /// lists are shared by all; `part: None` is the release itself.
+    pub fn belongs(&self, input: &str, part: Option<&str>) -> bool {
+        if !self.games.iter().any(|g| g.inputs.iter().any(|i| i == input)) {
+            return true;
+        }
+        part.is_some_and(|p| self.games.iter().any(|g| g.id == p && g.inputs.iter().any(|i| i == input)))
     }
 
     /// The player's copy: the input with role `game`, else the first disc.
@@ -370,6 +501,19 @@ pub fn inside(path: &str) -> Option<PathBuf> {
     (!path.is_empty() && p.components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir))).then(|| p.to_path_buf())
 }
 
+/// Where Play was pressed (Big Picture or not) and the controller plugged in.
+static CONTEXT: Mutex<(bool, bool)> = Mutex::new((false, false));
+
+pub fn set_context(big_picture: bool, playstation: bool) {
+    if let Ok(mut c) = CONTEXT.lock() {
+        *c = (big_picture, playstation);
+    }
+}
+
+fn context() -> (bool, bool) {
+    CONTEXT.lock().map(|c| *c).unwrap_or_default()
+}
+
 /// What the places in a manifest fill in with.
 pub struct Fill<'a> {
     pub install: &'a Path,
@@ -395,7 +539,7 @@ impl Fill<'_> {
             let value = match token {
                 "install" => Some(self.install.display().to_string()),
                 "data" => Some(data_dir(self.install).display().to_string()),
-                "pad" => Some("xbox".to_string()),
+                "pad" => Some(if context().1 { "playstation" } else { "xbox" }.to_string()),
                 // Before named inputs, `{game}` was the player's copy.
                 "game" => Some(self.inputs.get("game").filter(|p| !p.is_empty())?.clone()),
                 t if t.starts_with("input:") => Some(self.inputs.get(&t[6..]).filter(|p| !p.is_empty())?.clone()),
@@ -436,20 +580,37 @@ pub struct Launch {
     pub env: Vec<(String, String)>,
 }
 
+#[cfg(test)]
 pub fn launch(manifest: &Manifest, fill: &Fill) -> Launch {
+    launch_part(manifest, fill, None)
+}
+
+/// The start line for one game of a several-game release: its own arguments after the release's.
+pub fn launch_part(manifest: &Manifest, fill: &Fill, part: Option<&str>) -> Launch {
     let Some(start) = &manifest.start else { return Launch::default() };
     let program = start.program.iter().filter_map(|p| inside(p)).map(|p| fill.install.join(p)).find(|p| p.is_file());
-    let args = start.args.iter().filter_map(|a| fill.text(a)).collect();
+    let mut args: Vec<String> = start.args.iter().filter_map(|a| fill.text(a)).collect();
+    if let Some(game) = part.and_then(|p| manifest.games.iter().find(|g| g.id == p)) {
+        args.extend(game.args.iter().filter_map(|a| fill.text(a)));
+    }
     let mut env: Vec<(String, String)> = start.env.iter().filter(|(k, _)| settable(k)).filter_map(|(k, v)| Some((k.clone(), fill.text(v)?))).collect();
     // What every game started by a manifest-reading launcher is told.
     env.push(("RECOMPLAUNCHER".into(), "1".into()));
-    env.push(("RECOMPLAUNCHER_MODE".into(), "desktop".into()));
+    let (big_picture, playstation) = context();
+    env.push(("RECOMPLAUNCHER_MODE".into(), if big_picture { "bigpicture" } else { "desktop" }.into()));
+    env.push(("RECOMPLAUNCHER_PAD".into(), if playstation { "playstation" } else { "xbox" }.into()));
     env.push(("RECOMPLAUNCHER_DATA".into(), data_dir(fill.install).display().to_string()));
     Launch { program, args, env }
 }
 
 /// The required files the player hasn't given yet (or that are gone since).
+#[cfg(test)]
 pub fn missing<'a>(manifest: &'a Manifest, install: &Path, inputs: &BTreeMap<String, String>) -> Vec<&'a Input> {
+    missing_for(manifest, install, inputs, None)
+}
+
+/// The same, for one game of a several-game release: its own inputs and the shared ones.
+pub fn missing_for<'a>(manifest: &'a Manifest, install: &Path, inputs: &BTreeMap<String, String>, part: Option<&str>) -> Vec<&'a Input> {
     // Built from the copy, with all it leaves there: the copy isn't needed any more,
     // unless the start line passes it.
     let main = manifest.main_input().map(|m| m.id.clone());
@@ -459,7 +620,10 @@ pub fn missing<'a>(manifest: &'a Manifest, install: &Path, inputs: &BTreeMap<Str
         .inputs
         .iter()
         .filter(|i| !i.optional && !i.fetched())
+        .filter(|i| manifest.belongs(&i.id, part))
         .filter(|i| !(built && Some(&i.id) == main.as_ref() && !passed(&i.id)))
+        // A shared key: kept by the launcher, and only when this copy needs it.
+        .filter(|i| i.shared_key().is_none_or(|kind| manifest.key_wanted(i, main.as_ref().and_then(|m| inputs.get(m)).map(String::as_str)) && shared_key(kind).is_none()))
         .filter(|i| {
             if let Some(target) = placed_at(i, install, None) {
                 return !target.exists();
@@ -698,6 +862,27 @@ pub fn check(input: &Input, copy: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The copy already picked still passes the developer's checks, without
+/// reading a whole file (no checksum). Remembered per file and change time,
+/// since the library asks on every listing.
+pub fn still_fits(input: &Input, copy: &Path) -> bool {
+    static SEEN: OnceLock<Mutex<HashMap<(String, PathBuf), (SystemTime, bool)>>> = OnceLock::new();
+    let Ok(modified) = fs::metadata(copy).and_then(|m| m.modified()) else { return false };
+    let key = (format!("{:?}", input.check), copy.to_path_buf());
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some((when, fits)) = seen.lock().ok().and_then(|s| s.get(&key).copied()) {
+        if when == modified {
+            return fits;
+        }
+    }
+    let quick = Input { sha256: None, ..input.clone() };
+    let fits = check(&quick, copy).is_ok();
+    if let Ok(mut s) = seen.lock() {
+        s.insert(key, (modified, fits));
+    }
+    fits
+}
+
 /// Puts an input with `into` in the game's folder. Others stay where they are
 /// and are passed by their path.
 pub fn place(input: &Input, install: &Path, copy: &Path) -> Result<(), String> {
@@ -891,6 +1076,52 @@ mod tests {
     }
 
     #[test]
+    fn shared_keys_are_kept_once_and_asked_for_only_when_needed() {
+        let store = tempfile::tempdir().unwrap();
+        set_keys_dir(store.path().to_path_buf());
+        let m = Manifest::parse(r#"{"format":1,"inputs":[
+            {"id":"base","label":"Your game","formats":[{"type":"folder"},{"type":"file","extensions":["nsp","xci"],"requires":["keys"]}]},
+            {"id":"keys","label":"prod.keys","role":"key","shared":"switch.prod-keys"}]}"#).unwrap();
+        let game = tempfile::tempdir().unwrap();
+        let nsp = game.path().join("game.nsp");
+        fs::write(&nsp, b"x").unwrap();
+        let keys = m.input("keys").unwrap();
+        assert!(!m.key_wanted(keys, Some(&game.path().display().to_string())), "a folder needs no keys");
+        assert!(m.key_wanted(keys, Some(&nsp.display().to_string())), "an NSP does");
+        let picked = BTreeMap::from([("base".to_string(), nsp.display().to_string())]);
+        assert_eq!(missing(&m, game.path(), &picked).len(), 1);
+        let bad = game.path().join("bad.keys");
+        fs::write(&bad, b"not keys").unwrap();
+        assert!(keep_shared_key("switch.prod-keys", &bad).is_err(), "checked for shape");
+        let good = game.path().join("prod.keys");
+        fs::write(&good, b"header_key = 00112233445566778899aabbccddeeff\n").unwrap();
+        keep_shared_key("switch.prod-keys", &good).unwrap();
+        assert!(missing(&m, game.path(), &picked).is_empty(), "kept once, for every game");
+        assert!(shared_key("bios.ps2").is_none(), "only the SDK's key kinds");
+        forget_shared_key("switch.prod-keys");
+        assert!(shared_key("switch.prod-keys").is_none());
+    }
+
+    #[test]
+    fn several_games_in_one_release() {
+        let m = Manifest::parse(r#"{"format":1,"inputs":[
+            {"id":"disc1","label":"Disc 1","role":"disc"},{"id":"disc2","label":"Disc 2","role":"disc"},{"id":"disc3","label":"Disc 3","role":"disc"}],
+            "start":{"program":["g.exe"],"args":["--base={input:disc1}"]},
+            "games":[{"id":"gow2","name":"Gears of War 2","args":["--game=gow2","--disc={input:disc2}"],"inputs":["disc2"]},
+                     {"id":"gow3","name":"Gears of War 3","args":["--game=gow3"],"inputs":["disc3"]},
+                     {"id":"BAD id","name":"x"}]}"#).unwrap();
+        assert_eq!(m.games.len(), 2, "an id out of the rules is left out");
+        let dir = tempfile::tempdir().unwrap();
+        let picked = BTreeMap::from([("disc1".to_string(), "a.iso".to_string()), ("disc2".to_string(), "b.iso".to_string())]);
+        let fill = Fill { install: dir.path(), inputs: &picked };
+        assert_eq!(launch_part(&m, &fill, Some("gow2")).args, ["--base=a.iso", "--game=gow2", "--disc=b.iso"]);
+        assert_eq!(launch_part(&m, &fill, None).args, ["--base=a.iso"], "the release opens its own menu");
+        let ids = |l: Vec<&Input>| l.into_iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(missing_for(&m, dir.path(), &BTreeMap::new(), Some("gow3"))), ["disc1", "disc3"], "its own and the shared");
+        assert_eq!(ids(missing_for(&m, dir.path(), &BTreeMap::new(), None)), ["disc1"]);
+    }
+
+    #[test]
     fn exit_codes_and_the_old_game_field() {
         let m = Manifest::parse(r#"{"format":1,"exit_codes":{"1":"ok","252968961":"Pick your copy again."},
             "game":{"kind":"file","label":"Your ISO","check":{"iso9660":"SLUS_200.00"}}}"#).unwrap();
@@ -898,6 +1129,9 @@ mod tests {
         assert_eq!(m.exit_message(252968961), Some(Some("Pick your copy again.".into())));
         assert_eq!(m.exit_message(2), None);
         assert_eq!(m.main_input().unwrap().check.iso9660.as_deref(), Some("SLUS_200.00"));
+        let iso = Manifest::parse(r#"{"format":1,"game":{"kind":"iso","label":"x"}}"#).unwrap();
+        let main = iso.main_input().unwrap();
+        assert!(main.takes_file() && !main.takes_folder() && main.formats[0].extensions == ["iso"], "an old kind names the file's extension");
         assert!(Manifest::parse(r#"{"format":2}"#).is_none(), "a format this launcher doesn't know");
     }
 }

@@ -1465,7 +1465,7 @@ async fn list_games(
     art: State<'_, Arc<ArtCache>>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Vec<Game>, String> {
-    let mut games = library.games()?;
+    let mut games = library.games_with_parts()?;
     games.iter_mut().for_each(recomp::apply_art);
     let owned = owned_games(&app);
     for game in &mut games {
@@ -2001,7 +2001,9 @@ fn set_tray_games(app: AppHandle, games: Vec<Game>) {
 }
 
 #[tauri::command]
-fn play(app: AppHandle, game: Game) -> Result<(), String> {
+fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -> Result<(), String> {
+    // What a game reading RECOMPLAUNCHER_MODE and _PAD is told: where Play was pressed, and with what.
+    recomp::manifest::set_context(mode.as_deref() == Some("bigpicture"), pad.as_deref() == Some("playstation"));
     // Store games go through their own launcher, which handles updates, DRM and
     // overlays; the rest are started, and watched, by us.
     let url = match &game.source {
@@ -2266,6 +2268,11 @@ fn game_inputs(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerbe
 /// Picks the file (or folder) for one of those inputs; `clear` takes it away.
 #[tauri::command]
 async fn pick_game_input(app: AppHandle, library: State<'_, LocalLibrary>, id: String, input: String, clear: bool) -> Result<Option<Game>, String> {
+    // A shared key is used by other games too: never swapped while one plays.
+    let shared = library.get(&id)?.map(|g| recomp::setup_inputs(&g)).unwrap_or_default().into_iter().any(|i| i.id == input && i.shared);
+    if shared && !app.state::<sessions::Sessions>().running().is_empty() {
+        return Err(tr!("Feche os jogos abertos antes de trocar uma chave compartilhada.").into());
+    }
     if clear {
         return recomp::use_input(&library, &id, &input, None).map(Some);
     }
@@ -2795,6 +2802,7 @@ fn main() {
 
             // The catalog and the last ROM scan from disk, so the window has them at once.
             let data = DataDir(data_dir.clone());
+            recomp::manifest::set_keys_dir(data_dir.join("shared-keys"));
             recomp::catalog::use_site(chosen.site_catalog);
             recomp::catalog::load_copy(&data.cache());
             app.manage(RomIndex(std::sync::Mutex::new(roms::load_index(&data.rom_index()))));

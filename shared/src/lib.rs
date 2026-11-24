@@ -88,6 +88,29 @@ pub struct Game {
     /// A recomp whose updates the player paused: it stays on its version.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub updates_paused: bool,
+    /// One game of a release that carries several: the release's library id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_of: Option<String>,
+    /// A release that carries several games: their library ids, each shown as a game of its own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub part_ids: Vec<String>,
+    /// What each of those games keeps of its own, by its id in the release.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub parts: std::collections::BTreeMap<String, PartState>,
+}
+
+/// What one game of a several-game release keeps of its own; the rest
+/// (files, copy, setup) belongs to the release.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PartState {
+    #[serde(default)]
+    pub playtime_secs: u64,
+    #[serde(default)]
+    pub last_played: Option<u64>,
+    #[serde(default)]
+    pub last_session_secs: Option<u64>,
+    #[serde(default)]
+    pub launch_args: String,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -174,6 +197,9 @@ pub struct SetupInput {
     pub optional: bool,
     /// Takes a folder (an extracted game) rather than a file.
     pub folder: bool,
+    /// A key kept once for every game that asks for it.
+    #[serde(default)]
+    pub shared: bool,
     /// What the player picked, when they did.
     pub chosen: Option<String>,
 }
