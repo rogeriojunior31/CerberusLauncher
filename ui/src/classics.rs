@@ -127,7 +127,12 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry]) -
 /// very file, or found it): it is that game, played from its page ("Jogar o
 /// original"), not a second entry next to it.
 pub fn merged(rom: &RomView, games: &[cerberus_shared::Game], recomps: &[RecompEntry]) -> bool {
-    games.iter().any(|g| match &g.source {
+    recomp_game(rom, games, recomps).is_some()
+}
+
+/// The installed recomp that plays this file: it was given it, or found it.
+pub fn recomp_game<'a>(rom: &RomView, games: &'a [cerberus_shared::Game], recomps: &[RecompEntry]) -> Option<&'a cerberus_shared::Game> {
+    games.iter().find(|g| match &g.source {
         cerberus_shared::Source::Recomp { recomp_id, .. } => {
             g.game_copy.as_deref() == Some(rom.path.as_str())
                 || recomps.iter().any(|e| e.id == *recomp_id && e.owned_copy.as_deref() == Some(rom.path.as_str()))

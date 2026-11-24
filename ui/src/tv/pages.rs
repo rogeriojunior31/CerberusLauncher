@@ -207,7 +207,9 @@ pub fn Home() -> impl IntoView {
         }
     });
 
-    tv.hints.set(vec![(Btn::A, tr!("Jogar")), (Btn::Y, tr!("Página do jogo")), (Btn::X, tr!("Opções"))]);
+    // Same buttons as the Library: A opens the game's page, Y plays it. A classic
+    // has no page here, so both play it (the hint says so).
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Jogar")), (Btn::X, tr!("Opções"))]);
     tv.handle_page(move |btn| {
         let item = focused();
         match btn {
@@ -217,13 +219,8 @@ pub fn Home() -> impl IntoView {
                 }
                 true
             }
-            // In the dock, A plays at once; elsewhere it opens the game.
             Btn::A => {
                 match item {
-                    Some(Item::Game(g)) if focus.row.get_untracked() == 0 => {
-                        play(Sound::Select);
-                        play_game(library, g);
-                    }
                     Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
                     Some(i) => tv.open(View::Game(i.id())),
                     None => {}
@@ -232,6 +229,10 @@ pub fn Home() -> impl IntoView {
             }
             Btn::Y => {
                 match item {
+                    Some(Item::Game(g)) => {
+                        play(Sound::Select);
+                        play_game(library, g);
+                    }
                     Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
                     Some(i) => tv.open(View::Game(i.id())),
                     None => {}
@@ -276,11 +277,10 @@ pub fn Home() -> impl IntoView {
             Some(path) => view! { <img class="tv-logo" src=crate::art::src(&path) alt=item.name() /> }.into_any(),
             None => view! { <h1>{item.name()}</h1> }.into_any(),
         };
-        let action = match &item {
-            Item::Game(g) if focus.row.get() == 0 => crate::launch_action(g).0,
-            Item::Game(_) => tr!("Abrir"),
-            Item::Entry(_) => tr!("Ver e instalar"),
-            Item::Classic(..) => tr!("Jogar"),
+        let (action, second) = match &item {
+            Item::Game(g) => (tr!("Abrir"), Some(crate::launch_action(g).0)),
+            Item::Entry(_) => (tr!("Ver e instalar"), None),
+            Item::Classic(..) => (tr!("Jogar"), None),
         };
         let kind = tv.pad.get();
         Some(view! {
@@ -290,7 +290,7 @@ pub fn Home() -> impl IntoView {
                 {based.map(|b| view! { <p class="tv-based">{b}</p> })}
                 <div class="tv-hero-actions">
                     <span>{glyph(Btn::A, kind)}{action}</span>
-                    <span>{glyph(Btn::Y, kind)}{tr!("Página do jogo")}</span>
+                    {second.map(|play| view! { <span>{glyph(Btn::Y, kind)}{play}</span> })}
                 </div>
             </div>
         })

@@ -442,11 +442,12 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                     let on = !s.autostart;
                     apply(Box::pin(api::set_autostart(on)), if on { tr!("O Cerberus vai abrir com o Windows.") } else { tr!("O Cerberus não abre mais com o Windows.") })
                 }))}
-            {row(tr!("Começar escondido na bandeja"), tr!("Ao abrir com o Windows, fica perto do relógio sem mostrar a janela. Abrir pelo atalho mostra a janela normalmente."),
+            // Only means something when it opens with Windows.
+            {s.autostart.then(|| row(tr!("Começar escondido na bandeja"), tr!("Ao abrir com o Windows, fica perto do relógio sem mostrar a janela. Abrir pelo atalho mostra a janela normalmente."),
                 switch(s.start_hidden, tr!("Começar escondido na bandeja"), busy, move || {
                     let on = !s.start_hidden;
                     apply(Box::pin(api::set_start_hidden(on)), if on { tr!("Ao abrir com o Windows, o Cerberus fica na bandeja.") } else { tr!("Ao abrir com o Windows, a janela aparece.") })
-                }))}
+                })))}
         </section>
         <section class="card set">
             <h3>{tr!("Ao fechar a janela")}</h3>
@@ -940,6 +941,8 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
     };
     let ra_linked = ra_user.is_some();
     let disabled = move || busy.get().is_some();
+    // Consoles the player has no game of stay folded under "Outros consoles".
+    let all_consoles = RwSignal::new(false);
 
     move || {
         let (Some(v), Some(s)) = (emu.get(), st.get()) else {
@@ -974,8 +977,12 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         let playable = my_roms.iter().filter(|r| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some()).count();
         let mut order: Vec<&str> = DISC_CONSOLES.to_vec();
         order.sort_by_key(|c| std::cmp::Reverse(mine(c)));
+        let others: Vec<&str> = order.iter().copied().filter(|c| mine(c) == 0).collect();
+        let others_names = others.iter().map(|c| console_name(c)).collect::<Vec<_>>().join(", ");
+        let show_others = all_consoles.get();
         let tiles = order
             .into_iter()
+            .filter(|c| show_others || mine(c) > 0)
             .map(|console| {
                 let console = &console;
                 let owned = mine(console);
@@ -1041,8 +1048,23 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             1 => tr!("1 jogo seu").to_string(),
             n => tr!("{} jogos seus", n),
         };
+        let all_recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let lib_games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let native_ways = my_roms
+            .iter()
+            .filter(|r| {
+                let c = crate::classics::console_of(r);
+                !DISC_CONSOLES.contains(&c) && !v.cores.iter().any(|core| core.console == c)
+            })
+            .filter_map(|r| crate::classics::recomp_game(r, &lib_games, &all_recomps).map(|g| (crate::classics::display_name(r), g.name.clone(), g.id.clone())))
+            .map(|(game, recomp, id)| view! {
+                <button type="button" class="link emu-native" on:click=move |_| library.go(crate::Route::Game(id.clone()))>
+                    {tr!("{} já roda pelo recomp {}", game, recomp)}
+                </button>
+            })
+            .collect_view();
         let retro_tile = view! {
-            <div class=format!("emu-tile wide {}", if carts_ready { "ok" } else if has_ra { "warn" } else { "off" })>
+            <div class=format!("emu-tile {}", if carts_ready { "ok" } else if has_ra { "warn" } else { "off" })>
                 <div class="emu-tile-h">
                     <b>{tr!("Cartuchos")}</b>
                     <span class="emu-dot">{if carts_ready { tr!("Pronto").to_string() } else if !has_ra { tr!("Sem emulador").to_string() } else if carts.is_empty() { tr!("Faltam {} núcleos", retro_missing) } else { tr!("Faltam {} núcleos", carts_missing.len()) }}</span>
@@ -1051,9 +1073,21 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                 <span class="emu-who-one">{tr!("NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive pelo RetroArch")}</span>
             </div>
             {(!unplayable.is_empty()).then(|| view! {
-                <div class="emu-tile wide off">
+                <div class="emu-tile full off">
                     <div class="emu-tile-h"><b>{unplayable.join(", ")}</b><span class="emu-dot">{tr!("Sem emulação")}</span></div>
                     <span class="emu-who-one">{tr!("Você tem jogos desses consoles, mas o Cerberus ainda não tem emulador para eles.")}</span>
+                    {native_ways}
+                </div>
+            })}
+            {(!others.is_empty()).then(|| view! {
+                <div class="emu-tile full emu-others">
+                    <div class="emu-tile-h">
+                        <b>{tr!("Outros consoles")}</b>
+                        <button type="button" class="btn sm" aria-expanded=show_others.to_string() on:click=move |_| all_consoles.update(|v| *v = !*v)>
+                            {if show_others { tr!("Recolher") } else { tr!("Mostrar") }}
+                        </button>
+                    </div>
+                    <span class="emu-who-one">{if show_others { tr!("Acima, os consoles de que você ainda não tem jogos.").to_string() } else { tr!("{}: nenhum jogo seu ainda.", others_names) }}</span>
                 </div>
             })}
         };
