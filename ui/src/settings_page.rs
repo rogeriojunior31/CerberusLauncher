@@ -597,6 +597,8 @@ fn controllers() -> impl IntoView {
         ("LB / RB", tr!("Trocar de seção")),
         ("Menu", tr!("Configurações; segurado, sai do Big Picture")),
         ("View + Menu", tr!("Menu sobre o jogo, durante a partida")),
+        (tr!("Segurar View"), tr!("Também abre o menu sobre o jogo")),
+        ("View + RB", tr!("Foto do jogo, durante a partida")),
     ]
     .into_iter()
     .map(|(key, what)| view! { <div class="pad-key"><kbd>{key}</kbd><span>{what}</span></div> })

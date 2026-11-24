@@ -118,13 +118,73 @@ fn take(app: &AppHandle) {
     }
 }
 
+/// XInput's buttons, as `wButtons` has them.
+const VIEW: u16 = 0x0020;
+const MENU: u16 = 0x0010;
+const RB: u16 = 0x0200;
+/// Holding View alone this long opens the menu.
+const HOLD_MS: u64 = 1000;
+
+/// What the controller asked for while a game runs.
+#[derive(Debug, PartialEq, Eq)]
+enum PadAction {
+    Menu,
+    Photo,
+}
+
+/// The controller shortcuts during a game, from the buttons held on every
+/// poll: View+Menu or holding View alone opens the menu, View+RB takes a
+/// picture. Each fires once per press; holding View while pressing anything
+/// else isn't a "hold" (the game is being played).
+#[derive(Default)]
+struct Combos {
+    last: u16,
+    /// When View started being held alone, and whether that hold already fired.
+    view_since: Option<u64>,
+    held_fired: bool,
+}
+
+impl Combos {
+    fn step(&mut self, buttons: u16, now_ms: u64) -> Option<PadAction> {
+        let pressed = buttons & !self.last;
+        self.last = buttons;
+        let view = buttons & VIEW != 0;
+        if !view {
+            self.view_since = None;
+            self.held_fired = false;
+            return None;
+        }
+        if pressed & MENU != 0 {
+            self.held_fired = true;
+            return Some(PadAction::Menu);
+        }
+        if pressed & RB != 0 {
+            self.held_fired = true;
+            return Some(PadAction::Photo);
+        }
+        if buttons != VIEW {
+            // Something else is held with View: playing, not a shortcut.
+            self.held_fired = true;
+            return None;
+        }
+        let since = *self.view_since.get_or_insert(now_ms);
+        if !self.held_fired && now_ms.saturating_sub(since) >= HOLD_MS {
+            self.held_fired = true;
+            return Some(PadAction::Menu);
+        }
+        None
+    }
+}
+
 /// Watches F12 while a game Cerberus opened runs: one picture per press, and
-/// Ctrl+F12 (or View+Menu together on a controller) opens or closes the menu over the game.
+/// Ctrl+F12 opens or closes the menu over the game. On a controller, View+Menu
+/// or holding View opens the menu, and View+RB takes a picture.
 pub fn watch(app: AppHandle) {
     std::thread::spawn(move || {
         let mut was_down = false;
         let mut pads = win::Pads::default();
-        let mut combo_was = false;
+        let mut combos = Combos::default();
+        let clock = std::time::Instant::now();
         loop {
             let playing = !app.state::<crate::sessions::Sessions>().running().is_empty();
             if !playing {
@@ -133,12 +193,14 @@ pub fn watch(app: AppHandle) {
                 continue;
             }
             let choices = crate::in_game::get();
-            let combo = pads.combo();
-            if combo && !combo_was && choices.menu {
-                let menu = app.clone();
-                let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
+            match combos.step(pads.buttons(), clock.elapsed().as_millis() as u64) {
+                Some(PadAction::Menu) if choices.menu => {
+                    let menu = app.clone();
+                    let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
+                }
+                Some(PadAction::Photo) if choices.screenshots => take(&app),
+                _ => {}
             }
-            combo_was = combo;
             let down = win::f12_down();
             if down && !was_down {
                 if win::ctrl_down() {
@@ -284,12 +346,11 @@ pub(crate) mod win {
     }
 
     impl Pads {
-        /// Whether View (Back) and Menu (Start) are held together on any controller.
-        pub fn combo(&mut self) -> bool {
-            use windows_sys::Win32::UI::Input::XboxController::{XINPUT_GAMEPAD_BACK, XINPUT_GAMEPAD_START, XINPUT_STATE, XInputGetState};
+        /// The buttons held now, on any controller together.
+        pub fn buttons(&mut self) -> u16 {
+            use windows_sys::Win32::UI::Input::XboxController::{XINPUT_STATE, XInputGetState};
             self.tick = self.tick.wrapping_add(1);
-            let both = (XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START) as u16;
-            let mut held = false;
+            let mut held = 0u16;
             for pad in 0..4u32 {
                 if self.missing_until[pad as usize] > self.tick {
                     continue;
@@ -300,7 +361,7 @@ pub(crate) mod win {
                     self.missing_until[pad as usize] = self.tick + 50;
                     continue;
                 }
-                held |= state.Gamepad.wButtons & both == both;
+                held |= state.Gamepad.wButtons;
             }
             held
         }
@@ -358,8 +419,8 @@ pub(crate) mod win {
     #[derive(Default)]
     pub struct Pads;
     impl Pads {
-        pub fn combo(&mut self) -> bool {
-            false
+        pub fn buttons(&mut self) -> u16 {
+            0
         }
     }
     pub fn client_rect(_: ()) -> Option<(i32, i32, i32, i32)> {
@@ -384,6 +445,34 @@ pub(crate) mod win {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn controller_shortcuts_fire_once_and_not_while_playing() {
+        let mut c = Combos::default();
+        // View+Menu: the menu, once.
+        assert_eq!(c.step(VIEW, 0), None);
+        assert_eq!(c.step(VIEW | MENU, 40), Some(PadAction::Menu));
+        assert_eq!(c.step(VIEW | MENU, 80), None);
+        assert_eq!(c.step(0, 120), None);
+        // View+RB: a picture, and holding on doesn't open the menu later.
+        assert_eq!(c.step(VIEW, 200), None);
+        assert_eq!(c.step(VIEW | RB, 240), Some(PadAction::Photo));
+        assert_eq!(c.step(VIEW, 2000), None);
+        assert_eq!(c.step(0, 2040), None);
+        // Holding View alone for a second: the menu, once.
+        assert_eq!(c.step(VIEW, 3000), None);
+        assert_eq!(c.step(VIEW, 3900), None);
+        assert_eq!(c.step(VIEW, 4000), Some(PadAction::Menu));
+        assert_eq!(c.step(VIEW, 6000), None);
+        assert_eq!(c.step(0, 6040), None);
+        // View held while playing (another button too): nothing.
+        assert_eq!(c.step(VIEW | 0x1000, 7000), None);
+        assert_eq!(c.step(VIEW, 7100), None);
+        assert_eq!(c.step(VIEW, 9000), None);
+        assert_eq!(c.step(0, 9040), None);
+        // RB alone is the game's.
+        assert_eq!(c.step(RB, 10000), None);
+    }
 
     fn game(id: &str, dir: &str, exe: &str) -> Game {
         serde_json::from_value(serde_json::json!({

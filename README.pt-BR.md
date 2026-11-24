@@ -111,8 +111,8 @@ Alguns jogos abrem um launcher antes do jogo. Nesses, escolha qual programa cont
 
 | Jogando | Teclado | Controle |
 |---|---|---|
-| Foto da janela do jogo | <kbd>F12</kbd> | — |
-| Abrir ou fechar o menu por cima do jogo | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu** |
+| Foto da janela do jogo | <kbd>F12</kbd> | **View + RB** |
+| Abrir ou fechar o menu por cima do jogo | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu**, ou segurar **View** |
 | Navegar, escolher e voltar no menu | Setas, <kbd>Enter</kbd>, <kbd>Esc</kbd> | Direcional, **A**, **B** |
 
 | No Big Picture Mode | Teclado | Controle |

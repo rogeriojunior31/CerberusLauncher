@@ -35,7 +35,7 @@ While a game is running, closing the window always keeps Cerberus in the tray, s
 
 | Setting | What it does |
 |---|---|
-| **Menu over the game** | <kbd>Ctrl</kbd>+<kbd>F12</kbd>, or View + Menu on a controller, opens the [in-game menu](in-game.md#the-in-game-menu). On by default |
+| **Menu over the game** | <kbd>Ctrl</kbd>+<kbd>F12</kbd>, or View + Menu (or holding View) on a controller, opens the [in-game menu](in-game.md#the-in-game-menu). On by default |
 | **Pictures with F12** | <kbd>F12</kbd> saves a [screenshot](in-game.md#screenshots) of the game. On by default |
 | **Step aside while playing** | Cerberus minimizes when a game opens and comes back when it closes. Off by default |
 | **Achievement notice** | The small notice over the game when an achievement unlocks, the **screen corner** it shows in, and **Test** to see it now |

@@ -18,7 +18,7 @@ No. Steam and Epic games still open through their own launchers. Cerberus lists 
 
 ## Can I use it with a controller?
 
-Yes. [Big Picture Mode](../guide/big-picture.md) works with a controller, and the [in-game menu](../guide/in-game.md#the-in-game-menu) opens with **View + Menu**.
+Yes. [Big Picture Mode](../guide/big-picture.md) works with a controller, and the [in-game menu](../guide/in-game.md#the-in-game-menu) opens with **View + Menu** (or by holding **View**), and **View + RB** takes a screenshot.
 
 ## Does it work on Linux or macOS?
 

@@ -110,8 +110,8 @@ Some games open a launcher before the game itself. For those, choose which progr
 
 | While playing | Keyboard | Controller |
 |---|---|---|
-| Screenshot of the game window | <kbd>F12</kbd> | — |
-| Open or close the in-game menu | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu** |
+| Screenshot of the game window | <kbd>F12</kbd> | **View + RB** |
+| Open or close the in-game menu | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu**, or hold **View** |
 | Move, select and go back in that menu | Arrow keys, <kbd>Enter</kbd>, <kbd>Esc</kbd> | D-pad, **A**, **B** |
 
 | In Big Picture Mode | Keyboard | Controller |

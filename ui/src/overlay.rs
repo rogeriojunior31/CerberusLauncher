@@ -190,7 +190,7 @@ pub fn OverlayMenu() -> impl IntoView {
                                 </div>
                             })}
                         </div>
-                        <p class="gm-hint">{tr!("Esc, B ou Ctrl+F12 volta ao jogo · View+Menu no controle abre e fecha · F12 tira foto sem abrir o menu")}</p>
+                        <p class="gm-hint">{tr!("Esc, B ou Ctrl+F12 volta ao jogo · no controle, View+Menu (ou segurar View) abre e fecha, View+RB tira foto · F12 tira foto sem abrir o menu")}</p>
                     }.into_any()
                 }
             }}

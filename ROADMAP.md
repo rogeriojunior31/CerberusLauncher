@@ -475,7 +475,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 ### 5.4 Durante o jogo e integração (prioridade 4)
 
-- [ ] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
+- [x] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
 - [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
 - [x] Menu da bandeja com os jogos recentes.
 - [x] Impedir o PC de dormir durante downloads.
