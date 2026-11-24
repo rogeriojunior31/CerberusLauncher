@@ -27,5 +27,6 @@ The emulator icons are the logos of their own projects (DuckStation, PCSX2, RPCS
 RetroArch), shown only to name the emulator that opens a game. Console names and designs belong to
 their owners.
 
-The `.svg` consoles (Wii U and the cartridge consoles) are Cerberus's own pixel art (MIT, like the rest of Cerberus), drawn for the
-consoles the Hydra artwork doesn't cover.
+`nes.png`, `snes.png`, `n64.png`, `gb.png`, `gbc.png`, `gba.png`, `genesis.png`, `sms.png`, `gg.png`
+and `wiiu.png` are Cerberus's own isometric pixel art (MIT, like the rest of Cerberus), drawn to match the
+Hydra artwork for the consoles it doesn't cover.

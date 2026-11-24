@@ -130,15 +130,18 @@ pub fn merged(rom: &RomView, games: &[cerberus_shared::Game], recomps: &[RecompE
     recomp_game(rom, games, recomps).is_some()
 }
 
-/// The installed recomp that plays this file: it was given it, or found it.
+/// The installed recomp that plays this file: the one the catalog matches to it
+/// first, else one the player gave it to.
 pub fn recomp_game<'a>(rom: &RomView, games: &'a [cerberus_shared::Game], recomps: &[RecompEntry]) -> Option<&'a cerberus_shared::Game> {
-    games.iter().find(|g| match &g.source {
-        cerberus_shared::Source::Recomp { recomp_id, .. } => {
-            g.game_copy.as_deref() == Some(rom.path.as_str())
-                || recomps.iter().any(|e| e.id == *recomp_id && e.owned_copy.as_deref() == Some(rom.path.as_str()))
-        }
-        _ => false,
-    })
+    let recomp_id = |g: &cerberus_shared::Game| match &g.source {
+        cerberus_shared::Source::Recomp { recomp_id, .. } => Some(recomp_id.clone()),
+        _ => None,
+    };
+    let matched = |g: &&cerberus_shared::Game| {
+        recomp_id(g).is_some_and(|id| recomps.iter().any(|e| e.id == id && e.owned_copy.as_deref() == Some(rom.path.as_str())))
+    };
+    let given = |g: &&cerberus_shared::Game| recomp_id(g).is_some() && g.game_copy.as_deref() == Some(rom.path.as_str());
+    games.iter().find(matched).or_else(|| games.iter().find(given))
 }
 
 /// The player's classics that stand on their own: every ROM but those an

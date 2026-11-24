@@ -737,41 +737,144 @@ fn big_picture(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
     }
 }
 
-fn roms(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
-    let rom_rows = s
-        .rom_dirs
-        .iter()
-        .cloned()
-        .map(|dir| {
+fn roms(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + Send + Sync + 'static) -> impl IntoView {
+    rom_folders(s, busy, apply)
+}
+
+/// Biblioteca e ROMs: what the folders hold at a glance (games, the ones that
+/// open here, the ones with a recomp), then each folder as a card with its
+/// consoles and, on request, its games one by one, each saying whether it
+/// plays and how. Files the scan couldn't place get their own line, so "why
+/// isn't my game there?" has an answer.
+fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + Send + Sync + 'static) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let opened = RwSignal::new(None::<String>);
+    move || {
+        let players = library.players.get().unwrap_or_default();
+        let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let roms = s.roms.clone();
+        let opens = |r: &cerberus_shared::RomView| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some();
+        let has_recomp = |r: &cerberus_shared::RomView| crate::classics::recomp_of(&recomps, r).is_some() || crate::classics::recomp_game(r, &games, &recomps).is_some();
+        let playable = roms.iter().filter(|r| opens(r)).count();
+        let with_recomp = roms.iter().filter(|r| has_recomp(r)).count();
+
+        let add = view! {
+            <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::add_rom_dir()), "")>
+                <Svg icon=Icon::Plus size=16 />{tr!("Adicionar pasta")}
+            </button>
+        };
+        if s.rom_dirs.is_empty() {
+            return view! {
+                <section class="card set rf-empty">
+                    <Svg icon=Icon::Folder size=40 />
+                    <h3>{tr!("Suas ROMs e jogos")}</h3>
+                    <p class="muted">{tr!("Aponte as pastas onde você guarda ROMs e imagens de disco. O Cerberus mostra cada jogo na Biblioteca, diz qual emulador abre e quais têm recomp. Nada sai do seu PC.")}</p>
+                    {add}
+                </section>
+            }.into_any();
+        }
+
+        let stat = |n: usize, label: String| view! { <div class="rf-stat"><b>{n}</b><span>{label}</span></div> };
+        let head = view! {
+            <section class="card set rf-head">
+                <div class="rf-stats">
+                    {stat(roms.len(), if roms.len() == 1 { tr!("jogo nas suas pastas").to_string() } else { tr!("jogos nas suas pastas").to_string() })}
+                    {stat(playable, tr!("já abrem aqui").to_string())}
+                    {stat(with_recomp, if with_recomp == 1 { tr!("tem recomp").to_string() } else { tr!("têm recomp").to_string() })}
+                </div>
+                <div class="row">
+                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::scan_roms()), tr!("Pastas verificadas de novo."))>{tr!("Procurar de novo")}</button>
+                    {add}
+                </div>
+            </section>
+        };
+
+        let folders = s.rom_dirs.iter().cloned().map(|dir| {
+            let inside: Vec<cerberus_shared::RomView> = roms.iter().filter(|r| {
+                let p = r.path.to_lowercase().replace('/', "\\");
+                let d = dir.to_lowercase().replace('/', "\\");
+                p.starts_with(&format!("{}\\", d.trim_end_matches('\\')))
+            }).cloned().collect();
+            // The consoles in the folder, most games first, with their picture.
+            let mut consoles: Vec<(&'static str, usize)> = Vec::new();
+            for r in &inside {
+                let c = crate::classics::console_of(r);
+                match consoles.iter_mut().find(|(k, _)| *k == c) {
+                    Some(e) => e.1 += 1,
+                    None => consoles.push((c, 1)),
+                }
+            }
+            consoles.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            let chips = consoles.into_iter().map(|(c, n)| {
+                let name = if c.is_empty() { tr!("Não reconhecido").to_string() } else { crate::classics::console_name(c).to_string() };
+                view! {
+                    <span class="rf-console">
+                        {console_art(c).map(|src| view! { <img src=src alt="" /> })}
+                        <span>{name}</span><b>{n}</b>
+                    </span>
+                }
+            }).collect_view();
+            let count = inside.len();
+            let id = StoredValue::new(dir.clone());
+            let is_open = move || opened.get().as_deref() == Some(id.get_value().as_str());
+            let toggle = move |_| opened.update(|o| *o = if o.as_deref() == Some(id.get_value().as_str()) { None } else { Some(id.get_value()) });
+            let list = inside.into_iter().map(|r| {
+                let console = crate::classics::console_of(&r);
+                let player = crate::classics::ready_player(&players, console);
+                let recomp = crate::classics::recomp_game(&r, &games, &recomps).map(|g| g.name.clone())
+                    .or_else(|| crate::classics::recomp_of(&recomps, &r).map(|e| e.name.clone()));
+                let (class, how) = match (&player, &recomp, console.is_empty()) {
+                    (_, _, true) => ("warn", tr!("Console não reconhecido: o arquivo não diz de qual console é.").to_string()),
+                    (Some(p), Some(rc), _) => ("ok", tr!("Abre no {} · também pelo recomp {}", p, rc)),
+                    (Some(p), None, _) => ("ok", tr!("Abre no {}", p)),
+                    (None, Some(rc), _) => ("ok", tr!("Joga pelo recomp {}", rc)),
+                    (None, None, _) => ("warn", crate::classics::classic_sub(&r, console, &players)),
+                };
+                let path = r.path.clone();
+                let file = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_string();
+                view! {
+                    <li class=format!("rf-game {class}")>
+                        <button type="button" class="rf-open" title=path.clone() on:click=move |_| library.go(Route::Classic(path.clone()))>
+                            <b>{crate::classics::display_name(&r)}</b>
+                            <small>{file}</small>
+                        </button>
+                        <span class="rf-how"><i></i>{how}</span>
+                    </li>
+                }
+            }).collect_view();
             let target = dir.clone();
             view! {
-                <div class="set-row sub">
-                    <small class="path">{dir}</small>
-                    <button type="button" class="btn sm" disabled=move || busy.get()
-                        on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), tr!("Pasta removida."))>{tr!("Remover")}</button>
-                </div>
+                <article class="card rf-folder" class:open=is_open>
+                    <header>
+                        <span class="rf-ic"><Svg icon=Icon::Folder size=22 /></span>
+                        <div class="rf-t">
+                            <b class="path">{dir.clone()}</b>
+                            <small>{match count { 0 => tr!("Nenhum jogo reconhecido aqui ainda").to_string(), 1 => tr!("1 jogo").to_string(), n => tr!("{} jogos", n) }}</small>
+                        </div>
+                        <div class="row">
+                            {(count > 0).then(|| view! {
+                                <button type="button" class="btn sm" aria-expanded=move || is_open().to_string() on:click=toggle>
+                                    {move || if is_open() { tr!("Esconder jogos") } else { tr!("Ver jogos") }}
+                                </button>
+                            })}
+                            <button type="button" class="btn sm" disabled=move || busy.get()
+                                on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), tr!("Pasta removida. Os arquivos continuam no seu PC."))>{tr!("Remover")}</button>
+                        </div>
+                    </header>
+                    {(count > 0).then(|| view! { <div class="rf-consoles">{chips}</div> })}
+                    <Show when=is_open>
+                        <ul class="rf-games">{list.clone()}</ul>
+                    </Show>
+                </article>
             }
-        })
-        .collect_view();
-    let summary = if s.rom_dirs.is_empty() {
-        tr!("Aponte as pastas onde você guarda ROMs e imagens de disco. O Cerberus mostra quais desses jogos têm recomp. Nada sai do seu PC.").to_string()
-    } else {
-        tr!("{} arquivos de jogo encontrados · {} recomps para jogos que você tem.", s.roms_found, s.roms_matched)
-    };
-    let scan = (!s.rom_dirs.is_empty()).then(|| {
-        view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::scan_roms()), tr!("Pastas verificadas de novo."))>{tr!("Procurar de novo")}</button> }
-    });
-    view! {
-        <section class="card set">
-            <h3>{tr!("Suas ROMs e jogos")}</h3>
-            {row(tr!("Pastas de ROMs e jogos"), summary, view! {
-                {scan}
-                <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::add_rom_dir()), "")>
-                    <Svg icon=Icon::Plus size=16 />{tr!("Adicionar pasta")}
-                </button>
-            })}
-            {rom_rows}
-        </section>
+        }).collect_view();
+
+        view! {
+            {head}
+            <div class="rf-list">{folders}</div>
+            <p class="muted small rf-note">{tr!("O Cerberus só lê essas pastas: nunca move, renomeia ou altera os seus arquivos.")}</p>
+        }.into_any()
     }
 }
 
@@ -912,16 +1015,16 @@ fn console_art(id: &str) -> Option<&'static str> {
         "psp" => "emulation/psp.png",
         "gc" => "emulation/gamecube.png",
         "wii" => "emulation/wii.png",
-        "wiiu" => "emulation/wiiu.svg",
-        "nes" => "emulation/nes.svg",
-        "snes" => "emulation/snes.svg",
-        "n64" => "emulation/n64.svg",
-        "gb" => "emulation/gb.svg",
-        "gbc" => "emulation/gbc.svg",
-        "gba" => "emulation/gba.svg",
-        "genesis" => "emulation/genesis.svg",
-        "sms" => "emulation/sms.svg",
-        "gg" => "emulation/gg.svg",
+        "wiiu" => "emulation/wiiu.png",
+        "nes" => "emulation/nes.png",
+        "snes" => "emulation/snes.png",
+        "n64" => "emulation/n64.png",
+        "gb" => "emulation/gb.png",
+        "gbc" => "emulation/gbc.png",
+        "gba" => "emulation/gba.png",
+        "genesis" => "emulation/genesis.png",
+        "sms" => "emulation/sms.png",
+        "gg" => "emulation/gg.png",
         _ => return None,
     })
 }

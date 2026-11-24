@@ -2030,3 +2030,34 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .ra-row .emu-ico { width: 36px; height: 36px; border-radius: 9px; }
 .ra-row > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ra-row small { color: var(--muted); font-size: 12.5px; }
+/* Configurações › Biblioteca e ROMs: the folders and what's in them. */
+.rf-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 40px 24px; }
+.rf-empty svg { color: var(--accent); }
+.rf-empty p { max-width: 56ch; margin: 0 0 6px; }
+.rf-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.rf-stats { display: flex; gap: 32px; flex-wrap: wrap; }
+.rf-stat { display: flex; flex-direction: column; gap: 2px; }
+.rf-stat b { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.rf-stat span { font-size: 13px; color: var(--muted); }
+.rf-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.rf-folder { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; }
+.rf-folder header { display: flex; align-items: center; gap: 14px; }
+.rf-ic { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--fill2); color: var(--accent); flex: none; }
+.rf-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rf-t b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-t small { font-size: 12.5px; color: var(--muted); }
+.rf-consoles { display: flex; flex-wrap: wrap; gap: 8px; }
+.rf-console { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 6px; border-radius: 12px; background: var(--fill); border: 1px solid var(--line); font-size: 13px; }
+.rf-console img { width: 44px; height: 28px; object-fit: contain; }
+.rf-console b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rf-games { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.rf-game { display: flex; align-items: center; gap: 14px; padding: 8px 4px; }
+.rf-game + .rf-game { border-top: 1px solid var(--line); }
+.rf-open { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; padding: 0; }
+.rf-open:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.rf-open small { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-how { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); text-align: right; max-width: 52%; }
+.rf-how i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--fill3); }
+.rf-game.ok .rf-how i { background: var(--ok); }
+.rf-game.warn .rf-how i { background: var(--warn); }
+.rf-note { margin: 12px 4px 0; }
