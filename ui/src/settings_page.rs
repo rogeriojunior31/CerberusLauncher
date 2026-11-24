@@ -372,7 +372,7 @@ pub fn SettingsPage() -> impl IntoView {
             Section::Library => roms(s, busy, apply).into_any(),
             Section::Install => install(s, busy, apply).into_any(),
             Section::Saves => saves(s, busy, apply).into_any(),
-            Section::Art => view! { <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) /> {art_cache(s, busy, apply)} }.into_any(),
+            Section::Art => view! { <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) /> }.into_any(),
             Section::Catalog => view! {
                 {catalog(s.clone(), busy, apply)}
                 <Sources sources=s.sources.clone() busy refresh=move |url| apply(Box::pin(api::refresh_source(url)), "")
@@ -910,20 +910,21 @@ fn install(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 
 /// Download speed: a limit, and going slower while a game is open.
 fn download_speed(limit: u32, slow: bool, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
-    let options = [0u32, 1, 2, 5, 10, 20, 50]
+    let options = [0u32, 50, 20, 10, 5, 2, 1]
         .into_iter()
         .map(|mb| {
-            let label = if mb == 0 { tr!("Sem limite").to_string() } else { format!("{mb} MB/s") };
-            view! { <option value=mb.to_string() selected=mb == limit>{label}</option> }
+            let label = if mb == 0 { tr!("Sem limite").to_string() } else { mb.to_string() };
+            let name = if mb == 0 { tr!("Sem limite").to_string() } else { format!("{mb} MB/s") };
+            let on = mb == limit;
+            view! {
+                <button type="button" class="seg" class:on=on role="radio" aria-checked=on.to_string() aria-label=name disabled=move || busy.get()
+                    on:click=move |_| apply(Box::pin(api::set_download_limit(mb, slow)), tr!("Limite de velocidade salvo."))>{label}</button>
+            }
         })
         .collect_view();
     view! {
         {row(tr!("Limite de velocidade"), tr!("Para não ocupar a conexão inteira de quem mais usa a internet aí."), view! {
-            <select class="select" aria-label=tr!("Limite de velocidade") disabled=move || busy.get()
-                on:change=move |e| {
-                    let mb = event_target_value(&e).parse().unwrap_or(0);
-                    apply(Box::pin(api::set_download_limit(mb, slow)), tr!("Limite de velocidade salvo."));
-                }>{options}</select>
+            <div class="speed"><div class="segs speed-segs" role="radiogroup" aria-label=tr!("Limite de velocidade")>{options}</div><span class="unit">"MB/s"</span></div>
         })}
         {row(tr!("Mais devagar enquanto você joga"), tr!("Com um jogo aberto, os downloads ficam em até 3 MB/s, para não dar lag. Voltam ao normal quando você fecha o jogo."), view! {
             <button type="button" class="switch" class:on=slow role="switch" aria-checked=slow.to_string() aria-label=tr!("Mais devagar enquanto você joga")
@@ -938,9 +939,23 @@ fn download_speed(limit: u32, slow: bool, busy: RwSignal<bool>, apply: impl Fn(T
 fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
     let pending = (s.pending_uploads > 0).then(|| tr!(" Envios pendentes na última verificação: {}. O Cerberus tenta de novo a cada minuto.", s.pending_uploads)).unwrap_or_default();
     let on = s.cloud_dir.is_some();
+    let library = expect_context::<Library>();
+    let flow = view! {
+        <div class="save-flow" class:on=on aria-hidden="true">
+            <span class="sf-node lit"><Svg icon=Icon::Saves size=22 /><b>{tr!("Este PC")}</b><small>{tr!("10 backups por jogo")}</small></span>
+            <span class="sf-line"></span>
+            <span class="sf-node" class:lit=on><Svg icon=Icon::Folder size=22 /><b>{tr!("Pasta da nuvem")}</b><small>{if on { tr!("Sincronizando") } else { tr!("Não escolhida") }}</small></span>
+            <span class="sf-line"></span>
+            <span class="sf-node" class:lit=on><Svg icon=Icon::Gamepad size=22 /><b>{tr!("Outro PC")}</b><small>{if on { tr!("Pega os saves mais novos") } else { tr!("Sem saves daqui") }}</small></span>
+        </div>
+    };
     view! {
         <section class="card set">
-            <h3>{tr!("Saves na nuvem")}</h3>
+            <div class="card-h">
+                <h3>{tr!("Saves na nuvem")}</h3>
+                <button type="button" class="btn sm" on:click=move |_| library.go(Route::Saves)>{tr!("Ver os saves")}</button>
+            </div>
+            {flow}
             {row(if on { tr!("Ligado") } else { tr!("Desligado") }, view! {
                 {s.cloud_dir.clone().map(|d| view! { <span class="path">{d}</span><br/> })}
                 {tr!("Escolha uma pasta que o OneDrive, Google Drive ou Dropbox sincroniza. Ao abrir um jogo, o Cerberus guarda o progresso local antes de trazer saves mais novos de outro PC.{}", pending)}
@@ -1562,18 +1577,18 @@ fn YourPc() -> impl IntoView {
             <section class="card set">
                 <h3>{tr!("Seu PC")}</h3>
                 <p class="muted small">{tr!("O que os jogos precisam no Windows. Quando um jogo fecha logo ao abrir, o Cerberus diz qual destes falta.")}</p>
-                {row(tr!("Visual C++ 2015-2022 (64 bits)"), about, pill)}
-                <div class="row">
+                {row(tr!("Visual C++ 2015-2022 (64 bits)"), about, view! {
+                    {pill}
                     <button type="button" class="btn sm" class:main=!calm disabled=move || working.get() on:click=install>
-                        {move || if working.get() { tr!("Instalando... confirme no Windows").to_string() } else { tr!("{} pelo site da Microsoft", label) }}
+                        {move || if working.get() { tr!("Instalando... confirme no Windows").to_string() } else { label.to_string() }}
                     </button>
-                </div>
-                {row(tr!("DirectX (componentes antigos)"), dx_about, dx_pill)}
-                <div class="row">
+                })}
+                {row(tr!("DirectX (componentes antigos)"), dx_about, view! {
+                    {dx_pill}
                     <button type="button" class="btn sm" class:main=!dx_ok disabled=move || working_dx.get() on:click=install_dx>
-                        {move || if working_dx.get() { tr!("Instalando... confirme no Windows") } else if dx_ok { tr!("Reinstalar pelo site da Microsoft") } else { tr!("Instalar pelo site da Microsoft") }}
+                        {move || if working_dx.get() { tr!("Instalando... confirme no Windows") } else if dx_ok { tr!("Reinstalar") } else { tr!("Instalar") }}
                     </button>
-                </div>
+                })}
                 <p class="muted small">{tr!("Os instaladores oficiais são baixados da Microsoft e o Windows pede sua permissão.")}</p>
             </section>
         })

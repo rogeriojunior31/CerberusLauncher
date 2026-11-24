@@ -2088,3 +2088,19 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .tp-main { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px; }
 .tp-main i { border-radius: 4px; }
 .tp-main i.hot { background: var(--grad) !important; }
+
+/* Instalação › Limite de velocidade: every choice in sight. */
+.speed { display: flex; align-items: center; gap: 8px; }
+.speed .unit { font-size: 12.5px; color: var(--muted); }
+.speed-segs .seg { min-width: 40px; }
+/* Saves na nuvem: the way a save travels, lit as far as it goes. */
+.save-flow { display: flex; align-items: center; gap: 0; margin: 4px 0 6px; padding: 18px; border-radius: 14px; background: var(--fill); border: 1px solid var(--line); }
+.sf-node { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 120px; color: var(--dim); }
+.sf-node svg { width: 44px; height: 44px; padding: 10px; border-radius: 12px; background: var(--fill2); }
+.sf-node b { font-size: 13.5px; color: var(--muted); }
+.sf-node small { font-size: 12px; color: var(--dim); }
+.sf-node.lit svg { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.sf-node.lit b { color: var(--ink); }
+.sf-node.lit small { color: var(--muted); }
+.sf-line { flex: 1; height: 2px; margin: 0 6px 34px; background: repeating-linear-gradient(90deg, var(--line2) 0 6px, transparent 6px 12px); }
+.save-flow.on .sf-line { background: var(--grad); }
