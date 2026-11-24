@@ -347,7 +347,11 @@ pub fn LibraryPage() -> impl IntoView {
     let chips = Filter::STORES.into_iter().enumerate().map(|(i, which)| {
         let active = move || filter.get() == which;
         // ROMs only where classics are listed (Todos), and only with some.
-        let shown = move || which != Filter::Roms || (category.get() == Category::All && counts.get().0[4] > 0) || active();
+        let shown = move || {
+            active()
+                || which == Filter::All
+                || (counts.get().0[i] > 0 && (which != Filter::Roms || category.get() == Category::All))
+        };
         view! {
             <button type="button" class="chip-btn" class:on=active class:hidden=move || !shown() aria-pressed=move || active().to_string()
                 on:click=move |_| filter.set(which)>
@@ -577,6 +581,9 @@ pub fn LibraryPage() -> impl IntoView {
         }.into_any()
     };
 
+    // Origin, install state and status fold under "Filtros"; the button counts the ones on.
+    let filters_open = RwSignal::new(false);
+    let active_filters = move || (filter.get() != Filter::All) as usize + absent.get() as usize + status.get().is_some() as usize;
     let mode = move |list, icon, label: &'static str| {
         let active = move || compact.get() == list;
         view! {
@@ -622,6 +629,11 @@ pub fn LibraryPage() -> impl IntoView {
                         <option value="rating" selected=move || sort.get() == Sort::Rating>{tr!("Sua nota")}</option>
                         <option value="achievements" selected=move || sort.get() == Sort::Achievements>{tr!("Conquistas")}</option>
                     </select>
+                    <button type="button" class="btn lib-filter-btn" class:on=move || { filters_open.get() || active_filters() > 0 }
+                        aria-expanded=move || filters_open.get().to_string() on:click=move |_| filters_open.update(|o| *o = !*o)>
+                        <Svg icon=Icon::Filter size=18 />{tr!("Filtros")}
+                        {move || (active_filters() > 0).then(|| view! { <span class="tab-n">{active_filters()}</span> })}
+                    </button>
                     <div class="library-modes" role="group" aria-label=tr!("Visualização")>
                         {mode(false, Icon::Library, tr!("Ver em grade"))}
                         {mode(true, Icon::List, tr!("Ver em lista"))}
@@ -629,13 +641,18 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
                 <div class="lib-tabs">
                     <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
+                    <Show when=move || category.get() == Category::Collections>
+                        <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
+                    </Show>
+                </div>
+                <div class="lib-filters" class:hidden=move || !filters_open.get()>
                     <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
                         <div class="chips" role="group" aria-label=tr!("Origem do jogo")>{chips.clone()}</div>
                         {presence}
                     </Show>
                     {statuses}
-                    <Show when=move || category.get() == Category::Collections>
-                        <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
+                    <Show when=move || { active_filters() > 0 }>
+                        <button type="button" class="link" on:click=move |_| { filter.set(Filter::All); absent.set(false); status.set(None); }>{tr!("Limpar filtros")}</button>
                     </Show>
                 </div>
             </section>

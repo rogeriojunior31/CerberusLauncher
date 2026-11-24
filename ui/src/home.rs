@@ -264,10 +264,11 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                 let text = store.and_then(|s| s.get().flatten()).unwrap_or_else(|| fixed_about.clone());
                 (!text.is_empty()).then(|| view! { <p class="sl-about">{text}</p> })
             };
-            let facts = (!feature.facts.is_empty()).then(|| {
+            let facts = {
+                let why = (!feature.kicker.is_empty()).then(|| view! { <span class="sl-why">{feature.kicker.clone()}</span> });
                 let items = feature.facts.iter().map(|f| view! { <span>{f.clone()}</span> }).collect_view();
-                view! { <div class="sl-facts">{items}</div> }
-            });
+                view! { <div class="sl-facts">{why}{items}</div> }
+            };
             let logo_failed = RwSignal::new(false);
             let title_text = StoredValue::new(feature.title.clone());
             let heading = match feature.logo.clone() {
@@ -283,7 +284,6 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                 <div class="slide" class:on=on inert=move || !on() aria-hidden=move || (!on()).to_string()>
                     <Backdrop sources=feature.heroes.clone() soft=feature.soft />
                     <div class="sl-in">
-                        <span class="kick">{feature.kicker.clone()}</span>
                         {heading}
                         <span class="based">{feature.based.clone()}</span>
                         {facts}

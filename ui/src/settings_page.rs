@@ -33,20 +33,20 @@ enum Section {
 }
 
 const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
-    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv), (Section::Controllers, tk!("Controles"), Icon::Gamepad)]),
+    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Palette), (Section::InGame, tk!("Durante o jogo"), Icon::Layers), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv), (Section::Controllers, tk!("Controles"), Icon::Gamepad)]),
     (
         tk!("Jogos"),
         &[
             (Section::Library, tk!("Biblioteca e ROMs"), Icon::Library),
             (Section::Install, tk!("Instalação"), Icon::Download),
-            (Section::Saves, tk!("Saves e nuvem"), Icon::Saves),
-            (Section::Art, tk!("Arte dos jogos"), Icon::Edit),
+            (Section::Saves, tk!("Saves e nuvem"), Icon::Cloud),
+            (Section::Art, tk!("Arte dos jogos"), Icon::Photo),
             (Section::Catalog, tk!("Catálogo e fontes"), Icon::Discover),
         ],
     ),
-    (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Gamepad)]),
-    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::Gamepad), (Section::Epic, "Epic Games", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
-    (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Check), (Section::Storage, tk!("Armazenamento"), Icon::Folder), (Section::About, tk!("Sobre"), Icon::Info)]),
+    (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Disc)]),
+    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::User), (Section::Epic, "Epic Games", Icon::Shelf), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Cpu), (Section::Storage, tk!("Armazenamento"), Icon::Database), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
 /// What the search finds: each section's options, by the titles their rows show.

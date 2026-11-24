@@ -144,7 +144,8 @@ h1, h2, h3 { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; lett
   justify-content: flex-end;
 }
 .win { display: flex; }
-.win button { width: 46px; height: 40px; display: grid; place-items: center; color: var(--muted); transition: background 0.12s, color 0.12s; }
+.win button { width: 46px; height: 40px; display: grid; place-items: center; color: var(--ink); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9)); transition: background 0.12s, color 0.12s; }
+.topbar { background: linear-gradient(180deg, rgba(6, 7, 11, 0.55), transparent); }
 .win button:hover { background: var(--fill2); color: var(--ink); }
 .win button.close:hover { background: #e81123; color: #fff; }
 
@@ -178,7 +179,7 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 .btn:hover:not(:disabled) { background: var(--fill3); border-color: rgba(255, 255, 255, 0.22); }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.45; }
-.btn.main { border: 0; background: var(--grad); color: var(--accent-ink); box-shadow: 0 10px 28px -10px var(--glow); }
+.btn.main { border: 0; background: var(--grad); color: var(--accent-ink); box-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.7); }
 .btn.main:hover:not(:disabled) { filter: brightness(1.08); background: var(--grad); }
 .btn.big { height: 54px; border-radius: 17px; font-size: 16px; padding: 0 26px; }
 .btn.sm { height: 34px; padding: 0 13px; border-radius: 11px; font-size: 13px; }
@@ -270,8 +271,8 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 /* Big libraries: tiles off screen skip layout and paint until scrolled near. */
 .grid > .tile { content-visibility: auto; contain-intrinsic-size: auto 330px; }
 .chip-n { margin-left: 6px; font-size: 12px; font-weight: 700; opacity: 0.8; font-variant-numeric: tabular-nums; }
-.tile.absent .poster { filter: grayscale(0.55) brightness(0.62); transition: filter 0.2s var(--ease); }
-.tile.absent .tile-b:hover .poster, .tile.absent .tile-b:focus-visible .poster { filter: none; }
+.tile.absent .poster img { filter: grayscale(0.55) brightness(0.62); transition: filter 0.2s var(--ease); }
+.tile.absent .tile-b:hover .poster img, .tile.absent .tile-b:focus-visible .poster img { filter: none; }
 
 /* ---------- shelves ---------- */
 
@@ -472,10 +473,11 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
     linear-gradient(90deg, color-mix(in srgb, var(--bg) 70%, transparent), transparent 60%);
 }
 .gp-page { position: relative; padding-top: 250px; }
-.gp-head { display: flex; align-items: flex-end; gap: 30px; }
+.gp-head { display: flex; align-items: flex-end; gap: 30px; flex-wrap: wrap; }
 .gp-cover { width: 200px; flex: none; }
 .gp-cover .poster { box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.gp-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1; padding-bottom: 6px; }
+.gp-info { display: flex; flex-direction: column; gap: 10px; min-width: min(340px, 100%); flex: 1; padding-bottom: 6px; }
+.gp-info h1 { overflow-wrap: break-word; hyphens: auto; }
 .gp-info h1 { font-size: clamp(32px, 3.4vw, 56px); font-weight: 800; line-height: 1.02; text-shadow: 0 4px 30px rgba(0, 0, 0, 0.5); }
 .gp-act { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; padding-bottom: 6px; }
 .btn.play { min-width: 200px; }
@@ -739,8 +741,8 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
   text-align: left;
   transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
 }
-.gp-ver b { font-weight: 800; white-space: nowrap; }
-.gp-ver-meta { color: #c3c7d1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.gp-ver b { font-weight: 800; }
+.gp-ver-meta { color: #c3c7d1; font-weight: 600; min-width: 0; }
 .gp-ver-more { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 3px 6px 3px 10px; border-radius: 9px; background: var(--fill2); color: var(--ink); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
 .gp-ver-more svg { transition: transform 0.22s var(--ease); }
 .gp-ver[aria-expanded="true"] .gp-ver-more svg { transform: rotate(180deg); }
@@ -1839,8 +1841,8 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .foot-icon:hover { background: var(--fill2); color: var(--ink); }
 .foot-icon.on { background: var(--card2); color: var(--accent); }
 /* The main thing to do down here: the accent, like the other main buttons. */
-.foot-icon.foot-add { border: 0; background: var(--grad); color: var(--accent-ink); box-shadow: 0 8px 20px -10px var(--glow); }
-.foot-icon.foot-add:hover { background: var(--grad); color: var(--accent-ink); filter: brightness(1.08); }
+.foot-icon.foot-add { color: var(--accent); }
+.foot-icon.foot-add:hover { color: var(--ink); }
 
 /* Discover: genres */
 .genre-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -2014,14 +2016,14 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .cd-sec > h3 { font-size: 16px; margin: 0; }
 .cd-sec > p { margin: -4px 0 0; }
 .cd-games { display: flex; flex-wrap: wrap; gap: 6px; }
-.who-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
-.who-card { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--fill); border: 1px solid var(--line); min-width: 0; }
+.who-grid { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.who-card { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 10px; border-bottom: 1px solid var(--line); min-width: 0; }
 .who-card .emu-ico { width: 36px; height: 36px; border-radius: 9px; }
 .who-card .who-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .who-card .who-t b { font-size: 15px; }
 .who-card .who-t small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who-card .row { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.who-card.on { border-color: color-mix(in srgb, #4ade80 55%, transparent); background: color-mix(in srgb, #4ade80 7%, var(--fill)); }
+.who-card.on .who-t b { color: #86efac; }
 .who-check { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #4ade80; color: #04140b; flex: none; }
 @media (max-width: 760px) { .cd-head { flex-direction: column; align-items: flex-start; } .cd-art { width: 160px; } }
 .cd-sec .emu-line > .row { margin-left: auto; gap: 8px; } .cd-sec .emu-line > .row .btn { margin-left: 0; }
@@ -2118,3 +2120,13 @@ button.act-b { cursor: pointer; }
 .cl-console { position: absolute; right: 6%; top: 46px; width: min(460px, 40vw); max-height: 300px; object-fit: contain; opacity: 0.5; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.6)); }
 .tab-body > .hidden { display: none; }
 .cl-manage { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
+
+/* Biblioteca: the filters fold under one button that counts the ones on. */
+.lib-filter-btn.on { border-color: var(--accent); color: var(--ink); }
+.lib-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--line); }
+.lib-filters.hidden { display: none; }
+
+/* Short last lines read badly: let paragraphs balance. */
+p { text-wrap: pretty; }
+/* The hero's reason ("Continue jogando") opens its facts line instead of sitting above the title. */
+.sl-why { color: color-mix(in srgb, var(--accent) 55%, #fff); }
