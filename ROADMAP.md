@@ -480,7 +480,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 - [x] Menu da bandeja com os jogos recentes.
 - [x] Impedir o PC de dormir durante downloads.
 - [ ] **HowLongToBeat** na página do jogo (tempo para zerar).
-- [ ] Informações do jogo original pela Wikipedia, guardadas por um mês.
+- [x] Informações do jogo original pela Wikipedia, guardadas por um mês.
 - [ ] Prévia ao vivo dos filtros visuais sobre a imagem do próprio jogo, e um filtro "Studio".
 - [ ] Arte de mídia: o jogo desenhado como o cartucho, cartão ou disco dele.
 - [ ] Saves na nuvem de jogos de PC comuns (Steam, Epic, adicionados) pelos locais de save conhecidos (base do

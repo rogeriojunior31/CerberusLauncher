@@ -17,6 +17,10 @@ A **recomp** is a native PC version of a console game, rebuilt by the community 
 
 The catalog combines Cerberus's own list with the public list from [recomplauncher.com](https://recomplauncher.com). The second one can be turned off in **Settings → Catalog and sources**. See [Recomp catalog](../development/catalog.md).
 
+## A recomp's page
+
+Besides installing and playing, a recomp's page has **About** the original game: release, developer, publisher, series, genres, modes, platforms and critics' score (from IGDB), and the opening of its Wikipedia article in your language, with **Read on Wikipedia**. The article is kept for a month.
+
 ## Install
 
 1. Open a recomp's page and click **Install**.

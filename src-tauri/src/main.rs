@@ -40,6 +40,7 @@ mod steam_shortcuts;
 mod steam_store;
 mod steam_details;
 mod steam_news;
+mod wikipedia;
 mod trail;
 mod self_update;
 mod play_log;
@@ -844,6 +845,23 @@ async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id:
 async fn steam_news(app: AppHandle, http: State<'_, reqwest::Client>, games: Vec<(u32, String)>) -> Result<Vec<cerberus_shared::NewsItem>, String> {
     let data = app.state::<DataDir>().0.clone();
     Ok(steam_news::latest(&http, &data, games).await)
+}
+
+/// The original game's Wikipedia summary, in the player's language.
+#[tauri::command]
+async fn wiki_about(app: AppHandle, http: State<'_, reqwest::Client>, game: String) -> Result<Option<cerberus_shared::WikiAbout>, String> {
+    let data = app.state::<DataDir>().0.clone();
+    Ok(wikipedia::about(&http, &data, &game).await)
+}
+
+/// Opens a Wikipedia article in the browser; only Wikipedia's own links.
+#[tauri::command]
+fn open_wiki(app: AppHandle, url: String) -> Result<(), String> {
+    let host = url.strip_prefix("https://").and_then(|r| r.split('/').next()).unwrap_or_default();
+    if !(host.ends_with(".wikipedia.org") && !host.contains(['@', ':'])) {
+        return Err(tr!("Esse link não é da Wikipedia.").into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 /// Opens a post from Novidades in the browser; only Steam's own links.
@@ -2478,6 +2496,8 @@ fn main() {
             achievements_hub,
             steam_details,
             steam_news,
+            wiki_about,
+            open_wiki,
             set_tray_games,
             open_news,
             game_sessions,

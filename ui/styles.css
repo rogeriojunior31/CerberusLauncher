@@ -1166,6 +1166,7 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 /* Página do jogo: o jogo original */
 .original h3 { margin: 0 0 10px; }
 .og-summary { margin: 0 0 14px; line-height: 1.6; color: var(--ink); opacity: 0.88; }
+.og-wiki { display: inline-flex; align-items: center; gap: 6px; margin: -6px 0 14px; font-size: 13px; color: var(--accent); }
 .og-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 24px; margin: 0 0 12px; }
 .og-facts div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .og-facts dt { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }

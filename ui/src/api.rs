@@ -1067,3 +1067,20 @@ pub async fn set_tray_games(games: Vec<cerberus_shared::Game>) {
     }
     let _: Result<(), String> = call("set_tray_games", &Arg { games }).await;
 }
+
+/// The original game's Wikipedia summary, in the player's language (None: no article).
+pub async fn wiki_about(game: String) -> Result<Option<cerberus_shared::WikiAbout>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        game: String,
+    }
+    call("wiki_about", &Arg { game }).await
+}
+
+pub async fn open_wiki(url: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        url: String,
+    }
+    call("open_wiki", &Arg { url }).await
+}

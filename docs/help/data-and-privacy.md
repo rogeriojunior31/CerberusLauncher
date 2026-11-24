@@ -66,6 +66,7 @@ Cerberus changes files outside its own folder only when you ask, and backs them 
 | `api.steampowered.com` | Only with your Steam Web API key, when the Achievements page updates | Your games, achievements and play time |
 | `api.steampowered.com` (no key), Steam CDN | When you open a game's achievements | How rare each achievement is, and icons. Kept for a week |
 | `api.steampowered.com` (no key) | When you open Novidades | The latest announcements of your 12 most recently played Steam games (only their app ids are sent). Kept for 6 hours in `cache/news/` |
+| `pt.wikipedia.org` or `en.wikipedia.org` | When you open a recomp's page | The original game's name, to find its article. Kept for a month in `cache/wiki/` |
 | `retroachievements.org` | When you connect, open Achievements or play with achievements | Profile and achievements |
 | `reshade.me`, `api.github.com` | First visual filter | ReShade |
 | `aka.ms`, `download.microsoft.com` | Only when you ask | Visual C++ and DirectX installers |

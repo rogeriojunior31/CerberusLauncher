@@ -1257,13 +1257,33 @@ fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> im
     .filter(|(_, v)| !v.trim().is_empty())
     .collect();
     let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
-    let summary = (!original.summary.is_empty()).then(|| view! { <p class="og-summary">{original.summary.clone()}</p> });
+    // The Wikipedia summary in the player's language, when there is one; IGDB's English text otherwise.
+    let library = expect_context::<Library>();
+    let wiki = LocalResource::new({
+        let game = game.clone();
+        move || api::wiki_about(game.clone())
+    });
+    let igdb = original.summary.clone();
+    let summary = move || match wiki.get().and_then(Result::ok).flatten() {
+        Some(w) => {
+            let url = w.url.clone();
+            view! {
+                <p class="og-summary">{w.extract.clone()}</p>
+                <button type="button" class="link og-wiki" on:click=move |_| {
+                    let url = url.clone();
+                    spawn_local(async move { library.report(api::open_wiki(url).await); });
+                }><Svg icon=Icon::External size=14 />{tr!("Ler na Wikipedia")}</button>
+            }
+            .into_any()
+        }
+        None => (!igdb.is_empty()).then(|| view! { <p class="og-summary">{igdb.clone()}</p> }).into_any(),
+    };
     view! {
         <section class="card original">
             <h3>{tr!("Sobre {}", game)}</h3>
             {summary}
             <dl class="og-facts">{rows}</dl>
-            <p class="muted small">{tr!("Dados do jogo original pelo IGDB, em inglês.")}</p>
+            <p class="muted small">{tr!("Dados do jogo original pelo IGDB e pela Wikipedia.")}</p>
         </section>
     }
 }

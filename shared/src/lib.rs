@@ -485,6 +485,14 @@ pub struct StoreLanguage {
     pub audio: bool,
 }
 
+/// The original game's Wikipedia article: its opening paragraph, as plain text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WikiAbout {
+    pub title: String,
+    pub extract: String,
+    pub url: String,
+}
+
 /// A post by a Steam game's developers, for Novidades. Plain text only.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NewsItem {
