@@ -426,13 +426,13 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - Secretas escondidas até clicar, com opção para mostrar todas.
       - Selo de hardcore e conjuntos (subsets) do RA.
       - % de raridade com "<0,1%" para as raríssimas.
-- [ ] **Biblioteca:** progresso de conquistas na capa e opção de ordenar por conquistas.
-- [ ] **Big Picture Mode:** a mesma página de conquistas.
-- [ ] **Aviso ao desbloquear por cima do jogo:** janela transparente, sem foco e sempre no topo, num canto escolhido,
+- [x] **Biblioteca:** progresso de conquistas na capa e opção de ordenar por conquistas.
+- [x] **Big Picture Mode:** a mesma página de conquistas.
+- [x] **Aviso ao desbloquear por cima do jogo:** janela transparente, sem foco e sempre no topo, num canto escolhido,
       com ícone, raridade e "platina" quando completa o jogo.
       - Steam: vigiar a data de modificação do `UserGameStats` durante a partida.
       - RA: o log do RetroArch, que já lemos.
-- [ ] **Cartão "Seu tempo de jogo"** na página do jogo (ideia do RecompLauncher):
+- [x] **Cartão "Seu tempo de jogo"** na página do jogo (ideia do RecompLauncher):
       - Barras das últimas 2 semanas, total, semana, mês, número de sessões e sessão mais longa.
       - Soma Cerberus, Steam e Epic, separando a origem.
 
@@ -451,7 +451,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - Botão para abrir uma issue com o log e o histórico.
 - [ ] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
 - [ ] **Recuperar o WebView2** quando ele travar, sem derrubar jogos nem downloads; avisar que o RivaTuner é a causa comum.
-- [ ] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
+- [x] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
 - [ ] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
       pouco de aleatoriedade.
 - [ ] Achar o arquivo da release pelo sistema e pela CPU quando o padrão do catálogo parar de bater (projeto que
@@ -477,8 +477,8 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 - [ ] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
 - [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
-- [ ] Menu da bandeja com os jogos recentes.
-- [ ] Impedir o PC de dormir durante downloads.
+- [x] Menu da bandeja com os jogos recentes.
+- [x] Impedir o PC de dormir durante downloads.
 - [ ] **HowLongToBeat** na página do jogo (tempo para zerar).
 - [ ] Informações do jogo original pela Wikipedia, guardadas por um mês.
 - [ ] Prévia ao vivo dos filtros visuais sobre a imagem do próprio jogo, e um filtro "Studio".
