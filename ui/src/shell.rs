@@ -12,7 +12,17 @@ pub fn Sidebar() -> impl IntoView {
     let activity = expect_context::<crate::news::Activity>();
     let item = move |route: Route, icon: Icon, label: &'static str| {
         let target = route.clone();
-        let on = move || library.route.with(|now| now.section() == target);
+        // A recomp's page belongs to the Library once it's installed, to Discover before.
+        let on = move || {
+            library.route.with(|now| {
+                let in_library = |id: &String| library.games.with(|g| g.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|list| list.iter().any(|x| &x.id == id)));
+                let section = match now {
+                    Route::Game(id) if in_library(id) => Route::Library,
+                    other => other.section(),
+                };
+                section == target
+            })
+        };
         let downloads = route == Route::Downloads;
         let count = matches!(route, Route::Downloads | Route::News).then(|| {
             view! { <b class="n">{move || {
