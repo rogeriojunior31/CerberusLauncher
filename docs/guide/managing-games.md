@@ -23,7 +23,7 @@ The **Manage** tab on a game's page gathers everything that changes how a game i
 ## Shortcuts and Steam
 
 - **Create a desktop shortcut** makes a shortcut that opens the game through Cerberus, so play time, backups and filters keep working.
-- **Add to Steam** puts a non-Steam game in your Steam library, with its cover and background, opening through Cerberus. That's useful for Steam Deck and Steam's Big Picture.
+- **Add to Steam** puts a non-Steam game in your Steam library, with its cover and background, opening through Cerberus. That's useful for Steam Deck and Steam's Big Picture. To add every game at once, use **Settings → Steam → Add all**.
   - Close Steam first, because it rewrites its game list when it closes.
   - Cerberus backs up Steam's `shortcuts.vdf` before changing it.
   - **Remove from Steam** undoes it.

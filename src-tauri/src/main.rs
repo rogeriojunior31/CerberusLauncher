@@ -2143,6 +2143,12 @@ async fn add_to_steam(app: AppHandle, http: State<'_, reqwest::Client>, id: Stri
     if configs.is_empty() {
         return Err(tr!("Entre na Steam uma vez antes: ela ainda não tem uma conta neste PC.").into());
     }
+    put_in_steam(&app, &http, &configs, &game).await?;
+    Ok(tr!("{} está na Steam. Ele aparece na biblioteca quando a Steam abrir.", game.name))
+}
+
+/// One game as a Steam shortcut, with its cover and background, in every Steam account here.
+async fn put_in_steam(app: &AppHandle, http: &reqwest::Client, configs: &[PathBuf], game: &Game) -> Result<(), String> {
     let icon = match &game.source {
         Source::Recomp { exe, .. } | Source::Local { exe } => Some(PathBuf::from(exe)),
         _ => None,
@@ -2150,16 +2156,39 @@ async fn add_to_steam(app: AppHandle, http: State<'_, reqwest::Client>, id: Stri
     let launcher = std::env::current_exe().map_err(|e| e.to_string())?;
     let shortcut = steam_shortcuts::Shortcut { name: game.name.clone(), launcher, game_id: game.id.clone(), icon };
     let art = app.state::<Arc<ArtCache>>().inner().clone();
-    let cover = art_bytes(&http, &art, game.cover_path.as_deref(), game.cover_url.as_deref()).await;
-    let hero = art_bytes(&http, &art, game.hero_path.as_deref(), game.hero_url.as_deref()).await;
-    for config in &configs {
+    let cover = art_bytes(http, &art, game.cover_path.as_deref(), game.cover_url.as_deref()).await;
+    let hero = art_bytes(http, &art, game.hero_path.as_deref(), game.hero_url.as_deref()).await;
+    for config in configs {
         let mut list = steam_shortcuts::load(config)?;
         steam_shortcuts::add(&mut list, &shortcut);
         steam_shortcuts::save(config, &list)?;
         steam_shortcuts::place_art(config, shortcut.app_id(), cover.as_deref(), hero.as_deref());
     }
-    trail::note(&app, &game.id, tk!("Steam"), &Ok(tr!("Adicionado à Steam").to_string()));
-    Ok(tr!("{} está na Steam. Ele aparece na biblioteca quando a Steam abrir.", game.name))
+    trail::note(app, &game.id, tk!("Steam"), &Ok(tr!("Adicionado à Steam").to_string()));
+    Ok(())
+}
+
+/// Every installed game that isn't Steam's and isn't there yet (hidden ones
+/// aside) goes into Steam. Returns how many were added.
+#[tauri::command]
+async fn add_all_to_steam(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<usize, String> {
+    let steam = steam_closed()?;
+    let configs = steam_shortcuts::config_dirs(&steam);
+    if configs.is_empty() {
+        return Err(tr!("Entre na Steam uma vez antes: ela ainda não tem uma conta neste PC.").into());
+    }
+    let mut games = app.state::<LocalLibrary>().games()?;
+    games.extend(epic::installed_games());
+    let already = |id: &str| configs.iter().any(|c| steam_shortcuts::load(c).is_ok_and(|list| steam_shortcuts::contains(&list, id)));
+    let mut added = 0;
+    for game in games {
+        if game.hidden || game.install_dir.is_empty() || matches!(game.source, Source::Steam { .. }) || already(&game.id) {
+            continue;
+        }
+        put_in_steam(&app, &http, &configs, &game).await?;
+        added += 1;
+    }
+    Ok(added)
 }
 
 #[tauri::command]
@@ -2496,6 +2525,7 @@ fn main() {
             achievements_hub,
             steam_details,
             steam_news,
+            add_all_to_steam,
             wiki_about,
             open_wiki,
             set_tray_games,

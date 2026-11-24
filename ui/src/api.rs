@@ -1084,3 +1084,8 @@ pub async fn open_wiki(url: String) -> Result<(), String> {
     }
     call("open_wiki", &Arg { url }).await
 }
+
+/// Puts every installed game that isn't Steam's into Steam; how many went in.
+pub async fn add_all_to_steam() -> Result<usize, String> {
+    call("add_all_to_steam", &()).await
+}

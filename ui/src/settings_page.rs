@@ -63,7 +63,7 @@ const FIND: &[(Section, &[&str])] = &[
     (Section::Art, &[tk!("Chave do SteamGridDB"), tk!("Capas e fundos")]),
     (Section::Catalog, &[tk!("Catálogo do recomplauncher.com"), tk!("Fontes de catálogo"), tk!("Adicionar por URL")]),
     (Section::Emulation, &[tk!("Núcleos"), tk!("Conquistas no RetroArch"), tk!("Seus clássicos")]),
-    (Section::Steam, &[tk!("Chave da Web API da Steam"), tk!("Privacidade do perfil")]),
+    (Section::Steam, &[tk!("Chave da Web API da Steam"), tk!("Privacidade do perfil"), tk!("Adicionar todos à Steam")]),
     (Section::Retro, &[]),
     (Section::Pc, &[tk!("Visual C++ 2015-2022 (64 bits)")]),
     (Section::Storage, &[tk!("Dados do Cerberus"), tk!("Copiar meus dados"), tk!("Restaurar de uma cópia")]),
@@ -365,7 +365,7 @@ pub fn SettingsPage() -> impl IntoView {
             }
             .into_any(),
             Section::Emulation => emulation(s).into_any(),
-            Section::Steam => view! { <SteamAccountCard /> }.into_any(),
+            Section::Steam => view! { <SteamAccountCard /> <SteamShortcutsCard /> }.into_any(),
             Section::Epic => view! { <EpicCard /> }.into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() retroarch=s.ra_retroarch /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
@@ -1154,6 +1154,33 @@ fn update_row() -> impl IntoView {
 /// Linking a RetroAchievements account and showing its progress.
 /// Steam's Web API, optional: with the player's own key, the achievements hub
 /// reads every owned game and the achievements unlocked on other PCs.
+/// Your other games inside Steam, for the Steam Deck and Steam's Big Picture.
+#[component]
+fn SteamShortcutsCard() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let busy = RwSignal::new(false);
+    let add_all = move |_| {
+        busy.set(true);
+        spawn_local(async move {
+            match library.report(api::add_all_to_steam().await) {
+                Some(0) => library.toast(tr!("Seus jogos já estão todos na Steam.")),
+                Some(1) => library.toast(tr!("1 jogo foi para a Steam. Ele aparece quando a Steam abrir.")),
+                Some(n) => library.toast(tr!("{} jogos foram para a Steam. Eles aparecem quando a Steam abrir.", n)),
+                None => {}
+            }
+            busy.set(false);
+        });
+    };
+    view! {
+        <section class="card set">
+            <h3>{tr!("Seus jogos na Steam")}</h3>
+            {row(tr!("Adicionar todos à Steam"), tr!("Recomps, jogos que você adicionou e os da Epic entram na Steam como jogos de fora, com capa, e abrem pelo Cerberus. Os que já estão lá ficam como estão. Feche a Steam antes."),
+                view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=add_all>
+                    {move || if busy.get() { tr!("Adicionando…") } else { tr!("Adicionar todos") }}</button> })}
+        </section>
+    }
+}
+
 /// The Epic Games Launcher: found or not, and its installed games in the library.
 #[component]
 fn EpicCard() -> impl IntoView {
