@@ -549,9 +549,10 @@ pub fn status(data: &Path, picked: &BTreeMap<String, PathBuf>) -> Vec<Standalone
 }
 
 /// Opens a game in a standalone emulator.
-pub fn launch(exe: &Path, emulator: &Emulator, rom: &Path) -> Result<std::process::Child, String> {
+pub fn launch(exe: &Path, emulator: &Emulator, rom: &Path, extra: &[String]) -> Result<std::process::Child, String> {
     let mut command = std::process::Command::new(exe);
-    command.args((emulator.args)(rom));
+    // The session's own settings first, then what opens the game.
+    command.args(extra).args((emulator.args)(rom));
     if let Some(dir) = exe.parent() {
         command.current_dir(dir);
     }

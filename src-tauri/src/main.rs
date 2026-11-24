@@ -701,7 +701,7 @@ fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'stati
     let account = chosen.ra_user.as_deref().zip(chosen.ra_token.as_deref()).map(|(user, token)| cheevos::Account { user, token });
     let session = cheevos::prepare(&data, emulator.id, exe, account, None);
     let id = format!("classic:{path}");
-    let result = standalone::launch(exe, emulator, &rom);
+    let result = standalone::launch(exe, emulator, &rom, &session.args);
     trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no {}", emulator.name)).map_err(Clone::clone));
     let child = match result {
         Ok(child) => child,

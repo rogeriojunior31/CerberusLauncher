@@ -78,13 +78,15 @@ Recomp pages show **Original in RetroArch** when your copy of the original game 
 
 Cerberus trades your password for an access token on the RetroAchievements website and saves **only the token** in RetroArch's settings. The password is never stored. RetroArch's settings file is backed up before it's changed.
 
-The same token signs in **DuckStation** and **PCSX2** when a game opens through them (another account you chose in the emulator is left alone).
+The same token signs in **DuckStation**, **PCSX2** and **Dolphin** when a game opens through them (another account you chose in the emulator is left alone).
 
-**Only Cerberus shows the achievement.** While a classic runs through Cerberus, the emulator's own achievement pop-ups and sounds are turned off (RetroArch, DuckStation and PCSX2) and Cerberus reads its log instead: the moment one unlocks, Cerberus's own notice appears over the game, with the achievement's picture and description, a special one for rare achievements and for the last one of the game, and it goes into the game's history. RetroAchievements' own warnings (like "Unsupported Core") aren't shown as achievements.
+**Only Cerberus shows the achievement.** While a classic runs through Cerberus, the emulator's own achievement pop-ups and sounds are turned off (RetroArch, DuckStation, PCSX2 and Dolphin) and Cerberus reads its log instead: the moment one unlocks, Cerberus's own notice appears over the game, with the achievement's picture and description, a special one for rare achievements and for the last one of the game, and it goes into the game's history. RetroAchievements' own warnings (like "Unsupported Core") aren't shown as achievements.
 
 When the game closes, the emulator's settings go back to exactly what you had; if Cerberus closed before the game (or the PC turned off), they go back the next time Cerberus opens. Opening the emulator by itself, everything is as you set it.
 
-PPSSPP and Dolphin still show their own pop-ups, and RPCS3 and Cemu use their consoles' trophies, not RetroAchievements.
+- **Dolphin:** its on-screen messages (where its unlock pop-up shows) and sound are turned off for that run only, through its command line, so no file of yours changes.
+- **PPSSPP:** it has no setting to hide its unlock pop-up (only where it shows), so it still appears; its sound is turned off and Cerberus's notice shows too. Sign in to RetroAchievements in PPSSPP once (it keeps its token apart).
+- RPCS3 and Cemu use their consoles' trophies, not RetroAchievements.
 
 ## See also
 

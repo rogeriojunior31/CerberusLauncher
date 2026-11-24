@@ -26,6 +26,8 @@ pub enum Format {
     DuckStation,
     /// `Achievements: Achievement Title (1234) for game 99 unlocked`.
     Pcsx2,
+    /// `Achievement unlocked: 'Title' (1234)`.
+    Ppsspp,
 }
 
 /// An achievement unlocked, by its RetroAchievements id and title.
@@ -84,6 +86,11 @@ pub fn parse(format: Format, line: &str) -> Option<Unlock> {
             }
             let (title, id) = rest[..end].rsplit_once(" (")?;
             Unlock { id: id.strip_suffix(')')?.trim().parse().ok()?, title: title.to_string(), game: game_after(&rest[end..]) }
+        }
+        Format::Ppsspp => {
+            let rest = &line[line.find("Achievement unlocked: '")? + "Achievement unlocked: '".len()..];
+            let (title, id) = rest.rsplit_once("' (")?;
+            Unlock { id: id.split(')').next()?.trim().parse().ok()?, title: title.to_string(), game: None }
         }
     };
     real(unlock.id, &unlock.title).then_some(unlock)
@@ -224,6 +231,9 @@ pub struct Session {
     /// Where the log ended when the game opened: only what comes after is new.
     pub from: u64,
     pub format: Option<Format>,
+    /// Arguments for this session only (Dolphin's `--config`, PPSSPP's log).
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 fn pending_file(data: &Path) -> PathBuf {
@@ -309,6 +319,53 @@ pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>
             session.log = Some(root.join("logs").join("emulog.txt"));
             session.format = Some(Format::Pcsx2);
         }
+        "dolphin" => {
+            // Dolphin takes settings for one run on its command line: nothing in
+            // the player's files changes. Its unlock pop-up is an on-screen message.
+            let user = if portable(exe) {
+                Some(dir.join("User"))
+            } else {
+                let roaming = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Dolphin Emulator"));
+                roaming.filter(|r| r.is_dir()).or_else(|| documents().map(|d| d.join("Dolphin Emulator")))
+            };
+            let Some(user) = user else { return session };
+            if let Some(a) = account {
+                let ini = user.join("Config").join("RetroAchievements.ini");
+                let text = fs::read_to_string(&ini).unwrap_or_default();
+                if may_sign_in(ini_value(&text, "Achievements", "Username"), a.user) {
+                    keep(&ini, Some("Achievements"), &[("Enabled", "True"), ("Username", a.user), ("ApiToken", a.token)]);
+                }
+            }
+            session.args = vec![
+                "--config=Dolphin.Interface.OnScreenDisplayMessages=False".into(),
+                "--config=Achievements.Achievements.SoundFeedback=False".into(),
+                "--config=Logger.Options.WriteToFile=True".into(),
+                "--config=Logger.Options.Verbosity=4".into(),
+                "--config=Logger.Logs.RetroAchievements=True".into(),
+            ];
+            session.log = Some(user.join("Logs").join("dolphin.log"));
+            session.format = Some(Format::RetroArch);
+        }
+        "ppsspp" => {
+            // PPSSPP has no setting to hide its unlock pop-up (only where it
+            // shows): its sound goes off, and its log comes to Cerberus.
+            let beside = dir.join("memstick").join("PSP").join("SYSTEM").join("ppsspp.ini");
+            let docs = documents().map(|d| d.join("PPSSPP").join("PSP").join("SYSTEM").join("ppsspp.ini"));
+            let ini = if beside.is_file() || docs.as_ref().is_none_or(|d| !d.is_file()) { beside } else { docs.unwrap_or_default() };
+            if let Some(a) = account {
+                let text = fs::read_to_string(&ini).unwrap_or_default();
+                if may_sign_in(ini_value(&text, "Achievements", "AchievementsUserName"), a.user) {
+                    keep(&ini, Some("Achievements"), &[("AchievementsEnable", "True"), ("AchievementsUserName", a.user)]);
+                }
+            }
+            session.edits = apply(&ini, Some("Achievements"), &[("AchievementsSoundEffects", "False")]);
+            session.edits.extend(apply(&ini, Some("Log"), &[("AchievementsEnabled", "True"), ("AchievementsLevel", "4")]));
+            let log = data.join("emulators").join("ppsspp-session.log");
+            let _ = fs::remove_file(&log);
+            session.args = vec!["--loglevel=4".into(), format!("--log={}", log.display())];
+            session.log = Some(log);
+            session.format = Some(Format::Ppsspp);
+        }
         _ => {}
     }
     session.from = session.log.as_ref().and_then(|l| fs::metadata(l).ok()).map_or(0, |m| m.len());
@@ -381,6 +438,8 @@ mod tests {
         assert_eq!((p2.id, p2.title.as_str(), p2.game), (4242, "Kamehameha (Wave)", Some(77)));
         // Seen in a real session: RetroAchievements' own warning.
         assert!(parse(Format::RetroArch, "[INFO] [RCHEEVOS] Awarding achievement 101000001: Warning: Unsupported Core").is_none());
+        let pp = parse(Format::Ppsspp, "I[ACHIEVEMENTS]: Achievement unlocked: 'Prinny's Promise' (55501)").unwrap();
+        assert_eq!((pp.id, pp.title.as_str()), (55501, "Prinny's Promise"));
         assert!(parse(Format::DuckStation, "Achievement 5 (x) for game 1 primed").is_none());
         assert!(parse(Format::RetroArch, "[RCHEEVOS]: Error awarding achievement 12: Speedy, retrying").is_none());
     }
@@ -468,6 +527,20 @@ mod tests {
 ").trim_end(), "{id}: not the same after the session");
             println!("{id}: {} settings changed for the session, all back after ({} lines)", session.edits.len(), after.lines().count());
         }
+    }
+
+    #[test]
+    fn dolphin_turns_its_messages_off_for_the_run_only() {
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("dolphin");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("portable.txt"), "").unwrap();
+        let s = prepare(data.path(), "dolphin", &dir.join("Dolphin.exe"), Some(Account { user: "Player", token: "TOKEN" }), None);
+        assert!(s.edits.is_empty(), "no file of the player changes for the session");
+        assert!(s.args.iter().any(|a| a == "--config=Dolphin.Interface.OnScreenDisplayMessages=False"));
+        assert_eq!(s.log.as_deref(), Some(dir.join("User").join("Logs").join("dolphin.log").as_path()));
+        let ra = fs::read_to_string(dir.join("User").join("Config").join("RetroAchievements.ini")).unwrap();
+        assert!(ra.contains("Username = Player") && ra.contains("ApiToken = TOKEN"));
     }
 
     #[test]

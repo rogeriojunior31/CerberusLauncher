@@ -477,7 +477,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
 
 - [x] Conquistas dos emuladores só no Cerberus: RetroArch, DuckStation e PCSX2 entram na conta com o token,
   os avisos deles ficam desligados durante a partida (e voltam depois) e o Cerberus lê o log e mostra o próprio aviso.
-- [ ] O mesmo para PPSSPP e Dolphin (confirmar os nomes das opções de aviso no código de cada um).
+- [x] O mesmo para Dolphin (só pela linha de comando) e PPSSPP (o PPSSPP não tem como esconder o próprio aviso; só o som sai).
 - [ ] Troféus do RPCS3 (PS3) no hub de conquistas.
 
 - [x] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
