@@ -21,11 +21,7 @@ fn user_agent() -> String {
 
 pub(crate) async fn get(http: &reqwest::Client, endpoint: &str, user: &str, key: &str, extra: &str) -> Result<Value, String> {
     let url = format!("{API}/{endpoint}?u={}&y={}{extra}", encode(user), encode(key));
-    let reply = http
-        .get(&url)
-        .header("User-Agent", user_agent())
-        .timeout(Duration::from_secs(15))
-        .send()
+    let reply = crate::net::send(http.get(&url).header("User-Agent", user_agent()).timeout(Duration::from_secs(15)))
         .await
         .map_err(|_| tr!("Não foi possível falar com o RetroAchievements. Confira a internet.").to_string())?;
     match reply.status().as_u16() {

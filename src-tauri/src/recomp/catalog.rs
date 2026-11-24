@@ -233,7 +233,7 @@ async fn refresh_own(client: &Client, cache_dir: &Path, force: bool) {
     if !force && age.is_some_and(|a| a < FRESH_FOR) {
         return;
     }
-    let Ok(reply) = client.get(OWN_URL).timeout(Duration::from_secs(20)).send().await else {
+    let Ok(reply) = crate::net::send(client.get(OWN_URL).timeout(Duration::from_secs(20))).await else {
         return;
     };
     let Ok(text) = reply.error_for_status().map(|r| r.text()) else {
@@ -282,10 +282,7 @@ pub async fn refresh(client: &Client, cache_dir: &Path, force: bool) -> Result<(
     if !force && age.is_some_and(|a| a < FRESH_FOR) {
         return Ok(());
     }
-    let reply = client
-        .get(SOURCE_URL)
-        .timeout(Duration::from_secs(30))
-        .send()
+    let reply = crate::net::send(client.get(SOURCE_URL).timeout(Duration::from_secs(30)))
         .await
         .map_err(|_| tr!("Sem conexão com {0}.", SOURCE_NAME))?;
     if !reply.status().is_success() {

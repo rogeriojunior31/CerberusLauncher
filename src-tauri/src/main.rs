@@ -28,6 +28,7 @@ mod unlock_toast;
 mod disc_image;
 mod screenshots;
 mod monitors;
+mod net;
 mod collections;
 mod notify;
 mod crash;

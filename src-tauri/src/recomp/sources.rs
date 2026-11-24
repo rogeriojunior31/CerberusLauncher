@@ -172,7 +172,7 @@ pub async fn fetch(client: &Client, cache_dir: &Path, url: &str) -> Result<Catal
     if !url.starts_with("https://") {
         return Err(tr!("Use um endereço https://.").into());
     }
-    let reply = client.get(url).timeout(Duration::from_secs(30)).send().await.map_err(|_| tr!("Não foi possível baixar a fonte.").to_string())?;
+    let reply = crate::net::send(client.get(url).timeout(Duration::from_secs(30))).await.map_err(|_| tr!("Não foi possível baixar a fonte.").to_string())?;
     if reply.status().as_u16() == 451 {
         return Err(tr!("HTTP 451 · Acesso indisponível por restrição legal informada pelo servidor.").into());
     }

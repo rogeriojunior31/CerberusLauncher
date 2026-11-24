@@ -371,7 +371,7 @@ pub fn game_entry(app: u32, name: String, list: &[Achievement], played: Option<&
 /// A game's name from the Steam store, for games Steam's cache doesn't name.
 pub async fn store_name(http: &reqwest::Client, app: &str) -> Option<String> {
     let url = format!("https://store.steampowered.com/api/appdetails?appids={app}&filters=basic");
-    let v: serde_json::Value = http.get(&url).timeout(Duration::from_secs(15)).send().await.ok()?.json().await.ok()?;
+    let v: serde_json::Value = crate::net::send(http.get(&url).timeout(Duration::from_secs(15))).await.ok()?.json().await.ok()?;
     let name = v.get(app)?.get("data")?.get("name")?.as_str()?.trim().to_string();
     (!name.is_empty()).then_some(name)
 }
@@ -390,7 +390,7 @@ pub async fn rarity(http: &reqwest::Client, cache_dir: &Path, app: u32) -> HashM
         }
     }
     let url = format!("https://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid={app}");
-    let reply = http.get(&url).timeout(Duration::from_secs(15)).send().await;
+    let reply = crate::net::send(http.get(&url).timeout(Duration::from_secs(15))).await;
     let parsed = match reply {
         Ok(r) if r.status().is_success() => r.json::<serde_json::Value>().await.ok().map(|v| rarity_from(&v)),
         _ => None,

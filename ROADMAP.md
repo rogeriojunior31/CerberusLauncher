@@ -449,17 +449,17 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - As últimas linhas do log do jogo e a explicação que já temos.
       - "Usar a placa de vídeo mais rápida".
       - Botão para abrir uma issue com o log e o histórico.
-- [ ] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
+- [x] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
 - [ ] **Recuperar o WebView2** quando ele travar, sem derrubar jogos nem downloads; avisar que o RivaTuner é a causa comum.
 - [x] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
-- [ ] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
+- [x] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
       pouco de aleatoriedade.
 - [ ] Achar o arquivo da release pelo sistema e pela CPU quando o padrão do catálogo parar de bater (projeto que
       renomeou os arquivos).
 
 ### 5.3 Recomps e Easy Setup (prioridade 3)
 
-- [ ] **Fila única de downloads:** downloads e builds juntos, "Pausar tudo" e contador no menu.
+- [x] **Fila única de downloads:** downloads e builds juntos, "Pausar tudo" e contador no menu.
 - [ ] Por jogo: atualizar sozinho e optar por versões de teste (pre-release).
 - [ ] "Liberar espaço": apagar arquivos de instalação que não são mais necessários.
 - [ ] Recomp que mudou de página no catálogo: "Mudar para ele", levando saves, tempo de jogo e arquivos.
