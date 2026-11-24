@@ -762,7 +762,7 @@ fn GameActions(game_id: String) -> impl IntoView {
             view! {
                 <section class="card">
                     <h3>{tr!("Pastas do jogo")}</h3>
-                    <div class="acts">{rows}</div>
+                    <div class="acts-col">{rows}</div>
                 </section>
             }
         })

@@ -528,9 +528,16 @@ fn appearance() -> impl IntoView {
         .into_iter()
         .map(|(id, name)| {
             let on = move || look.get().0 == id;
+            // A tiny window in that theme: sidebar, a highlighted tile, two cards.
             view! {
-                <button type="button" class="seg" role="radio" class:on=on aria-checked=move || on().to_string()
-                    on:click=move |_| { save_look(THEME_KEY, id); look.set(look_saved()); }>{cerberus_shared::i18n::t(name)}</button>
+                <button type="button" class=format!("theme-pick {id}") role="radio" class:on=on aria-checked=move || on().to_string()
+                    on:click=move |_| { save_look(THEME_KEY, id); look.set(look_saved()); }>
+                    <span class="tp-win" aria-hidden="true">
+                        <span class="tp-side"><i></i><i></i><i></i></span>
+                        <span class="tp-main"><i class="hot"></i><i></i><i></i></span>
+                    </span>
+                    <span class="tp-name">{cerberus_shared::i18n::t(name)}</span>
+                </button>
             }
         })
         .collect_view();
@@ -561,7 +568,7 @@ fn appearance() -> impl IntoView {
             <h3>{tr!("Aparência")}</h3>
             {language_row()}
             {row(tr!("Tema"), tr!("O fundo da janela. Preto (OLED) apaga o fundo de vez, bom para telas OLED e quartos escuros."),
-                view! { <div class="segs" role="radiogroup" aria-label=tr!("Tema")>{themes}</div> })}
+                view! { <div class="theme-picks" role="radiogroup" aria-label=tr!("Tema")>{themes}</div> })}
             {row(tr!("Cor de destaque"), tr!("A cor dos botões principais, das barras de progresso e da página aberta."),
                 view! { <div class="swatches" role="radiogroup" aria-label=tr!("Cor de destaque")>{accents}</div> })}
             {row(tr!("Tamanho"), tr!("Textos, capas e botões da janela. O Big Picture Mode segue o tamanho da tela."),
@@ -688,9 +695,13 @@ fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             let on = c.corner == code;
             let mut next = c.clone();
             next.corner = code.to_string();
+            // A little screen: click the corner where the notice should show.
             view! {
-                <button type="button" class="seg" class:on=on role="radio" aria-checked=on.to_string() disabled=move || busy.get() || !next.unlock_notice
-                    on:click={ let next = next.clone(); move |_| apply(Box::pin(api::set_in_game(next.clone())), tr!("Canto do aviso trocado.")) }>{label}</button>
+                <button type="button" class=format!("cs-spot {code}") class:on=on role="radio" aria-checked=on.to_string() aria-label=label title=label
+                    disabled=move || busy.get() || !next.unlock_notice
+                    on:click={ let next = next.clone(); move |_| apply(Box::pin(api::set_in_game(next.clone())), tr!("Canto do aviso trocado.")) }>
+                    {on.then(|| view! { <span class="cs-toast"><Svg icon=Icon::Trophy size=12 /><i></i></span> })}
+                </button>
             }
         })
         .collect_view();
@@ -712,7 +723,7 @@ fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             </div>
             {row(tr!("Mostrar sobre o jogo"), tr!("Um aviso pequeno, sem tirar o foco do jogo, quando uma conquista é desbloqueada. Diz quando ela é rara."),
                 switch(c.unlock_notice, tr!("Mostrar sobre o jogo"), busy, change(|g| g.unlock_notice = !g.unlock_notice, "")))}
-            {row(tr!("Canto da tela"), (), view! { <div class="segs corner-segs" role="radiogroup" aria-label=tr!("Canto da tela")>{corners}</div> })}
+            {row(tr!("Canto da tela"), tr!("Clique no canto da tela onde o aviso aparece."), view! { <div class="corner-screen" class:off=!c.unlock_notice role="radiogroup" aria-label=tr!("Canto da tela")>{corners}</div> })}
         </section>
     }
 }
