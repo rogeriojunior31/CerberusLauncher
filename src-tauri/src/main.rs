@@ -700,6 +700,7 @@ fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'stati
     let data = app.state::<DataDir>().0.clone();
     let chosen = settings::load(&data);
     let account = chosen.ra_user.as_deref().zip(chosen.ra_token.as_deref()).map(|(user, token)| cheevos::Account { user, token });
+    cheevos::skip_first_run_wizard(emulator.id, exe);
     let session = cheevos::prepare(&data, emulator.id, exe, account, None);
     let id = format!("classic:{path}");
     let result = standalone::launch(exe, emulator, &rom, &session.args);
@@ -2035,7 +2036,11 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
 /// would open to an error, a missing program can't open at all.
 fn ready_to_play(game: &Game) -> Result<(), String> {
     match recomp::next_step(game, None) {
-        cerberus_shared::NextStep::ChooseCopy { .. } => Err(tr!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
+        // A copy is picked, but it isn't the one the game asks for: say why.
+        cerberus_shared::NextStep::ChooseCopy { .. } => match recomp::copy_problem(game) {
+            Some(why) => Err(tr!("A cópia escolhida não serve para {0}. {1}", game.name, why)),
+            None => Err(tr!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
+        },
         cerberus_shared::NextStep::Locate { reason } => Err(tr!("{} Use \"Localizar programa\" na página do jogo.", reason)),
         _ => Ok(()),
     }

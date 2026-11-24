@@ -646,6 +646,20 @@ pub fn use_input(library: &LocalLibrary, game_id: &str, input_id: &str, picked: 
     })
 }
 
+/// Why the copy the player picked won't do, when one is picked: the developer's
+/// check, or what the game asks for.
+pub fn copy_problem(game: &Game) -> Option<String> {
+    let copy = game.game_copy.as_deref().filter(|c| Path::new(c).exists())?;
+    let entry = entry_for(game)?;
+    if let Some(main) = entry.manifest.as_ref().and_then(|m| m.main_input()) {
+        if let Err(why) = manifest::check(main, Path::new(copy)) {
+            return Some(why);
+        }
+    }
+    let needs = translate::shown_needs(&entry.needs);
+    (!needs.trim().is_empty()).then(|| tr!("Ele pede: {}. Escolha outra na página do jogo.", needs.trim().trim_end_matches('.')).to_string())
+}
+
 /// What stands between the player and the game. One answer for every screen
 /// and for Play itself, so a button never offers what Play would refuse.
 /// `found` is the player's copy from the ROM folders, if the scan saw one.

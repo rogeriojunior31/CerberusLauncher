@@ -258,6 +258,25 @@ fn may_sign_in(signed_in: Option<String>, user: &str) -> bool {
     signed_in.filter(|u| !u.is_empty()).is_none_or(|u| u.eq_ignore_ascii_case(user))
 }
 
+/// An emulator Cerberus installed (portable) opens straight into the game, not
+/// into its first-run wizard: the BIOS folder is already beside it. A player's
+/// own install, and a wizard already done or chosen, are left alone.
+pub fn skip_first_run_wizard(emulator: &str, exe: &Path) {
+    if !portable(exe) {
+        return;
+    }
+    let dir = exe.parent().unwrap_or(Path::new("."));
+    let (ini, section) = match emulator {
+        "duckstation" => (dir.join("settings.ini"), "Main"),
+        "pcsx2" => (dir.join("inis").join("PCSX2.ini"), "UI"),
+        _ => return,
+    };
+    let text = fs::read_to_string(&ini).unwrap_or_default();
+    if ini_value(&text, section, "SetupWizardIncomplete").is_none() {
+        keep(&ini, Some(section), &[("SetupWizardIncomplete", "false")]);
+    }
+}
+
 /// Gets an emulator ready: signed in, its own pop-ups off for now, its log on.
 /// `emulator`: "retroarch" or a standalone id.
 pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>, retroarch_log: Option<&Path>) -> Session {
@@ -292,10 +311,13 @@ pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>
             let root = if portable(exe) { Some(dir.clone()) } else { documents().map(|d| d.join("DuckStation")) };
             let Some(root) = root else { return session };
             let ini = root.join("settings.ini");
+            // DuckStation keeps its token encrypted for this PC and throws a plain
+            // one away, so the player signs in once in DuckStation itself. A plain
+            // token older Cerberus versions wrote there is taken out.
             if let Some(a) = account {
                 let text = fs::read_to_string(&ini).unwrap_or_default();
-                if may_sign_in(ini_value(&text, "Cheevos", "Username"), a.user) {
-                    keep(&ini, Some("Cheevos"), &[("Enabled", "true"), ("Username", a.user), ("Token", a.token), ("LoginTimestamp", &now().to_string())]);
+                if ini_value(&text, "Cheevos", "Token").as_deref() == Some(a.token) {
+                    keep(&ini, Some("Cheevos"), &[("Token", ""), ("LoginTimestamp", "")]);
                 }
             }
             session.edits = apply(&ini, Some("Cheevos"), &[("Notifications", "false"), ("LeaderboardNotifications", "false"), ("SoundEffects", "false")]);
@@ -476,6 +498,33 @@ mod tests {
     }
 
     #[test]
+    fn a_portable_emulator_skips_its_wizard_and_keeps_its_own_token() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("portable.txt"), "").unwrap();
+        let exe = dir.path().join("duckstation-qt-x64-ReleaseLTCG.exe");
+        skip_first_run_wizard("duckstation", &exe);
+        let ini = dir.path().join("settings.ini");
+        assert!(fs::read_to_string(&ini).unwrap().contains("SetupWizardIncomplete = false"));
+        // DuckStation's own encrypted token stays; a plain one we left goes.
+        fs::write(&ini, "[Cheevos]\nUsername = Player\nToken = ENCRYPTED\n").unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let s = prepare(data.path(), "duckstation", &exe, Some(Account { user: "Player", token: "PLAIN" }), None);
+        assert!(fs::read_to_string(&ini).unwrap().contains("Token = ENCRYPTED"));
+        finish(data.path(), &s);
+        fs::write(&ini, "[Cheevos]\nUsername = Player\nToken = PLAIN\n").unwrap();
+        let s = prepare(data.path(), "duckstation", &exe, Some(Account { user: "Player", token: "PLAIN" }), None);
+        assert!(!fs::read_to_string(&ini).unwrap().contains("PLAIN"));
+        finish(data.path(), &s);
+        // A wizard the player chose to see again isn't skipped.
+        fs::write(&ini, "[Main]\nSetupWizardIncomplete = true\n").unwrap();
+        skip_first_run_wizard("duckstation", &exe);
+        assert!(fs::read_to_string(&ini).unwrap().contains("SetupWizardIncomplete = true"));
+        let own = tempfile::tempdir().unwrap();
+        skip_first_run_wizard("pcsx2", &own.path().join("pcsx2-qt.exe"));
+        assert!(!own.path().join("inis").exists(), "a player's own install is left alone");
+    }
+
+    #[test]
     fn a_session_left_behind_is_undone_on_the_next_start() {
         let data = tempfile::tempdir().unwrap();
         let exe_dir = data.path().join("duck");
@@ -484,13 +533,12 @@ mod tests {
         let exe = exe_dir.join("duckstation-qt-x64-ReleaseLTCG.exe");
         let s = prepare(data.path(), "duckstation", &exe, Some(Account { user: "Player", token: "TOKEN" }), None);
         let ini = fs::read_to_string(exe_dir.join("settings.ini")).unwrap();
-        assert!(ini.contains("Username = Player") && ini.contains("Notifications = false") && ini.contains("LogToFile = true"));
+        assert!(ini.contains("Notifications = false") && ini.contains("LogToFile = true") && !ini.contains("TOKEN"), "DuckStation signs in by itself");
         assert_eq!(s.log.as_deref(), Some(exe_dir.join("duckstation.log").as_path()));
         // Cerberus closed before the game did.
         restore_pending(data.path());
         let ini = fs::read_to_string(exe_dir.join("settings.ini")).unwrap();
         assert!(!ini.contains("Notifications = false") && !ini.contains("LogToFile"), "{ini}");
-        assert!(ini.contains("Username = Player"), "the account stays");
     }
 
     /// With copies of the player's real settings (the originals aren't touched):
