@@ -203,6 +203,7 @@ Bug reports, recomp requests and pull requests are welcome. Start with [CONTRIBU
 - Some behavior ideas come from [RecompLauncher](https://github.com/elripalda/RecompLauncher) and [Hydra](https://github.com/hydralauncher/hydra). Cerberus reimplements them from scratch.
 - The recomp catalog combines Cerberus's own list with the public list from [recomplauncher.com](https://recomplauncher.com). You can turn that list off in the settings.
 - Classic covers come from [libretro-thumbnails](https://github.com/libretro-thumbnails). Community art comes from [SteamGridDB](https://www.steamgriddb.com), using your own free API key.
+- Console artwork and emulator icons in Settings › Emulation come from [Hydra](https://github.com/hydralauncher/hydra) (MIT); see `ui/emulation/LICENSE.md`.
 - Fonts: [Figtree](https://github.com/erikdkennedy/figtree) and [Archivo](https://github.com/Omnibus-Type/Archivo), under the SIL Open Font License 1.1.
 - Every recomp belongs to its developers. Please support their projects.
 

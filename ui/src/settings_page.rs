@@ -888,8 +888,6 @@ fn console_name(id: &str) -> &'static str {
     }
 }
 
-/// Consoles RetroArch plays with the cores Cerberus installs.
-const RETROARCH_PLAYS: [&str; 5] = ["ps1", "ps2", "psp", "gc", "wii"];
 
 
 /// The consoles that come on discs, each opened by RetroArch or a standalone emulator.
@@ -904,9 +902,75 @@ enum Ready {
     NoEmulator,
 }
 
-/// Emulação: the consoles at a glance (who opens each and whether it's ready),
-/// then every emulator as a card (RetroArch with its cores and BIOS, and the
-/// standalone ones), the emulators' game folders, and achievements.
+/// A console's picture: pixel art from Hydra, and Cerberus's own where Hydra
+/// has none (see ui/emulation/LICENSE.md).
+fn console_art(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "ps1" => "emulation/ps1.png",
+        "ps2" => "emulation/ps2.png",
+        "ps3" => "emulation/ps3.png",
+        "psp" => "emulation/psp.png",
+        "gc" => "emulation/gamecube.png",
+        "wii" => "emulation/wii.png",
+        "wiiu" => "emulation/wiiu.svg",
+        "nes" => "emulation/nes.svg",
+        "snes" => "emulation/snes.svg",
+        "n64" => "emulation/n64.svg",
+        "gb" => "emulation/gb.svg",
+        "gbc" => "emulation/gbc.svg",
+        "gba" => "emulation/gba.svg",
+        "genesis" => "emulation/genesis.svg",
+        "sms" => "emulation/sms.svg",
+        "gg" => "emulation/gg.svg",
+        _ => return None,
+    })
+}
+
+/// An emulator's own icon.
+fn emulator_icon(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "retroarch" => "emulation/icons/retroarch.png",
+        "duckstation" => "emulation/icons/duckstation.png",
+        "pcsx2" => "emulation/icons/pcsx2.png",
+        "rpcs3" => "emulation/icons/rpcs3.png",
+        "ppsspp" => "emulation/icons/ppsspp.png",
+        "dolphin" => "emulation/icons/dolphin.png",
+        _ => return None,
+    })
+}
+
+/// An emulator's icon, or its initial when it has none.
+fn emulator_badge(id: &str, name: &str) -> AnyView {
+    match emulator_icon(id) {
+        Some(src) => view! { <img class="emu-ico" src=src alt="" /> }.into_any(),
+        None => view! { <span class="emu-ico letter" aria-hidden="true">{name.chars().next().unwrap_or('?').to_string()}</span> }.into_any(),
+    }
+}
+
+/// The RetroArch core that plays each console (as the backend installs them).
+fn core_of(console: &str) -> Option<&'static str> {
+    Some(match console {
+        "nes" => "fceumm",
+        "snes" => "snes9x",
+        "n64" => "mupen64plus_next",
+        "gb" | "gbc" => "gambatte",
+        "gba" => "mgba",
+        "genesis" | "sms" | "gg" => "genesis_plus_gx",
+        "ps1" => "pcsx_rearmed",
+        "psp" => "ppsspp",
+        "gc" | "wii" => "dolphin",
+        "ps2" => "pcsx2",
+        _ => return None,
+    })
+}
+
+/// The cartridge consoles, each its own card (RetroArch today, others later).
+const CART_CONSOLES: [&str; 9] = ["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg"];
+
+/// Emulação: every console as a card with its picture, saying who opens its
+/// games and whether they're ready; the player's consoles first. A card opens
+/// that console's page right here: who opens it, what's missing, its games.
+/// RetroArch itself (program and cores) is one line under the cards.
 #[component]
 fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -914,6 +978,10 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
     let st = RwSignal::new(None::<cerberus_shared::StandaloneStatus>);
     let busy = RwSignal::new(None::<String>);
     let progress = RwSignal::new((0u64, 0u64));
+    // The console open: None shows them all.
+    let open = RwSignal::new(None::<String>);
+    // Consoles the player has no game of stay folded until asked for.
+    let everything = RwSignal::new(false);
     let refresh = move || {
         spawn_local(async move {
             if let Some(v) = library.report(api::emulation_status().await) {
@@ -922,6 +990,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             if let Some(v) = library.report(api::standalone_status().await) {
                 st.set(Some(v));
             }
+            library.players.refetch();
         });
     };
     refresh();
@@ -941,8 +1010,6 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
     };
     let ra_linked = ra_user.is_some();
     let disabled = move || busy.get().is_some();
-    // Consoles the player has no game of stay folded under "Outros consoles".
-    let all_consoles = RwSignal::new(false);
 
     move || {
         let (Some(v), Some(s)) = (emu.get(), st.get()) else {
@@ -950,10 +1017,21 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         };
         let working = busy.get();
         let has_ra = v.retroarch.is_some();
-        let core_ok = |console: &str| v.cores.iter().any(|c| c.console == console && c.installed);
+        let core_ok = |console: &str| core_of(console).is_some_and(|core| v.cores.iter().any(|c| c.core == core && c.installed));
         let emulator = |id: &str| s.emulators.iter().find(|e| e.id == id).cloned();
-
-        // ---------- the consoles ----------
+        // Who opens a console, as Play decides it: the player's pick, else RetroArch
+        // when it has the console, else an installed emulator for it.
+        let who_of = |console: &str| {
+            let picked = s.play_with.iter().find(|(c, _)| c == console).map(|(_, w)| w.clone()).unwrap_or_default();
+            if !picked.is_empty() {
+                return picked;
+            }
+            if has_ra && core_of(console).is_some() {
+                return "retroarch".to_string();
+            }
+            s.emulators.iter().find(|e| e.exe.is_some() && e.consoles.iter().any(|c| c == console)).map(|e| e.id.clone())
+                .unwrap_or_else(|| if core_of(console).is_some() { "retroarch".to_string() } else { String::new() })
+        };
         let state_of = |console: &str, who: &str| -> Ready {
             match who {
                 "retroarch" if !has_ra => Ready::NoEmulator,
@@ -969,93 +1047,268 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                 },
             }
         };
-        let installed: Vec<cerberus_shared::StandaloneView> = s.emulators.iter().filter(|e| e.exe.is_some()).cloned().collect();
-        // The player's own classics, by console: their consoles come first.
-        let my_roms = library.roms.get().unwrap_or_default();
-        let players = library.players.get().unwrap_or_default();
-        let mine = |console: &str| my_roms.iter().filter(|r| crate::classics::console_of(r) == console).count();
-        let playable = my_roms.iter().filter(|r| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some()).count();
-        let mut order: Vec<&str> = DISC_CONSOLES.to_vec();
-        order.sort_by_key(|c| std::cmp::Reverse(mine(c)));
-        let others: Vec<&str> = order.iter().copied().filter(|c| mine(c) == 0).collect();
-        let others_names = others.iter().map(|c| console_name(c)).collect::<Vec<_>>().join(", ");
-        let show_others = all_consoles.get();
-        let tiles = order
-            .into_iter()
-            .filter(|c| show_others || mine(c) > 0)
-            .map(|console| {
-                let console = &console;
-                let owned = mine(console);
-                let who = s.play_with.iter().find(|(c, _)| c == console).map(|(_, w)| w.clone()).unwrap_or_default();
-                let ready = state_of(console, &who);
-                let (class, label) = match ready {
-                    Ready::Yes => ("ok", tr!("Pronto")),
-                    Ready::NeedsBios => ("warn", tr!("Falta a BIOS")),
-                    Ready::NeedsCore => ("warn", tr!("Falta o núcleo")),
-                    Ready::NoEmulator => ("off", tr!("Sem emulador")),
-                };
-                let mut options: Vec<(String, String)> = Vec::new();
-                if RETROARCH_PLAYS.contains(console) {
-                    options.push(("retroarch".into(), "RetroArch".into()));
-                }
-                options.extend(installed.iter().filter(|e| e.consoles.iter().any(|c| c == console)).map(|e| (e.id.clone(), e.name.clone())));
-                let picker = if options.len() > 1 {
-                    let c = console.to_string();
-                    let opts = options.into_iter().map(|(id, name)| { let on = id == who; view! { <option value=id selected=on>{name}</option> } }).collect_view();
-                    view! {
-                        <select class="select emu-who" aria-label=tr!("Jogar {} com", console_name(console)) disabled=disabled on:change=move |ev| {
-                            let (console, who) = (c.clone(), event_target_value(&ev));
-                            act("who", Box::pin(async move { api::set_play_with(&console, &who).await.map(|_| String::new()) }));
-                        }>{opts}</select>
-                    }
-                    .into_any()
-                } else {
-                    let name = options.first().map(|(_, n)| n.clone()).unwrap_or_else(|| tr!("Instale um emulador abaixo").to_string());
-                    view! { <span class="emu-who-one">{name}</span> }.into_any()
-                };
-                let games = match owned {
-                    0 => tr!("Nenhum jogo seu").to_string(),
-                    1 => tr!("1 jogo seu").to_string(),
-                    n => tr!("{} jogos seus", n),
-                };
-                view! {
-                    <div class=format!("emu-tile {class}") class:idle=owned == 0>
-                        <div class="emu-tile-h"><b>{console_name(console)}</b><span class="emu-dot">{label}</span></div>
-                        <small class="emu-mine">{games}</small>
-                        {picker}
-                    </div>
-                }
-            })
-            .collect_view();
-        let retro_consoles: Vec<&cerberus_shared::CoreView> = v.cores.iter().filter(|c| !DISC_CONSOLES.contains(&c.console.as_str())).collect();
-        let retro_missing = retro_consoles.iter().filter(|c| !c.installed).count();
-        let retro_ready = has_ra && retro_missing == 0;
-        // Judged by the player's own cartridges: a core for a console they have no game of isn't missing.
-        let carts: Vec<&str> = my_roms.iter().map(crate::classics::console_of)
-            .filter(|c| !DISC_CONSOLES.contains(c) && v.cores.iter().any(|core| core.console == *c)).collect();
-        // Games of consoles nothing here plays yet (3DS, Xbox 360...).
-        let mut unplayable: Vec<&'static str> = my_roms.iter().map(crate::classics::console_of)
-            .filter(|c| !DISC_CONSOLES.contains(c) && !v.cores.iter().any(|core| core.console == *c))
-            .map(crate::classics::console_name).collect();
-        unplayable.sort_unstable();
-        unplayable.dedup();
-        let mut carts_missing: Vec<&str> = carts.iter().copied().filter(|c| !core_ok(c)).collect();
-        carts_missing.sort_unstable();
-        carts_missing.dedup();
-        let carts_ready = has_ra && if carts.is_empty() { retro_ready } else { carts_missing.is_empty() };
-        let cart_games = match carts.len() {
+        let status_words = |ready: Ready| match ready {
+            Ready::Yes => ("ok", tr!("Pronto")),
+            Ready::NeedsBios => ("warn", tr!("Falta a BIOS")),
+            Ready::NeedsCore => ("warn", tr!("Falta o núcleo")),
+            Ready::NoEmulator => ("off", tr!("Sem emulador")),
+        };
+        let progress_words = || {
+            let (done, total) = progress.get();
+            if total > 0 && done >= total { tr!("Extraindo… leva um minuto.").to_string() } else if total > 0 { tr!("Baixando {}%…", done * 100 / total) } else { tr!("Preparando…").to_string() }
+        };
+        let games_words = |n: usize| match n {
             0 => tr!("Nenhum jogo seu").to_string(),
             1 => tr!("1 jogo seu").to_string(),
             n => tr!("{} jogos seus", n),
         };
+        let name_of = |c: &str| { let n = console_name(c); if n.is_empty() { crate::classics::console_name(c) } else { n } };
+
+        // The player's own classics, by console.
+        let my_roms = library.roms.get().unwrap_or_default();
+        let players = library.players.get().unwrap_or_default();
+        let mine = |console: &str| my_roms.iter().filter(|r| crate::classics::console_of(r) == console).count();
+        let playable = my_roms.iter().filter(|r| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some()).count();
+
+        // ---------- one console's page ----------
+        if let Some(console) = open.get() {
+            let back = view! {
+                <button type="button" class="link cd-back" on:click=move |_| open.set(None)>
+                    <Svg icon=Icon::Left size=16 />{tr!("Todos os consoles")}
+                </button>
+            };
+            let names: Vec<String> = my_roms.iter().filter(|r| crate::classics::console_of(r) == console).map(crate::classics::display_name).collect();
+            let games = (!names.is_empty()).then(|| view! {
+                <section class="cd-sec">
+                    <h3>{tr!("Seus jogos")}</h3>
+                    <div class="cd-games">{names.into_iter().map(|n| view! { <span class="emu-chip">{n}</span> }).collect_view()}</div>
+                </section>
+            });
+            let who = who_of(&console);
+            let ready = state_of(&console, &who);
+            let (class, label) = status_words(ready);
+            let mut choices: Vec<(String, String, bool)> = Vec::new();
+            if core_of(&console).is_some() {
+                choices.push(("retroarch".into(), "RetroArch".into(), has_ra));
+            }
+            choices.extend(s.emulators.iter().filter(|e| e.consoles.iter().any(|c| *c == console)).map(|e| (e.id.clone(), e.name.clone(), e.exe.is_some())));
+            let only_one = choices.len() == 1;
+            let cards = choices.into_iter().map(|(id, name, installed)| {
+                let chosen = id == who;
+                let c = console.clone();
+                let pick_id = id.clone();
+                let pick = move |_| {
+                    let (console, who) = (c.clone(), pick_id.clone());
+                    act("who", Box::pin(async move { api::set_play_with(&console, &who).await.map(|_| String::new()) }));
+                };
+                let here = working.as_deref() == Some(id.as_str());
+                let state = if here { progress_words() } else if installed { tr!("Instalado").to_string() } else { tr!("Não instalado").to_string() };
+                let actions = if installed {
+                    (!chosen).then(|| view! { <button type="button" class="btn sm main" disabled=disabled on:click=pick>{tr!("Usar este")}</button> }).into_any()
+                } else {
+                    let (i1, i2) = (id.clone(), id.clone());
+                    let done = tr!("{} instalado. Seus jogos dele já podem abrir por aqui.", name);
+                    view! {
+                        <button type="button" class="btn sm" disabled=disabled on:click=move |_| {
+                            let id = i1.clone();
+                            if id == "retroarch" {
+                                act("retroarch", Box::pin(async move { api::pick_retroarch().await.map(|_| String::new()) }))
+                            } else {
+                                act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }))
+                            }
+                        }>{tr!("Já tenho")}</button>
+                        <button type="button" class="btn sm main" disabled=disabled on:click=move |_| {
+                            let id = i2.clone();
+                            let done = done.clone();
+                            if id == "retroarch" {
+                                act("retroarch", Box::pin(async move { api::install_retroarch().await.map(|_| tr!("RetroArch instalado.").to_string()) }))
+                            } else {
+                                act(&id.clone(), Box::pin(async move { api::install_standalone(&id).await.map(|_| done) }))
+                            }
+                        }><Svg icon=Icon::Download size=16 />{tr!("Instalar")}</button>
+                    }.into_any()
+                };
+                view! {
+                    <div class="who-card" class:on=chosen && installed class:installed=installed>
+                        {emulator_badge(&id, &name)}
+                        <div class="who-t">
+                            <b>{name.clone()}</b>
+                            <small>{if chosen && installed { tr!("Abre os seus jogos · {}", state) } else { state }}</small>
+                        </div>
+                        <div class="row">{actions}</div>
+                        {(chosen && installed).then(|| view! { <span class="who-check" aria-label=tr!("Em uso")><Svg icon=Icon::Check size=14 /></span> })}
+                    </div>
+                }
+            }).collect_view();
+
+            // What the chosen emulator still needs from the player's console.
+            let needs = match who.as_str() {
+                "retroarch" if has_ra => {
+                    let core_line = core_of(&console).filter(|_| !core_ok(&console)).map(|core| {
+                        view! {
+                            <div class="emu-line">
+                                <span class="emu-flag warn">{tr!("Falta o núcleo {}", core)}</span>
+                                <div class="row">
+                                    <button type="button" class="btn sm main" disabled=disabled on:click=move |_| {
+                                        let name = core.to_string();
+                                        act(&name.clone(), Box::pin(async move { api::install_core(name).await.map(|_| tr!("Núcleo instalado.").to_string()) }));
+                                    }><Svg icon=Icon::Download size=16 />{if working.as_deref() == Some(core) { tr!("Baixando...") } else { tr!("Instalar núcleo") }}</button>
+                                </div>
+                            </div>
+                        }
+                    });
+                    let core_ready = core_of(&console).filter(|_| core_ok(&console)).map(|core| view! {
+                        <div class="emu-line"><span class="emu-flag ok">{tr!("Núcleo {} instalado", core)}</span></div>
+                    });
+                    let bios_line = matches!(console.as_str(), "ps1" | "ps2").then(|| {
+                        let ok = if console == "ps2" { v.ps2_bios } else { v.ps1_bios };
+                        let what = match (console.as_str(), ok) {
+                            ("ps2", true) => tr!("BIOS do PS2 pronta"),
+                            ("ps2", false) => tr!("Falta a BIOS do PS2"),
+                            (_, true) => tr!("BIOS do PS1 pronta"),
+                            (_, false) => tr!("BIOS do PS1: opcional"),
+                        };
+                        view! {
+                            <div class="emu-line">
+                                <span class=if ok { "emu-flag ok" } else if console == "ps2" { "emu-flag warn" } else { "emu-flag" }>{what}</span>
+                                <div class="row">
+                                    <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("ra-bios", Box::pin(async move { api::import_bios().await.map(|(_, said)| said) }))>
+                                        <Svg icon=Icon::Folder size=16 />{tr!("Adicionar BIOS")}</button>
+                                </div>
+                            </div>
+                        }
+                    });
+                    Some(view! { {core_line}{core_ready}{bios_line} }.into_any())
+                }
+                id => emulator(id).filter(|e| e.exe.is_some()).map(|e| {
+                    let bios = e.bios.map(|ok| {
+                        let what = if e.firmware {
+                            if ok { tr!("Firmware do PS3 instalado") } else { tr!("Falta o firmware do PS3") }
+                        } else if ok { tr!("BIOS pronta") } else { tr!("Falta a BIOS") };
+                        let button = if e.firmware { tr!("Instalar firmware") } else { tr!("Adicionar BIOS") };
+                        let id = e.id.clone();
+                        view! {
+                            <div class="emu-line">
+                                <span class=if ok { "emu-flag ok" } else { "emu-flag warn" }>{what}</span>
+                                <div class="row">
+                                    <button type="button" class="btn sm" class:main=!ok disabled=disabled on:click=move |_| {
+                                        let id = id.clone();
+                                        act("bios", Box::pin(async move { api::standalone_bios(&id).await.map(|(_, said)| said) }))
+                                    }><Svg icon=Icon::Folder size=16 />{button}</button>
+                                </div>
+                            </div>
+                        }
+                    });
+                    let (i2, i3, managed) = (e.id.clone(), e.id.clone(), e.managed);
+                    view! {
+                        {bios}
+                        <div class="emu-line">
+                            <span class="emu-status" title=e.exe.clone().unwrap_or_default()>{if managed { tr!("Instalado pelo Cerberus").to_string() } else { tr!("Encontrado em {}", e.exe.clone().unwrap_or_default()) }}</span>
+                            <div class="row">
+                                <button type="button" class="btn sm" on:click=move |_| { let id = i2.clone(); spawn_local(async move { library.report(api::open_standalone(&id).await); }) }>{tr!("Abrir o {}", e.name)}</button>
+                                <button type="button" class="btn sm" disabled=disabled on:click=move |_| {
+                                    let id = i3.clone();
+                                    if managed {
+                                        act(&id.clone(), Box::pin(async move { api::remove_standalone(&id).await.map(|_| String::new()) }))
+                                    } else {
+                                        act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }))
+                                    }
+                                }>{if managed { tr!("Remover") } else { tr!("Trocar") }}</button>
+                            </div>
+                        </div>
+                    }.into_any()
+                }),
+            };
+            let art = console_art(&console);
+            let name = name_of(&console);
+            return view! {
+                <section class=format!("card set cd {class}")>
+                    {back}
+                    <header class="cd-head">
+                        {match art {
+                            Some(src) => view! { <img class="cd-art" src=src alt="" /> }.into_any(),
+                            None => view! { <span class="cd-art none" aria-hidden="true">{name}</span> }.into_any(),
+                        }}
+                        <div>
+                            <h3 class="cd-name">{name}</h3>
+                            <span class="emu-dot">{label}</span>
+                            <p class="muted small">{games_words(mine(&console))}</p>
+                        </div>
+                    </header>
+                    <section class="cd-sec">
+                        <h3>{tr!("Quem abre os jogos")}</h3>
+                        <p class="muted small">{if only_one {
+                            tr!("Por enquanto só o RetroArch abre esse console aqui. Cada emulador vem da página oficial do projeto, sem BIOS nem firmware.")
+                        } else {
+                            tr!("Cada emulador vem da página oficial do projeto, sem BIOS nem firmware: esses arquivos são do seu console.")
+                        }}</p>
+                        <div class="who-grid">{cards}</div>
+                    </section>
+                    {needs.map(|n| {
+                        let heading = match (ready, who.as_str()) {
+                            (Ready::Yes, "retroarch") if matches!(console.as_str(), "ps1" | "ps2") => tr!("Núcleo e BIOS"),
+                            (Ready::Yes, "retroarch") => tr!("Núcleo"),
+                            (Ready::Yes, _) => tr!("BIOS e programa"),
+                            _ => tr!("O que falta"),
+                        };
+                        view! { <section class="cd-sec"><h3>{heading}</h3>{n}</section> }
+                    })}
+                    {games}
+                </section>
+            }.into_any();
+        }
+
+        // ---------- every console, as a card ----------
+        let mut order: Vec<&str> = DISC_CONSOLES.iter().chain(CART_CONSOLES.iter()).copied().collect();
+        order.sort_by_key(|c| std::cmp::Reverse(mine(c)));
+        let hidden = order.iter().filter(|c| mine(c) == 0).count();
+        let show_all = everything.get() || hidden == order.len();
+        let cards = order.into_iter().filter(|c| show_all || mine(c) > 0).map(|console| {
+            let who = who_of(console);
+            let (class, label) = status_words(state_of(console, &who));
+            let who_name = match who.as_str() {
+                "" => None,
+                "retroarch" => Some("RetroArch".to_string()),
+                id => emulator(id).map(|e| e.name),
+            };
+            let n = mine(console);
+            let title = name_of(console);
+            let id = console.to_string();
+            view! {
+                <button type="button" class=format!("cc {class}") class:idle=n == 0 on:click=move |_| open.set(Some(id.clone()))>
+                    <span class="cc-art" aria-hidden="true">
+                        {match console_art(console) {
+                            Some(src) => view! { <img src=src alt="" /> }.into_any(),
+                            None => view! { <span class="cc-none">{title}</span> }.into_any(),
+                        }}
+                    </span>
+                    <span class="cc-name">{title}</span>
+                    <span class="emu-dot">{label}</span>
+                    <span class="cc-who">
+                        {match who_name {
+                            Some(name) => view! { {emulator_badge(&who, &name)}<span>{name}</span> }.into_any(),
+                            None => view! { <span>{tr!("Escolha um emulador")}</span> }.into_any(),
+                        }}
+                    </span>
+                    <small class="cc-games">{games_words(n)}</small>
+                </button>
+            }
+        }).collect_view();
+        let more = (hidden > 0 && hidden < DISC_CONSOLES.len() + CART_CONSOLES.len()).then(|| view! {
+            <button type="button" class="btn sm cc-more" aria-expanded=show_all.to_string() on:click=move |_| everything.update(|v| *v = !*v)>
+                {if show_all { tr!("Mostrar só os seus consoles").to_string() } else { tr!("Mostrar todos os consoles ({} mais)", hidden) }}
+            </button>
+        });
+
+        // Games of consoles nothing here plays yet, and the recomps that already do.
+        let known = |c: &str| DISC_CONSOLES.contains(&c) || CART_CONSOLES.contains(&c);
+        let unplayable_roms: Vec<&cerberus_shared::RomView> = my_roms.iter().filter(|r| !known(crate::classics::console_of(r))).collect();
+        let mut unplayable: Vec<&'static str> = unplayable_roms.iter().map(|r| crate::classics::console_name(crate::classics::console_of(r))).collect();
+        unplayable.sort_unstable();
+        unplayable.dedup();
         let all_recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let lib_games = library.games.get().and_then(Result::ok).unwrap_or_default();
-        let native_ways = my_roms
-            .iter()
-            .filter(|r| {
-                let c = crate::classics::console_of(r);
-                !DISC_CONSOLES.contains(&c) && !v.cores.iter().any(|core| core.console == c)
-            })
+        let native_ways = unplayable_roms.iter()
             .filter_map(|r| crate::classics::recomp_game(r, &lib_games, &all_recomps).map(|g| (crate::classics::display_name(r), g.name.clone(), g.id.clone())))
             .map(|(game, recomp, id)| view! {
                 <button type="button" class="link emu-native" on:click=move |_| library.go(crate::Route::Game(id.clone()))>
@@ -1063,192 +1316,47 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                 </button>
             })
             .collect_view();
-        let retro_tile = view! {
-            <div class=format!("emu-tile {}", if carts_ready { "ok" } else if has_ra { "warn" } else { "off" })>
-                <div class="emu-tile-h">
-                    <b>{tr!("Cartuchos")}</b>
-                    <span class="emu-dot">{if carts_ready { tr!("Pronto").to_string() } else if !has_ra { tr!("Sem emulador").to_string() } else if carts.is_empty() { tr!("Faltam {} núcleos", retro_missing) } else { tr!("Faltam {} núcleos", carts_missing.len()) }}</span>
-                </div>
-                <small class="emu-mine">{cart_games}</small>
-                <span class="emu-who-one">{tr!("NES, Super Nintendo, Nintendo 64, Game Boy, GBA e Mega Drive pelo RetroArch")}</span>
-            </div>
-            {(!unplayable.is_empty()).then(|| view! {
-                <div class="emu-tile full off">
-                    <div class="emu-tile-h"><b>{unplayable.join(", ")}</b><span class="emu-dot">{tr!("Sem emulação")}</span></div>
-                    <span class="emu-who-one">{tr!("Você tem jogos desses consoles, mas o Cerberus ainda não tem emulador para eles.")}</span>
-                    {native_ways}
-                </div>
-            })}
-            {(!others.is_empty()).then(|| view! {
-                <div class="emu-tile full emu-others">
-                    <div class="emu-tile-h">
-                        <b>{tr!("Outros consoles")}</b>
-                        <button type="button" class="btn sm" aria-expanded=show_others.to_string() on:click=move |_| all_consoles.update(|v| *v = !*v)>
-                            {if show_others { tr!("Recolher") } else { tr!("Mostrar") }}
-                        </button>
-                    </div>
-                    <span class="emu-who-one">{if show_others { tr!("Acima, os consoles de que você ainda não tem jogos.").to_string() } else { tr!("{}: nenhum jogo seu ainda.", others_names) }}</span>
-                </div>
-            })}
-        };
 
-        // ---------- RetroArch's card ----------
+        // RetroArch itself: the program and its cores, one line.
         let total_cores = v.cores.len();
         let have_cores = v.cores.iter().filter(|c| c.installed).count();
-        let ra_status = match (&v.retroarch, working.as_deref()) {
-            (_, Some("retroarch")) => {
-                let (done, total) = progress.get();
-                if total > 0 && done >= total { tr!("Extraindo… leva um minuto.").to_string() } else if total > 0 { tr!("Baixando {}%…", done * 100 / total) } else { tr!("Preparando…").to_string() }
-            }
-            (_, Some("cores")) => {
-                let (done, total) = progress.get();
-                tr!("Instalando núcleos · {} de {}", done, total)
-            }
-            (Some(_), _) if v.managed => tr!("Instalado pelo Cerberus").to_string(),
-            (Some(path), _) => tr!("Encontrado em {}", path),
-            (None, _) => tr!("Não instalado").to_string(),
+        let ra_status = match working.as_deref() {
+            Some("retroarch") => progress_words(),
+            Some("cores") => { let (done, total) = progress.get(); tr!("Instalando núcleos · {} de {}", done, total) }
+            _ => match (&v.retroarch, v.managed) {
+                (Some(_), true) => tr!("Instalado pelo Cerberus · {} de {} núcleos", have_cores, total_cores),
+                (Some(path), false) => tr!("Encontrado em {} · {} de {} núcleos", path, have_cores, total_cores),
+                (None, _) => tr!("Não instalado. Abre NES, Super Nintendo, Nintendo 64, Game Boy, Mega Drive e também PlayStation, PSP, GameCube e Wii.").to_string(),
+            },
         };
-        let chips = v
-            .cores
-            .iter()
-            .map(|c| {
-                let core = c.core.clone();
-                let mine = working.as_deref() == Some(core.as_str());
-                if c.installed {
-                    view! { <span class="emu-chip ok" title=tr!("Núcleo {}", c.core)><Svg icon=Icon::Check size=12 />{c.consoles.clone()}</span> }.into_any()
-                } else {
-                    view! {
-                        <button type="button" class="emu-chip" title=tr!("Núcleo {}", c.core) disabled=move || disabled() || !has_ra on:click=move |_| {
-                            let name = core.clone();
-                            act(&name.clone(), Box::pin(async move { api::install_core(name).await.map(|_| tr!("Núcleo instalado.").to_string()) }));
-                        }><Svg icon=Icon::Download size=12 />{if mine { tr!("Baixando...").to_string() } else { c.consoles.clone() }}</button>
-                    }
-                    .into_any()
-                }
-            })
-            .collect_view();
-        let all_cores = (has_ra && have_cores < total_cores).then(|| view! {
-            <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("cores", Box::pin(async move {
-                api::install_all_cores().await.map(|(_, n)| tr!("{} núcleos instalados.", n))
-            }))><Svg icon=Icon::Download size=16 />{tr!("Instalar todos")}</button>
-        });
-        let ra_bios = (has_ra).then(|| {
-            let ps2 = v.ps2_bios;
-            let ps1 = v.ps1_bios;
-            view! {
-                <div class="emu-line">
-                    <span class=if ps2 { "emu-flag ok" } else { "emu-flag warn" }>{if ps2 { tr!("BIOS do PS2 pronta") } else { tr!("Falta a BIOS do PS2") }}</span>
-                    <span class=if ps1 { "emu-flag ok" } else { "emu-flag" }>{if ps1 { tr!("BIOS do PS1 pronta") } else { tr!("BIOS do PS1: opcional") }}</span>
-                    <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("ra-bios", Box::pin(async move { api::import_bios().await.map(|(_, said)| said) }))>
-                        <Svg icon=Icon::Folder size=16 />{tr!("Adicionar BIOS")}</button>
+        let ra_row = view! {
+            <div class="set-row">
+                <div class="ra-row">
+                    {emulator_badge("retroarch", "RetroArch")}
+                    <div><b>"RetroArch"</b><small title=v.retroarch.clone().unwrap_or_default()>{ra_status}</small></div>
                 </div>
-            }
-        });
-        let ra_card = view! {
-            <article class="emu-card ra" class:on=has_ra>
-                <header>
-                    <div><b>"RetroArch"</b><small>{tr!("Vários consoles, um núcleo para cada")}</small></div>
-                    <span class=if has_ra { "pill ok" } else { "pill soon" }>{if has_ra { tr!("Instalado") } else { tr!("Não instalado") }}</span>
-                </header>
-                <p class="emu-status" title=v.retroarch.clone().unwrap_or_default()>{ra_status}</p>
-                <div class="emu-cores-h"><span>{tr!("Núcleos · {} de {}", have_cores, total_cores)}</span>{all_cores}</div>
-                <div class="emu-chips">{chips}</div>
-                {ra_bios}
-                <footer>
-                    <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("pick", Box::pin(async move { api::pick_retroarch().await.map(|_| String::new()) }))>{tr!("Usar o meu")}</button>
+                <div class="row">
+                    {(has_ra && have_cores < total_cores).then(|| view! {
+                        <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("cores", Box::pin(async move {
+                            api::install_all_cores().await.map(|(_, n)| tr!("{} núcleos instalados.", n))
+                        }))><Svg icon=Icon::Download size=16 />{tr!("Instalar todos os núcleos")}</button>
+                    })}
+                    <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("retroarch", Box::pin(async move { api::pick_retroarch().await.map(|_| String::new()) }))>{tr!("Usar o meu")}</button>
                     <button type="button" class="btn sm" class:main=!has_ra disabled=disabled on:click=move |_| act("retroarch", Box::pin(async move { api::install_retroarch().await.map(|_| tr!("RetroArch instalado.").to_string()) }))>
                         <Svg icon=Icon::Download size=16 />{if has_ra { tr!("Reinstalar") } else { tr!("Instalar") }}</button>
-                </footer>
-            </article>
+                </div>
+            </div>
         };
 
-        // ---------- standalone emulators ----------
-        let cards = s
-            .emulators
-            .iter()
-            .cloned()
-            .map(|e| {
-                let consoles = e.consoles.iter().map(|c| console_name(c)).collect::<Vec<_>>().join(", ");
-                let mine = working.as_deref() == Some(e.id.as_str());
-                let installed = e.exe.is_some();
-                let status = if mine {
-                    let (done, total) = progress.get();
-                    if total > 0 { tr!("Baixando {}%…", done * 100 / total) } else { tr!("Preparando…").to_string() }
-                } else {
-                    match (&e.exe, e.managed) {
-                        (Some(_), true) => tr!("Instalado pelo Cerberus").to_string(),
-                        (Some(path), false) => tr!("Encontrado em {}", path),
-                        (None, _) => tr!("Não instalado").to_string(),
-                    }
-                };
-                let bios = (installed && e.bios.is_some()).then(|| {
-                    let ok = e.bios == Some(true);
-                    let what = if e.firmware {
-                        if ok { tr!("Firmware do PS3 instalado") } else { tr!("Falta o firmware do PS3") }
-                    } else if ok {
-                        tr!("BIOS pronta")
-                    } else {
-                        tr!("Falta a BIOS")
-                    };
-                    let id = e.id.clone();
-                    let button = if e.firmware { tr!("Instalar firmware") } else { tr!("Adicionar BIOS") };
-                    view! {
-                        <div class="emu-line">
-                            <span class=if ok { "emu-flag ok" } else { "emu-flag warn" }>{what}</span>
-                            <button type="button" class="btn sm" disabled=disabled on:click=move |_| {
-                                let id = id.clone();
-                                act("bios", Box::pin(async move { api::standalone_bios(&id).await.map(|(_, said)| said) }))
-                            }><Svg icon=Icon::Folder size=16 />{button}</button>
-                        </div>
-                    }
-                });
-                let (i1, i2, i3, i4) = (e.id.clone(), e.id.clone(), e.id.clone(), e.id.clone());
-                let name = e.name.clone();
-                let actions = if !installed {
-                    view! {
-                        <button type="button" class="btn sm" disabled=disabled on:click=move |_| { let id = i1.clone(); act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) })) }>{tr!("Já tenho")}</button>
-                        <button type="button" class="btn sm main" disabled=disabled on:click=move |_| {
-                            let id = i2.clone();
-                            let done = tr!("{} instalado. Seus jogos dele já podem abrir por aqui.", name);
-                            act(&id.clone(), Box::pin(async move { api::install_standalone(&id).await.map(|_| done) }))
-                        }><Svg icon=Icon::Download size=16 />{tr!("Instalar")}</button>
-                    }
-                    .into_any()
-                } else {
-                    let managed = e.managed;
-                    view! {
-                        <button type="button" class="btn sm" on:click=move |_| { let id = i3.clone(); spawn_local(async move { library.report(api::open_standalone(&id).await); }) }>{tr!("Abrir")}</button>
-                        <button type="button" class="btn sm" disabled=disabled on:click=move |_| {
-                            let id = i4.clone();
-                            if managed {
-                                act(&id.clone(), Box::pin(async move { api::remove_standalone(&id).await.map(|_| String::new()) }))
-                            } else {
-                                act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }))
-                            }
-                        }>{if managed { tr!("Remover") } else { tr!("Trocar") }}</button>
-                    }
-                    .into_any()
-                };
-                view! {
-                    <article class="emu-card" class:on=installed>
-                        <header>
-                            <div><b>{e.name.clone()}</b><small>{consoles}</small></div>
-                            <span class=if installed { "pill ok" } else { "pill soon" }>{if installed { tr!("Instalado") } else { tr!("Não instalado") }}</span>
-                        </header>
-                        <p class="emu-status" title=e.exe.clone().unwrap_or_default()>{status}</p>
-                        {bios}
-                        <footer>{actions}</footer>
-                    </article>
-                }
-            })
-            .collect_view();
-
-        // ---------- folders and achievements ----------
+        // Folders and achievements: one line each.
         let use_folders = s.use_folders;
-        let folder_list = (use_folders && !s.folders.is_empty()).then(|| {
-            let items = s.folders.iter().map(|f| view! { <li class="path">{f.clone()}</li> }).collect_view();
-            view! { <ul class="emu-folders">{items}</ul> }
-        });
+        let folder_note = if !use_folders {
+            tr!("As pastas de jogos que os seus emuladores já conhecem também entram nos clássicos. O Cerberus só lê essas pastas.").to_string()
+        } else if s.folders.is_empty() {
+            tr!("Nenhum emulador deste PC lista pastas de jogos ainda.").to_string()
+        } else {
+            tr!("Lendo: {}", s.folders.join(" · "))
+        };
         let retro = match (&v.ra_user, ra_linked, ra_retroarch) {
             (Some(user), _, _) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conectado como {}", user)}</span> }.into_any(),
             (None, true, true) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conecta sozinho ao abrir um jogo")}</span> }.into_any(),
@@ -1260,30 +1368,24 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             <section class="card set emu-top">
                 <div>
                     <h3>{tr!("Emulação")}</h3>
-                    <p class="muted small">{tr!("{} clássicos nas suas pastas · {} já abrem aqui", roms, playable)}</p>
+                    <p class="muted small">{tr!("{} clássicos nas suas pastas · {} já abrem aqui. Clique num console para escolher quem abre os jogos dele.", roms, playable)}</p>
                 </div>
                 <button type="button" class="btn sm" on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
             </section>
+            <div class="cc-grid">{cards}</div>
+            {more}
+            {(!unplayable.is_empty()).then(|| view! {
+                <section class="card set emu-none">
+                    <div class="emu-tile-h"><b>{unplayable.join(", ")}</b><span class="emu-dot">{tr!("Sem emulação")}</span></div>
+                    <p class="muted small">{tr!("Você tem jogos desses consoles, mas o Cerberus ainda não tem emulador para eles.")}</p>
+                    {native_ways}
+                </section>
+            })}
             <section class="card set">
-                <h3>{tr!("Seus consoles")}</h3>
-                <p class="muted small">{tr!("Quem abre os jogos de cada console, e se já dá para jogar.")}</p>
-                <div class="emu-tiles">{tiles}{retro_tile}</div>
-            </section>
-            <section class="card set">
-                <h3>{tr!("Emuladores")}</h3>
-                <p class="muted small">{tr!("Cada um vem da página oficial do projeto, sem BIOS nem firmware: esses arquivos são do seu console. Se você já tem algum, use Já tenho.")}</p>
-                <div class="emu-cards">{ra_card}{cards}</div>
-            </section>
-            <section class="card set">
-                <h3>{tr!("Jogos dos emuladores")}</h3>
-                {row(tr!("Usar as pastas dos emuladores"), tr!("As pastas de jogos que os seus emuladores já conhecem (as listas do RetroArch também) entram nos clássicos, além das suas pastas de ROMs. O Cerberus só lê essas pastas."),
+                {ra_row}
+                {row(tr!("Usar as pastas dos emuladores"), folder_note,
                     switch(use_folders, tr!("Usar as pastas dos emuladores"), RwSignal::new(false), move || act("folders", Box::pin(async move { api::set_emulator_folders(!use_folders).await.map(|_| String::new()) }))))}
-                {folder_list}
-                {(use_folders && s.folders.is_empty()).then(|| view! { <p class="muted small">{tr!("Nenhum emulador deste PC lista pastas de jogos ainda.")}</p> })}
-            </section>
-            <section class="card set">
-                <h3>{tr!("Conquistas no RetroArch")}</h3>
-                {row("RetroAchievements", tr!("A conta é a de Contas › RetroAchievements. O Cerberus grava no RetroArch só o código de acesso, nunca a senha, e faz uma cópia de segurança das configurações dele antes."), retro)}
+                {row(tr!("Conquistas no RetroArch"), tr!("A conta é a de Contas › RetroAchievements. O Cerberus grava no RetroArch só o código de acesso, nunca a senha, e faz uma cópia de segurança das configurações dele antes."), retro)}
             </section>
         }
         .into_any()

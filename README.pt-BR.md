@@ -202,6 +202,7 @@ Relatos de bug, pedidos de recomp e pull requests são bem-vindos. Comece pelo [
 ## Créditos
 
 - Algumas ideias de comportamento vêm do [RecompLauncher](https://github.com/elripalda/RecompLauncher) e do [Hydra](https://github.com/hydralauncher/hydra), reimplementadas aqui do zero.
+- As ilustrações dos consoles e os ícones dos emuladores em Configurações › Emulação vêm do [Hydra](https://github.com/hydralauncher/hydra) (MIT); veja `ui/emulation/LICENSE.md`.
 - O catálogo junta a lista própria do Cerberus com a lista pública do [recomplauncher.com](https://recomplauncher.com). Essa lista pode ser desligada nas configurações.
 - As capas dos clássicos vêm do [libretro-thumbnails](https://github.com/libretro-thumbnails). A arte da comunidade vem do [SteamGridDB](https://www.steamgriddb.com), com a sua chave gratuita.
 - As fontes são [Figtree](https://github.com/erikdkennedy/figtree) e [Archivo](https://github.com/Omnibus-Type/Archivo), sob a SIL Open Font License 1.1.

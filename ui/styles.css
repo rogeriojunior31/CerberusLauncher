@@ -1979,3 +1979,54 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .hydra-lists { padding-left: 16px; }
 .emu-native { display: block; margin-top: 6px; text-align: left; }
 .emu-tile.full { grid-column: 1 / -1; }
+/* Configurações › Emulação: consoles as cards with their picture, one console's page in place. */
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 64px 16px; margin: 56px 0 18px; }
+.cc { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 66px 18px 18px; min-height: 196px;
+  border-radius: 18px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease); }
+.cc:hover, .cc:focus-visible { border-color: var(--line2); background: var(--card2); }
+.cc-art { position: absolute; top: -44px; left: 14px; width: 150px; height: 100px; display: flex; align-items: flex-end; pointer-events: none;
+  transition: transform 0.25s var(--ease); }
+.cc-art img { max-width: 150px; max-height: 100px; object-fit: contain; object-position: bottom left; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55)); }
+.cc:hover .cc-art, .cc:focus-visible .cc-art { transform: translateY(-4px); }
+.cc-none, .cd-art.none { display: grid; place-items: center; width: 110px; height: 74px; border-radius: 12px; background: var(--fill2); border: 1px dashed var(--line2);
+  color: var(--muted); font-size: 13px; font-weight: 800; text-align: center; padding: 6px; }
+.cc-name { font-family: Archivo, Figtree, sans-serif; font-stretch: 112%; font-size: 18px; font-weight: 750; }
+.cc-who { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
+.cc-who > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-games { margin-top: auto; padding-top: 8px; font-size: 12px; color: var(--muted); }
+.cc.idle .cc-art img { filter: grayscale(0.7) brightness(0.8) drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55)); }
+.cc.idle:hover .cc-art img { filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55)); }
+.cc.ok .emu-dot, .cd.ok .cd-head .emu-dot { color: #86efac; }
+.cc.ok .emu-dot::before, .cd.ok .cd-head .emu-dot::before { background: #4ade80; }
+.cc.warn .emu-dot, .cd.warn .cd-head .emu-dot { color: #fcd34d; }
+.cc.warn .emu-dot::before, .cd.warn .cd-head .emu-dot::before { background: #fbbf24; }
+.emu-ico { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; flex: none; }
+.emu-ico.letter { display: grid; place-items: center; background: var(--fill3); color: var(--ink); font-size: 13px; font-weight: 800; }
+.emu-none { margin-bottom: 18px; }
+.cd-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.cd-head { display: flex; align-items: flex-end; gap: 22px; padding: 8px 0 18px; border-bottom: 1px solid var(--line); }
+.cd-art { width: 200px; max-height: 130px; object-fit: contain; object-position: bottom left; flex: none; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55)); }
+.cd-head > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cd-name { font-size: 26px; margin: 0; }
+.cd-head p { margin: 0; max-width: 60ch; }
+.cd-sec { padding-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.cd-sec > h3 { font-size: 16px; margin: 0; }
+.cd-sec > p { margin: -4px 0 0; }
+.cd-games { display: flex; flex-wrap: wrap; gap: 6px; }
+.who-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.who-card { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--fill); border: 1px solid var(--line); min-width: 0; }
+.who-card .emu-ico { width: 36px; height: 36px; border-radius: 9px; }
+.who-card .who-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.who-card .who-t b { font-size: 15px; }
+.who-card .who-t small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who-card .row { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.who-card.on { border-color: color-mix(in srgb, #4ade80 55%, transparent); background: color-mix(in srgb, #4ade80 7%, var(--fill)); }
+.who-check { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #4ade80; color: #04140b; flex: none; }
+@media (max-width: 760px) { .cd-head { flex-direction: column; align-items: flex-start; } .cd-art { width: 160px; } }
+.cd-sec .emu-line > .row { margin-left: auto; gap: 8px; } .cd-sec .emu-line > .row .btn { margin-left: 0; }
+.cc-more { display: block; margin: -2px auto 22px; }
+.ra-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ra-row .emu-ico { width: 36px; height: 36px; border-radius: 9px; }
+.ra-row > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ra-row small { color: var(--muted); font-size: 12.5px; }
