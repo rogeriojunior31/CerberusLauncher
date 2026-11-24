@@ -94,17 +94,18 @@ fn recomp_feature(entry: &RecompEntry) -> Feature {
     }
 }
 
-/// Up to five: games played lately that have a backdrop, then recomps not installed yet.
+/// Up to five: the player's own games played lately (up to four), then one
+/// recomp they don't have yet, so the top of Home is their collection.
 fn features(games: &[Game], recomps: &[RecompEntry]) -> Vec<Feature> {
     let mut played: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some()).collect();
     played.sort_by_key(|g| std::cmp::Reverse(g.last_played));
     let with_art = played.into_iter().filter(|g| !hero_sources(g).is_empty());
-    let mut list: Vec<Feature> = with_art.take(2).map(|g| game_feature(g, recomps)).collect();
+    let mut list: Vec<Feature> = with_art.take(4).map(|g| game_feature(g, recomps)).collect();
     // Then the most played recomps you don't have yet, games you own first.
     let mut games_once: Vec<RecompEntry> = one_each(recomps).into_iter().map(|(r, _)| r).collect();
     games_once.retain(|r| r.installed.is_none() && r.hero.is_some() && r.problem.is_none());
     games_once.sort_by_key(|r| (r.owned_copy.is_none(), std::cmp::Reverse(r.downloads)));
-    let remaining = 5 - list.len();
+    let remaining = if list.is_empty() { 5 } else { 1 };
     list.extend(games_once.iter().take(remaining).map(recomp_feature));
     list
 }
@@ -151,7 +152,10 @@ pub fn Home() -> impl IntoView {
         let mut newest = candidates.clone();
         newest.sort_by(|a, b| b.added.cmp(&a.added));
         let newest: Vec<TileInfo> = newest.iter().take(20).map(recomp_tile).collect();
-        let everything: Vec<TileInfo> = games.iter().take(24).map(|g| game_tile(g, library)).collect();
+        // The games played the most, not the first letters of the alphabet.
+        let mut most: Vec<&Game> = games.iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.playtime_secs > 0).collect();
+        most.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs));
+        let everything: Vec<TileInfo> = most.into_iter().take(24).map(|g| game_tile(g, library)).collect();
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
         let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });
@@ -180,7 +184,7 @@ pub fn Home() -> impl IntoView {
             view! { <Shelf title=tr!("Adicionados recentemente").to_string() tiles=newest see_all=Route::Discover /> }
         });
         let everything = (!everything.is_empty()).then(|| {
-            view! { <Shelf title=tr!("Na sua biblioteca").to_string() tiles=everything see_all=Route::Library /> }
+            view! { <Shelf title=tr!("Mais jogados").to_string() tiles=everything see_all=Route::Library /> }
         });
         let error = read_error.as_ref().map(|message| view! {
             <div class="card" role="alert">
@@ -190,7 +194,7 @@ pub fn Home() -> impl IntoView {
         });
         let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">{tr!("Carregando...")}</p> });
 
-        view! { <div class="page home">{error}{loading}{slider}{recent}{favorites}{found}{popular}{newest}{everything}</div> }
+        view! { <div class="page home">{error}{loading}{slider}{recent}{favorites}{everything}{found}{popular}{newest}</div> }
     }
 }
 

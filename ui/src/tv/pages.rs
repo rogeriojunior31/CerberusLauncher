@@ -131,13 +131,14 @@ fn library_games(library: Library) -> Vec<Game> {
     library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.next_step != cerberus_shared::NextStep::Install).collect()
 }
 
-/// The player's classics RetroArch plays, the ones played lately first.
-fn classics(roms: &[cerberus_shared::RomView]) -> Vec<Item> {
+/// The player's classics an emulator here opens (as Play decides it), the
+/// ones played lately first.
+fn classics(roms: &[cerberus_shared::RomView], players: &[cerberus_shared::ClassicPlayer]) -> Vec<Item> {
     let mut list: Vec<Item> = roms
         .iter()
         .filter_map(|r| {
             let console = crate::classics::console_of(r);
-            crate::classics::is_emulated(console).then(|| Item::Classic(r.clone(), console))
+            crate::classics::ready_player(players, console).map(|_| Item::Classic(r.clone(), console))
         })
         .collect();
     list.sort_by_key(|i| match i {
@@ -147,17 +148,11 @@ fn classics(roms: &[cerberus_shared::RomView]) -> Vec<Item> {
     list
 }
 
-/// Starts a classic: the recomp's page when the catalog has one for it,
-/// otherwise the original in RetroArch.
-fn open_classic(library: Library, tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
-    let recomp = catalog(library).into_iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str()));
-    match recomp {
-        Some(e) => tv.open(View::Game(format!("recomp:{}", e.id))),
-        None => {
-            play(Sound::Select);
-            crate::classics::play_original(library, rom.path.clone(), console.to_string());
-        }
-    }
+/// Starts the classic itself, in the emulator that opens it here. Its recomp,
+/// if any, has a tile of its own once installed.
+fn open_classic(library: Library, _tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
+    play(Sound::Select);
+    crate::classics::play_original(library, rom.path.clone(), console.to_string());
 }
 
 fn catalog(library: Library) -> Vec<RecompEntry> {
@@ -173,9 +168,9 @@ pub fn Home() -> impl IntoView {
     let focus = Focus::new("home", false);
     tv.keep_position(focus);
 
-    let roms = LocalResource::new(|| async { api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
+    library.roms.refetch();
     let shelves = Memo::new(move |_| {
-        let classic_items = classics(&roms.get().unwrap_or_default());
+        let classic_items = classics(&library.roms.get().unwrap_or_default(), &library.players.get().unwrap_or_default());
         let mut games = library_games(library);
         games.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         let dock: Vec<Item> = games.iter().take(12).cloned().map(Item::Game).collect();
@@ -264,10 +259,7 @@ pub fn Home() -> impl IntoView {
             },
             Item::Entry(e) if e.owned_copy.is_some() => tr!("Você já tem o jogo").to_string(),
             Item::Entry(e) => format!("{} downloads", format::count(e.downloads)),
-            Item::Classic(r, c) => match r.last_played {
-                Some(t) => format!("{} · jogado {} · {}", crate::classics::console_name(c), format::ago(t), format::playtime(r.playtime_secs)),
-                None => tr!("Clássico · {}", crate::classics::console_name(c)),
-            },
+            Item::Classic(r, c) => crate::classics::classic_sub(r, c, &library.players.get_untracked().unwrap_or_default()),
         };
         let entry = match &item {
             Item::Game(g) => entry_of(library, g),

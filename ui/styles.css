@@ -605,7 +605,7 @@ video.gal-media { object-fit: contain; }
 
 /* About the game */
 .about-card { display: flex; flex-direction: column; gap: 12px; }
-.about-body { display: flex; flex-direction: column; gap: 10px; max-width: 78ch; color: #d6d9e0; line-height: 1.6; font-size: 15px; }
+.about-body { display: flex; flex-direction: column; gap: 10px; max-width: 68ch; color: #d6d9e0; line-height: 1.6; font-size: 15px; }
 .about-body p, .about-body h4 { margin: 0; }
 .about-body h4 { font-size: 16px; margin-top: 8px; color: var(--ink); }
 .about-body .li { padding-left: 18px; position: relative; }
@@ -1837,9 +1837,9 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .gchip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--fill2);
   color: var(--muted); font-weight: 600; font-size: 13px; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .gchip:hover { color: var(--ink); border-color: var(--line2); }
-.gchip small { font-size: 11px; color: var(--dim); font-weight: 600; }
-.gchip.on { background: var(--grad); border-color: transparent; color: #fff; }
-.gchip.on small { color: rgba(255, 255, 255, 0.8); }
+.gchip small { font-size: 11px; color: var(--muted); font-weight: 600; }
+.gchip.on { background: var(--grad); border-color: transparent; color: var(--accent-ink); }
+.gchip.on small { color: var(--accent-ink); opacity: 0.75; }
 
 /* Achievements: platinums */
 .plat-n { margin-left: 10px; font-size: 14px; font-weight: 700; color: #1a1205; background: linear-gradient(135deg, #ffe08a, #f5b62a); padding: 2px 9px; border-radius: 999px; vertical-align: middle; }

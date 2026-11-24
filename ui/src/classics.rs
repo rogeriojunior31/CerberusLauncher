@@ -70,11 +70,6 @@ fn emulation_exists(console: &str) -> bool {
     EMULATED.contains(&console) || matches!(console, "ps3" | "wiiu")
 }
 
-/// RetroArch plays this console in Cerberus.
-pub fn is_emulated(console: &str) -> bool {
-    EMULATED.contains(&console)
-}
-
 /// The console RetroArch would play this copy of a game on, if it plays it at all.
 pub fn emulated_console(path: &str) -> Option<&'static str> {
     let rom = RomView { path: path.to_string(), title: String::new(), system: system_of(path).to_string(), region: String::new(), playtime_secs: 0, last_played: None, discs: Vec::new() };

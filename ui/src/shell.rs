@@ -97,6 +97,23 @@ fn SideGames() -> impl IntoView {
         list.sort_by_cached_key(|g| (!g.favorite, std::cmp::Reverse(g.last_played), crate::tiles::game_names(g, library).0.to_lowercase()));
         list
     });
+    // The classics an emulator here opens, played lately first.
+    let classics = Memo::new(move |_| {
+        let players = library.players.get().unwrap_or_default();
+        let mut list: Vec<(cerberus_shared::RomView, &'static str, String)> = library
+            .roms
+            .get()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| {
+                let console = crate::classics::console_of(&r);
+                crate::classics::ready_player(&players, console).map(|player| (r, console, player))
+            })
+            .collect();
+        list.sort_by_cached_key(|(r, _, _)| (std::cmp::Reverse(r.last_played), crate::classics::display_name(r).to_lowercase()));
+        list
+    });
+    let total = move || ready.with(Vec::len) + classics.with(Vec::len);
     // The tray icon's menu offers the games played most recently.
     let sent = StoredValue::new(Vec::<String>::new());
     Effect::new(move |_| {
@@ -119,6 +136,34 @@ fn SideGames() -> impl IntoView {
                 q.is_empty() || format!("{name} {}", version.unwrap_or_default()).to_lowercase().contains(&q)
             })
             .collect::<Vec<_>>()
+    };
+    let classic_rows = move || {
+        let q = query.get().to_lowercase();
+        classics
+            .get()
+            .into_iter()
+            .filter(|(r, _, _)| q.is_empty() || crate::classics::display_name(r).to_lowercase().contains(&q))
+            .map(|(rom, console, player)| {
+                let route = Route::Classic(rom.path.clone());
+                let here = route.clone();
+                let on = move || library.route.with(|now| *now == here);
+                let name = crate::classics::display_name(&rom);
+                let tip = format!("{name} · {} · {player}", crate::classics::console_name(console));
+                let (path, console_id) = (rom.path.clone(), console.to_string());
+                view! {
+                    <div class="sg-item" class:on=on>
+                        <button type="button" class="sg-open" title=tip on:click=move |_| library.go(route.clone())>
+                            <span class="fav-thumb"><crate::art::Poster sources=crate::classics::box_art(&rom, console) title=name.clone() /></span>
+                            <span class="sg-name">{name}</span>
+                        </button>
+                        <button type="button" class="sg-play" title=tr!("Jogar no {}", player) aria-label=tr!("Jogar no {}", player)
+                            on:click=move |_| crate::classics::play_original(library, path.clone(), console_id.clone())>
+                            <Svg icon=Icon::Play size=13 />
+                        </button>
+                    </div>
+                }
+            })
+            .collect_view()
     };
     let rows = move || {
         shown()
@@ -150,12 +195,12 @@ fn SideGames() -> impl IntoView {
             .collect_view()
     };
     view! {
-        <Show when=move || ready.with(|r| !r.is_empty())>
+        <Show when=move || { total() > 0 }>
             <div class="side-games">
                 <div class="sg-head">
-                    <span class="side-h">{tr!("Prontos para jogar")}<b>{move || ready.with(Vec::len)}</b></span>
+                    <span class="side-h">{tr!("Prontos para jogar")}<b>{total}</b></span>
                 </div>
-                <Show when=move || ready.with(|r| r.len() > 8)>
+                <Show when=move || { total() > 8 }>
                     <label class="sg-search">
                         <Svg icon=Icon::Search size=14 />
                         <input type="search" placeholder=tr!("Filtrar jogos") prop:value=move || query.get()
@@ -164,7 +209,11 @@ fn SideGames() -> impl IntoView {
                 </Show>
                 <div class="sg-list">
                     {rows}
-                    <Show when=move || shown().is_empty()><p class="sg-none">{tr!("Nenhum jogo com esse nome.")}</p></Show>
+                    {classic_rows}
+                    <Show when=move || shown().is_empty() && {
+                        let q = query.get().to_lowercase();
+                        !classics.with(|c| c.iter().any(|(r, _, _)| crate::classics::display_name(r).to_lowercase().contains(&q)))
+                    }><p class="sg-none">{tr!("Nenhum jogo com esse nome.")}</p></Show>
                 </div>
             </div>
         </Show>
