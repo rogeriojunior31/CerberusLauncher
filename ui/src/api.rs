@@ -1058,3 +1058,12 @@ pub async fn open_news(url: String) -> Result<(), String> {
     }
     call("open_news", &Arg { url }).await
 }
+
+/// The games played most recently, for the tray icon's menu.
+pub async fn set_tray_games(games: Vec<cerberus_shared::Game>) {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        games: Vec<cerberus_shared::Game>,
+    }
+    let _: Result<(), String> = call("set_tray_games", &Arg { games }).await;
+}

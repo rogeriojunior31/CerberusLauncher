@@ -5,9 +5,11 @@
 //! game, it quits by itself once the last game closes.
 
 use cerberus_shared::tr;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use tauri::menu::{Menu, MenuItem};
+use cerberus_shared::Game;
+use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime, Window};
 
@@ -65,11 +67,50 @@ pub fn show(app: &AppHandle) {
     }
 }
 
-/// The tray icon: a click opens the window; its menu opens or quits.
+/// The games played most recently, offered in the tray menu (the window sends them).
+static RECENT: Mutex<Vec<Game>> = Mutex::new(Vec::new());
+/// At most this many games in the tray menu.
+pub const RECENT_GAMES: usize = 5;
+
+/// The tray icon: a click opens the window; its menu plays a recent game, opens or quits.
 fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let open = MenuItem::with_id(app, "open", tr!("Abrir Cerberus"), true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", tr!("Sair"), true, None::<&str>)?;
-    Menu::with_items(app, &[&open, &quit])
+    let recent = RECENT.lock().map(|r| r.clone()).unwrap_or_default();
+    let mut items: Vec<Box<dyn IsMenuItem<tauri::Wry>>> = Vec::new();
+    if !recent.is_empty() {
+        items.push(Box::new(MenuItem::with_id(app, "recent", tr!("Jogados recentemente"), false, None::<&str>)?));
+        for (i, game) in recent.iter().enumerate() {
+            // An ampersand would underline the next letter in a Windows menu.
+            let name = game.name.replace('&', "&&");
+            items.push(Box::new(MenuItem::with_id(app, format!("play:{i}"), format!("▶  {name}"), true, None::<&str>)?));
+        }
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    items.push(Box::new(MenuItem::with_id(app, "open", tr!("Abrir Cerberus"), true, None::<&str>)?));
+    items.push(Box::new(MenuItem::with_id(app, "quit", tr!("Sair"), true, None::<&str>)?));
+    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|i| i.as_ref()).collect();
+    Menu::with_items(app, &refs)
+}
+
+/// The recent games for the tray menu; rebuilt only when they changed.
+pub fn set_recent(app: &AppHandle, games: Vec<Game>) {
+    let games: Vec<Game> = games.into_iter().take(RECENT_GAMES).collect();
+    {
+        let Ok(mut now) = RECENT.lock() else { return };
+        let same = now.len() == games.len() && now.iter().zip(&games).all(|(a, b)| a.id == b.id && a.name == b.name);
+        if same {
+            return;
+        }
+        *now = games;
+    }
+    retitle_tray(app);
+}
+
+/// Plays a game picked in the tray menu, telling the player when it can't open.
+fn play_recent(app: &AppHandle, index: usize) {
+    let Some(game) = RECENT.lock().ok().and_then(|r| r.get(index).cloned()) else { return };
+    if let Err(e) = crate::play(app.clone(), game.clone()) {
+        crate::notify::tell(app, crate::notify::Kind::Reply, &tr!("{} não abriu", game.name), &e);
+    }
 }
 
 /// The tray menu again, in the language just picked.
@@ -88,7 +129,11 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show(app),
             "quit" => app.exit(0),
-            _ => {}
+            id => {
+                if let Some(i) = id.strip_prefix("play:").and_then(|i| i.parse().ok()) {
+                    play_recent(app, i);
+                }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {

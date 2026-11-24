@@ -9,13 +9,18 @@ use crate::{Library, Route, Toast, api};
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let library = expect_context::<Library>();
+    let activity = expect_context::<crate::news::Activity>();
     let item = move |route: Route, icon: Icon, label: &'static str| {
         let target = route.clone();
         let on = move || library.route.with(|now| now.section() == target);
         let downloads = route == Route::Downloads;
         let count = matches!(route, Route::Downloads | Route::News).then(|| {
             view! { <b class="n">{move || {
-                let n = if downloads { library.progress.with(|p| p.len()) } else { crate::news::update_count(library) };
+                let n = if downloads {
+                    library.progress.with(|p| p.len())
+                } else {
+                    crate::news::update_count(library) + activity.unread()
+                };
                 (n > 0).then_some(n)
             }}</b> }
         });
@@ -81,6 +86,18 @@ fn SideGames() -> impl IntoView {
             .collect();
         list.sort_by_key(|g| (!g.favorite, std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         list
+    });
+    // The tray icon's menu offers the games played most recently.
+    let sent = StoredValue::new(Vec::<String>::new());
+    Effect::new(move |_| {
+        let mut recent: Vec<cerberus_shared::Game> = ready.get().into_iter().filter(|g| g.last_played.is_some()).collect();
+        recent.sort_by_key(|g| std::cmp::Reverse(g.last_played));
+        recent.truncate(5);
+        let ids: Vec<String> = recent.iter().map(|g| format!("{}|{}", g.id, g.name)).collect();
+        if sent.with_value(|s| *s != ids) {
+            sent.set_value(ids);
+            leptos::task::spawn_local(api::set_tray_games(recent));
+        }
     });
     let shown = move || {
         let q = query.get().to_lowercase();

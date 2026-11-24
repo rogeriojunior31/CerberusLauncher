@@ -1663,6 +1663,12 @@ fn open_project(app: AppHandle, id: String) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// The games played most recently, for the tray menu.
+#[tauri::command]
+fn set_tray_games(app: AppHandle, games: Vec<Game>) {
+    background::set_recent(&app, games);
+}
+
 #[tauri::command]
 fn play(app: AppHandle, game: Game) -> Result<(), String> {
     // Store games go through their own launcher, which handles updates, DRM and
@@ -2469,6 +2475,7 @@ fn main() {
             achievements_hub,
             steam_details,
             steam_news,
+            set_tray_games,
             open_news,
             game_sessions,
             set_game_note,

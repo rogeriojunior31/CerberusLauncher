@@ -259,6 +259,7 @@ fn App() -> impl IntoView {
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
     provide_context(updates::Updates::start());
+    provide_context(news::Activity::start());
     provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.

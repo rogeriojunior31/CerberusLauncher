@@ -1268,6 +1268,11 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 .act { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; }
 .act + .act { border-top: 1px solid var(--line); }
 .act.clickable { cursor: pointer; }
+.act { position: relative; }
+.act:not(.fresh) { opacity: 0.72; }
+.act.fresh::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--accent); }
+.news-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.news-h h2 { margin: 0; }
 .act.clickable:hover { background: var(--card2); }
 .act > svg { flex: none; color: var(--ok, #3ccf8e); }
 .act.bad > svg { color: var(--bad, #ff6b6b); }
