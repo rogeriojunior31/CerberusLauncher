@@ -12,6 +12,8 @@ use crate::{Library, Route};
 
 #[derive(Clone, PartialEq)]
 pub struct TileInfo {
+    /// What the corner chip means: its color says it before its words do.
+    pub tone: Tone,
     pub title: String,
     pub sub: String,
     pub covers: Vec<String>,
@@ -112,16 +114,17 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         Some(v) => format!("{v} · {sub}"),
         None => sub,
     };
-    let badge = if running {
-        Some(tr!("Jogando").to_string())
+    let (badge, tone) = if running {
+        (Some(tr!("Jogando").to_string()), Tone::Ok)
     } else if let Some(waiting) = waiting_for(game) {
-        Some(waiting.to_string())
+        (Some(waiting.to_string()), Tone::Warn)
     } else if has_update(game, library) {
-        Some(tr!("Atualização").to_string())
+        (Some(tr!("Atualização").to_string()), Tone::Accent)
     } else {
-        None
+        (None, Tone::Accent)
     };
     TileInfo {
+        tone,
         title,
         sub,
         covers: cover_sources(game),
@@ -136,8 +139,34 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
 }
 
 /// A classic from the ROM folders, as a tile: it opens its own page.
-pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<String>) -> TileInfo {
-    TileInfo { title, sub, covers, badge, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: false, progress: None }
+/// `playable`: some emulator here opens it; the others are dimmed.
+pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool) -> TileInfo {
+    let (badge, tone) = badge.map_or((None, Tone::Accent), |(text, tone)| (Some(text), tone));
+    TileInfo { tone, title, sub, covers, badge, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None }
+}
+
+/// The meaning of a cover's corner chip.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Tone {
+    /// Something to do or that just happened: an update, a download.
+    Accent,
+    /// Being played now.
+    Ok,
+    /// It won't play until something is fixed.
+    Warn,
+    /// Good to know, nothing to do.
+    Info,
+}
+
+impl Tone {
+    fn class(self) -> &'static str {
+        match self {
+            Tone::Accent => "chip",
+            Tone::Ok => "chip ok",
+            Tone::Warn => "chip warn",
+            Tone::Info => "chip info",
+        }
+    }
 }
 
 pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
@@ -145,15 +174,16 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         (Some(have), Some(newest)) => *have != newest.version,
         _ => false,
     };
-    let badge = if update {
-        Some(tr!("Atualização").to_string())
+    let (badge, tone) = if update {
+        (Some(tr!("Atualização").to_string()), Tone::Accent)
     } else if entry.installed.is_some() {
-        Some(tr!("Instalado").to_string())
+        (Some(tr!("Instalado").to_string()), Tone::Info)
     } else {
-        None
+        (None, Tone::Accent)
     };
     let (title, version) = entry_names(entry);
     TileInfo {
+        tone,
         title,
         sub: version.map_or_else(|| entry.console.clone(), |v| format!("{v} · {}", entry.console)),
         covers: recomp_covers(entry),
@@ -213,13 +243,18 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
     });
     let overlay = move || {
         let step = step.get();
-        let text = match step {
-            Some(InstallStep::Downloading { .. }) => Some(tr!("Baixando")),
-            Some(InstallStep::Unpacking) => Some(tr!("Preparando")),
-            Some(InstallStep::Paused { .. }) => Some(tr!("Pausado")),
-            _ => info.badge.as_deref(),
+        let (text, tone) = match step {
+            Some(InstallStep::Downloading { .. }) => (Some(tr!("Baixando")), Tone::Accent),
+            Some(InstallStep::Unpacking) => (Some(tr!("Preparando")), Tone::Accent),
+            Some(InstallStep::Paused { .. }) => (Some(tr!("Pausado")), Tone::Accent),
+            _ => (info.badge.as_deref(), info.tone),
         };
-        let badge = text.map(|text| view! { <span class="chip">{text.to_owned()}</span> });
+        let badge = text.map(|text| view! {
+            <span class=tone.class()>
+                {(tone == Tone::Warn).then(|| view! { <Svg icon=Icon::Info size=12 /> })}
+                {text.to_owned()}
+            </span>
+        });
         let bar = match step {
             Some(InstallStep::Downloading { done, total } | InstallStep::Paused { done, total }) if total > 0 => {
                 let percent = u128::from(done.min(total)) * 100 / u128::from(total);

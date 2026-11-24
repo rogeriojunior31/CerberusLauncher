@@ -108,9 +108,19 @@ pub fn recomp_of<'a>(recomps: &'a [RecompEntry], rom: &RomView) -> Option<&'a Re
 
 /// A classic as a library tile.
 pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry]) -> crate::tiles::TileInfo {
+    use crate::tiles::Tone;
     let console = console_of(rom);
-    let badge = recomp_of(recomps, rom).map(|_| tr!("Tem recomp").to_string());
-    crate::tiles::classic_tile(display_name(rom), classic_sub(rom, console, players), box_art(rom, console), rom.path.clone(), badge)
+    let playable = ready_player(players, console).is_some();
+    // Why it won't open comes first; a recomp is good to know.
+    let badge = if !playable {
+        let core = player_for(players, console).is_some_and(|p| p.name.is_some());
+        Some((if core { tr!("Falta o núcleo") } else { tr!("Sem emulador") }.to_string(), Tone::Warn))
+    } else {
+        recomp_of(recomps, rom).map(|e| {
+            (if e.installed.is_some() { tr!("Recomp instalado") } else { tr!("Tem recomp") }.to_string(), Tone::Info)
+        })
+    };
+    crate::tiles::classic_tile(display_name(rom), classic_sub(rom, console, players), box_art(rom, console), rom.path.clone(), badge, playable)
 }
 
 /// The classic is a version of an installed recomp (the recomp was given this
