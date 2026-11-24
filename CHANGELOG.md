@@ -2,6 +2,12 @@
 
 ## 0.11.0 — conquistas, Novidades e do seu jeito
 
+### Idiomas
+
+- O Cerberus agora fala **inglês** e **português do Brasil**: segue o idioma do Windows, ou você escolhe na primeira tela e em **Configurações → Aparência → Idioma**.
+- Mensagens, erros, histórico e o catálogo aparecem no idioma escolhido, com datas no formato de cada um.
+- Documentação completa em `docs/` e README em inglês e português.
+
 ### Início, menu lateral e Novidades
 
 - Banner com o logo do jogo, sua última sessão, tempo total e conquistas; botão **Jogar** na própria capa; fileira de Favoritos.
