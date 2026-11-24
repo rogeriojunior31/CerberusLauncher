@@ -242,7 +242,7 @@ main.main::-webkit-scrollbar-thumb { background: var(--fill3); border-radius: 10
 }
 .tile-b:focus-visible { outline: none; }
 .tile-b:focus-visible .poster { outline: 2px solid var(--accent); outline-offset: 3px; }
-.tile .t { font-weight: 700; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .t { font-weight: 700; font-size: 14.5px; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .tile .s { font-size: 12.5px; color: var(--dim); margin-top: -6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .chip {

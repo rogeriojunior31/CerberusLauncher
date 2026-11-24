@@ -61,8 +61,23 @@ fn has_update(game: &Game, library: Library) -> bool {
 pub fn names_of(name: &str, entry: Option<&RecompEntry>) -> (String, Option<String>) {
     let Some(entry) = entry.filter(|e| !e.game.trim().is_empty()) else { return (name.to_string(), None) };
     let game = entry.game.trim().to_string();
+    // A mod that is another number of the series ("Tenkaichi 4" on "Tenkaichi 3") is its own game.
+    if another_number(name, &game) {
+        return (name.to_string(), None);
+    }
     let version = (!name.trim().eq_ignore_ascii_case(&game)).then(|| name.to_string());
     (game, version)
+}
+
+/// The numbers in a name ("3", "64").
+fn numbers(text: &str) -> Vec<&str> {
+    text.split(|c: char| !c.is_ascii_digit()).filter(|n| !n.is_empty()).collect()
+}
+
+/// The recomp names a number of a numbered series that its game doesn't have.
+fn another_number(name: &str, game: &str) -> bool {
+    let theirs = numbers(game);
+    !theirs.is_empty() && numbers(name).iter().any(|n| !theirs.contains(n))
 }
 
 /// The names a library game shows: the original game's first, the recomp after.
@@ -155,6 +170,14 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sequel_mod_keeps_its_own_name() {
+        assert!(another_number("Dragon Ball Z Budokai Tenkaichi 4 Tag Team Decomp", "Dragon Ball Z: Budokai Tenkaichi 3"));
+        assert!(!another_number("Tenkaichi 3 Decomp", "Dragon Ball Z: Budokai Tenkaichi 3"));
+        assert!(!another_number("Zelda 64: Recompiled", "The Legend of Zelda: Majora's Mask"), "an unnumbered game");
+        assert!(!another_number("SpaghettiKart", "Mario Kart 64"));
+    }
 
     fn entry(name: &str, game: &str) -> RecompEntry {
         serde_json::from_value(serde_json::json!({
