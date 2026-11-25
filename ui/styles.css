@@ -2203,3 +2203,9 @@ main.main { scrollbar-gutter: stable; }
 /* Remover keeps its distance from the safe buttons beside it, in the danger tone */
 .btn.sm.remove { margin-left: 10px; background: transparent; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .btn.sm.remove:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+/* Store descriptions at a reading measure (Figtree runs ~1.5 characters per ch) */
+.about-body p, .about-body li { max-width: 58ch; }
+/* Scroll strips leave room for the selected ring at the edge */
+.gal-strip, .ach-strip { padding-left: 4px; padding-right: 4px; }
+.lib-presence .seg:disabled { opacity: 0.45; cursor: default; }

@@ -917,7 +917,7 @@ fn PrepareStatus(game_id: String) -> impl IntoView {
                     <span class="ver-label">{tr!("Falta preparar")}</span>
                     <div class="act-row">
                         <button type="button" class="btn sm" on:click=start>{tr!("Preparar agora")}</button>
-                        <small class="muted">{tr!("Roda uma vez só. Se preferir, ela roda sozinha no primeiro Jogar.")}</small>
+                        <small class="muted">{tr!("Roda uma vez a cada versão nova do recomp. Se preferir, ela roda sozinha no primeiro Jogar.")}</small>
                     </div>
                 </div>
             })

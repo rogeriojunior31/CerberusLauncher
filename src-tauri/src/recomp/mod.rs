@@ -788,6 +788,26 @@ pub fn split_args(text: &str) -> Vec<String> {
 /// version the recomp needs, then handed over the way it expects. A recomp that
 /// reads its own folder gets the file (or the extracted folder, or an Xbox disc
 /// image's files) put there.
+/// A copy the player already chose, put back where the game reads it when it
+/// went missing: an update replaces the game's folder, and with it the copy
+/// that was placed inside. `None` when nothing needed (or could be) done.
+pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
+    let copy = game.game_copy.as_deref().filter(|c| Path::new(c).exists())?;
+    if !matches!(next_step(game, None), NextStep::ChooseCopy { .. }) {
+        return None;
+    }
+    use_game_copy(library, &game.id, Path::new(copy)).ok()
+}
+
+/// The same for every installed recomp, when Cerberus starts.
+pub fn restore_copies(library: &LocalLibrary) {
+    for game in library.games().unwrap_or_default() {
+        if matches!(game.source, Source::Recomp { .. }) {
+            let _ = restore_copy(library, &game);
+        }
+    }
+}
+
 pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Result<Game, String> {
     if !copy.exists() {
         return Err(tr!("{} não existe mais.", copy.display()));

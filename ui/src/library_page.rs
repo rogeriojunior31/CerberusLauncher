@@ -364,15 +364,17 @@ pub fn LibraryPage() -> impl IntoView {
         })
     };
     let presence = move || {
+        // Always drawn, so the row never jumps; "Não instalados 0" just can't be picked.
         let (_, here, missing) = counts.get();
-        (missing > 0).then(|| view! {
+        view! {
             <div class="segs" role="group" aria-label=tr!("Instalação")>
                 <button type="button" class="seg" class:on=move || !absent.get() aria-pressed=move || (!absent.get()).to_string()
                     on:click=move |_| absent.set(false)>{tr!("Instalados")}<span class="chip-n">{here}</span></button>
                 <button type="button" class="seg" class:on=move || absent.get() aria-pressed=move || absent.get().to_string()
+                    disabled=missing == 0 && !absent.get_untracked()
                     on:click=move |_| absent.set(true)>{tr!("Não instalados")}<span class="chip-n">{missing}</span></button>
             </div>
-        })
+        }
     };
 
     let results = move || {
@@ -644,7 +646,7 @@ pub fn LibraryPage() -> impl IntoView {
                 <div class="lib-tabs">
                     <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
                     // Always in sight: a search never hides the games that aren't installed without saying so.
-                    <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
+                    <Show when=move || !matches!(category.get(), Category::Classics | Category::Hidden)>
                         <div class="lib-presence">{presence}</div>
                     </Show>
                     <Show when=move || category.get() == Category::Collections>

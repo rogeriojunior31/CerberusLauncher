@@ -59,9 +59,14 @@ pub enum Route {
     Unsupported(String),
 }
 
+/// `hay` already in lowercase; `needle` given in lowercase.
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
-    hay.windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle))
+    memchr::memmem::find(hay, needle).is_some()
 }
+
+/// What a program was found to draw with, by its path, size and date: reading
+/// it means up to 96 MB, so once per build of the game, not once per visit.
+static ROUTES: std::sync::Mutex<Option<std::collections::HashMap<(PathBuf, u64, Option<std::time::SystemTime>), Route>>> = std::sync::Mutex::new(None);
 
 /// 64-bit or not, from the program's header.
 fn is_64bit(bytes: &[u8]) -> Option<bool> {
@@ -77,6 +82,20 @@ pub fn route(exe: &Path) -> Route {
     if !cfg!(windows) {
         return Route::Unsupported(tr!("Por enquanto, filtros só funcionam no Windows.").into());
     }
+    let key = fs::metadata(exe).ok().map(|m| (exe.to_path_buf(), m.len(), m.modified().ok()));
+    if let Some(key) = &key {
+        if let Some(known) = ROUTES.lock().ok().and_then(|m| m.as_ref().and_then(|m| m.get(key).cloned())) {
+            return known;
+        }
+    }
+    let found = read_route(exe);
+    if let (Some(key), Ok(mut cache)) = (key, ROUTES.lock()) {
+        cache.get_or_insert_with(Default::default).insert(key, found.clone());
+    }
+    found
+}
+
+fn read_route(exe: &Path) -> Route {
     let mut bytes = Vec::new();
     let Ok(file) = fs::File::open(exe) else {
         return Route::Unsupported(tr!("O programa do jogo não foi encontrado.").into());
@@ -86,6 +105,8 @@ pub fn route(exe: &Path) -> Route {
         return Route::Unsupported(tr!("Esse programa não é um jogo de Windows.").into());
     }
     let x64 = is_64bit(&bytes).unwrap_or(true);
+    // Names appear in any case ("D3D11.dll"): lowercase once, then fast searches.
+    bytes.make_ascii_lowercase();
     if [&b"d3d12.dll"[..], b"d3d11.dll", b"dxgi.dll", b"d3d10.dll"].iter().any(|n| contains(&bytes, n)) {
         return Route::Dxgi { x64 };
     }

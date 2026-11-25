@@ -446,8 +446,9 @@ fn drawing_program(game: &Game) -> Option<PathBuf> {
     }
 }
 
-/// Whether a game can take a picture filter, and the one it has.
-#[tauri::command]
+/// Whether a game can take a picture filter, and the one it has. Reads the
+/// game's program, so off the main thread.
+#[tauri::command(async)]
 fn look_status(library: State<'_, LocalLibrary>, id: String) -> Result<cerberus_shared::LookStatus, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let unsupported = match drawing_program(&game) {
@@ -1777,6 +1778,10 @@ async fn install_recomp(
             return Ok(ready);
         }
     }
+    // An update replaced the folder: the copy chosen before goes back in.
+    if let Some(ready) = recomp::restore_copy(&library, &game) {
+        return Ok(ready);
+    }
     Ok(game)
 }
 
@@ -2817,6 +2822,11 @@ fn main() {
             let chosen = settings::load(&data_dir);
             language::apply(chosen.language.as_deref());
             app.manage(LocalLibrary::load(&data_dir));
+            // Copies lost by an update made before this fix (or a folder cleaned by hand) go back now.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || recomp::restore_copies(&handle.state::<LocalLibrary>()));
+            }
             // Filters left beside a game by a crash or a forced close go now.
             looks::take_back_all(&data_dir);
             app.manage(trail::Trail::new(&data_dir));
