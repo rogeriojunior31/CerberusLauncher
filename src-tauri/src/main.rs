@@ -1656,8 +1656,10 @@ fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
 }
 
 /// Opens Epic's own sign-in page in a window of its own (private: nothing stays
-/// in it). When it reaches the page that hands the code, Cerberus asks for the
-/// code with that window's cookies, trades it for a token and closes it.
+/// in it). When it reaches the page that shows the code, the window is sent to
+/// an address that is never loaded (`https://cerberus.invalid/epic?code=…`):
+/// Cerberus takes the code from that navigation, trades it for a token and
+/// closes the window. The page never gets any access to the app.
 // Async on purpose: on Windows, building a window from a synchronous command
 // (the main thread) deadlocks it, and the new window stays blank.
 #[tauri::command]
@@ -1667,47 +1669,39 @@ async fn epic_login(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let url = tauri::Url::parse(&epic_account::login_url()).map_err(|e| e.to_string())?;
-    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    DONE.store(false, std::sync::atomic::Ordering::SeqCst);
     let handle = app.clone();
-    let finish = move |at: &tauri::Url| {
-        if epic_account::is_return(at) && !DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
-            let app = handle.clone();
-            tauri::async_runtime::spawn(async move { finish_epic_login(app).await });
-        }
-    };
-    let on_load = finish.clone();
-    let popups = app.clone();
     tauri::WebviewWindowBuilder::new(&app, "epic-login", tauri::WebviewUrl::External(url))
         .title(tr!("Entrar na Epic Games"))
         .inner_size(800.0, 860.0)
         .incognito(true)
-        // "Entrar com Xbox/Google/Apple…" open the provider's page in a pop-up:
-        // it opens, in the same private session, and hands the login back to Epic's page.
-        .on_new_window(move |target, features| {
-            static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            if target.scheme() != "https" {
-                return tauri::webview::NewWindowResponse::Deny;
-            }
-            let label = format!("epic-login-popup-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
-            let opened = tauri::WebviewWindowBuilder::new(&popups, label, tauri::WebviewUrl::External("about:blank".parse().expect("a valid address")))
-                .window_features(features)
-                .title(tr!("Entrar na Epic Games"))
-                .inner_size(560.0, 720.0)
-                .build();
-            match opened {
-                Ok(window) => tauri::webview::NewWindowResponse::Create { window },
-                Err(_) => tauri::webview::NewWindowResponse::Deny,
+        // "Entrar com Xbox/Google/Apple…" open the provider's page in a pop-up.
+        // WebView2's own pop-up keeps the same private session and the link back
+        // to Epic's page (a window of ours didn't: it stayed blank).
+        .on_new_window(|target, _| {
+            if target.scheme() == "https" {
+                tauri::webview::NewWindowResponse::Allow
+            } else {
+                tauri::webview::NewWindowResponse::Deny
             }
         })
         .on_navigation(move |at| {
-            finish(at);
+            // The hand-off: never loaded, the code read from the address.
+            if at.host_str() == Some("cerberus.invalid") {
+                let code = at.query_pairs().find(|(k, _)| k == "code").map(|(_, v)| v.into_owned()).unwrap_or_default();
+                let app = handle.clone();
+                tauri::async_runtime::spawn(async move { finish_epic_login(app, code).await });
+                return false;
+            }
             // Only Epic's secure pages open here.
             at.scheme() == "https"
         })
-        .on_page_load(move |_, payload| {
-            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
-                on_load(payload.url());
+        .on_page_load(|window, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) && epic_account::is_return(payload.url()) {
+                // The page shows {"authorizationCode": "…"}: carry it to the hand-off address.
+                let _ = window.eval(
+                    "(function(){var c='';try{c=JSON.parse(document.body.innerText).authorizationCode||'';}catch(e){}\
+                     location.replace('https://cerberus.invalid/epic?code='+encodeURIComponent(c));})()",
+                );
             }
         })
         .build()
@@ -1715,28 +1709,29 @@ async fn epic_login(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-async fn finish_epic_login(app: AppHandle) {
+async fn finish_epic_login(app: AppHandle, code: String) {
     let result = async {
-        // The sign-in's cookies (the window keeps them while it's open), then the code.
-        tokio::time::sleep(Duration::from_millis(400)).await;
-        let window = app.get_webview_window("epic-login").ok_or(tr!("A janela de login fechou antes de terminar."))?;
-        let cookies = window
-            .cookies_for_url(tauri::Url::parse("https://www.epicgames.com/").map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-        let header = cookies.iter().map(|c| format!("{}={}", c.name(), c.value())).collect::<Vec<_>>().join("; ");
+        let code = epic_account::valid_code(&code).ok_or(tr!("A Epic não confirmou o login."))?;
         let http = app.state::<reqwest::Client>().inner().clone();
-        let code = epic_account::code_with_cookies(&http, &header).await?;
         let session = epic_account::token(&http, epic_account::Grant::Code(&code)).await?;
         let data = app.state::<DataDir>().0.clone();
         let mut chosen = settings::load(&data);
         chosen.epic_user = Some(if session.name.is_empty() { tr!("Conta Epic").to_string() } else { session.name.clone() });
         chosen.epic_refresh = Some(session.refresh.clone());
         settings::save(&data, &chosen)?;
-        // The account's games now, not in an hour.
-        if let Ok(owned) = epic_account::library(&http, &session.access).await {
-            epic_account::keep(&data, owned);
-        }
-        Ok::<String, String>(chosen.epic_user.unwrap_or_default())
+        // Connected: said at once; the account's games follow in the background.
+        let name = chosen.epic_user.unwrap_or_default();
+        let (app2, http2, data2, access) = (app.clone(), http.clone(), data.clone(), session.access.clone());
+        tauri::async_runtime::spawn(async move {
+            match epic_account::library(&http2, &access).await {
+                Ok(owned) => {
+                    epic_account::keep(&data2, owned);
+                    let _ = app2.emit("catalog-changed", ());
+                }
+                Err(e) => trail::note(&app2, "epic", tk!("Biblioteca da Epic"), &Err(e)),
+            }
+        });
+        Ok::<String, String>(name)
     }
     .await;
     // The sign-in window and any provider pop-up it opened.
@@ -1839,9 +1834,17 @@ async fn finish_xbox_login(app: AppHandle, code: String) {
         chosen.xbox_user = Some(if session.gamertag.is_empty() { tr!("Conta Microsoft").to_string() } else { session.gamertag.clone() });
         chosen.xbox_refresh = Some(session.refresh.clone());
         settings::save(&data, &chosen)?;
-        if let Ok(owned) = xbox_account::library(&http, &session).await {
-            xbox_account::keep(&data, xbox_account::with_store_details(&http, owned).await);
-        }
+        // Connected: said at once; the account's games (one catalog lookup each) follow in the background.
+        let (app2, http2, data2) = (app.clone(), http.clone(), data.clone());
+        tauri::async_runtime::spawn(async move {
+            match xbox_account::library(&http2, &session).await {
+                Ok(owned) => {
+                    xbox_account::keep(&data2, xbox_account::with_store_details(&http2, owned).await);
+                    let _ = app2.emit("catalog-changed", ());
+                }
+                Err(e) => trail::note(&app2, "xbox", tk!("Biblioteca do Xbox"), &Err(e)),
+            }
+        });
         Ok::<String, String>(chosen.xbox_user.unwrap_or_default())
     }
     .await;

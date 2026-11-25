@@ -26,6 +26,7 @@ pub fn login_url() -> String {
     format!("https://www.epicgames.com/id/login?redirectUrl={}", encode(&redirect))
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn redirect_url() -> String {
     format!("https://www.epicgames.com/id/api/redirect?clientId={CLIENT_ID}&responseType=code")
 }
@@ -47,23 +48,10 @@ pub fn is_return(url: &tauri::Url) -> bool {
         && url.query_pairs().any(|(k, v)| k == "clientId" && v == CLIENT_ID)
 }
 
-#[derive(Deserialize)]
-struct Redirect {
-    #[serde(rename = "authorizationCode")]
-    code: Option<String>,
-}
-
-/// The authorization code, asked of the redirect page with the sign-in's cookies.
-pub async fn code_with_cookies(client: &reqwest::Client, cookies: &str) -> Result<String, String> {
-    let response = client
-        .get(redirect_url())
-        .header(reqwest::header::COOKIE, cookies)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let reply: Redirect = response.json().await.map_err(|_| tr!("A Epic não confirmou o login.").to_string())?;
-    let code = reply.code.filter(|c| (16..=512).contains(&c.len()) && c.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
-    code.ok_or_else(|| tr!("A Epic não confirmou o login.").to_string())
+/// A code that looks like Epic's (letters, digits, - and _), or nothing.
+pub fn valid_code(code: &str) -> Option<String> {
+    let ok = (16..=512).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    ok.then(|| code.to_string())
 }
 
 /// The account after signing in (or renewing): what is kept, and the short-lived access.
@@ -323,6 +311,9 @@ mod tests {
         assert!(is_return(&tauri::Url::parse(&redirect_url()).unwrap()));
         assert!(!is_return(&tauri::Url::parse("https://www.epicgames.com/id/api/redirect?clientId=other&responseType=code").unwrap()));
         assert!(!is_return(&tauri::Url::parse("http://www.epicgames.com/id/api/redirect?clientId=34a02cf8f4414e29b15921876da36f9a").unwrap()));
+        assert_eq!(valid_code("a3f5b9c0d1e2f3a4b5c6").as_deref(), Some("a3f5b9c0d1e2f3a4b5c6"));
+        assert!(valid_code("short").is_none());
+        assert!(valid_code("abc def ghi jkl mno pqr").is_none());
         assert!(login_url().starts_with("https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect"));
     }
 
