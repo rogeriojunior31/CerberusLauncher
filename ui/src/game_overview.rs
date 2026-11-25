@@ -570,7 +570,7 @@ pub fn StoreSkeleton() -> impl IntoView {
 /// Something still loading, at its final size: placeholder rows, the words for
 /// screen readers, and after a while a note that it's still going.
 #[component]
-pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize) -> impl IntoView {
+pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize, #[prop(optional)] retry: Option<Callback<()>>) -> impl IntoView {
     let slow = RwSignal::new(false);
     let timer = set_timeout_with_handle(move || slow.set(true), std::time::Duration::from_secs(10)).ok();
     on_cleanup(move || {
@@ -583,7 +583,10 @@ pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize) -> impl Int
             <span class="vh">{text}</span>
             {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
             <Show when=move || slow.get()>
-                <p class="muted small">{tr!("Ainda lendo… na primeira vez pode levar alguns segundos.")}</p>
+                <p class="muted small">{tr!("Demorando mais que o normal. Na primeira vez pode levar alguns segundos.")}</p>
+                {retry.map(|again| view! {
+                    <button type="button" class="btn sm" on:click=move |_| { slow.set(false); again.run(()); }>{tr!("Tentar de novo")}</button>
+                })}
             </Show>
         </div>
     }

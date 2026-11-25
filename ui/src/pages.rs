@@ -56,8 +56,9 @@ pub fn DownloadsPage() -> impl IntoView {
     let entry_of = move |id: &str| library.recomps.with(|r| r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == id).cloned()));
     let name_of = move |id: &str| {
         let rid = id.strip_prefix("recomp:").unwrap_or(id);
+        // The game's name first, as everywhere else; the recomp's follows it.
         entry_of(rid)
-            .map(|e| e.name)
+            .map(|e| match crate::tiles::entry_names(&e) { (game, Some(recomp)) => format!("{game} · {recomp}"), (game, None) => game })
             .or_else(|| library.games.with_untracked(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| x.name.clone()))))
             .unwrap_or_else(|| rid.to_string())
     };
@@ -89,7 +90,7 @@ pub fn DownloadsPage() -> impl IntoView {
             .enumerate()
             .map(|(i, (id, step))| {
                 let entry = entry_of(&id);
-                let name = entry.as_ref().map(|e| e.name.clone()).unwrap_or_else(|| id.clone());
+                let name = entry.as_ref().map(|e| crate::tiles::entry_names(e).0).unwrap_or_else(|| id.clone());
                 if i > 0 {
                     let covers = entry.as_ref().map(crate::art::recomp_covers).unwrap_or_default();
                     return view! {
@@ -221,7 +222,7 @@ pub fn DownloadsPage() -> impl IntoView {
                 <div class="dl-row card">
                     <button type="button" class="thumb" on:click=move |_| library.go(page.clone())><Poster sources=crate::art::recomp_covers(&e) title=g.name.clone() /></button>
                     <div class="dl-info">
-                        <b>{g.name.clone()}</b>
+                        <b>{crate::tiles::game_names(&g, library).0}</b>
                         <span class="dl-ver">{from}<Svg icon=Icon::Right size=14 /><em>{to.version.clone()}</em>
                             {(to.size > 0).then(|| view! { <small class="muted">{format!("· {}", megabytes(to.size))}</small> })}
                         </span>

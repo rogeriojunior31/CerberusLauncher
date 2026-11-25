@@ -268,7 +268,12 @@ fn SideGames() -> impl IntoView {
         <Show when=move || { total() > 0 }>
             <div class="side-games">
                 <div class="sg-head">
-                    <span class="side-h">{tr!("Prontos para jogar")}<b>{total}</b></span>
+                    <span class="side-h" title=move || {
+                        // The library's installed count, so the two numbers explain each other.
+                        let installed = library.games.with(|g| g.as_ref().and_then(|r| r.as_ref().ok()).map_or(0, |all| all.iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.next_step != cerberus_shared::NextStep::Install).count()))
+                            + crate::classics::standalone(library).len();
+                        tr!("{} dos seus {} jogos instalados abrem agora; os outros precisam de algo antes (sua cópia, um emulador).", total(), installed)
+                    }>{tr!("Prontos para jogar")}<b>{total}</b></span>
                 </div>
                 <Show when=move || { total() > 8 }>
                     <label class="sg-search">

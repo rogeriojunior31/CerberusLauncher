@@ -63,6 +63,8 @@ impl Category {
 #[derive(Clone, Copy, PartialEq)]
 enum Filter {
     All,
+    /// Recomps and decomps (with any merged classic inside).
+    Recomps,
     Steam,
     Epic,
     Added,
@@ -72,21 +74,24 @@ enum Filter {
 
 impl Filter {
     /// Where a game comes from.
-    const STORES: [Filter; 5] = [Filter::All, Filter::Steam, Filter::Epic, Filter::Added, Filter::Roms];
+    const STORES: [Filter; 6] = [Filter::All, Filter::Recomps, Filter::Steam, Filter::Epic, Filter::Added, Filter::Roms];
 
     fn label(self) -> &'static str {
         match self {
             Filter::All => tr!("Todas as origens"),
+            Filter::Recomps => "Recomps",
             Filter::Steam => tr!("Steam"),
             Filter::Epic => tr!("Epic"),
             Filter::Added => tr!("Adicionados"),
-            Filter::Roms => tr!("ROMs"),
+            // The classics no installed recomp plays: the others count with their recomp.
+            Filter::Roms => tr!("Só ROM"),
         }
     }
 
     fn keeps(self, game: &Game) -> bool {
         match (self, &game.source) {
             (Filter::All, _) => true,
+            (Filter::Recomps, Source::Recomp { .. }) => true,
             (Filter::Steam, Source::Steam { .. }) => true,
             (Filter::Epic, Source::Epic { .. }) => true,
             (Filter::Added, Source::Local { .. }) => true,
@@ -339,7 +344,7 @@ pub fn LibraryPage() -> impl IntoView {
             if !away {
                 stores[0] += roms;
             }
-            stores[4] = if away { 0 } else { roms };
+            stores[5] = if away { 0 } else { roms };
             let missing = in_tab.iter().filter(|g| is_absent(g)).count();
             (stores, in_tab.len() - missing + roms, missing)
         })
@@ -354,6 +359,7 @@ pub fn LibraryPage() -> impl IntoView {
         };
         view! {
             <button type="button" class="chip-btn" class:on=active class:hidden=move || !shown() aria-pressed=move || active().to_string()
+                title=(which == Filter::Roms).then(|| tr!("Clássicos que nenhum recomp instalado joga; os outros contam junto com o recomp."))
                 on:click=move |_| filter.set(which)>
                 {which.label()}<span class="chip-n">{move || counts.get().0[i]}</span>
             </button>

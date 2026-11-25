@@ -35,9 +35,12 @@ thread_local! {
     static NEXT_TAB: std::cell::Cell<Option<Tab>> = const { std::cell::Cell::new(None) };
 }
 
-/// A recomp's page on its Original tab: where a merged classic lives.
-pub fn open_original(library: Library, id: String) {
-    NEXT_TAB.with(|n| n.set(Some(Tab::Original)));
+/// A recomp's page, where a merged classic lives: on its Original tab when an
+/// emulator here opens the copy, on the overview (Play is the recomp) when not.
+pub fn open_original(library: Library, id: String, playable: bool) {
+    if playable {
+        NEXT_TAB.with(|n| n.set(Some(Tab::Original)));
+    }
     library.replace(crate::Route::Game(id));
 }
 
@@ -128,7 +131,8 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let more = game.clone().map(|g| {
         let menu = expect_context::<crate::game_menu::GameMenu>();
         view! {
-            <button type="button" class="btn glass icon-btn" title=tr!("Mais opções") aria-label=tr!("Mais opções")
+            <button type="button" class="btn glass icon-btn" title=tr!("Mais opções") aria-label=tr!("Mais opções") aria-haspopup="menu"
+                aria-expanded={ let id = g.id.clone(); move || menu.is_open_for(&id).to_string() }
                 on:click=move |e| menu.open(g.clone(), &e)>
                 <Svg icon=Icon::More size=22 />
             </button>
@@ -364,6 +368,11 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool)
     let escape = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
         if e.key() == "Escape" && more_open.get_untracked() {
             more_open.set(false);
+            // Back to the arrow that opened it.
+            if let Some(arrow) = document().query_selector(".split-more").ok().flatten() {
+                let arrow: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(arrow);
+                let _ = arrow.focus();
+            }
         }
     });
     on_cleanup(move || escape.remove());
@@ -1058,7 +1067,7 @@ fn Mods(game_id: String) -> impl IntoView {
     };
 
     let rows = move || match list.get() {
-        None => view! { <crate::game_overview::Waiting text=tr!("Carregando os mods...") /> }.into_any(),
+        None => view! { <crate::game_overview::Waiting text=tr!("Carregando os mods...") retry=Callback::new(move |_| list.refetch()) /> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(None)) => view! { <p class="muted">{tr!("Esse jogo não tem mods no Thunderstore nem no GameBanana.")}</p> }.into_any(),
         Some(Ok(Some(mods))) => {
@@ -1524,7 +1533,7 @@ fn Photos(game_id: String) -> impl IntoView {
             </div>
             <p class="muted small">{tr!("Com o jogo aberto pelo Cerberus e na frente, aperte F12: a foto é só da janela do jogo e aparece aqui. Jogos em tela cheia exclusiva podem sair pretos; use janela sem bordas.")}</p>
             {move || match shots.get() {
-                None => view! { <crate::game_overview::Waiting text=tr!("Carregando...") rows=1 /> }.into_any(),
+                None => view! { <crate::game_overview::Waiting text=tr!("Carregando...") rows=1 retry=Callback::new(move |_| shots.refetch()) /> }.into_any(),
                 Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
                 Some(Ok(list)) if list.is_empty() => view! {
                     <div class="empty small">

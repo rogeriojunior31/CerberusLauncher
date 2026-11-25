@@ -13,6 +13,11 @@ use crate::{Library, Route, api};
 pub struct GameMenu(pub RwSignal<Option<(Game, i32, i32)>>);
 
 const WIDTH: i32 = 230;
+
+thread_local! {
+    /// What had the focus when the menu opened: it gets it back on close.
+    static OPENER: std::cell::RefCell<Option<web_sys::HtmlElement>> = const { std::cell::RefCell::new(None) };
+}
 const HEIGHT: i32 = 420;
 
 impl GameMenu {
@@ -20,6 +25,8 @@ impl GameMenu {
     /// (Enter on a button: no pointer), it opens under the button instead.
     pub fn open(self, game: Game, event: &leptos::ev::MouseEvent) {
         event.prevent_default();
+        let opener = document().active_element().map(|el| wasm_bindgen::JsCast::unchecked_into::<web_sys::HtmlElement>(el));
+        OPENER.with(|o| *o.borrow_mut() = opener);
         let (w, h) = window_size();
         let (mut x, mut y) = (event.client_x(), event.client_y());
         if event.detail() == 0 {
@@ -43,6 +50,15 @@ impl GameMenu {
 
     fn close(self) {
         self.0.set(None);
+        // Back where the keyboard was, not lost on the page.
+        if let Some(el) = OPENER.with(|o| o.borrow_mut().take()) {
+            let _ = el.focus();
+        }
+    }
+
+    /// Open for this game, for the trigger's aria-expanded.
+    pub fn is_open_for(self, id: &str) -> bool {
+        self.0.with(|m| m.as_ref().is_some_and(|(g, _, _)| g.id == id))
     }
 }
 
@@ -153,6 +169,7 @@ pub fn GameMenuLayer() -> impl IntoView {
         let page_id = game.id.clone();
         let folder_id = game.id.clone();
         let play = game.clone();
+        let on_page = library.route.get_untracked() == Route::Game(game.id.clone());
         let original = {
             let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
             let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
@@ -173,10 +190,12 @@ pub fn GameMenuLayer() -> impl IntoView {
             <div class="ctx" role="menu" style:left=format!("{x}px") style:top=format!("{y}px")
                 on:keydown=move |e| if e.key() == "Escape" { menu.close(); }>
                 <span class="ctx-h">{game.name.clone()}</span>
-                <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
-                    <Svg icon=play_icon size=16 />{play_label}
-                </button>
-                {original.map(|(path, console, name)| view! {
+                {(!on_page).then(|| view! {
+                    <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
+                        <Svg icon=play_icon size=16 />{play_label}
+                    </button>
+                })}
+                {original.filter(|_| !on_page).map(|(path, console, name)| view! {
                     <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::classics::play_original(library, path.clone(), console.clone()); }>
                         <Svg icon=Icon::Disc size=16 />{tr!("Jogar o original no {}", name)}
                     </button>

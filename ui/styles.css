@@ -2139,8 +2139,8 @@ p { text-wrap: pretty; }
 .page-h > .row { flex: none; flex-wrap: nowrap; }
 
 /* On the Original tab, playing the original is the one primary action; the native Play steps back. */
-.gp-page:has(.tab-original.on) .gp-act .btn.main { background: var(--fill2); color: var(--ink); }
-.gp-page:has(.tab-original.on) .gp-act .split { box-shadow: none; }
+.gp-page:has(.tab-original.on):has(.original-way .btn.main) .gp-act .btn.main { background: var(--fill2); color: var(--ink); }
+.gp-page:has(.tab-original.on):has(.original-way .btn.main) .gp-act .split { box-shadow: none; }
 /* Pages keep their width when the scrollbar comes and goes. */
 main.main { scrollbar-gutter: stable; }
 .disc-by { display: flex; align-items: center; gap: 10px; }

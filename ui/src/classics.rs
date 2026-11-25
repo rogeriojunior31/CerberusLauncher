@@ -431,7 +431,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let how = resolve(&rom, &players, &games, &recomps);
         // Merged into an installed recomp: one game, one page; this copy is its Original tab.
         if let Some(g) = how.recomp_game.clone() {
-            crate::game::open_original(library, g.id);
+            crate::game::open_original(library, g.id, how.emulator.is_some());
             return Some(view! { <div class="page"><p class="muted">{tr!("Abrindo…")}</p></div> }.into_any());
         }
         let emulator = how.emulator.clone();
