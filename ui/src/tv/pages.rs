@@ -349,7 +349,7 @@ pub fn LibraryGrid() -> impl IntoView {
     let kind = RwSignal::new(0usize);
     let order = RwSignal::new(0usize);
     // The desktop library's tabs, in its order.
-    let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), "Recomps", "PC", tr!("Clássicos")];
+    let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), tr!("Nativos"), "PC", tr!("Clássicos")];
     let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
     library.roms.refetch();
     let games = Memo::new(move |_| {
@@ -636,7 +636,7 @@ pub fn Discover() -> impl IntoView {
             <h1 class="tv-title">{tr!("Descobrir")}<small>{move || tr!("{} jogos", results.with(Vec::len))}</small></h1>
             <div class="tv-chips">
                 {chip(0, Box::new(move || { let q = tv.search.get(); if q.is_empty() { tr!("Buscar").to_string() } else { tr!("Buscar: {}", q) } }))}
-                {chip(1, Box::new(move || if owned_only.get() { tr!("✓ Tenho o jogo").to_string() } else { tr!("Tenho o jogo").to_string() }))}
+                {chip(1, Box::new(move || if owned_only.get() { tr!("✓ Você já tem o jogo").to_string() } else { tr!("Você já tem o jogo").to_string() }))}
                 {chip(2, Box::new(move || genre.with(|g| crate::discover::genre_label(g).map_or_else(|| tr!("Gênero: todos").to_string(), |l| tr!("Gênero: {}", l)))))}
                 {chip(3, Box::new(move || match order.get() { Order::Popular => tr!("Ordem: populares"), Order::Newest => tr!("Ordem: novos"), Order::Name => tr!("Ordem: A a Z") }.to_string()))}
             </div>

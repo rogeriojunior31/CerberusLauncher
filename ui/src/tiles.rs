@@ -327,11 +327,13 @@ pub fn Shelf(
     // The arrows only when the row scrolls, and each one off at its end.
     let at_start = RwSignal::new(true);
     let at_end = RwSignal::new(false);
+    // Also runs from a frame callback or a window resize, which can come after
+    // the shelf is gone (a page change): then there is nothing to measure.
     let measure = move || {
-        if let Some(row) = track.get_untracked() {
+        if let Some(row) = track.try_get_untracked().flatten() {
             let (left, width, full) = (row.scroll_left(), row.client_width(), row.scroll_width());
-            at_start.set(left <= 2);
-            at_end.set(left + width >= full - 2);
+            at_start.try_set(left <= 2);
+            at_end.try_set(left + width >= full - 2);
         }
     };
     Effect::new(move || {

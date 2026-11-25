@@ -143,7 +143,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let original = game.as_ref().and_then(|g| {
         let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
-        library.roms.get().unwrap_or_default().into_iter()
+        library.roms.get_untracked().unwrap_or_default().into_iter()
             .find(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
     });
     let played = game.as_ref().map(|g| {

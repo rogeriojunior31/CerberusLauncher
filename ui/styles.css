@@ -2231,3 +2231,5 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 
 /* "Can't play here": its two ways out with room between them */
 .card.blocked .row { margin-top: 12px; }
+/* The snap keeps the strip's padding as room at the start */
+.ach-strip { scroll-padding-inline: 4px; }

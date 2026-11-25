@@ -860,6 +860,8 @@ fn file_card(library: Library, rom: &RomView, emulator: Option<String>) -> AnyVi
             </div>
             {files}
             <p class="muted small">{note}</p>
+            // Said plainly: the emulator keeps these saves, Cerberus doesn't back them up (yet).
+            <p class="muted small">{tr!("Os saves e os memory cards ficam na pasta do emulador; o backup automático do Cerberus ainda é só dos recomps.")}</p>
         </section>
     }
     .into_any()

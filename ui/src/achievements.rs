@@ -96,16 +96,19 @@ pub fn AchievementsPage() -> impl IntoView {
     let state = RwSignal::new(State::All);
     let order = RwSignal::new(Order::Recent);
     let refresh_later = StoredValue::new(None::<Callback<()>>);
+    // The answers can arrive after the page was left: then its signals are gone,
+    // and reading them must not bring the window down (try_ reads).
     let refresh = move || {
-        if refreshing.get_untracked() {
+        if refreshing.try_get_untracked() != Some(false) {
             return;
         }
         refreshing.set(true);
         leptos::task::spawn_local(async move {
             let got = api::achievements_hub(true).await;
+            let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
             let again = got.as_ref().is_ok_and(|h| h.retry_soon);
             // A failed refresh keeps what's already on screen.
-            if got.is_ok() || hub.get_untracked().is_none() {
+            if got.is_ok() || !shown {
                 hub.set(Some(got));
             }
             refreshing.set(false);
@@ -125,7 +128,8 @@ pub fn AchievementsPage() -> impl IntoView {
     refresh_later.set_value(Some(Callback::new(move |_| refresh())));
     leptos::task::spawn_local(async move {
         let got = api::achievements_hub(false).await;
-        if hub.get_untracked().is_none() {
+        let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
+        if !shown {
             hub.set(Some(got));
         }
         refresh();

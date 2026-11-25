@@ -952,7 +952,7 @@ fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static st
     let library = expect_context::<Library>();
     let flow = view! {
         <div class="save-flow" class:on=on aria-hidden="true">
-            <span class="sf-node lit"><Svg icon=Icon::Saves size=22 /><b>{tr!("Este PC")}</b><small>{tr!("10 backups por jogo")}</small></span>
+            <span class="sf-node lit"><Svg icon=Icon::Saves size=22 /><b>{tr!("Este PC")}</b><small>{tr!("10 backups por recomp")}</small></span>
             <span class="sf-line"></span>
             <span class="sf-node" class:lit=on><Svg icon=Icon::Folder size=22 /><b>{tr!("Pasta da nuvem")}</b><small>{if on { tr!("Sincronizando") } else { tr!("Não escolhida") }}</small></span>
             <span class="sf-line"></span>
@@ -978,7 +978,7 @@ fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static st
                     <Svg icon=Icon::Folder size=16 />{tr!("Escolher pasta")}
                 </button>
             })}
-            {row(tr!("Backups neste PC"), tr!("Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada jogo."), ())}
+            {row(tr!("Backups neste PC"), tr!("Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada recomp. Jogos da Steam usam a nuvem da Steam; os saves dos clássicos ficam na pasta do emulador."), ())}
         </section>
     }
 }

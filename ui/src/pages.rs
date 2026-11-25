@@ -445,7 +445,7 @@ pub fn SavesPage() -> impl IntoView {
             <header class="page-h">
                 <div>
                     <h1>{tr!("Saves")}</h1>
-                    <p class="muted">{tr!("Cópias automáticas ao fechar o jogo, antes de atualizar e antes de desinstalar. As 10 mais recentes de cada jogo ficam guardadas.")}</p>
+                    <p class="muted">{tr!("Cópias automáticas dos saves dos recomps: ao fechar o jogo, antes de atualizar e antes de desinstalar. As 10 mais recentes de cada um ficam guardadas. Jogos da Steam guardam os saves na nuvem da Steam; os clássicos, na pasta do emulador.")}</p>
                 </div>
             </header>
             {cloud}
