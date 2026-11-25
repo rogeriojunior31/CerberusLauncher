@@ -214,7 +214,9 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
     let step = move |by: isize| current.update(|i| *i = (*i as isize + by).rem_euclid(count as isize) as usize);
 
     let reduced_motion = window().match_media("(prefers-reduced-motion: reduce)").ok().flatten();
-    let rotating = RwSignal::new(!reduced_motion.as_ref().is_some_and(|media| media.matches()));
+    // The system's reduced motion or Cerberus' own "Menos animações": the slides wait for the player.
+    let calm = || reduced_motion.as_ref().is_some_and(|media| media.matches()) || crate::settings_page::calm_saved();
+    let rotating = RwSignal::new(!calm());
     let slider = NodeRef::<leptos::html::Section>::new();
     if count > 1 {
         let tick = move || {

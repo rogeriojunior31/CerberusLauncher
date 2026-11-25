@@ -209,6 +209,10 @@ pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
 
 /// The main button everywhere: takes the next step, and plays once nothing is left.
 pub fn play_game(library: Library, game: Game) {
+    // Wherever it's launched from, the native way was the last one used.
+    if matches!(game.next_step, NextStep::Play) {
+        classics::remember_way(&game.id, classics::Way::Native);
+    }
     spawn_local(async move {
         let ready = match &game.next_step {
             NextStep::Play | NextStep::RunInstaller => Some(game),

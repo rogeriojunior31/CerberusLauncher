@@ -384,7 +384,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             let game_id = game.id.clone();
             let original_first = original.as_ref().is_some_and(|(_, console)| {
                 crate::classics::ready_player(&library.players.get_untracked().unwrap_or_default(), console).is_some()
-            }) && last_way(&game_id) == Some(Way::Original);
+            }) && crate::classics::last_way(&game_id) == Some(crate::classics::Way::Original);
             let play = view! {
                 <button type="button" class=if original_first { "btn glass big" } else { "btn main big play" } disabled=running on:click=move |_| play_game(library, game.clone())>
                     <Svg icon size=20 />{label}
@@ -402,13 +402,11 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
                 Some(name) => tr!("A sua cópia do jogo, no {}", name),
                 None => tr!("A sua cópia do jogo: veja o que falta para abrir").to_string(),
             };
-            let (way_id, native_id) = (game_id.clone(), game_id.clone());
             let ready = emulator.is_some();
             let original_button = view! {
                 <button type="button" class=if original_first { "btn main big play" } else { "btn glass big" } title=original_title
                     disabled=running on:click=move |_| {
                         if ready {
-                            remember_way(&way_id, Way::Original);
                             crate::classics::play_original(library, copy.clone(), console.clone());
                         } else {
                             tab.set(Tab::Original);
@@ -417,9 +415,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
                     <Svg icon=Icon::Disc size=20 />{original_label}
                 </button>
             };
-            let native = view! {
-                <span class="way-native" on:click=move |_| remember_way(&native_id, Way::Native)>{play}</span>
-            };
+            let native = play;
             return if original_first {
                 view! { {update_button}<div class="ways">{original_button}{native}</div> }.into_any()
             } else {
@@ -1809,28 +1805,3 @@ fn SimilarGames(entry: RecompEntry) -> impl IntoView {
 }
 
 
-#[derive(Clone, Copy, PartialEq)]
-enum Way {
-    Native,
-    Original,
-}
-
-fn way_key(id: &str) -> String {
-    format!("cerberus.way.{id}")
-}
-
-/// How this game was last played (native or the original), so that way leads next time.
-fn last_way(id: &str) -> Option<Way> {
-    let store = web_sys::window()?.local_storage().ok()??;
-    match store.get_item(&way_key(id)).ok()??.as_str() {
-        "original" => Some(Way::Original),
-        "native" => Some(Way::Native),
-        _ => None,
-    }
-}
-
-fn remember_way(id: &str, way: Way) {
-    if let Some(store) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
-        let _ = store.set_item(&way_key(id), if way == Way::Original { "original" } else { "native" });
-    }
-}

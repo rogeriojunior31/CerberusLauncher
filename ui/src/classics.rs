@@ -243,6 +243,15 @@ fn system_of(path: &str) -> &'static str {
 
 /// Starts the original game in RetroArch.
 pub fn play_original(library: Library, path: String, console: String) {
+    // The recomp page this copy is merged into remembers it was played this way.
+    let merged = {
+        let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        library.roms.get_untracked().unwrap_or_default().iter().find(|r| r.path == path).and_then(|r| recomp_game(r, &games, &recomps)).map(|g| g.id.clone())
+    };
+    if let Some(id) = merged {
+        remember_way(&id, Way::Original);
+    }
     leptos::task::spawn_local(async move {
         if library.report(crate::api::play_classic(path, console).await).is_some() {
             library.toast(tr!("Abrindo o jogo..."));
@@ -648,11 +657,12 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 <div class="ov-main">
                     {blocked}
                     {has_played.then(|| view! { <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played /> })}
-                    <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
                     <AboutCard title=title.clone() />
                     <crate::game::History id=history_id.clone() />
                 </div>
+                // "Seu jogo" in the rail, where every other game page has it.
                 <aside class="ov-rail">
+                    <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
                     <crate::game_overview::AchievementsCard data=achievements on_all />
                     <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{facts}</dl></section>
                 </aside>
@@ -711,16 +721,9 @@ pub fn OriginalTab(rom: RomView) -> impl IntoView {
     let emulator = ready_player(&players, console);
     let problem = player_for(&players, console).and_then(|p| p.problem.clone())
         .unwrap_or_else(|| tr!("O Cerberus ainda não tem emulador para {}.", console_name(console)));
-    let (path, console_id) = (rom.path.clone(), console.to_string());
     let console_pick = console.to_string();
-    let play = match emulator.clone() {
-        Some(name) => view! {
-            <button type="button" class="btn main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar o original no {}", name)}
-            </button>
-        }.into_any(),
-        None => view! { <p class="muted small">{problem.clone()}</p> }.into_any(),
-    };
+    // Playing is the header's "Original" button: here, only what stops it, if anything.
+    let play = emulator.is_none().then(|| view! { <p class="muted small">{problem.clone()}</p> });
     let id = format!("classic:{}", rom.path);
     let (ach_path, ach_console) = (rom.path.clone(), console.to_string());
     let achievements = LocalResource::new(move || {
@@ -748,7 +751,7 @@ pub fn OriginalTab(rom: RomView) -> impl IntoView {
                             <h3>{tr!("A sua cópia de {}", console_name(console))}</h3>
                             <p class="muted small">{match &emulator {
                                 Some(name) => tr!("{} abre o jogo original, como ele era. O recomp é a versão nativa para PC.", name),
-                                None => tr!("O jogo original, como ele era. Por enquanto só pelo recomp.").to_string(),
+                                None => tr!("O jogo original, como ele era. Este console ainda não abre aqui: por enquanto, você joga pelo recomp.").to_string(),
                             }}</p>
                         </div>
                         <div class="row">
@@ -832,5 +835,31 @@ fn AboutCard(title: String) -> impl IntoView {
                 }><crate::icons::Svg icon=crate::icons::Icon::External size=14 />{tr!("Ler na Wikipedia")}</button>
             </section>
         })
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Way {
+    Native,
+    Original,
+}
+
+fn way_key(id: &str) -> String {
+    format!("cerberus.way.{id}")
+}
+
+/// How this game was last played (native or the original), so that way leads next time.
+pub fn last_way(id: &str) -> Option<Way> {
+    let store = web_sys::window()?.local_storage().ok()??;
+    match store.get_item(&way_key(id)).ok()??.as_str() {
+        "original" => Some(Way::Original),
+        "native" => Some(Way::Native),
+        _ => None,
+    }
+}
+
+pub fn remember_way(id: &str, way: Way) {
+    if let Some(store) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = store.set_item(&way_key(id), if way == Way::Original { "original" } else { "native" });
     }
 }

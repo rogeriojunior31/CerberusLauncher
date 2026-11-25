@@ -94,9 +94,9 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
             if total == 0 && last.is_none() { tr!("Nunca jogado").to_string() } else { format::playtime(total) }),
             (Icon::Play, tr!("Última vez").to_string(), last.map(format::ago).unwrap_or_else(|| "—".into())),
             (Icon::List, tr!("Esta semana").to_string(), if week == 0 { "—".into() } else { format::playtime(week) }),
-            (Icon::List, tr!("Este mês").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),
-            (Icon::Saves, tr!("Sessões").to_string(), if list.is_empty() { "—".into() } else { list.len().to_string() }),
-            (Icon::Trophy, tr!("Mais longa").to_string(), if longest == 0 { "—".into() } else { format::playtime(longest) }),
+            (Icon::Layers, tr!("Este mês").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),
+            (Icon::Gamepad, tr!("Sessões").to_string(), if list.is_empty() { "—".into() } else { list.len().to_string() }),
+            (Icon::Star, tr!("Mais longa").to_string(), if longest == 0 { "—".into() } else { format::playtime(longest) }),
         ]
         .into_iter()
         .collect();
@@ -109,20 +109,18 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
         let older = (total > logged + 60).then(|| view! {
             <p class="muted small pc-older">{tr!("O total inclui partidas mais antigas, de antes do registro por sessão.")}</p>
         });
-        // Nothing in two weeks: the numbers alone, in one row, instead of an empty chart.
-        if !any_recent {
-            return view! {
-                <section class="card pc compact">
-                    <div class="pc-h">
-                        <h3>{title}</h3>
-                        <small class="muted">{tr!("Não jogou nas últimas duas semanas.")}</small>
-                    </div>
-                    <ul class="pc-list row">{rows}</ul>
-                    {older}
-                </section>
-            }
-            .into_any();
-        }
+        // One shape for every game. With no sessions written down in two weeks, the
+        // chart says why, and doesn't contradict a recent "Última vez" (a Steam game
+        // played outside Cerberus counts only in the total).
+        let played_lately = last.is_some_and(|t| now - (t as f64 * 1000.0) <= 14.0 * DAY);
+        let empty_note = (!any_recent).then(|| {
+            let text = if played_lately {
+                tr!("Jogou nesses dias, mas fora do Cerberus: só o total conta essas partidas.")
+            } else {
+                tr!("Não jogou nas últimas duas semanas.")
+            };
+            view! { <p class="pc-empty muted small">{text}</p> }
+        });
         view! {
             <section class="card pc">
                 <div class="pc-h">
@@ -130,7 +128,7 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
                     <small class="muted">{tr!("Últimas duas semanas")}</small>
                 </div>
                 <div class="pc-body">
-                    <div class="pc-chart"><div class="pc-bars">{bars}</div></div>
+                    <div class="pc-chart" class:empty=!any_recent><div class="pc-bars">{bars}</div>{empty_note}</div>
                     <ul class="pc-list">{rows}</ul>
                 </div>
                 {older}
