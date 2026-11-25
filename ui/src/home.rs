@@ -155,7 +155,15 @@ pub fn Home() -> impl IntoView {
         // The games played the most, not the first letters of the alphabet.
         let mut most: Vec<&Game> = games.iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.playtime_secs > 0).collect();
         most.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs));
-        let everything: Vec<TileInfo> = most.into_iter().take(24).map(|g| game_tile(g, library)).collect();
+        let everything: Vec<TileInfo> = most
+            .into_iter()
+            .take(24)
+            .map(|g| {
+                let mut tile = game_tile(g, library);
+                tile.sub = tr!("{} jogados", crate::format::playtime(g.playtime_secs));
+                tile
+            })
+            .collect();
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
         let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });

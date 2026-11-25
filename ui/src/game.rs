@@ -20,6 +20,8 @@ use crate::{Library, api, play_game};
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
     Overview,
+    /// The player's own copy, played in its emulator.
+    Original,
     Saves,
     Mods,
     Photos,
@@ -28,11 +30,22 @@ enum Tab {
     Manage,
 }
 
+thread_local! {
+    /// The tab to open the next game page on.
+    static NEXT_TAB: std::cell::Cell<Option<Tab>> = const { std::cell::Cell::new(None) };
+}
+
+/// A recomp's page on its Original tab: where a merged classic lives.
+pub fn open_original(library: Library, id: String) {
+    NEXT_TAB.with(|n| n.set(Some(Tab::Original)));
+    library.replace(crate::Route::Game(id));
+}
+
 #[component]
 pub fn GamePage(id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(id);
-    let tab = RwSignal::new(Tab::Overview);
+    let tab = RwSignal::new(NEXT_TAB.with(|n| n.take()).unwrap_or(Tab::Overview));
     let content = move || {
         let game = library.games.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|g| g.id == id.get_value()));
         let recomp_id = id.get_value().strip_prefix("recomp:").map(str::to_string);
@@ -122,12 +135,26 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         }
     });
     // Your time with the game, under the title: Steam's count for Steam games.
+    // The player's own copy of this recomp's game, when they have it: its Original tab.
+    let original = game.as_ref().and_then(|g| {
+        let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        library.roms.get().unwrap_or_default().into_iter()
+            .find(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
+    });
     let played = game.as_ref().map(|g| {
-        let text = match (g.playtime_secs, g.last_played) {
+        // One game, one count: the original's time is added and said apart.
+        let extra = original.as_ref().map_or(0, |r| r.playtime_secs);
+        let last = g.last_played.max(original.as_ref().and_then(|r| r.last_played));
+        let total = g.playtime_secs + extra;
+        let mut text = match (total, last) {
             (0, None) => tr!("Você ainda não jogou").to_string(),
             (t, Some(last)) => tr!("Jogou por {} · última vez {}", format::playtime(t), format::ago(last)),
             (t, None) => tr!("Jogou por {}", format::playtime(t)),
         };
+        if extra > 0 && g.playtime_secs > 0 {
+            text = tr!("{} ({} no PC, {} no original)", text, format::playtime(g.playtime_secs), format::playtime(extra));
+        }
         view! { <span class="gp-played"><Svg icon=Icon::Clock size=15 />{text}</span> }
     });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
@@ -194,6 +221,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             Tab::Mods => Icon::Puzzle,
             Tab::Photos => Icon::Photo,
             Tab::Achievements => Icon::Trophy,
+            Tab::Original => Icon::Disc,
             Tab::Manage => Icon::Edit,
         };
         view! {
@@ -229,12 +257,14 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
             {has_achievements.then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
             {photos.then(|| tab_button(Tab::Photos, tr!("Fotos")))}
+            {original.is_some().then(|| tab_button(Tab::Original, tr!("Original")))}
             {manageable.then(|| tab_button(Tab::Manage, tr!("Gerenciar")))}
         </nav>
     };
 
     let body_game = game.clone();
     let body_entry = entry.clone();
+    let body_original = original.clone();
     let tab_body = move |which: Tab| match which {
         Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() tab /> }.into_any(),
         Tab::Achievements => match &steam_app {
@@ -269,6 +299,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             None => ().into_any(),
         },
         Tab::Manage => view! { <Manage game=body_game.clone() entry=body_entry.clone() /> }.into_any(),
+        Tab::Original => match &body_original {
+            Some(rom) => view! { <crate::classics::OriginalTab rom=rom.clone() /> }.into_any(),
+            None => ().into_any(),
+        },
     };
     // Each tab arrives with a short fade, so the switch reads as one place changing.
     let body = move || {
@@ -280,6 +314,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             Tab::Settings => tr!("Ajustes"),
             Tab::Mods => "Mods",
             Tab::Achievements => tr!("Conquistas"),
+            Tab::Original => tr!("Original"),
             Tab::Photos => tr!("Fotos"),
             Tab::Manage => tr!("Gerenciar"),
         };

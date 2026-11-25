@@ -224,10 +224,23 @@ fn has_feature(entry: &RecompEntry, id: &str) -> bool {
     FEATURES.iter().find(|(f, _)| *f == id).is_some_and(|(_, tags)| entry.tags.iter().any(|t| tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
 }
 
+thread_local! {
+    /// A search to open Discover with (a classic's page asks for its game).
+    static NEXT_SEARCH: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Discover, already searching for `text`.
+pub fn open_search(library: Library, text: String) {
+    NEXT_SEARCH.with(|n| *n.borrow_mut() = Some(text));
+    library.go(crate::Route::Discover);
+}
+
 #[component]
 pub fn DiscoverPage() -> impl IntoView {
     let library = expect_context::<Library>();
-    let search = RwSignal::new(String::new());
+    let search = RwSignal::new(NEXT_SEARCH.with(|n| n.borrow_mut().take()).unwrap_or_default());
+    // Platform, feature and genre fold under "Filtros", which counts the ones on.
+    let filters_open = RwSignal::new(false);
     let console = RwSignal::new(String::new());
     let sort = RwSignal::new(Sort::Popular);
     let only_owned = RwSignal::new(false);
@@ -305,6 +318,9 @@ pub fn DiscoverPage() -> impl IntoView {
         games
     };
 
+    let active_filters = move || (!console.get().is_empty()) as usize + (!feature.get().is_empty()) as usize + (!genre.get().is_empty()) as usize;
+    // How many catalog games the player already has a copy of: the reason to be here.
+    let owned_count = move || one_each(&entries()).into_iter().filter(|(e, _)| e.owned_copy.is_some()).count();
     let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get() || !genre.get().is_empty() || !feature.get().is_empty();
     let clear = move |_| {
         search.set(String::new());
@@ -410,9 +426,6 @@ pub fn DiscoverPage() -> impl IntoView {
                         <button type="button" class="seg" role="radio" class:on=move || by_game.get() aria-checked=move || by_game.get().to_string()
                             on:click=move |_| { by_game.set(true); save_by_game(true); }>{tr!("Jogos")}</button>
                     </div>
-                    <button type="button" class="chip-btn" aria-pressed=move || only_owned.get().to_string() class:on=move || only_owned.get() on:click=move |_| only_owned.update(|o| *o = !*o)>
-                        {tr!("Tenho o jogo")}
-                    </button>
                     <select
                         class="select"
                         aria-label=tr!("Ordenar")
@@ -428,7 +441,21 @@ pub fn DiscoverPage() -> impl IntoView {
                         <option value="updated">{tr!("Atualizados recentemente")}</option>
                         <option value="name">{tr!("A a Z")}</option>
                     </select>
+                    <button type="button" class="btn lib-filter-btn" class:on=move || { filters_open.get() || active_filters() > 0 }
+                        aria-expanded=move || filters_open.get().to_string() on:click=move |_| filters_open.update(|o| *o = !*o)>
+                        <Svg icon=Icon::Filter size=18 />{tr!("Filtros")}
+                        {move || (active_filters() > 0).then(|| view! { <span class="tab-n">{active_filters()}</span> })}
+                    </button>
                 </div>
+                <div class="lib-tabs">
+                    <div class="segs big" role="tablist" aria-label=tr!("O que mostrar")>
+                        <button type="button" class="seg" role="tab" class:on=move || !only_owned.get() aria-selected=move || (!only_owned.get()).to_string()
+                            on:click=move |_| only_owned.set(false)>{tr!("Todo o catálogo")}</button>
+                        <button type="button" class="seg" role="tab" class:on=move || only_owned.get() aria-selected=move || only_owned.get().to_string()
+                            on:click=move |_| only_owned.set(true)>{tr!("Você já tem o jogo")}<span class="chip-n">{owned_count}</span></button>
+                    </div>
+                </div>
+                <div class="lib-filters disc-filters" class:hidden=move || !filters_open.get()>
                 <div class="catalog-platform">
                     <label for="catalog-console">{tr!("Plataforma")}</label>
                     <select id="catalog-console" class="select" prop:value=move || console.get()
@@ -462,6 +489,7 @@ pub fn DiscoverPage() -> impl IntoView {
                             </button>
                         }
                     }).collect_view()}
+                </div>
                 </div>
             </section>
             {grid}

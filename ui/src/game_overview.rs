@@ -100,6 +100,11 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
             .into_iter()
             .map(|(icon, label, value)| view! { <li><Svg icon size=16 /><span>{label}</span><b>{value}</b></li> })
             .collect_view();
+        // The total also holds time from before sessions were written down one by one.
+        let logged: u64 = list.iter().map(|s| s.seconds).sum();
+        let older = (total > logged + 60).then(|| view! {
+            <p class="muted small pc-older">{tr!("O total inclui partidas mais antigas, de antes do registro por sessão.")}</p>
+        });
         // Nothing in two weeks: the numbers alone, in one row, instead of an empty chart.
         if !any_recent {
             return view! {
@@ -109,6 +114,7 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
                         <small class="muted">{tr!("Não jogou nas últimas duas semanas.")}</small>
                     </div>
                     <ul class="pc-list row">{rows}</ul>
+                    {older}
                 </section>
             }
             .into_any();
@@ -123,6 +129,7 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
                     <div class="pc-chart"><div class="pc-bars">{bars}</div></div>
                     <ul class="pc-list">{rows}</ul>
                 </div>
+                {older}
             </section>
         }
         .into_any()

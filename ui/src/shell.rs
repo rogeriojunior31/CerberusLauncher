@@ -35,7 +35,7 @@ pub fn Sidebar() -> impl IntoView {
             }}</b> }
         });
         view! {
-            <button type="button" class="nav" class:on=on title=label on:click=move |_| library.go(route.clone())>
+            <button type="button" class="nav" class:on=on.clone() aria-current=move || on().then_some("page") title=label on:click=move |_| library.go(route.clone())>
                 <Svg icon />
                 <span>{label}</span>
                 {count}

@@ -348,7 +348,8 @@ pub fn LibraryGrid() -> impl IntoView {
     // Row 0 is the chips: kinds of game, then the order.
     let kind = RwSignal::new(0usize);
     let order = RwSignal::new(0usize);
-    let kinds: [&'static str; 7] = [tr!("Todos"), tr!("Favoritos"), tr!("Jogando"), tr!("Clássicos"), "Recomps", "Steam", "Epic"];
+    // The desktop library's tabs, in its order.
+    let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), "Recomps", "PC", tr!("Clássicos")];
     let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
     library.roms.refetch();
     let games = Memo::new(move |_| {
@@ -357,17 +358,15 @@ pub fn LibraryGrid() -> impl IntoView {
             .into_iter()
             .filter(|g| match which {
                 1 => g.favorite,
-                2 => g.status == Some(cerberus_shared::GameStatus::Playing),
-                3 => false,
-                4 => matches!(g.source, cerberus_shared::Source::Recomp { .. }),
-                5 => matches!(g.source, cerberus_shared::Source::Steam { .. }),
-                6 => matches!(g.source, cerberus_shared::Source::Epic { .. }),
+                2 => matches!(g.source, cerberus_shared::Source::Recomp { .. }),
+                3 => !matches!(g.source, cerberus_shared::Source::Recomp { .. }),
+                4 => false,
                 _ => true,
             })
             .map(Item::Game)
             .collect();
         // Todos is every game, as on the desktop; Clássicos is only them.
-        if matches!(which, 0 | 3) {
+        if matches!(which, 0 | 4) {
             list.extend(classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default()));
         }
         let stats = |i: &Item| match i {
@@ -449,7 +448,7 @@ pub fn LibraryGrid() -> impl IntoView {
     let grid = move || {
         let list = games.get();
         if list.is_empty() {
-            let empty = if kind.get() == 3 { tr!("Nenhum clássico que algum emulador daqui abra. Veja Configurações › Emulação.") } else { tr!("Nenhum jogo com esse filtro.") };
+            let empty = if kind.get() == 4 { tr!("Nenhum clássico que algum emulador daqui abra. Veja Configurações › Emulação.") } else { tr!("Nenhum jogo com esse filtro.") };
             return view! { <p class="tv-empty">{empty}</p> }.into_any();
         }
         list.into_iter()

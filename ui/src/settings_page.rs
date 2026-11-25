@@ -1207,7 +1207,12 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         let my_roms = library.roms.get().unwrap_or_default();
         let players = library.players.get().unwrap_or_default();
         let mine = |console: &str| my_roms.iter().filter(|r| crate::classics::console_of(r) == console).count();
-        let playable = my_roms.iter().filter(|r| crate::classics::ready_player(&players, crate::classics::console_of(r)).is_some()).count();
+        // The same count as Biblioteca e ROMs: an installed recomp also opens a classic.
+        let playable = {
+            let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+            let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+            my_roms.iter().filter(|r| crate::classics::resolve(r, &players, &games, &recomps).playable()).count()
+        };
 
         // ---------- one console's page ----------
         if let Some(console) = open.get() {
@@ -1243,7 +1248,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                 let here = working.as_deref() == Some(id.as_str());
                 let state = if here { progress_words() } else if installed { tr!("Instalado").to_string() } else { tr!("Não instalado").to_string() };
                 let actions = if installed {
-                    (!chosen).then(|| view! { <button type="button" class="btn sm main" disabled=disabled on:click=pick>{tr!("Usar este")}</button> }).into_any()
+                    (!chosen).then(|| view! { <button type="button" class="btn sm" disabled=disabled on:click=pick>{tr!("Usar este")}</button> }).into_any()
                 } else {
                     let (i1, i2) = (id.clone(), id.clone());
                     let done = tr!("{} instalado. Seus jogos dele já podem abrir por aqui.", name);
@@ -1312,7 +1317,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                                 <span class=if ok { "emu-flag ok" } else if console == "ps2" { "emu-flag warn" } else { "emu-flag" }>{what}</span>
                                 <div class="row">
                                     <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("ra-bios", Box::pin(async move { api::import_bios().await.map(|(_, said)| said) }))>
-                                        <Svg icon=Icon::Folder size=16 />{tr!("Adicionar BIOS")}</button>
+                                        <Svg icon=Icon::Folder size=16 />{if ok { tr!("Trocar BIOS") } else { tr!("Adicionar BIOS") }}</button>
                                 </div>
                             </div>
                         }
@@ -1324,7 +1329,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                         let what = if e.firmware {
                             if ok { tr!("Firmware do PS3 instalado") } else { tr!("Falta o firmware do PS3") }
                         } else if ok { tr!("BIOS pronta") } else { tr!("Falta a BIOS") };
-                        let button = if e.firmware { tr!("Instalar firmware") } else { tr!("Adicionar BIOS") };
+                        let button = match (e.firmware, ok) { (true, true) => tr!("Reinstalar firmware"), (true, false) => tr!("Instalar firmware"), (false, true) => tr!("Trocar BIOS"), (false, false) => tr!("Adicionar BIOS") };
                         let id = e.id.clone();
                         view! {
                             <div class="emu-line">
@@ -1404,7 +1409,11 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         let show_all = everything.get() || hidden == order.len();
         let cards = order.into_iter().filter(|c| show_all || mine(c) > 0).map(|console| {
             let who = who_of(console);
-            let (class, label) = status_words(state_of(console, &who));
+            let (class, label) = match status_words(state_of(console, &who)) {
+                ("ok", l) => ("ok", l),
+                (_, _) if mine(console) == 0 => ("off", tr!("Não configurado")),
+                other => other,
+            };
             let who_name = match who.as_str() {
                 "" => None,
                 "retroarch" => Some("RetroArch".to_string()),
