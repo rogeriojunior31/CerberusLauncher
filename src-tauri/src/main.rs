@@ -1865,6 +1865,10 @@ async fn finish_xbox_login(app: AppHandle, code: String) {
 fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>().0.clone();
     let mut chosen = settings::load(&data);
+    // Its achievements leave the hub with it.
+    if let (Some(user), Ok(db)) = (chosen.xbox_user.as_deref(), achievements::store::Store::open(&data)) {
+        db.forget(&achievements::store::Scope::new(cerberus_shared::AchievementSource::Xbox, user));
+    }
     chosen.xbox_user = None;
     chosen.xbox_refresh = None;
     settings::save(&data, &chosen)?;

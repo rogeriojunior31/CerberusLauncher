@@ -200,6 +200,46 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         </section>
     };
 
+    // "Ver todos": the full list below, filtered and sorted for it.
+    let show_all = move |p: Platform, st: State, o: Order| {
+        platform.set(p);
+        state.set(st);
+        order.set(o);
+        if let Some(el) = document().get_element_by_id("ach-all") {
+            el.scroll_into_view();
+        }
+    };
+
+    // Each store on its own line: games, achievements, platinums, a click filters the list.
+    let mut by_source: Vec<(Platform, AchievementSource, usize, u32, u32, usize)> = Vec::new();
+    for (p, src) in [(Platform::Steam, AchievementSource::Steam), (Platform::Xbox, AchievementSource::Xbox), (Platform::Retro, AchievementSource::Retro)] {
+        let mine: Vec<&AchievementGame> = hub.games.iter().filter(|g| g.source == src).collect();
+        if mine.is_empty() {
+            continue;
+        }
+        let got: u32 = mine.iter().map(|g| g.unlocked).sum();
+        let all: u32 = mine.iter().map(|g| g.total).sum();
+        let done = mine.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+        by_source.push((p, src, mine.len(), got, all, done));
+    }
+    let stores = (by_source.len() > 1).then(|| view! {
+        <section class="ach-stores" aria-label=tr!("Por plataforma")>
+            {by_source.into_iter().map(|(p, src, games, got, all, done)| {
+                let pct = if all == 0 { 0 } else { (got as u64 * 100 / all as u64) as u32 };
+                view! {
+                    <button type="button" class="ach-store" on:click=move |_| show_all(p, State::All, Order::Percent)>
+                        {platform_chip(src)}
+                        <b>{format!("{pct}%")}</b>
+                        <small>{tr!("{} de {} conquistas", format::count(got as u64), format::count(all as u64))}</small>
+                        <small>{if games == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", games) }}
+                            {(done > 0).then(|| format!(" · {}", if done == 1 { tr!("1 platinado").to_string() } else { tr!("{} platinados", done) }))}</small>
+                        <span class="ach-bar"><i style=format!("width: {}%", pct.max(1))></i></span>
+                    </button>
+                }
+            }).collect_view()}
+        </section>
+    });
+
     let notes = view! {
         {(!hub.steam).then(|| view! {
             <div class="ach-note"><Svg icon=Icon::Info size=18 /><span>{tr!("A Steam não foi encontrada neste PC, ou ainda não guardou conquistas. Abra um jogo pela Steam e volte aqui.")}</span></div>
@@ -208,6 +248,13 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
             <div class="ach-note">
                 <Svg icon=Icon::Trophy size=18 />
                 <span>{tr!("Conecte sua conta do RetroAchievements para ver as conquistas dos clássicos.")}</span>
+                <button type="button" class="btn sm" on:click=move |_| library.go(Route::Settings)>{tr!("Conectar")}</button>
+            </div>
+        })}
+        {(!hub.xbox).then(|| view! {
+            <div class="ach-note">
+                <Svg icon=Icon::Trophy size=18 />
+                <span>{tr!("Entre com a conta Microsoft em Configurações › Xbox para ver as conquistas do Xbox e do Game Pass.")}</span>
                 <button type="button" class="btn sm" on:click=move |_| library.go(Route::Settings)>{tr!("Conectar")}</button>
             </div>
         })}
@@ -223,19 +270,26 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         let n = plats.len();
         view! {
             <section class="shelf">
-                <div class="shelf-h"><h2>{tr!("Platinados")}<small class="plat-n">{n}</small></h2></div>
+                <div class="shelf-h">
+                    <h2>{tr!("Platinados")}<small class="plat-n">{n}</small></h2>
+                    <button type="button" class="btn sm ghost" on:click=move |_| show_all(Platform::All, State::Done, Order::Recent)>{tr!("Ver todos")}</button>
+                </div>
                 <div class="plat-row">{plats.into_iter().map(|g| view! { <PlatCard g /> }).collect_view()}</div>
             </section>
         }
     });
 
     // The games closest to 100%: what's worth playing next.
-    let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 40).cloned().collect();
+    let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 25).cloned().collect();
     near.sort_by(|a, b| b.percent().cmp(&a.percent()).then_with(|| (a.total - a.unlocked).cmp(&(b.total - b.unlocked))));
-    near.truncate(4);
+    let near_n = near.len();
+    near.truncate(8);
     let near = (!near.is_empty()).then(|| view! {
         <section class="shelf">
-            <div class="shelf-h"><h2>{tr!("Perto dos 100%")}</h2></div>
+            <div class="shelf-h">
+                <h2>{tr!("Perto dos 100%")}<small class="plat-n">{near_n}</small></h2>
+                <button type="button" class="btn sm ghost" on:click=move |_| show_all(Platform::All, State::Started, Order::Percent)>{tr!("Ver todos")}</button>
+            </div>
             <div class="ach-near">{near.into_iter().map(|g| view! { <NearCard g /> }).collect_view()}</div>
         </section>
     });
@@ -330,11 +384,12 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
 
     view! {
         {summary}
+        {stores}
         {notes}
         {plats}
         {near}
         {recent}
-        <section class="shelf">
+        <section class="shelf" id="ach-all">
             <div class="shelf-h"><h2>{tr!("Todos os jogos")}</h2></div>
             <div class="ach-tools" aria-label=tr!("Filtros das conquistas")>
                 <div class="segs" role="tablist" aria-label=tr!("Plataforma")>{platforms}</div>
@@ -346,6 +401,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                         <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                 </label>
                 <select class="select" aria-label=tr!("Ordenar")
+                    prop:value=move || match order.get() { Order::Percent => "percent", Order::Most => "most", Order::Name => "name", Order::Played => "played", Order::Recent => "recent" }
                     on:change=move |e| order.set(match event_target_value(&e).as_str() {
                         "percent" => Order::Percent, "most" => Order::Most, "name" => Order::Name, "played" => Order::Played, _ => Order::Recent,
                     })>

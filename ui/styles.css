@@ -2240,3 +2240,13 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .sv-emu-note { margin: -4px 0 12px; }
 /* Filtros: a label before a row of chips */
 .chips-h { align-self: center; margin-right: 4px; font-size: 12.5px; font-weight: 700; color: var(--dim); }
+
+/* Achievements: one card per store */
+.ach-stores { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 4px 0 24px; }
+.ach-store { display: grid; gap: 4px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: inherit; cursor: pointer; }
+.ach-store:hover, .ach-store:focus-visible { border-color: var(--accent); outline: none; }
+.ach-store .ach-src { justify-self: start; }
+.ach-store b { font-size: 26px; font-variant-numeric: tabular-nums; }
+.ach-store small { color: var(--muted); }
+.ach-store .ach-bar { margin-top: 6px; }
+.shelf-h .btn.ghost { margin-left: auto; }

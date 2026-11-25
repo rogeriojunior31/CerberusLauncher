@@ -7,13 +7,10 @@
 //! in for each question.
 
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use cerberus_shared::{tr, Achievement, AchievementGame, AchievementSource, RecentUnlock};
-use serde::{Deserialize, Serialize};
+use cerberus_shared::{tr, Achievement, AchievementGame, AchievementSource};
 use serde_json::Value;
 
 use crate::xbox_account::{self, Session};
@@ -41,11 +38,7 @@ pub async fn session(http: &reqwest::Client, refresh: &str, save: impl FnOnce(&s
     Ok(fresh)
 }
 
-fn cache_dir(data: &Path) -> PathBuf {
-    data.join("cache").join("achievements")
-}
-
-async fn get(http: &reqwest::Client, s: &Session, url: &str, contract: &str) -> Result<Value, String> {
+pub(super) async fn get(http: &reqwest::Client, s: &Session, url: &str, contract: &str) -> Result<Value, String> {
     let (_, language) = crate::gamepass::market();
     let response = crate::net::send(
         http.get(url).header("Authorization", &s.auth).header("x-xbl-contract-version", contract).header("Accept-Language", language),
@@ -92,10 +85,13 @@ fn read_games(v: &Value) -> Vec<AchievementGame> {
     for t in v.get("titles").and_then(Value::as_array).into_iter().flatten() {
         let total = t.pointer("/achievement/totalAchievements").and_then(Value::as_u64).unwrap_or(0) as u32;
         let id = t.get("titleId").and_then(Value::as_str).unwrap_or_default();
-        if total == 0 || id.is_empty() {
+        let unlocked = t.pointer("/achievement/currentAchievements").and_then(Value::as_u64).unwrap_or(0) as u32;
+        let gamerscore = t.pointer("/achievement/totalGamerscore").and_then(Value::as_u64).unwrap_or(0);
+        // Newer games come with no total, only their gamerscore: the total is
+        // learned from the game's list (kept in the store).
+        if id.is_empty() || (total == 0 && unlocked == 0 && gamerscore == 0) {
             continue;
         }
-        let unlocked = t.pointer("/achievement/currentAchievements").and_then(Value::as_u64).unwrap_or(0) as u32;
         let pc = t.get("devices").and_then(Value::as_array).is_some_and(|d| d.iter().any(|x| x.as_str() == Some("PC")));
         games.push(AchievementGame {
             source: AchievementSource::Xbox,
@@ -104,7 +100,7 @@ fn read_games(v: &Value) -> Vec<AchievementGame> {
             art: t.get("displayImage").and_then(Value::as_str).map(|u| vec![u.to_string()]).unwrap_or_default(),
             platform: if pc { "Xbox · PC".into() } else { "Xbox".into() },
             total,
-            unlocked: unlocked.min(total),
+            unlocked: if total > 0 { unlocked.min(total) } else { unlocked },
             hardcore: 0,
             points: t.pointer("/achievement/currentGamerscore").and_then(Value::as_u64).unwrap_or(0) as u32,
             points_total: t.pointer("/achievement/totalGamerscore").and_then(Value::as_u64).unwrap_or(0) as u32,
@@ -148,52 +144,63 @@ fn read_achievement(a: &Value) -> Option<Achievement> {
     })
 }
 
-/// The latest unlocks across games, in one question.
-pub async fn recent(http: &reqwest::Client, s: &Session, games: &[AchievementGame]) -> Result<Vec<RecentUnlock>, String> {
-    let url = format!("https://achievements.xboxlive.com/users/xuid({})/achievements?unlockedOnly=true&orderBy=UnlockTime&maxItems=40", s.xuid);
-    let v = get(http, s, &url, "2").await?;
-    let by_id: HashMap<&str, &AchievementGame> = games.iter().map(|g| (g.key.as_str(), g)).collect();
-    let mut list = Vec::new();
-    for a in v.get("achievements").and_then(Value::as_array).into_iter().flatten() {
-        let Some(achievement) = read_achievement(a) else { continue };
-        let title = a.pointer("/titleAssociations/0/id").and_then(Value::as_u64).map(|n| n.to_string()).unwrap_or_default();
-        let Some(game) = by_id.get(title.as_str()) else { continue };
-        list.push(RecentUnlock { source: AchievementSource::Xbox, game_key: game.key.clone(), game_name: game.name.clone(), achievement });
-    }
-    Ok(list)
+/// Pause between two questions, so Xbox Live never sees a burst.
+const PAUSE: Duration = Duration::from_millis(300);
+
+/// The title an achievement belongs to.
+fn title_of(a: &Value) -> Option<String> {
+    let id = a.pointer("/titleAssociations/0/id")?;
+    id.as_u64().map(|n| n.to_string()).or_else(|| id.as_str().map(str::to_string))
 }
 
-#[derive(Serialize, Deserialize)]
-struct Kept {
-    played: Option<u64>,
-    list: Vec<Achievement>,
-}
-
-/// One game's full list: from disk unless the game was played since it was read.
-pub async fn game_list(http: &reqwest::Client, data: &Path, s: &Session, title: &str, played: Option<u64>) -> Result<Vec<Achievement>, String> {
-    let file = cache_dir(data).join(format!("xbox-{}-{}.json", s.xuid, title.chars().filter(char::is_ascii_digit).collect::<String>()));
-    if let Some(kept) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Kept>(&t).ok()) {
-        if kept.played >= played {
-            return Ok(kept.list);
+/// Every achievement of every game the account played, a thousand per page
+/// (an account with 200 games: about 14 pages). Asked once, to fill the store;
+/// after that only the games played again are asked one by one.
+pub async fn all_lists(http: &reqwest::Client, s: &Session) -> Result<HashMap<String, Vec<Achievement>>, String> {
+    let mut by_title: HashMap<String, Vec<Achievement>> = HashMap::new();
+    let mut token = String::new();
+    for _ in 0..100 {
+        let more = if token.is_empty() { String::new() } else { format!("&continuationToken={}", urlencoding(&token)) };
+        let url = format!("https://achievements.xboxlive.com/users/xuid({})/achievements?maxItems=1000{more}", s.xuid);
+        let v = get(http, s, &url, "2").await?;
+        for a in v.get("achievements").and_then(Value::as_array).into_iter().flatten() {
+            if let (Some(title), Some(achievement)) = (title_of(a), read_achievement(a)) {
+                by_title.entry(title).or_default().push(achievement);
+            }
         }
+        token = v.pointer("/pagingInfo/continuationToken").and_then(Value::as_str).unwrap_or_default().to_string();
+        if token.is_empty() {
+            break;
+        }
+        tokio::time::sleep(PAUSE).await;
     }
+    Ok(by_title)
+}
+
+fn urlencoding(text: &str) -> String {
+    text.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
+/// One game's full list.
+pub async fn title_list(http: &reqwest::Client, s: &Session, title: &str) -> Result<Vec<Achievement>, String> {
+    let title: String = title.chars().filter(char::is_ascii_digit).collect();
     let url = format!("https://achievements.xboxlive.com/users/xuid({})/achievements?titleId={title}&maxItems=1000", s.xuid);
     let v = get(http, s, &url, "2").await?;
-    let list: Vec<Achievement> = v.get("achievements").and_then(Value::as_array).into_iter().flatten().filter_map(read_achievement).collect();
-    let _ = fs::create_dir_all(cache_dir(data));
-    let _ = fs::write(&file, serde_json::to_string(&Kept { played, list: list.clone() }).unwrap_or_default());
-    Ok(list)
+    tokio::time::sleep(PAUSE).await;
+    Ok(v.get("achievements").and_then(Value::as_array).into_iter().flatten().filter_map(read_achievement).collect())
 }
 
-/// What the hub showed last time, to open at once and between syncs.
-#[derive(Default, Serialize, Deserialize)]
-pub struct HubKept {
-    pub games: Vec<AchievementGame>,
-    pub recent: Vec<RecentUnlock>,
-}
-
-pub fn hub_file(data: &Path) -> PathBuf {
-    cache_dir(data).join("xbox-hub.json")
+/// A game's progress from its full list (unlocks, total, the latest date).
+pub fn with_list(mut game: AchievementGame, list: &[Achievement]) -> AchievementGame {
+    if list.is_empty() {
+        return game;
+    }
+    game.total = game.total.max(list.len() as u32);
+    game.unlocked = game.unlocked.max(list.iter().filter(|a| a.unlocked_at.is_some()).count() as u32).min(game.total);
+    game.last_unlock = list.iter().filter_map(|a| a.unlocked_at).filter(|t| *t > 1).max().or(game.last_unlock);
+    game
 }
 
 #[cfg(test)]
@@ -227,3 +234,4 @@ mod tests {
         assert_eq!(secret.description, "", "a secret stays secret until unlocked");
     }
 }
+
