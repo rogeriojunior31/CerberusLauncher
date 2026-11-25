@@ -6,10 +6,48 @@ use leptos::prelude::*;
 use crate::icons::{Icon, Svg};
 use crate::{Library, Route, Toast, api};
 
+/// The sections in menu order: Ctrl+1 to Ctrl+7.
+const SECTIONS: [Route; 7] = [Route::Home, Route::Library, Route::Discover, Route::Achievements, Route::Downloads, Route::Saves, Route::News];
+
+/// Keyboard shortcuts for the desktop window (Big Picture has its own controls):
+/// "/" or Ctrl+F or Ctrl+K to search the page, Ctrl+, for settings, Ctrl+1-7 for the sections.
+fn shortcuts(library: Library) {
+    let handle = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
+        if library.route.get_untracked() == Route::BigPicture || e.alt_key() {
+            return;
+        }
+        let typing = document().active_element().is_some_and(|el| matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT"));
+        let ctrl = e.ctrl_key() || e.meta_key();
+        let key = e.key();
+        let search = (key == "/" && !typing) || (ctrl && matches!(key.as_str(), "f" | "F" | "k" | "K"));
+        if search {
+            let found = document().query_selector(".page input[type=search], .set-find").ok().flatten();
+            if let Some(input) = found {
+                e.prevent_default();
+                let input: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(input);
+                let _ = input.focus();
+            }
+            return;
+        }
+        if !ctrl {
+            return;
+        }
+        if key == "," {
+            e.prevent_default();
+            library.go(Route::Settings);
+        } else if let Some(n) = key.parse::<usize>().ok().filter(|n| (1..=SECTIONS.len()).contains(n)) {
+            e.prevent_default();
+            library.go(SECTIONS[n - 1].clone());
+        }
+    });
+    on_cleanup(move || handle.remove());
+}
+
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let library = expect_context::<Library>();
     let activity = expect_context::<crate::news::Activity>();
+    shortcuts(library);
     let item = move |route: Route, icon: Icon, label: &'static str| {
         let target = route.clone();
         // A recomp's page belongs to the Library once it's installed, to Discover before.
@@ -35,7 +73,9 @@ pub fn Sidebar() -> impl IntoView {
             }}</b> }
         });
         view! {
-            <button type="button" class="nav" class:on=on.clone() aria-current=move || on().then_some("page") title=label on:click=move |_| library.go(route.clone())>
+            <button type="button" class="nav" class:on=on.clone() aria-current=move || on().then_some("page")
+                title=SECTIONS.iter().position(|r| *r == route).map_or_else(|| label.to_string(), |i| format!("{label} (Ctrl+{})", i + 1))
+                on:click=move |_| library.go(route.clone())>
                 <Svg icon />
                 <span>{label}</span>
                 {count}
@@ -70,7 +110,7 @@ pub fn Sidebar() -> impl IntoView {
                         <Svg icon=Icon::Tv size=19 />
                     </button>
                     <button type="button" class="foot-icon" class:on=move || library.route.with(|r| r.section() == Route::Settings)
-                        title=tr!("Configurações") aria-label=tr!("Configurações") on:click=move |_| library.go(Route::Settings)>
+                        title=tr!("Configurações (Ctrl+,)") aria-label=tr!("Configurações") on:click=move |_| library.go(Route::Settings)>
                         <Svg icon=Icon::Settings size=19 />
                     </button>
                 </div>

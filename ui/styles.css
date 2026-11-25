@@ -1207,7 +1207,7 @@ html.calm .sk, html.calm .pc-col i { animation: none; }
 
 /* Página do jogo: o jogo original */
 .original h3 { margin: 0 0 10px; }
-.og-summary { margin: 0 0 14px; max-width: 62ch; line-height: 1.6; color: var(--ink); opacity: 0.88; }
+.og-summary { margin: 0 0 14px; max-width: 34em; line-height: 1.6; color: var(--ink); opacity: 0.88; }
 .og-wiki { display: inline-flex; align-items: center; gap: 6px; margin: -6px 0 14px; font-size: 13px; color: var(--accent); }
 .og-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 24px; margin: 0 0 12px; }
 .og-facts div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -2137,3 +2137,10 @@ p { text-wrap: pretty; }
 /* The window buttons keep a dark strip under them while the page scrolls. */
 .topbar { background: linear-gradient(180deg, rgba(6, 7, 11, 0.82), rgba(6, 7, 11, 0)); }
 .page-h > .row { flex: none; flex-wrap: nowrap; }
+
+/* On the Original tab, playing the original is the one primary action; the native Play steps back. */
+.gp-page:has(.tab-original.on) .gp-act .btn.main { background: var(--fill2); color: var(--ink); }
+.gp-page:has(.tab-original.on) .gp-act .split { box-shadow: none; }
+/* Pages keep their width when the scrollbar comes and goes. */
+main.main { scrollbar-gutter: stable; }
+.disc-by { display: flex; align-items: center; gap: 10px; }

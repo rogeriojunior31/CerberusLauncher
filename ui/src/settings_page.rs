@@ -846,10 +846,10 @@ fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
                 let res = crate::classics::resolve(&r, &players, &games, &recomps);
                 let installed = res.recomp_game.as_ref().map(|g| g.name.clone());
                 let (class, how) = match (&res.emulator, &installed, &res.recomp) {
-                    (Some(p), Some(rc), _) => ("ok", tr!("Abre no {} · também pelo recomp {}", p, rc)),
-                    (Some(p), None, Some(e)) => ("ok", tr!("Abre no {} · tem o recomp {} no catálogo", p, e.name)),
-                    (Some(p), None, None) => ("ok", tr!("Abre no {}", p)),
-                    (None, Some(rc), _) => ("ok", tr!("Joga pelo recomp {}", rc)),
+                    (Some(p), Some(rc), _) => ("ok", tr!("Original no {} · nativo pelo {}", p, rc)),
+                    (Some(p), None, Some(e)) => ("ok", tr!("Original no {} · versão nativa no catálogo: {}", p, e.name)),
+                    (Some(p), None, None) => ("ok", tr!("Original no {}", p)),
+                    (None, Some(rc), _) => ("ok", tr!("Joga nativo pelo {}", rc)),
                     (None, None, _) => ("warn", res.problem.clone()),
                 };
                 let path = r.path.clone();
@@ -1411,7 +1411,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             let who = who_of(console);
             let (class, label) = match status_words(state_of(console, &who)) {
                 ("ok", l) => ("ok", l),
-                (_, _) if mine(console) == 0 => ("off", tr!("Não configurado")),
+                (_, _) if mine(console) == 0 => ("off", tr!("Sem jogos seus")),
                 other => other,
             };
             let who_name = match who.as_str() {

@@ -225,7 +225,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             Tab::Manage => Icon::Edit,
         };
         view! {
-            <button type="button" class="tab with-icon" role="tab" class:on=move || tab.get() == which aria-selected=move || (tab.get() == which).to_string()
+            <button type="button" class="tab with-icon" class:tab-original=which == Tab::Original role="tab" class:on=move || tab.get() == which aria-selected=move || (tab.get() == which).to_string()
                 tabindex=move || if tab.get() == which { "0" } else { "-1" } on:click=move |_| tab.set(which)>
                 <Svg icon size=16 />{label}
                 {move || count(which).map(|n| view! { <span class="tab-n">{n}</span> })}
@@ -1642,17 +1642,53 @@ fn day(text: &str) -> String {
     }
 }
 
+/// IGDB's genre and mode names, in the player's language (the rest stay as IGDB has them).
+fn igdb_term(text: &str) -> String {
+    let pt = match text {
+        "Platform" => tr!("Plataformas"),
+        "Fighting" => tr!("Luta"),
+        "Racing" => tr!("Corrida"),
+        "Shooter" => tr!("Tiro"),
+        "Role-playing (RPG)" => "RPG",
+        "Adventure" => tr!("Aventura"),
+        "Puzzle" => tr!("Quebra-cabeça"),
+        "Sport" => tr!("Esportes"),
+        "Strategy" => tr!("Estratégia"),
+        "Real Time Strategy (RTS)" => tr!("Estratégia em tempo real"),
+        "Turn-based strategy (TBS)" => tr!("Estratégia por turnos"),
+        "Tactical" => tr!("Tático"),
+        "Simulator" => tr!("Simulação"),
+        "Music" => tr!("Música"),
+        "Hack and slash/Beat 'em up" => tr!("Ação e pancadaria"),
+        "Point-and-click" => tr!("Apontar e clicar"),
+        "Card & Board Game" => tr!("Cartas e tabuleiro"),
+        "Quiz/Trivia" => tr!("Perguntas"),
+        "Visual Novel" => tr!("Romance visual"),
+        "Indie" => "Indie",
+        "Arcade" => "Arcade",
+        "Single player" => tr!("Um jogador"),
+        "Multiplayer" => tr!("Multijogador"),
+        "Co-operative" => tr!("Cooperativo"),
+        "Split screen" => tr!("Tela dividida"),
+        "Massively Multiplayer Online (MMO)" => "MMO",
+        "Battle Royale" => "Battle Royale",
+        other => return other.to_string(),
+    };
+    pt.to_string()
+}
+
 /// What is known about the game the recomp was made from.
 #[component]
 fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> impl IntoView {
     let join = |list: &[String], most: usize| list.iter().take(most).cloned().collect::<Vec<_>>().join(", ");
+    let terms = |list: &[String], most: usize| list.iter().take(most).map(|t| igdb_term(t)).collect::<Vec<_>>().join(", ");
     let facts: Vec<(&'static str, String)> = [
         (tr!("Lançamento"), if original.released.is_empty() { String::new() } else { day(&original.released) }),
         (tr!("Desenvolvedora"), original.developer.clone()),
         (tr!("Publicadora"), original.publisher.clone()),
         (tr!("Série"), original.series.clone()),
-        (tr!("Gêneros"), join(&original.genres, 4)),
-        ("Modos", join(&original.modes, 4)),
+        (tr!("Gêneros"), terms(&original.genres, 4)),
+        (tr!("Modos"), terms(&original.modes, 4)),
         (tr!("Lançado para"), join(&original.platforms, 5)),
         (tr!("Nota da crítica"), original.rating.map(|r| format!("{:.0}/100", r)).unwrap_or_default()),
     ]
@@ -1679,7 +1715,13 @@ fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> im
             }
             .into_any()
         }
-        None => (!igdb.is_empty()).then(|| view! { <p class="og-summary" lang="en">{igdb.clone()}</p> }).into_any(),
+        // IGDB writes in English: said once, as with the developer's own text.
+        None => (!igdb.is_empty()).then(|| view! {
+            <p class="og-summary" lang="en">{igdb.clone()}</p>
+            {(cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt).then(|| view! {
+                <p class="muted small">{tr!("Resumo do IGDB, em inglês: não há artigo em português sobre esse jogo.")}</p>
+            })}
+        }).into_any(),
     };
     view! {
         <section class="card original">

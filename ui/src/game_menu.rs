@@ -117,9 +117,12 @@ pub fn GameMenuLayer() -> impl IntoView {
                 <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
                     <Svg icon=play_icon size=16 />{play_label}
                 </button>
-                <button type="button" role="menuitem" on:click=move |_| { menu.close(); library.go(Route::Game(page_id.clone())); }>
-                    <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
-                </button>
+                // Not offered on the page itself.
+                {(library.route.get_untracked() != Route::Game(page_id.clone())).then(|| view! {
+                    <button type="button" role="menuitem" on:click=move |_| { menu.close(); library.go(Route::Game(page_id.clone())); }>
+                        <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
+                    </button>
+                })}
                 <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
                     <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
                     {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}

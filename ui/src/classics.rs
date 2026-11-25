@@ -160,15 +160,16 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry], g
     use crate::tiles::Tone;
     let console = console_of(rom);
     let how = resolve(rom, players, games, recomps);
+    // The same words everywhere: "nativo" is the recomp, "original" the copy in its emulator.
     let badge = match (&how.emulator, &how.recomp_game, &how.recomp) {
-        (None, Some(_), _) => Some((tr!("Joga pelo recomp").to_string(), Tone::Info)),
+        (Some(_), Some(_), _) => Some((tr!("Nativo e original").to_string(), Tone::Info)),
+        (None, Some(_), _) => Some((tr!("Joga nativo").to_string(), Tone::Info)),
+        (Some(_), None, Some(_)) => Some((tr!("Tem versão nativa").to_string(), Tone::Info)),
+        (Some(_), None, None) => None,
         (None, None, _) => {
             let core = player_for(players, console).is_some_and(|p| p.name.is_some());
-            Some((if core { tr!("Falta o núcleo") } else { tr!("Sem emulador") }.to_string(), Tone::Warn))
+            Some((if core { tr!("Falta o núcleo") } else { tr!("Ainda não abre aqui") }.to_string(), Tone::Warn))
         }
-        (Some(_), Some(_), _) => Some((tr!("Recomp instalado").to_string(), Tone::Info)),
-        (Some(_), None, Some(_)) => Some((tr!("Tem recomp").to_string(), Tone::Info)),
-        (Some(_), None, None) => None,
     };
     let sub = match (&how.emulator, &how.recomp_game) {
         (None, Some(g)) => format!("{} · {}", console_name(console), g.name),
@@ -495,6 +496,30 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let blocked = (!how.playable()).then(|| {
             let core = player_for(&players, console).is_some_and(|p| p.name.is_some());
             let catalog_recomp = how.recomp.clone();
+            // Installed recomps of the same series ("Monster Hunter" for Generations): one of them may be what the player wants.
+            let series = title.split([':', '-']).next().unwrap_or(&title).split_whitespace().take(2).collect::<Vec<_>>().join(" ").to_lowercase();
+            // By the recomp's name or by its game's ("MHGU Recomp" is Monster Hunter Generations Ultimate).
+            let game_of = |g: &cerberus_shared::Game| match &g.source {
+                cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).map(|e| e.game.clone()).unwrap_or_default(),
+                _ => String::new(),
+            };
+            let related: Vec<(cerberus_shared::Game, String)> = games.iter()
+                .filter(|g| matches!(g.source, cerberus_shared::Source::Recomp { .. }) && !series.is_empty()
+                    && (g.name.to_lowercase().contains(&series) || game_of(g).to_lowercase().contains(&series)))
+                .map(|g| (g.clone(), { let n = game_of(g); if n.is_empty() { g.name.clone() } else { n } }))
+                .collect();
+            let related_view = (!related.is_empty()).then(|| {
+                let names = related.iter().map(|(_, n)| n.clone()).collect::<Vec<_>>().join(", ");
+                let related: Vec<cerberus_shared::Game> = related.into_iter().map(|(g, _)| g).collect();
+                let buttons = related.into_iter().map(|g| {
+                    let id = g.id.clone();
+                    view! { <button type="button" class="btn sm main" on:click=move |_| library.go(Route::Game(id.clone()))>{tr!("Abrir {}", g.name)}</button> }
+                }).collect_view();
+                view! {
+                    <p class="muted small">{tr!("Você tem {} instalado: é outro jogo da mesma série, já nativo no PC.", names)}</p>
+                    <div class="row">{buttons}</div>
+                }
+            });
             // The series name finds its other games too ("Monster Hunter" for Generations).
             let search_for = title.split([':', '-']).next().unwrap_or(&title).split_whitespace().take(2).collect::<Vec<_>>().join(" ");
             let console_id = console.to_string();
@@ -502,6 +527,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 <section class="card blocked" role="status">
                     <h3>{tr!("Ainda não dá para jogar aqui")}</h3>
                     <p>{how.problem.clone()}</p>
+                    {related_view}
                     <div class="row">
                         {catalog_recomp.map(|e| {
                             let rid = e.id.clone();
@@ -711,10 +737,10 @@ pub fn OriginalTab(rom: RomView) -> impl IntoView {
                             }}</p>
                         </div>
                         <div class="row">
-                            {emulator.is_some().then(|| view! {
-                                <button type="button" class="btn sm" on:click=move |_| crate::settings_page::open_console(library, console_pick.clone())>{tr!("Trocar o emulador")}</button>
-                            })}
                             {play}
+                            {emulator.is_some().then(|| view! {
+                                <button type="button" class="link" on:click=move |_| crate::settings_page::open_console(library, console_pick.clone())>{tr!("Trocar o emulador")}</button>
+                            })}
                         </div>
                     </div>
                 </section>

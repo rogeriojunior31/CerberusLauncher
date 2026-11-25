@@ -269,8 +269,17 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
             let store = feature.steam_app.map(|app| LocalResource::new(move || async move { crate::api::steam_details(app).await.ok().map(|d| d.short) }));
             let fixed_about = feature.about.clone();
             let about = move || {
-                let text = store.and_then(|s| s.get().flatten()).unwrap_or_else(|| fixed_about.clone());
-                (!text.is_empty()).then(|| view! { <p class="sl-about">{text}</p> })
+                // The Steam store answers in the player's language; the catalog's blurb is the developer's English.
+                let (text, english) = match store.and_then(|s| s.get().flatten()) {
+                    Some(t) => (t, false),
+                    None => (fixed_about.clone(), cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt),
+                };
+                (!text.is_empty()).then(|| view! {
+                    <p class="sl-about" lang=english.then_some("en")>
+                        {text}
+                        {english.then(|| view! { <span class="lang-note">{tr!("em inglês, como o desenvolvedor escreveu")}</span> })}
+                    </p>
+                })
             };
             let facts = {
                 let why = (!feature.kicker.is_empty()).then(|| view! { <span class="sl-why">{feature.kicker.clone()}</span> });

@@ -420,12 +420,7 @@ pub fn DiscoverPage() -> impl IntoView {
                             on:input=move |e| search.set(event_target_value(&e))
                         />
                     </label>
-                    <div class="segs" role="radiogroup" aria-label=tr!("Mostrar por")>
-                        <button type="button" class="seg" role="radio" class:on=move || !by_game.get() aria-checked=move || (!by_game.get()).to_string()
-                            on:click=move |_| { by_game.set(false); save_by_game(false); }>{tr!("Recomps")}</button>
-                        <button type="button" class="seg" role="radio" class:on=move || by_game.get() aria-checked=move || by_game.get().to_string()
-                            on:click=move |_| { by_game.set(true); save_by_game(true); }>{tr!("Jogos")}</button>
-                    </div>
+
                     <select
                         class="select"
                         aria-label=tr!("Ordenar")
@@ -456,6 +451,14 @@ pub fn DiscoverPage() -> impl IntoView {
                     </div>
                 </div>
                 <div class="lib-filters disc-filters" class:hidden=move || !filters_open.get()>
+                <div class="disc-by"><span class="muted small">{tr!("Mostrar por")}</span>
+                    <div class="segs" role="radiogroup" aria-label=tr!("Mostrar por")>
+                        <button type="button" class="seg" role="radio" class:on=move || !by_game.get() aria-checked=move || (!by_game.get()).to_string()
+                            on:click=move |_| { by_game.set(false); save_by_game(false); }>{tr!("Recomps")}</button>
+                        <button type="button" class="seg" role="radio" class:on=move || by_game.get() aria-checked=move || by_game.get().to_string()
+                            on:click=move |_| { by_game.set(true); save_by_game(true); }>{tr!("Jogos")}</button>
+                    </div>
+                </div>
                 <div class="catalog-platform">
                     <label for="catalog-console">{tr!("Plataforma")}</label>
                     <select id="catalog-console" class="select" prop:value=move || console.get()
