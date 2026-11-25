@@ -790,7 +790,7 @@ fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'stati
 
 fn standalone_status_now(data: &Path) -> cerberus_shared::StandaloneStatus {
     let chosen = settings::load(data);
-    let consoles = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu"];
+    let consoles = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu", "xbox", "x360"];
     let retroarch = emulation::retroarch(data, chosen.retroarch.as_deref()).is_some();
     let play_with = consoles
         .iter()

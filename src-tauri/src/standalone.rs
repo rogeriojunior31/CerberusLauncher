@@ -93,6 +93,27 @@ pub const ALL: &[Emulator] = &[
         args: |rom| vec!["-f".into(), "-g".into(), path(rom)],
         installed_in: &["Cemu"],
     },
+    // Xbox 360: the community's current builds of Xenia. No BIOS needed.
+    Emulator {
+        id: "xenia",
+        name: "Xenia Canary",
+        consoles: &["x360"],
+        exe: &["xenia_canary.exe", "xenia.exe"],
+        source: Source::GitHub { repo: "xenia-canary/xenia-canary-releases", tag: None, asset: |n| n.starts_with("xenia_canary_windows") && n.ends_with(".zip") },
+        args: |rom| vec!["--fullscreen=true".into(), path(rom)],
+        installed_in: &["Xenia", "Xenia Canary"],
+    },
+    // The original Xbox. It asks for the player's own console files (BIOS, MCPX
+    // and hard disk image) on first start; Cerberus never downloads them.
+    Emulator {
+        id: "xemu",
+        name: "xemu",
+        consoles: &["xbox"],
+        exe: &["xemu.exe"],
+        source: Source::GitHub { repo: "xemu-project/xemu", tag: None, asset: |n| n.starts_with("xemu-") && n.ends_with("-windows-x86_64.zip") && !n.contains("-dbg-") },
+        args: |rom| vec!["-full-screen".into(), "-dvd_path".into(), path(rom)],
+        installed_in: &["xemu"],
+    },
 ];
 
 pub fn find(id: &str) -> Option<&'static Emulator> {

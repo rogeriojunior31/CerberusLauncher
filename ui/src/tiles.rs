@@ -108,6 +108,8 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     let running = library.running.with_untracked(|all| all.contains(&game.id));
     let sub = match game.last_played {
         _ if running => tr!("Jogando agora").to_string(),
+        // Not on this PC: said plainly, where it comes from (installs from there).
+        _ if game.next_step == cerberus_shared::NextStep::Install => tr!("{} · não instalado", source_name(&game.source)),
         Some(when) => tr!("Jogado {}", format::ago(when)),
         None => source_name(&game.source).to_string(),
     };

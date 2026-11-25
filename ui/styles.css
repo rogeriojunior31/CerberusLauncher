@@ -2237,3 +2237,5 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 /* Saves › Clássicos: one card per emulator */
 .sv-emu { display: grid; gap: 14px; }
 .sv-emu-note { margin: -4px 0 12px; }
+/* Filtros: a label before a row of chips */
+.chips-h { align-self: center; margin-right: 4px; font-size: 12.5px; font-weight: 700; color: var(--dim); }

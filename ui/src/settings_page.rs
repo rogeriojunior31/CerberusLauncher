@@ -1038,7 +1038,7 @@ fn console_name(id: &str) -> &'static str {
 
 
 /// The consoles that come on discs, each opened by RetroArch or a standalone emulator.
-const DISC_CONSOLES: [&str; 7] = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu"];
+const DISC_CONSOLES: [&str; 9] = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu", "xbox", "x360"];
 
 /// How a console stands now.
 #[derive(Clone, Copy, PartialEq)]
@@ -1274,7 +1274,8 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                 choices.push(("retroarch".into(), "RetroArch".into(), has_ra));
             }
             choices.extend(s.emulators.iter().filter(|e| e.consoles.iter().any(|c| *c == console)).map(|e| (e.id.clone(), e.name.clone(), e.exe.is_some())));
-            let only_one = choices.len() == 1;
+            // One choice and it's RetroArch: say so. One dedicated emulator: nothing to explain.
+            let only_one = choices.len() == 1 && choices.first().is_some_and(|(id, _, _)| id.as_str() == "retroarch");
             let cards = choices.into_iter().map(|(id, name, installed)| {
                 let chosen = id == who;
                 let c = console.clone();
