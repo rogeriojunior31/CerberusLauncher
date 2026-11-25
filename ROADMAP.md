@@ -892,7 +892,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Fechar o app (janela, bandeja, atualização, fim do jogo) com download, instalação, backup ou jogo de loja aberto [J F4, RC F7, P F19, Fu F10] — feito em 25/11/2026: `background::busy` (jogo, clássico, jogo de loja, download/instalação); fechar a janela esconde e fecha sozinho quando acaba (com aviso se for só download); Sair na bandeja pergunta; atualizar espera. Não exercitado no app (fecharia o app em uso).
 - [ ] Cerberus fechado no meio da partida; próximo Jogar restaura saves sob o jogo aberto [P F6]
 - [ ] Cópia/extração pela metade conta como pronta; instalação nova parcial não é notada [RP F3, RC F11]
-- [ ] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6]
+- [x] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6] — corrigido em 25/11/2026: a biblioteca é gravada antes de apagar a antiga; se não gravar, a mudança é desfeita. Testado com a biblioteca bloqueada.
 - [ ] Backup do DLSS interrompido vira o "original"; mod atualizado apaga o antigo antes do novo [RP F9, RP F10]
 - [ ] Preparação órfã, duas em paralelo [RP F12]; restos `.part`/`.tmp` [P F23]
 - [ ] Importar dados desfeito pelo cache na memória [Fu F5, P F5, P F17]

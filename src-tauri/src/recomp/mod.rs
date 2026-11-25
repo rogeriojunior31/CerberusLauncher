@@ -1473,7 +1473,7 @@ fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
     dir.with_file_name(format!("{REMOVING}{recomp_id}-{stamp}"))
 }
 
-const REMOVING: &str = ".cerberus-removing-";
+pub(super) const REMOVING: &str = ".cerberus-removing-";
 
 /// Half-downloaded files nobody came back for in two weeks (a pause before a
 /// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
