@@ -1082,6 +1082,7 @@
   "Não foi possível ler {}: o arquivo ficou como estava. Feche outros programas que o usem e tente de novo.": "Couldn't read {}: the file was left as it was. Close other programs using it and try again.",
   "Não foi possível limpar a atualização anterior em {}.": "Couldn't clean the previous update at {}.",
   "Não foi possível limpar a pasta temporária: {}": "Couldn't clean the temporary folder: {}",
+  "Não foi possível mover o jogo: {}. Ele continua onde estava.": "Couldn't move the game: {}. It stays where it was.",
   "Não foi possível preparar a lista de discos: {}": "Couldn't prepare the disc list: {}",
   "Não foi possível preparar {}: {}": "Couldn't prepare {}: {}",
   "Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.": "Couldn't reinstall {}: {}. The previous installation is unchanged.",
