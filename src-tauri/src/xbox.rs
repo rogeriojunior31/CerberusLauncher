@@ -197,3 +197,59 @@ mod tests {
         assert_eq!(gaming_root(b"nope"), None);
     }
 }
+
+
+/// Steam's art for the Xbox app's games (a tall cover and a backdrop, like every
+/// other game in the library), found once by exact name and kept on disk.
+/// `None` in the file: Steam doesn't know the game; not asked again.
+pub mod art {
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use cerberus_shared::Game;
+
+    #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+    pub struct Found {
+        pub cover: Option<String>,
+        pub hero: Option<String>,
+    }
+
+    fn file(data: &Path) -> PathBuf {
+        data.join("xbox-art.json")
+    }
+
+    pub fn load(data: &Path) -> HashMap<String, Option<Found>> {
+        fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    pub fn save(data: &Path, all: &HashMap<String, Option<Found>>) {
+        if let Ok(text) = serde_json::to_string(all) {
+            let temp = file(data).with_extension("json.tmp");
+            if fs::write(&temp, text).is_ok() {
+                let _ = fs::rename(temp, file(data));
+            }
+        }
+    }
+
+    /// Puts the art already found on these games; returns the ones never asked about.
+    pub fn apply(data: &Path, games: &mut [Game]) -> Vec<(String, String)> {
+        let known = load(data);
+        let mut ask = Vec::new();
+        for game in games.iter_mut().filter(|g| g.id.starts_with("xbox:")) {
+            match known.get(&game.id) {
+                Some(Some(found)) => {
+                    // The tall cover over the square logo; the logo stays as the fallback.
+                    if found.cover.is_some() {
+                        game.cover_url = found.cover.clone();
+                        game.cover_path = None;
+                    }
+                    game.hero_url = found.hero.clone().or(game.hero_url.take());
+                }
+                Some(None) => {}
+                None => ask.push((game.id.clone(), game.name.clone())),
+            }
+        }
+        ask
+    }
+}

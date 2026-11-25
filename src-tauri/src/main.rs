@@ -1562,6 +1562,7 @@ async fn list_games(
         found
     });
     games.extend(scan.await.unwrap_or_default());
+    xbox_art(&app, &http, &mut games);
     owned_not_installed(&app, &http, &mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
     let mut missing = Vec::new();
@@ -1592,6 +1593,39 @@ async fn list_games(
     games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
+}
+
+/// The Xbox app's games get Steam's cover and backdrop: the ones found before
+/// at once, the rest looked up in the background (exact name only), and the
+/// library is listed again when something was found.
+fn xbox_art(app: &AppHandle, http: &reqwest::Client, games: &mut [Game]) {
+    let data = app.state::<DataDir>().0.clone();
+    let ask = xbox::art::apply(&data, games);
+    if ask.is_empty() {
+        return;
+    }
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (app, http) = (app.clone(), http.clone());
+    tauri::async_runtime::spawn(async move {
+        let mut known = xbox::art::load(&data);
+        let mut any = false;
+        for (id, name) in ask {
+            // Trademark signs and "for Windows" aren't in Steam's names.
+            let plain: String = name.chars().filter(|c| !matches!(c, '™' | '®' | '©')).collect();
+            let candidates = vec![plain.trim().to_string(), plain.replace(" for Windows", "").trim().to_string()];
+            let found = steam_store::identify(&http, &candidates).await;
+            any |= found.is_some();
+            known.insert(id, found.map(|f| xbox::art::Found { cover: f.art.cover, hero: f.art.hero }));
+        }
+        xbox::art::save(&data, &known);
+        ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        if any {
+            let _ = app.emit("catalog-changed", ());
+        }
+    });
 }
 
 /// With the Steam Web API on: the account's games this PC hasn't installed, from
