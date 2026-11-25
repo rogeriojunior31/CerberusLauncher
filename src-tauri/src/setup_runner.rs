@@ -27,18 +27,23 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
     } else {
         Command::new(installer)
     };
-    let mut child = command
-        .current_dir(installer.parent().unwrap_or(Path::new(".")))
-        .spawn()
-        .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))?;
+    let dir = installer.parent().unwrap_or(Path::new(".")).to_path_buf();
+    // An installer that asks for administrator rights goes through Windows'
+    // permission prompt; its end is waited for all the same.
+    let wait: Box<dyn FnOnce() -> Result<Option<i32>, String> + Send> = match command.current_dir(&dir).spawn() {
+        Ok(mut child) => Box::new(move || child.wait().map(|s| s.code()).map_err(|e| tr!("Falha ao aguardar o instalador: {}", e))),
+        Err(e) if crate::elevated::needs_admin(&e) => {
+            let installer = installer.to_path_buf();
+            Box::new(move || crate::elevated::run_and_wait(&installer, "", &dir).map_err(crate::elevated::failure))
+        }
+        Err(e) => return Err(tr!("Não foi possível abrir o instalador: {}", e)),
+    };
     let _ = app.emit("toast", tr!("Instalador de {} aberto. Siga os passos dele; quando ele fechar, o Cerberus procura o jogo.", game.name));
 
     let app = app.clone();
     let game = game.clone();
     std::thread::spawn(move || {
-        let outcome = child.wait()
-            .map_err(|e| tr!("Falha ao aguardar o instalador: {}", e))
-            .and_then(|status| installer_result(status.code(), msi_package));
+        let outcome = wait().and_then(|code| installer_result(code, msi_package));
         crate::trail::note(&app, &game.id, tk!("Instalador"), &outcome.clone().map(|()| tr!("Instalador concluído").to_string()));
         match outcome {
             Ok(()) => finish(&app, &game),

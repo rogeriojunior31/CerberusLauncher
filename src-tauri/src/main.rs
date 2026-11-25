@@ -28,6 +28,7 @@ mod game_notes;
 mod achievements;
 mod language;
 mod dlss;
+mod elevated;
 mod overlay;
 mod in_game;
 mod data_backup;
