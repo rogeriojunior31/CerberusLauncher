@@ -1790,7 +1790,11 @@ fn SteamShortcutsCard() -> impl IntoView {
 #[component]
 fn XboxCard() -> impl IntoView {
     let library = expect_context::<Library>();
-    let settings = LocalResource::new(api::get_settings);
+    // Read again whenever the games are (a sign-in ends by listing them again).
+    let settings = LocalResource::new(move || {
+        library.games.track();
+        api::get_settings()
+    });
     let busy = RwSignal::new(false);
     // The account: read again when the window comes back to the front (the sign-in window closed).
     let focus = window_event_listener(leptos::ev::focus, move |_| {
@@ -1883,7 +1887,10 @@ fn EpicCard() -> impl IntoView {
     let status = LocalResource::new(api::epic_status);
     // The account: read again when the window comes back to the front (the
     // sign-in window just closed).
-    let account = LocalResource::new(api::get_settings);
+    let account = LocalResource::new(move || {
+        library.games.track();
+        api::get_settings()
+    });
     let focus = window_event_listener(leptos::ev::focus, move |_| {
         account.refetch();
         library.games.refetch();

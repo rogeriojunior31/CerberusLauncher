@@ -1677,10 +1677,29 @@ async fn epic_login(app: AppHandle) -> Result<(), String> {
         }
     };
     let on_load = finish.clone();
+    let popups = app.clone();
     tauri::WebviewWindowBuilder::new(&app, "epic-login", tauri::WebviewUrl::External(url))
         .title(tr!("Entrar na Epic Games"))
         .inner_size(800.0, 860.0)
         .incognito(true)
+        // "Entrar com Xbox/Google/Apple…" open the provider's page in a pop-up:
+        // it opens, in the same private session, and hands the login back to Epic's page.
+        .on_new_window(move |target, features| {
+            static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            if target.scheme() != "https" {
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+            let label = format!("epic-login-popup-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+            let opened = tauri::WebviewWindowBuilder::new(&popups, label, tauri::WebviewUrl::External("about:blank".parse().expect("a valid address")))
+                .window_features(features)
+                .title(tr!("Entrar na Epic Games"))
+                .inner_size(560.0, 720.0)
+                .build();
+            match opened {
+                Ok(window) => tauri::webview::NewWindowResponse::Create { window },
+                Err(_) => tauri::webview::NewWindowResponse::Deny,
+            }
+        })
         .on_navigation(move |at| {
             finish(at);
             // Only Epic's secure pages open here.
@@ -1720,8 +1739,11 @@ async fn finish_epic_login(app: AppHandle) {
         Ok::<String, String>(chosen.epic_user.unwrap_or_default())
     }
     .await;
-    if let Some(window) = app.get_webview_window("epic-login") {
-        let _ = window.close();
+    // The sign-in window and any provider pop-up it opened.
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("epic-login") {
+            let _ = window.close();
+        }
     }
     match result {
         Ok(name) => {
