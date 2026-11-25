@@ -51,7 +51,7 @@ Comparação com o checkout local do Hydra em `6b7ad7bf2`.
 
 | Área | Comportamento observado no Hydra | Entrega no Cerberus |
 | --- | --- | --- |
-| Fontes | O cliente cadastra a URL via HydraApi e persiste a fonte. As publicações têm título, tamanho e data. [Cadastro](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/events/download-sources/add-download-source.ts) e [tipos](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/types/index.ts) | Implementado. Configurações importa os metadados por HTTPS, guarda a última cópia válida e permite pesquisar por fonte. Cada fonte mostra a última sincronização e eventuais erros. |
+| Fontes | O cliente cadastra a URL via HydraApi e persiste a fonte. As publicações têm título, tamanho e data. [Cadastro](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/events/download-sources/add-download-source.ts) e [tipos](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/types/index.ts) | Implementado. Configurações importa os metadados por HTTPS, guarda a última cópia válida e permite pesquisar por fonte. Links HTTP(S) diretos entram no Descobrir e instalam quando o jogador pedir; magnet e torrent ficam só para consulta. |
 | Sessões | O observador compara caminhos de executáveis e grava incrementos de tempo durante a execução. [Observador](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/process-watcher.ts) | O Cerberus grava o tempo a cada 15 segundos e ao sair normalmente. No Windows, Gerenciar permite escolher o executável acompanhado. O teste usa processos reais em pastas distintas e inclui um segundo executável de mesmo nome. Falta comparar a próxima partida real do ReStreet com o relógio. |
 | Disco e downloads | O Hydra compara os bytes restantes com o espaço disponível no volume de destino e considera dados reaproveitáveis. [Verificação de espaço](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download/disk-space.ts) | Configurações mostra o espaço dos dois destinos. O download verifica os bytes restantes quando o tamanho é conhecido. ZIP, 7z e executáveis verificam espaço antes da extração ou cópia. O teste retomou um ZIP em C: e instalou em D:. A previsão do espaço descompactado para tar.gz segue pendente. |
 | Novidades por jogo | O Hydra cruza a identidade do jogo com mudanças das fontes e mantém a referência anterior se uma consulta falhar. [Verificador de fontes](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download-sources-checker.ts) | Pendente. Vincular publicação e jogo com confirmação quando o título for ambíguo. Só então mostrar novidades na página do jogo. |
@@ -255,7 +255,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Descobrir com busca, filtro por console, "Tenho o jogo", ordenação e paginação.
 - [x] Pastas de ROMs: acha os jogos (N64 pelo cabeçalho, o resto pelo nome) e mostra quais têm recomp.
 - [x] Fontes de catálogo em JSON (como o Hydra), só com jogos de repositórios no GitHub,
-      baixados das releases oficiais. Listas Hydra podem ser consultadas em Configurações por título, tamanho e data.
+      baixados das releases oficiais. Listas Hydra podem ser consultadas em Configurações; links HTTP(S) diretos também entram no Descobrir e instalam sob demanda.
 - [x] Recomps com instalador próprio: `single-exe` instala direto; `installer` roda no primeiro
       "Jogar" e depois o Cerberus acha o jogo (pasta própria, depois "Aplicativos" do Windows),
       ou pergunta onde ficou.
@@ -868,4 +868,4 @@ têm etapas pequenas com critério de aceite e testes; o que não foi confirmado
 ## Fora de vez
 
 - Ler arquivos de conquistas de emuladores de Steam usados em jogos piratas (CODEX, RUNE, Goldberg, EMPRESS etc.),
-  fontes de download, torrent, debrid e hosters, e instalar PKG de PS4 baixado. O Hydra tem; o Cerberus nunca terá.
+  torrent, debrid, resolvedores de hosters e instalação de PKG de PS4 baixado. O Hydra tem; o Cerberus não terá.

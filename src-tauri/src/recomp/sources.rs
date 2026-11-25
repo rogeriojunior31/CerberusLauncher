@@ -1,14 +1,7 @@
-//! Catalog sources the player adds by URL, like Hydra's: a JSON list whose games
-//! show up in Discover beside the recomps.
-//!
-//! Unlike Hydra's download sources, an entry here is a project on GitHub, and is
-//! installed from its developer's own releases, checked against GitHub's
-//! checksum, the same way recomps are. Entries pointing anywhere else (magnet
-//! links, torrents, file hosts) are left out: Cerberus installs what developers
-//! publish themselves, never copies of games from third parties.
-//!
-//! Project sources use the Cerberus or RecompLauncher formats. Hydra lists contribute
-//! searchable publication metadata in Settings. Only project sources feed the installer.
+//! Catalog sources the player adds by URL: projects in the Cerberus or
+//! RecompLauncher format, and Hydra lists with direct HTTP(S) downloads.
+//! All of them show up in Discover; Hydra's magnet and torrent links remain
+//! available as metadata in Settings, but are not installed.
 
 use cerberus_shared::tr;
 use std::fs;
@@ -24,7 +17,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use super::catalog::{self, CatalogEntry};
+use super::catalog::{self, CatalogEntry, DirectFile};
 
 /// One game in our source format. Only `id`, `name` and `repo` are required.
 #[derive(Deserialize, Default)]
@@ -72,7 +65,7 @@ fn plain_id(id: &str) -> bool {
 
 pub enum Entries {
     Projects(Vec<CatalogEntry>),
-    Hydra(Vec<SourceListing>),
+    Hydra { listings: Vec<SourceListing>, games: Vec<CatalogEntry> },
 }
 
 pub struct CatalogSource {
@@ -83,7 +76,7 @@ pub struct CatalogSource {
 
 impl CatalogSource {
     pub fn listings(&self, query: &str, offset: usize) -> Result<SourcePage, String> {
-        let Entries::Hydra(entries) = &self.entries else { return Err(tr!("Escolha uma fonte Hydra.").into()) };
+        let Entries::Hydra { listings: entries, .. } = &self.entries else { return Err(tr!("Escolha uma fonte Hydra.").into()) };
         let query = query.trim().to_lowercase();
         let mut items = Vec::new();
         let mut total = 0;
@@ -97,11 +90,77 @@ impl CatalogSource {
     }
 }
 
+/// Which hoster a link points at, when it is one we can resolve. GoFile is left
+/// out on purpose: its API needs a token the Hydra gets by running JS.
+fn hoster_of(url: &reqwest::Url) -> Option<&'static str> {
+    let host = url.host_str().map(|h| h.trim_end_matches('.').to_ascii_lowercase())?;
+    if host == "pixeldrain.com" || host.ends_with(".pixeldrain.com") {
+        return Some("pixeldrain");
+    }
+    if host == "mediafire.com" || host.ends_with(".mediafire.com") {
+        return Some("mediafire");
+    }
+    if host == "mega.nz" || host == "mega.co.nz" {
+        return Some("mega");
+    }
+    None
+}
+
+fn hydra_game(row: &Value, source: &str) -> Option<CatalogEntry> {
+    let field = |key: &str| row.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let title = field("title")?;
+    for url in row.get("uris")?.as_array()?.iter().filter_map(Value::as_str).map(str::trim) {
+        let Ok(parsed) = reqwest::Url::parse(url) else { continue };
+        if !matches!(parsed.scheme(), "http" | "https") {
+            continue;
+        }
+        // A hoster link carries no usable name in its path; the resolver fills it.
+        let (name, hoster) = if let Some(hoster) = hoster_of(&parsed) {
+            (String::new(), hoster.to_owned())
+        } else {
+            let last = parsed.path_segments().and_then(|mut parts| parts.next_back()).unwrap_or_default();
+            if last.is_empty() || last == "." || last == ".." || (super::assets::kind(last).is_none() && !super::assets::is_program(last)) {
+                continue;
+            }
+            (last.to_owned(), String::new())
+        };
+        // A MEGA link without the key in its fragment cannot be decrypted.
+        if hoster == "mega" && parsed.fragment().unwrap_or_default().is_empty() {
+            continue;
+        }
+        let id = format!("hydra-{}", &format!("{:x}", Sha256::digest(format!("{title}\0{url}")))[..24]);
+        let date = field("uploadDate").unwrap_or_default().to_owned();
+        let files = std::collections::HashMap::from([("windows".into(), DirectFile { name: name.clone(), sha256: String::new(), url: url.to_owned(), hoster: hoster.clone() })]);
+        let kind = if hoster.is_empty() { Some(if super::assets::looks_like_installer(&name) { "installer" } else if super::assets::is_program(&name) { "single-exe" } else { "portable" }) } else { None };
+        return Some(CatalogEntry {
+            title: id.clone(),
+            id,
+            name: title.to_owned(),
+            game: title.to_owned(),
+            console: "PC".into(),
+            origin: "pc".into(),
+            author: if source.is_empty() { "Hydra".into() } else { source.to_owned() },
+            from_source: true,
+            size_text: field("fileSize").unwrap_or_default().to_owned(),
+            released: date.clone(),
+            added: date.clone(),
+            tag: Some(if date.is_empty() { "1".into() } else { date }),
+            files,
+            systems: vec!["windows".into()],
+            kind: kind.unwrap_or("portable").into(),
+            ..CatalogEntry::default()
+        });
+    }
+    None
+}
+
 fn parse(text: &str) -> Result<CatalogSource, String> {
     let value: Value = serde_json::from_str(text).map_err(|_| tr!("Isso não é um JSON válido.").to_string())?;
     let (name, entries) = if value.get("games").is_none() && value.get("apps").is_none()
         && let Some(downloads) = value.get("downloads").and_then(Value::as_array) {
+        let name = value.get("name").and_then(Value::as_str).unwrap_or("").to_owned();
         let mut items = Vec::new();
+        let mut games = Vec::new();
         for row in downloads {
             let field = |key: &str| row.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
             if let Some(title) = field("title") {
@@ -110,11 +169,11 @@ fn parse(text: &str) -> Result<CatalogSource, String> {
                     file_size: field("fileSize").map(str::to_owned),
                     upload_date: field("uploadDate").map(str::to_owned),
                 });
+                games.extend(hydra_game(row, &name));
             }
         }
         if items.is_empty() && !downloads.is_empty() { return Err(tr!("A fonte Hydra não contém títulos legíveis.").into()); }
-        let name = value.get("name").and_then(Value::as_str).unwrap_or("").to_owned();
-        (name, Entries::Hydra(items))
+        (name, Entries::Hydra { listings: items, games })
     } else {
         let (name, projects) = parse_projects(text, value)?;
         (name, Entries::Projects(projects))
@@ -124,7 +183,10 @@ fn parse(text: &str) -> Result<CatalogSource, String> {
 
 fn parse_projects(text: &str, value: Value) -> Result<(String, Vec<CatalogEntry>), String> {
     if value.get("apps").is_some() {
-        let list = catalog::from_recomplauncher(text)?;
+        let mut list = catalog::from_recomplauncher(text)?;
+        for entry in &mut list {
+            entry.from_source = true;
+        }
         return Ok((tr!("Catálogo no formato do RecompLauncher").into(), list));
     }
     let source: SourceFile = serde_json::from_value(value).map_err(|_| tr!("Formato desconhecido: esperava {\"name\", \"games\": [...]}.").to_string())?;
@@ -144,6 +206,7 @@ fn parse_projects(text: &str, value: Value) -> Result<(String, Vec<CatalogEntry>
             origin,
             author: game.repo.split('/').next().unwrap_or_default().to_string(),
             repo: game.repo,
+            from_source: true,
             about: game.about,
             icon: game.icon,
             cover: game.cover,
@@ -196,14 +259,7 @@ fn store(cache_dir: &Path, url: &str, text: &str) -> Result<CatalogSource, Strin
     let parent = file.parent().unwrap_or(cache_dir);
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
-    match &parsed.entries {
-        Entries::Projects(_) => temp.write_all(text.as_bytes()).map_err(|e| e.to_string())?,
-        Entries::Hydra(items) => {
-            #[derive(serde::Serialize)]
-            struct Metadata<'a> { name: &'a str, downloads: &'a [SourceListing] }
-            serde_json::to_writer(&mut temp, &Metadata { name: &parsed.name, downloads: items }).map_err(|e| e.to_string())?;
-        }
-    }
+    temp.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
     temp.persist(&file).map_err(|e| tr!("Falha ao guardar a fonte: {}", e))?;
     parsed.synced_at = modified(&file);
     Ok(parsed)
@@ -216,7 +272,13 @@ fn modified(path: &Path) -> Option<u64> {
 /// The copy on disk of a source, for start and offline.
 pub fn load_copy(cache_dir: &Path, url: &str) -> Option<CatalogSource> {
     let file = cache_file(cache_dir, url);
-    let mut source = parse(&fs::read_to_string(&file).ok()?).ok()?;
+    let text = fs::read_to_string(&file).ok()?;
+    // Caches from before Hydra direct links dropped their `uris`: read them as
+    // missing so the next check fetches the full list again and the links install.
+    if text.contains("\"downloads\"") && !text.contains("\"uris\"") {
+        return None;
+    }
+    let mut source = parse(&text).ok()?;
     source.synced_at = modified(&file);
     Some(source)
 }
@@ -269,13 +331,19 @@ mod tests {
     fn hydra_metadata_survives_an_invalid_refresh_and_reopens_offline() {
         let cache = tempfile::tempdir().unwrap();
         let url = "https://example.org/list.json";
-        let text = r#"{"name":"Homebrew","downloads":[{"title":" Sky Runner ","uris":["ignored"],"uploadDate":"2026-11-18","fileSize":"10 MB"},{"title":"Sky II"},{"fileSize":"12 GB"}]}"#;
+        let text = r#"{"name":"Homebrew","downloads":[{"title":" Sky Runner ","uris":["magnet:?xt=urn:btih:abc","https://cdn.example/Sky.zip"],"uploadDate":"2026-11-18","fileSize":"10 MB"},{"title":"Sky II"},{"fileSize":"12 GB"}]}"#;
         store(cache.path(), url, text).unwrap();
-        assert!(!fs::read_to_string(cache_file(cache.path(), url)).unwrap().contains("uris"));
+        assert!(fs::read_to_string(cache_file(cache.path(), url)).unwrap().contains("https://cdn.example/Sky.zip"));
         assert!(store(cache.path(), url, r#"{"downloads":[{}]}"#).is_err());
         let source = load_copy(cache.path(), url).unwrap();
         assert!(source.synced_at.is_some());
         assert_eq!(source.name, "Homebrew");
+        let Entries::Hydra { games, .. } = &source.entries else { panic!("expected Hydra") };
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].name, "Sky Runner");
+        assert_eq!(games[0].files["windows"].url, "https://cdn.example/Sky.zip");
+        assert_eq!(games[0].files["windows"].hoster, "");
+        assert_eq!(games[0].kind, "portable");
         let page = source.listings("  SKY ", 0).unwrap();
         assert_eq!(page.total, 2);
         assert_eq!(page.items[0].title, "Sky Runner");
@@ -283,6 +351,52 @@ mod tests {
         assert_eq!(page.items[0].upload_date.as_deref(), Some("2026-11-18"));
         assert!(page.items[1].upload_date.is_none());
         assert!(source.listings("unlisted", 0).unwrap().items.is_empty());
+    }
+
+    #[test]
+    fn only_supported_direct_hydra_downloads_become_catalog_games() {
+        let source = parse(r#"{"name":"List","downloads":[
+            {"title":"ZIP","uris":["https://example.org/a.zip"]},
+            {"title":"Installer","uris":["http://example.org/b-setup.exe"]},
+            {"title":"Portable exe","uris":["https://example.org/Game.exe"]},
+            {"title":"Torrent","uris":["magnet:?xt=urn:btih:abc"]},
+            {"title":"Unsupported","uris":["https://example.org/c.rar"]}
+        ]}"#).unwrap();
+        let Entries::Hydra { listings, games } = source.entries else { panic!("expected Hydra") };
+        assert_eq!(listings.len(), 5, "all entries remain searchable");
+        assert_eq!(games.iter().map(|g| g.name.as_str()).collect::<Vec<_>>(), vec!["ZIP", "Installer", "Portable exe"]);
+        assert_ne!(games[0].id, games[1].id);
+        assert!(games.iter().all(|g| g.repo.is_empty() && g.from_source && g.tag.is_some()));
+        assert_eq!(games[1].kind, "installer");
+        assert_eq!(games[2].kind, "single-exe");
+    }
+
+    #[test]
+    fn old_caches_without_uris_read_as_missing_so_they_refetch() {
+        let cache = tempfile::tempdir().unwrap();
+        let url = "https://example.org/list.json";
+        // The pre-hoster cache shape: listings, but the download links were dropped.
+        let old = r#"{"name":"Old","downloads":[{"title":"Game","fileSize":"10 MB","uploadDate":"2026-11-01"}]}"#;
+        let file = cache_file(cache.path(), url);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, old).unwrap();
+        assert!(load_copy(cache.path(), url).is_none(), "an old cache must be re-fetched");
+    }
+
+    #[test]
+    fn hoster_links_join_the_catalog_with_their_hoster_noted() {
+        let source = parse(r#"{"name":"H","downloads":[
+            {"title":"Pixel","uris":["https://pixeldrain.com/u/abc123"]},
+            {"title":"Fire","uris":["https://www.mediafire.com/file/xyz/game.zip/file"]},
+            {"title":"Mega","uris":["https://mega.nz/file/abcDEF#keykeykey"]},
+            {"title":"Mega no key","uris":["https://mega.nz/file/nokey"]}
+        ]}"#).unwrap();
+        let Entries::Hydra { listings, games } = source.entries else { panic!("expected Hydra") };
+        assert_eq!(listings.len(), 4);
+        assert_eq!(games.len(), 3, "the MEGA link without a key stays reference-only");
+        assert_eq!(games[0].files["windows"].hoster, "pixeldrain");
+        assert_eq!(games[1].files["windows"].hoster, "mediafire");
+        assert_eq!(games[2].files["windows"].hoster, "mega");
     }
 
     #[test]

@@ -37,13 +37,13 @@ Games from these lists show up in **Discover** and install from the repository's
 
 - Only `https://` addresses are accepted.
 - The list must be UTF-8 and at most 64 MiB.
-- Entries with their own download links (`uris`, `magnet`, `url`, `download`) are ignored: **Cerberus doesn't distribute anyone's games**.
+- Entries in project sources with their own download links (`uris`, `magnet`, `url`, `download`) are ignored; those projects install from official releases.
 
 ## Hydra lists
 
-Lists in the Hydra format (with a `downloads` key) can also be added. They're for **browsing only**: **Browse** searches titles and shows the size and date the source declares. Nothing is installed from them. Installing always goes through the catalog of official releases.
+Lists in the Hydra format (with a `downloads` key) can also be added. Entries with direct HTTP(S) links to `.zip`, `.7z`, `.tar.gz`, `.tgz`, `.exe` or `.msi` files appear in **Discover** and install only when the player clicks **Install**. PixelDrain, MediaFire and MEGA (single-file) links are resolved to their file before downloading; MEGA's content is decrypted locally from the key in the link's fragment. Magnet and torrent entries remain available under **Browse**, which searches titles and shows the size and date the source declares. GoFile is not installed from (its API needs a token obtained by running the site's JavaScript).
 
-Each source keeps a local copy, so browsing works offline. **Update** syncs it again.
+Each source keeps its full local copy, so browsing and its Discover entries still work offline. **Update** syncs it again. Hydra links may not provide a checksum; use only sources you trust.
 
 ## See also
 

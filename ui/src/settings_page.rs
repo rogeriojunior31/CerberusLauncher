@@ -1726,7 +1726,7 @@ fn about(s: SettingsView, _busy: RwSignal<bool>, _apply: impl Fn(Task, &'static 
             <div class="set-row">
                 <div>
                     <b>{tr!("Cerberus Launcher {}", s.version)}</b>
-                    <small>{tr!("Código aberto, licença MIT. Os recomps vêm das releases dos próprios desenvolvedores, e o Cerberus nunca baixa arquivos de jogo.")}</small>
+                    <small>{tr!("Código aberto, licença MIT. Recomps vêm das releases dos desenvolvedores; downloads das suas fontes só começam quando você pede.")}</small>
                 </div>
                 <img class="about-logo" src="brand/cerberus-launcher-pixel.svg" alt=tr!("Logo do Cerberus Launcher") />
             </div>
@@ -2230,7 +2230,7 @@ fn Sources(
         let value = url.get_untracked();
         if !busy.get_untracked() && !value.trim().is_empty() { apply_source(value, true); }
     };
-    // Hydra lists are reference only: one folded group under the project sources, said once.
+    // Hydra's direct downloads also feed Discover; the folded group keeps their full metadata here.
     let (hydra, projects): (Vec<SourceView>, Vec<SourceView>) = sources.into_iter().partition(|s| s.hydra);
     let hydra_total: usize = hydra.iter().map(|s| s.games).sum();
     let hydra_count = hydra.len();
@@ -2276,7 +2276,7 @@ fn Sources(
         <div class="set-row sub hydra-group">
             <div>
                 <b>{if hydra_count == 1 { tr!("1 lista do Hydra").to_string() } else { tr!("{} listas do Hydra", hydra_count) }}</b>
-                <small>{tr!("{} publicações, só para consulta: não aparecem no Descobrir nem na Biblioteca, e o Cerberus não baixa nada delas.", format::count(hydra_total as u64))}</small>
+                <small>{tr!("{} publicações; downloads diretos HTTP(S) entram no Descobrir e podem ser instalados. Magnet e torrent ficam só para consulta.", format::count(hydra_total as u64))}</small>
             </div>
             <div class="row">
                 <button type="button" class="btn sm" aria-expanded=move || unfolded.get().to_string()
@@ -2293,7 +2293,7 @@ fn Sources(
             <form class="set-row" on:submit=on_add>
                 <div>
                     <b>{tr!("Adicionar por URL")}</b>
-                    <small>{tr!("Fontes de projetos (no formato do Cerberus ou do RecompLauncher) entram no Descobrir e instalam da página do desenvolvedor. Listas do Hydra ficam só para consulta aqui: títulos, tamanhos e datas.")}</small>
+                    <small>{tr!("Fontes de projetos entram no Descobrir e instalam da página do desenvolvedor. Listas do Hydra com links HTTP(S) também entram no catálogo e instalam quando você pedir; magnet e torrent ficam só para consulta. Use só fontes em que você confia.")}</small>
                 </div>
                 <div class="row">
                     <input class="input" type="url" required aria-label=tr!("URL da fonte") placeholder=tr!("https://.../jogos.json") prop:value=move || url.get() on:input=move |e| url.set(event_target_value(&e)) />

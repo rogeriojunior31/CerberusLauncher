@@ -191,8 +191,7 @@ fn publish_sources(app: &AppHandle) {
     let state = app.state::<Sources>();
     let list = state.list.lock().unwrap_or_else(|p| p.into_inner());
     let projects = list.iter().filter_map(|(_, source)| match &source.as_ref()?.entries {
-        Entries::Projects(games) => Some(games.clone()),
-        Entries::Hydra(_) => None,
+        Entries::Projects(games) | Entries::Hydra { games, .. } => Some(games.clone()),
     }).collect();
     recomp::catalog::set_extras(projects);
     drop(list);
@@ -202,7 +201,7 @@ fn publish_sources(app: &AppHandle) {
 fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
     let (hydra, games) = match source.as_ref().map(|s| &s.entries) {
         Some(Entries::Projects(items)) => (false, items.len()),
-        Some(Entries::Hydra(items)) => (true, items.len()),
+        Some(Entries::Hydra { listings, .. }) => (true, listings.len()),
         None => (false, 0),
     };
     let view = SourceView {

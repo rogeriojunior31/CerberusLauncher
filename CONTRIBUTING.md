@@ -47,7 +47,7 @@ cargo build -p cerberus-ui --target wasm32-unknown-unknown --locked
 
 Things to keep in mind:
 
-- **Cerberus never downloads game files.** Recomps come from their developers' releases; the game data always comes from the player's own copy.
+- **Downloads are the player's choice.** Recomps come from their developers' releases and use the player's own copy. User-added Hydra sources can install direct HTTP(S) links when asked; magnet and torrent links remain for reference only.
 - **Code from RecompLauncher (GPL) is never copied.** Only ideas and facts are used. Hydra is MIT.
 - **User data is precious.** Anything that writes to a game folder, a save or another program's settings needs a backup and a way back.
 - **Texts are written in Brazilian Portuguese,** short and plain, and translated to English. Code and comments are in English.
@@ -132,4 +132,4 @@ Players can add their own JSON lists in **Configurações → Catálogo e fontes
 
 Only `id`, `name` and `repo` are required. Each game installs from the repository's official release, checked against GitHub's checksum.
 
-Entries with their own download links (`uris`, `magnet`, `url`, `download`) are ignored, because Cerberus doesn't distribute other people's games. Hydra lists with a `downloads` key can be added by HTTPS URL. In those lists you can search for a title and see its size and date, but installing always goes through the catalog of official releases.
+Entries in project sources with their own download links (`uris`, `magnet`, `url`, `download`) are ignored. Hydra lists with a `downloads` key can be added by HTTPS URL: entries with direct HTTP(S) links in supported formats join Discover and install when the player asks. Magnet and torrent links remain for reference only.

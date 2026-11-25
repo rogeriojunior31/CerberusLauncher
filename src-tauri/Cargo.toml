@@ -24,6 +24,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 futures-util = "0.3"
 sha2 = "0.10"
 md-5 = "0.10"
+aes = "0.9"
+cipher = "0.5"
 tokio = { version = "1", features = ["fs", "io-util", "time"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust2 = "0.25.0"

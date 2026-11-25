@@ -1044,6 +1044,9 @@ pub struct RecompEntry {
     pub game: String,
     pub console: String,
     pub repo: String,
+    /// Came from a list the player added rather than the recomp catalog.
+    #[serde(default)]
+    pub from_source: bool,
     /// Where the project lives, for the player: "GitHub", "GitLab" or its server's name.
     #[serde(default)]
     pub host: String,

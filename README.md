@@ -31,7 +31,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 - **It follows your achievements.** Steam and RetroAchievements on one page, with awards, rarity and a notice the moment one unlocks.
 
 > [!IMPORTANT]
-> **Cerberus never downloads game files.** Every recomp and every classic needs a copy of the game that you own.
+> Every recomp and every classic needs a copy of the game that you own. Hydra sources you add may offer HTTP(S) downloads, fetched only when you ask. Use only sources you trust.
 
 > [!NOTE]
 > Cerberus speaks **English** and **Brazilian Portuguese**. It follows your Windows language, and you can pick one in **Settings → Appearance → Language**. More languages are on the way.
@@ -136,7 +136,7 @@ Uninstalling from Windows (**Settings → Apps**) removes the program and its sh
 <details>
 <summary><b>Is this legal? Where do the games come from?</b></summary>
 
-Cerberus doesn't host or download any game. Recomps are open-source projects that their developers publish on GitHub, GitLab or Forgejo, and Cerberus installs those official releases. Each recomp needs data from **a copy of the game you own**. Cerberus passes it from your folders to the recomp on your own PC.
+Cerberus doesn't host games. Recomps are open-source projects published by their developers on GitHub, GitLab or Forgejo, and each one needs data from **a copy of the game you own**. Direct downloads from Hydra sources you add are optional and only happen when you click Install.
 </details>
 
 <details>

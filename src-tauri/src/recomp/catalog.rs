@@ -38,6 +38,9 @@ pub struct CatalogEntry {
     /// The console's short id (`n64`, `x360`...).
     pub origin: String,
     pub repo: String,
+    /// Came from a list the player added rather than the recomp catalog.
+    #[serde(skip)]
+    pub from_source: bool,
     /// Where the project lives: empty for GitHub, `gitlab` or `forgejo`.
     pub host: String,
     pub icon: Option<String>,
@@ -182,6 +185,10 @@ pub fn find(id: &str) -> Option<CatalogEntry> {
 pub struct DirectFile {
     pub name: String,
     pub sha256: String,
+    /// A user-added source's direct download. Releases derive their URL instead.
+    pub url: String,
+    /// Which hoster the URL points at (`pixeldrain`, `mediafire`, `mega`), or empty for a plain file.
+    pub hoster: String,
 }
 
 /// The catalog in use: the main list plus the player's sources, put together once per change.
@@ -229,7 +236,7 @@ fn rebuild() {
     let mut list = base.unwrap_or_else(bundled);
     for source in EXTRAS.read().unwrap_or_else(|p| p.into_inner()).iter() {
         for game in source {
-            let known = list.iter().any(|e| e.id == game.id || e.repo.eq_ignore_ascii_case(&game.repo));
+            let known = list.iter().any(|e| e.id == game.id || (!game.repo.is_empty() && e.repo.eq_ignore_ascii_case(&game.repo)));
             if !known {
                 list.push(game.clone());
             }
@@ -706,6 +713,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             name: app.name,
             game: app.game.unwrap_or_default(),
             repo: app.repo,
+            from_source: false,
             host: app.host.unwrap_or_default(),
             icon: some(app.icon),
             parts: app.games.into_iter().filter(|g| super::manifest::valid_part_id(&g.id) && !g.name.trim().is_empty()).collect(),

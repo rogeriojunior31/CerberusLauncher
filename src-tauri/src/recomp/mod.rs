@@ -7,6 +7,7 @@ mod assets;
 pub mod catalog;
 pub(crate) mod cloud;
 mod forge;
+mod hoster;
 mod releases;
 mod install;
 pub mod manifest;
@@ -1060,6 +1061,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         console: entry.console,
         host,
         repo: entry.repo,
+        from_source: entry.from_source,
         icon: entry.icon,
         cover: entry.cover,
         hero: entry.hero,
@@ -1140,7 +1142,20 @@ async fn install_now(
     cancel: &install::Halt,
     report: &(impl Fn(InstallStep) + Send + Sync),
 ) -> Result<Game, String> {
-    let (asset, version) = choose_download(client, folders, entry).await?;
+    let (source, version) = choose_download(client, folders, entry).await?;
+
+    // A source's file name decides how it is installed, since the catalog
+    // cannot say whether a hoster link is an archive, a game or its installer.
+    let mut effective = entry.clone();
+    if let FileSource::Direct { name, .. } = &source {
+        effective.kind = if assets::looks_like_installer(name) {
+            "installer"
+        } else if assets::is_program(name) {
+            "single-exe"
+        } else {
+            "portable"
+        }.into();
+    }
 
     // An update goes where the game already is, even if new installs now go
     // elsewhere, and keeps a copy of the saves first in case the new version
@@ -1168,7 +1183,19 @@ async fn install_now(
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
     // Each recomp in its own folder: two catalogs' "release.zip" never land on one name.
-    let file = match install::download(client, &asset, &folders.downloads.join(&entry.id), cancel, on_bytes).await {
+    let download_dir = folders.downloads.join(&entry.id);
+    let downloaded = match &source {
+        FileSource::Asset(asset) => install::download(client, asset, &download_dir, cancel, on_bytes).await,
+        FileSource::Direct { name, url, headers, mega: Some(mega), .. } => {
+            hoster::download_decrypted(client, mega, url, headers, &download_dir, name, cancel, on_bytes).await
+        }
+        FileSource::Direct { name, size, url, identity, headers, mega: None } => {
+            let asset = Asset { name: name.clone(), size: *size, url: url.clone(), sha256: None };
+            let options = install::DownloadOptions { url: url.clone(), identity: identity.clone(), headers: headers.clone() };
+            install::download_with(client, &asset, &options, &download_dir, cancel, on_bytes).await
+        }
+    };
+    let file = match downloaded {
         Err(e) if e == install::PAUSED => {
             report(InstallStep::Paused { done: got.load(Ordering::Relaxed), total: of.load(Ordering::Relaxed) });
             return Err(e);
@@ -1178,7 +1205,7 @@ async fn install_now(
 
     report(InstallStep::Unpacking);
     let unpack_target = target.clone();
-    let release = entry.clone();
+    let release = effective.clone();
     let previous = installed.clone();
     let prepared = tauri::async_runtime::spawn_blocking(move || {
         let result = prepare_release(&file, &unpack_target, &release, previous.as_ref());
@@ -1187,7 +1214,7 @@ async fn install_now(
     }).await.map_err(|e| e.to_string())?;
     let (program, transaction) = prepared?;
     fetch_repo_manifest(client, entry, &target).await;
-    let result = register(library, entry, installed.as_ref(), &version, &program, &target, entry.kind == "installer");
+    let result = register(library, entry, installed.as_ref(), &version, &program, &target, effective.kind == "installer");
     let game = match transaction {
         Some(tx) => tx.finish(result)?,
         None => result?,
@@ -1241,11 +1268,47 @@ pub fn find_game_program(dir: &Path, hints: &[&str]) -> Option<PathBuf> {
     install::find_program(dir, hints)
 }
 
+/// The file to download: a release picked from the project's server, or a direct
+/// link from a source the player added (a plain file, or a hoster page to resolve).
+enum FileSource {
+    Asset(Asset),
+    Direct {
+        name: String,
+        size: u64,
+        url: String,
+        identity: String,
+        headers: Vec<(String, String)>,
+        mega: Option<hoster::Mega>,
+    },
+}
+
 /// The file to download, and its version. When the catalog has the exact file
 /// with its checksum, it comes straight from the release: no question to the
 /// server's API (GitHub's hourly limit is easy to reach). Otherwise the newest
 /// release is asked for and its file picked by the catalog's pattern.
-async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntry) -> Result<(Asset, String), String> {
+async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntry) -> Result<(FileSource, String), String> {
+    if let Some(file) = entry.files.get(os_key()).filter(|f| !f.url.is_empty()) {
+        let version = entry.tag.clone().unwrap_or_else(|| "1".into());
+        if file.hoster.is_empty() {
+            return Ok((FileSource::Direct {
+                name: file.name.clone(),
+                size: 0,
+                url: file.url.clone(),
+                identity: file.url.clone(),
+                headers: Vec::new(),
+                mega: None,
+            }, version));
+        }
+        let resolved = hoster::resolve(client, &file.hoster, &file.url).await?;
+        return Ok((FileSource::Direct {
+            name: resolved.name,
+            size: resolved.size,
+            url: resolved.url,
+            identity: resolved.identity,
+            headers: resolved.headers,
+            mega: resolved.mega,
+        }, version));
+    }
     if let Some(problem) = problem_with(entry) {
         return Err(problem);
     }
@@ -1256,7 +1319,7 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
     {
         // The size comes with the download itself.
         let asset = Asset { name: file.name.clone(), size: 0, url, sha256: Some(file.sha256.to_lowercase()) };
-        return Ok((asset, tag.clone()));
+        return Ok((FileSource::Asset(asset), tag.clone()));
     }
     let release = releases::latest(client, &folders.cache, &forge, true).await?;
     // GitLab: the catalog's file among the release's links, which may leave out
@@ -1265,14 +1328,14 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
         && let Some(link) = release.assets.iter().find(|a| assets::same_file(&a.name, &file.name))
     {
         let asset = Asset { name: file.name.clone(), sha256: Some(file.sha256.to_lowercase()), ..link.clone() };
-        return Ok((asset, release.version));
+        return Ok((FileSource::Asset(asset), release.version));
     }
     let pattern = entry.assets.get(os_key());
     let by_pattern = pattern.and_then(|p| assets::by_pattern(&release.assets, p).cloned().or_else(|| assets::by_bare_pattern(&release.assets, p)));
     let asset = by_pattern
         .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()).cloned())
         .ok_or(tr!("Ainda não tem uma versão para este sistema."))?;
-    Ok((asset, release.version))
+    Ok((FileSource::Asset(asset), release.version))
 }
 
 /// The library's game for this recomp, under its current id or an older one.
@@ -1810,6 +1873,34 @@ mod tests {
     }
 
     #[test]
+    fn direct_source_download_does_not_need_a_project_or_checksum() {
+        let entry = CatalogEntry {
+            id: "hydra-game".into(),
+            tag: Some("2026-11-25".into()),
+            size_text: "10 MB".into(),
+            files: std::collections::HashMap::from([("windows".into(), catalog::DirectFile {
+                name: "Game.zip".into(),
+                sha256: String::new(),
+                url: "https://example.org/Game.zip".into(),
+                hoster: String::new(),
+            })]),
+            ..Default::default()
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let folders = Folders::new(temp.path(), None);
+        let client = Client::new();
+        let (source, version) = tauri::async_runtime::block_on(choose_download(&client, &folders, &entry)).unwrap();
+        let FileSource::Direct { name, url, size, identity, .. } = source else { panic!("a source link is not a release") };
+        assert_eq!(url, "https://example.org/Game.zip");
+        assert_eq!(name, "Game.zip");
+        assert_eq!(identity, "https://example.org/Game.zip");
+        assert_eq!(size, 0, "the source's rounded display size is not authoritative");
+        assert_eq!(version, "2026-11-25");
+        let shown = to_entry(&entry, &[], &HashMap::new());
+        assert_eq!(shown.latest.map(|r| r.size), Some(catalog::bytes_of(&entry.size_text)));
+    }
+
+    #[test]
     fn staging_sits_beside_the_install() {
         let target = Path::new(r"D:\Recomps\zelda64recomp");
         assert_eq!(staging_for(target, "zelda64recomp"), Path::new(r"D:\Recomps\.staging-zelda64recomp"));
@@ -1828,7 +1919,8 @@ fn real_downloads_resolve_on_every_server() {
     tauri::async_runtime::block_on(async {
         for id in ["mariokart64recomp-2", "commander-genius", "fe3h-recomp-2", "longshot", "hookshot", "zelda64recomp"] {
             let entry = find(id).unwrap_or_else(|| panic!("{id} not in the catalog"));
-            let (asset, version) = choose_download(&client, &folders, &entry).await.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let (source, version) = choose_download(&client, &folders, &entry).await.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let FileSource::Asset(asset) = source else { panic!("{id} is not a release") };
             let reply = client.get(&asset.url).header("Range", "bytes=0-0").send().await.unwrap();
             println!("{id} {version} {} -> {} {}", asset.name, reply.status(), reply.url().host_str().unwrap_or_default());
             assert!(reply.status().is_success(), "{id}: {}", reply.status());

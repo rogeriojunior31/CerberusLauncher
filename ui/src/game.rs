@@ -632,7 +632,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             <aside class="card ready">
                 <h3>{tr!("Antes de jogar")}</h3>
                 {copy}
-                <p class="muted small">{tr!("O Cerberus nunca baixa arquivos de jogo. Ele procura sua cópia nas suas pastas de ROMs.")}</p>
+                <p class="muted small">{tr!("Este recomp precisa da sua cópia. O Cerberus procura o arquivo nas suas pastas de ROMs.")}</p>
                 <button type="button" class="link" on:click=move |_| crate::settings_page::open_rom_folders(lib)>{tr!("Escolher pastas de ROMs")}</button>
             </aside>
         }

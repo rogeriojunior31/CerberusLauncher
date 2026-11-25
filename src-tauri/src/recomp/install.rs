@@ -20,6 +20,21 @@ use super::assets::{Asset, Kind, kind, words};
 pub const CANCELLED: &str = tk!("Instalação cancelada.");
 pub use cerberus_shared::PAUSED;
 
+/// How a resolved hoster link differs from a plain release download.
+#[derive(Debug, Clone, Default)]
+pub struct DownloadOptions {
+    pub url: String,
+    /// Stable source URL, so a refreshed temporary link still resumes the same partial file.
+    pub identity: String,
+    pub headers: Vec<(String, String)>,
+}
+
+impl DownloadOptions {
+    pub fn direct(asset: &Asset) -> Self {
+        Self { url: asset.url.clone(), identity: asset.url.clone(), headers: Vec::new() }
+    }
+}
+
 /// Stops a download: cancelled (its bytes are thrown away) or paused (they are
 /// kept, and the next download of the same file carries on from them).
 #[derive(Default)]
@@ -40,7 +55,7 @@ impl Halt {
         self.stop.store(true, Ordering::Relaxed);
     }
 
-    fn stopped(&self) -> bool {
+    pub fn stopped(&self) -> bool {
         self.stop.load(Ordering::Relaxed)
     }
 
@@ -68,10 +83,21 @@ pub async fn download(
     cancel: &Halt,
     report: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf, String> {
+    download_with(client, asset, &DownloadOptions::direct(asset), dir, cancel, report).await
+}
+
+pub async fn download_with(
+    client: &Client,
+    asset: &Asset,
+    options: &DownloadOptions,
+    dir: &Path,
+    cancel: &Halt,
+    report: impl Fn(u64, u64) + Send,
+) -> Result<PathBuf, String> {
     tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
     let safe_name: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
     let target = dir.join(&safe_name);
-    let tag = &format!("{:x}", Sha256::digest(format!("{}|{}", asset.size, asset.url)))[..10];
+    let tag = &format!("{:x}", Sha256::digest(format!("{}|{}", asset.size, options.identity)))[..10];
     let part = dir.join(format!("{safe_name}.{tag}.part"));
     *cancel.part.lock().unwrap_or_else(|p| p.into_inner()) = Some(part.clone());
 
@@ -83,7 +109,7 @@ pub async fn download(
     let mut tries = 0;
     loop {
         tries += 1;
-        match fetch_into(client, asset, &part, &mut hash, &mut done, &mut total, cancel, &report).await {
+        match fetch_into(client, asset, options, &part, &mut hash, &mut done, &mut total, cancel, &report).await {
             Ok(()) => break,
             Err(Stop::Cancelled) if cancel.keep.load(Ordering::Relaxed) => return Err(PAUSED.into()),
             Err(Stop::Cancelled) => {
@@ -104,7 +130,7 @@ pub async fn download(
     let wrong = asset.sha256.as_ref().is_some_and(|expected| *expected != got);
     if wrong {
         let _ = fs::remove_file(&part);
-        return Err(tr!("O arquivo baixado não bate com o checksum do GitHub, então foi descartado. Tente de novo.").into());
+        return Err(tr!("O arquivo baixado não bate com o checksum informado, então foi descartado. Tente de novo.").into());
     }
     super::throttle::rename_patiently(&part, &target, 20)?;
     Ok(target)
@@ -160,6 +186,7 @@ fn resume_state(part: &Path, size: u64) -> (Sha256, u64) {
 async fn fetch_into(
     client: &Client,
     asset: &Asset,
+    options: &DownloadOptions,
     part: &Path,
     hash: &mut Sha256,
     done: &mut u64,
@@ -171,7 +198,9 @@ async fn fetch_into(
     if *done == *total && *total > 0 {
         return Ok(());
     }
-    let request = || client.get(&asset.url).timeout(Duration::from_secs(6 * 60 * 60));
+    let request = || {
+        options.headers.iter().fold(client.get(&options.url).timeout(Duration::from_secs(6 * 60 * 60)), |get, (name, value)| get.header(name, value))
+    };
     let dropped = || Stop::Retry(tr!("A conexão caiu durante o download. Tente de novo; ele continua de onde parou.").into());
     let mut get = request();
     if *done > 0 {
@@ -195,7 +224,7 @@ async fn fetch_into(
     }
     let status = reply.status();
     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
-        return Err(Stop::Retry(tr!("O GitHub está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
+        return Err(Stop::Retry(tr!("O servidor está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
     }
     let continuing = !restart && status == StatusCode::PARTIAL_CONTENT;
     let response_end = if continuing {
@@ -210,8 +239,11 @@ async fn fetch_into(
         *total = length.unwrap_or(asset.size);
         *total
     } else {
-        return Err(Stop::Fatal(tr!("O GitHub respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
+        return Err(Stop::Fatal(tr!("O servidor respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
     };
+    if reply.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.to_ascii_lowercase().starts_with("text/html")) {
+        return Err(Stop::Fatal(tr!("O link abriu uma página em vez de um arquivo. Atualize a fonte ou tente outro link.").into()));
+    }
     crate::disk::require(part.parent().unwrap_or(part), total.saturating_sub(*done)).map_err(Stop::Fatal)?;
     if !continuing {
         *hash = Sha256::new();
