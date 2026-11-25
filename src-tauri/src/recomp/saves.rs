@@ -27,6 +27,9 @@ pub(super) const BEFORE_CLOUD: &str = tk!("Antes de trazer da nuvem");
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 /// The most a guess at the game's whole folder may add up to.
 const GAME_FOLDER_MAX: u64 = 50 * 1024 * 1024;
+/// In a game folder too big to copy whole, the files this small are kept:
+/// saves are small, the game's own data mostly isn't.
+const SMALL_FILE: u64 = 2 * 1024 * 1024;
 const MANIFEST: &str = "cerberus-backup.json";
 
 /// Never saves: game files, ROMs, programs, archives, logs.
@@ -140,17 +143,25 @@ fn files_of(template: &str, install: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
     Some((dir, here))
 }
 
-fn collect(templates: &[String], install: &Path) -> Vec<Found> {
+/// The files to copy, and whether a guess at the game's folder was too big to
+/// tell its saves apart (then nothing of it is in the list).
+fn collect_checked(templates: &[String], install: &Path) -> (Vec<Found>, bool) {
     let mut found = Vec::new();
+    let mut unsure = false;
     for (place, template) in templates.iter().enumerate() {
-        let Some((dir, here)) = files_of(template, install) else {
+        let Some((dir, mut here)) = files_of(template, install) else {
             continue;
         };
         let whole_game_folder = template == "{install}";
-        let total: u64 = here.iter().map(|path| fs::metadata(path).map(|m| m.len()).unwrap_or(0)).sum();
-        // A guess at the game folder that is this big is the game, not its saves.
-        if whole_game_folder && total > GAME_FOLDER_MAX {
-            continue;
+        let size = |path: &PathBuf| fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        // A guess at the game folder that is this big holds the game too: its
+        // small files are the saves' likely place. Still too much: not a guess to trust.
+        if whole_game_folder && here.iter().map(size).sum::<u64>() > GAME_FOLDER_MAX {
+            here.retain(|path| size(path) <= SMALL_FILE);
+            if here.iter().map(size).sum::<u64>() > GAME_FOLDER_MAX {
+                unsure = true;
+                continue;
+            }
         }
         for absolute in here {
             let Ok(relative) = absolute.strip_prefix(&dir) else {
@@ -159,7 +170,11 @@ fn collect(templates: &[String], install: &Path) -> Vec<Found> {
             found.push(Found { place, relative: relative.to_path_buf(), absolute: absolute.clone() });
         }
     }
-    found
+    (found, unsure)
+}
+
+fn collect(templates: &[String], install: &Path) -> Vec<Found> {
+    collect_checked(templates, install).0
 }
 
 fn walk(root: &Path, dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
@@ -191,7 +206,12 @@ fn walk(root: &Path, dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 /// Copies the saves into `backups`. `Ok(None)` when there is nothing to copy or
 /// nothing changed since the newest copy.
 pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str, cloud: Option<&Path>) -> Result<Option<Backup>, String> {
-    let found = collect(templates, install);
+    let (found, unsure) = collect_checked(templates, install);
+    // "Nothing to copy" must mean that: before an uninstall or an update, a
+    // folder whose saves can't be told apart stops it instead of losing them.
+    if found.is_empty() && unsure {
+        return Err(tr!("Não deu para separar os saves deste jogo dos arquivos dele (a pasta é grande demais para copiar inteira). Copie os saves por conta própria antes; a pasta é {}.", install.display()));
+    }
     if found.is_empty() {
         return Ok(None);
     }
@@ -389,6 +409,27 @@ fn now_millis() -> u128 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_big_game_folder_keeps_its_small_files_or_refuses() {
+        let backups = tempfile::tempdir().unwrap();
+        let install = tempfile::tempdir().unwrap();
+        // The game's data: over the folder cap, file by file over the small size.
+        for n in 0..9 {
+            fs::write(install.path().join(format!("data{n}.bin")), vec![0u8; 6 * 1024 * 1024]).unwrap();
+        }
+        fs::write(install.path().join("slot1.sav"), b"save").unwrap();
+        let made = backup(backups.path(), &places(&[]), install.path(), "Antes de desinstalar", None).unwrap();
+        assert!(made.is_some(), "the save beside a big game is copied");
+
+        // Thousands of small game files too: the saves can't be told apart, so it says so.
+        let crowded = tempfile::tempdir().unwrap();
+        for n in 0..40 {
+            fs::write(crowded.path().join(format!("tex{n}.bin")), vec![0u8; 1536 * 1024]).unwrap();
+        }
+        assert!(backup(backups.path(), &places(&[]), crowded.path(), "Antes de desinstalar", None).is_err());
+    }
+
     use super::*;
 
     fn empty_dir(name: &str) -> PathBuf {

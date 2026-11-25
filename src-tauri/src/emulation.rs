@@ -267,9 +267,8 @@ pub async fn install(http: &reqwest::Client, data: &Path, report: impl Fn(u64, u
         .and_then(|mut d| d.find_map(|e| e.ok().map(|e| e.path()).filter(|p| p.join("retroarch.exe").is_file())))
         .unwrap_or_else(|| staging.clone());
     let target = managed_dir(data);
-    let _ = fs::remove_dir_all(&target);
     fs::create_dir_all(target.parent().unwrap_or(data)).map_err(|e| e.to_string())?;
-    fs::rename(&inner, &target).map_err(|e| tr!("Não foi possível instalar o RetroArch: {}", e))?;
+    swap_keeping_player_files(&target, &inner)?;
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&archive);
     let exe = target.join("retroarch.exe");
@@ -548,4 +547,85 @@ fn launch_real_rom() {
     let mut child = launch(&exe, &rom, "n64", None).expect("started");
     std::thread::sleep(Duration::from_secs(12));
     println!("ainda aberto: {}", child.try_wait().unwrap().is_none());
+}
+
+
+/// What a reinstall of RetroArch keeps from the copy before: the player's
+/// saves, save states, BIOS (`system`), playlists, settings and cores.
+const KEPT_ON_REINSTALL: [&str; 10] =
+    ["saves", "states", "system", "playlists", "config", "cores", "thumbnails", "screenshots", "retroarch.cfg", "retroarch-core-options.cfg"];
+
+/// Puts the new RetroArch (`fresh`) in place of the one at `target`, moving the
+/// player's files over. The old copy is set aside first, in one rename, so a
+/// RetroArch that is open stops this before anything changes; any later
+/// failure puts the old copy back.
+fn swap_keeping_player_files(target: &Path, fresh: &Path) -> Result<(), String> {
+    if !target.exists() {
+        return fs::rename(fresh, target).map_err(|e| tr!("Não foi possível instalar o RetroArch: {}", e));
+    }
+    let old = target.with_file_name(".retroarch-old");
+    let _ = fs::remove_dir_all(&old);
+    fs::rename(target, &old).map_err(|_| tr!("Feche o RetroArch antes de reinstalar: ele está aberto ou com arquivos em uso."))?;
+    let moved = (|| -> std::io::Result<()> {
+        for name in KEPT_ON_REINSTALL {
+            let from = old.join(name);
+            if !from.exists() {
+                continue;
+            }
+            let to = fresh.join(name);
+            if to.is_dir() {
+                fs::remove_dir_all(&to)?;
+            } else if to.exists() {
+                fs::remove_file(&to)?;
+            }
+            fs::rename(&from, &to)?;
+        }
+        fs::rename(fresh, target)
+    })();
+    match moved {
+        Ok(()) => {
+            let _ = fs::remove_dir_all(&old);
+            Ok(())
+        }
+        Err(e) => {
+            // Whatever moved goes back, then the old copy returns whole.
+            for name in KEPT_ON_REINSTALL {
+                let (from, to) = (fresh.join(name), old.join(name));
+                if from.exists() && !to.exists() {
+                    let _ = fs::rename(&from, &to);
+                }
+            }
+            let _ = fs::remove_dir_all(target);
+            let _ = fs::rename(&old, target);
+            Err(tr!("Não foi possível reinstalar o RetroArch: {}. A instalação anterior continua como estava.", e))
+        }
+    }
+}
+
+#[cfg(test)]
+mod reinstall_tests {
+    use super::*;
+
+    #[test]
+    fn a_reinstall_keeps_saves_bios_and_settings() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("retroarch");
+        let fresh = root.path().join("new");
+        for dir in [&target.join("saves"), &target.join("system"), &fresh.join("system")] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        fs::write(target.join("saves/ff7.srm"), b"mine").unwrap();
+        fs::write(target.join("system/scph5501.bin"), b"bios").unwrap();
+        fs::write(target.join("retroarch.cfg"), b"video_fullscreen = \"true\"").unwrap();
+        fs::write(target.join("retroarch.exe"), b"old").unwrap();
+        fs::write(fresh.join("retroarch.exe"), b"new").unwrap();
+        fs::write(fresh.join("retroarch.cfg"), b"defaults").unwrap();
+
+        swap_keeping_player_files(&target, &fresh).unwrap();
+        assert_eq!(fs::read(target.join("retroarch.exe")).unwrap(), b"new");
+        assert_eq!(fs::read(target.join("saves/ff7.srm")).unwrap(), b"mine");
+        assert_eq!(fs::read(target.join("system/scph5501.bin")).unwrap(), b"bios");
+        assert_eq!(fs::read(target.join("retroarch.cfg")).unwrap(), b"video_fullscreen = \"true\"");
+        assert!(!root.path().join(".retroarch-old").exists());
+    }
 }

@@ -1677,14 +1677,14 @@ fn remove_game(
     let Some(game) = library.get(&id)? else {
         return Ok(());
     };
-    if sessions.is_running(&id) {
+    if sessions.is_running_any(&id) {
         return Err(tr!("Feche o jogo antes de removê-lo.").into());
     }
     // Files first: if they can't go, the game stays listed. Saves are copied
     // before anything is deleted, and the copies outlive the uninstall.
     if let Source::Recomp { recomp_id, .. } = &game.source {
         installing.while_idle(recomp_id, || {
-            if sessions.is_running(&id) {
+            if sessions.is_running_any(&id) {
                 return Err(tr!("Feche o jogo antes de removê-lo.").into());
             }
             recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), tk!("Antes de desinstalar"))?;
@@ -2107,7 +2107,7 @@ async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
     let Source::Recomp { recomp_id, .. } = &game.source else {
         return Err(tr!("Só recomps instalados pelo Cerberus podem ser movidos por aqui.").into());
     };
-    if app.state::<sessions::Sessions>().is_running(&id) {
+    if app.state::<sessions::Sessions>().is_running_any(&id) {
         return Err(tr!("Feche o jogo antes de movê-lo.").into());
     }
     app.state::<recomp::Installing>().while_idle(recomp_id, || Ok(()))?;
@@ -2117,13 +2117,20 @@ async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
         return Ok(None);
     };
     let into = picked.into_path().map_err(|e| e.to_string())?;
-    // Copying to another drive can take minutes.
+    // Copying to another drive can take minutes: meanwhile the game is busy,
+    // so Play, Update and Uninstall wait instead of racing the copy.
+    let key = app.state::<recomp::Installing>().reserve(recomp_id)?;
+    if app.state::<sessions::Sessions>().is_running_any(&id) {
+        app.state::<recomp::Installing>().release(&key);
+        return Err(tr!("Feche o jogo antes de movê-lo.").into());
+    }
     let handle = app.clone();
     let moved = tauri::async_runtime::spawn_blocking(move || {
         recomp::relocate::move_install(&handle.state::<recomp::Folders>(), &handle.state::<LocalLibrary>(), &id, &into)
     })
-    .await
-    .map_err(|e| e.to_string())??;
+    .await;
+    app.state::<recomp::Installing>().release(&key);
+    let moved = moved.map_err(|e| e.to_string())??;
     trail::note(&app, &moved.id, tk!("Mover"), &Ok(tr!("Movido para {}", moved.install_dir)));
     Ok(Some(moved))
 }
@@ -2167,7 +2174,7 @@ async fn restore_backup(
     name: String,
 ) -> Result<u32, String> {
     // The game would overwrite the restored files with what it has in memory.
-    if sessions.is_running(&id) {
+    if sessions.is_running_any(&id) {
         return Err(tr!("Feche o jogo antes de restaurar um backup.").into());
     }
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
@@ -2835,6 +2842,8 @@ fn main() {
             app.manage(self_update::Found::default());
             let folders = recomp::Folders::new(&data_dir, chosen.recomps_dir.clone());
             folders.set_cloud(chosen.cloud_dir.clone());
+            // An uninstall that couldn't finish deleting left its folder aside.
+            recomp::sweep_removed(&folders);
             app.manage(folders);
             app.manage(recomp::Installing::default());
             awake::start(app.handle().clone());
@@ -2848,7 +2857,6 @@ fn main() {
             }
             in_game::set(chosen.in_game.clone());
             notify::set(chosen.notices.clone());
-            store_time::watch(app.handle().clone());
             self_update::watch(app.handle().clone());
             app.manage(overlay::Overlay::default());
             screenshots::watch(app.handle().clone());
@@ -2916,6 +2924,9 @@ fn main() {
                 });
             }
             app.manage(http);
+            // After the HTTP client is in place: a game already open at start
+            // reaches the live achievements, which use it.
+            store_time::watch(app.handle().clone());
 
             // The UI may only load local files from folders we allow here:
             // covers the user picked, and Steam's own art cache.

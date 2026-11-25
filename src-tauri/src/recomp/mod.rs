@@ -142,9 +142,25 @@ impl Installing {
         let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
         let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
         if busy.contains_key(&key) {
-            return Err(tr!("Aguarde a atualização do jogo terminar.").into());
+            return Err(tr!("Aguarde: o jogo está sendo instalado, atualizado ou movido.").into());
         }
         action()
+    }
+
+    /// Holds the recomp as busy (Play, Update and Uninstall wait) for work
+    /// outside an install, like moving its folder. Released with `release`.
+    pub fn reserve(&self, id: &str) -> Result<String, String> {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        let mut busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if busy.contains_key(&key) {
+            return Err(tr!("Aguarde: o jogo está sendo instalado, atualizado ou movido.").into());
+        }
+        busy.insert(key.clone(), Arc::new(install::Halt::default()));
+        Ok(key)
+    }
+
+    pub fn release(&self, key: &str) {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).remove(key);
     }
 
     pub fn cancel(&self, id: &str) {
@@ -235,8 +251,14 @@ pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
 pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<u32, String> {
     // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
     let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
-    backup_saves(folders, recomp_id, install_dir, tk!("Antes de restaurar"))?;
-    saves::restore_open(selected, install_dir, None)
+    // The saves about to be replaced stay on this PC only: sent to the cloud
+    // they would be its newest, and come back on the other PC.
+    backup_saves_to(folders, recomp_id, install_dir, tk!("Antes de restaurar"), false)?;
+    let restored = saves::restore_open(selected, install_dir, None)?;
+    // The restored saves become the newest copy, here and in the cloud, so the
+    // next Play doesn't bring the cloud's older-chosen ones back over them.
+    let _ = backup_saves(folders, recomp_id, install_dir, tk!("Restaurado"));
+    Ok(restored)
 }
 
 pub fn library_id(recomp_id: &str) -> String {
@@ -795,7 +817,16 @@ pub fn split_args(text: &str) -> Vec<String> {
 /// that was placed inside. `None` when nothing needed (or could be) done.
 pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
     let copy = game.game_copy.as_deref().filter(|c| Path::new(c).exists())?;
-    if !matches!(next_step(game, None), NextStep::ChooseCopy { .. }) {
+    let entry = entry_for(game)?;
+    // Only the file an update can take away: a copy put in the game's folder
+    // under a fixed name. Everything else (a developer's checked input, a
+    // second disc not given yet) is left for the player, and never re-copied
+    // or re-checked on every start.
+    if entry.manifest.as_ref().and_then(|m| m.main_input()).is_some() {
+        return None;
+    }
+    let Some(CopyHandoff::Folder { folder, file_name: Some(name), .. }) = &entry.handoff else { return None };
+    if Path::new(&game.install_dir).join(folder).join(name).is_file() {
         return None;
     }
     use_game_copy(library, &game.id, Path::new(copy)).ok()
@@ -1075,7 +1106,7 @@ pub async fn install(
         if installed.as_ref().is_some_and(|game| game.external) {
             return Err(tr!("{} foi instalado fora do Cerberus, então as atualizações dele ficam por sua conta. Para o Cerberus cuidar delas, remova o vínculo e instale por aqui.", entry.name));
         }
-        if installed.is_some_and(|game| sessions.is_running(&game.id)) {
+        if installed.is_some_and(|game| sessions.is_running_any(&game.id)) {
             return Err(tr!("Feche o jogo antes de atualizá-lo.").into());
         }
         busy.insert(entry.id.clone(), cancel.clone());
@@ -1340,10 +1371,35 @@ pub fn delete_files(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<()
         return Ok(());
     }
     check_install_folder(folders, recomp_id, dir)?;
-    match fs::remove_dir_all(dir) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(tr!("Não foi possível apagar {0}: {1}. O jogo está aberto?", dir.display(), e)),
+    // Set aside in one rename first: a file in use (the game, an Explorer
+    // preview, the antivirus) stops it here with nothing deleted, instead of
+    // half-way through with the folder's marker already gone.
+    let aside = removing_name(dir, recomp_id);
+    let _ = fs::remove_dir_all(&aside);
+    if let Err(e) = throttle::rename_patiently(dir, &aside, 6) {
+        return Err(tr!("Não foi possível apagar {0}: {1}. Feche o jogo e o que estiver usando a pasta (o Explorador de Arquivos, por exemplo) e tente de novo; nada foi apagado.", dir.display(), e));
+    }
+    // What can't go now goes the next time Cerberus starts.
+    let _ = fs::remove_dir_all(&aside);
+    Ok(())
+}
+
+/// The name a folder being removed gets beside its old place.
+fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
+    dir.with_file_name(format!("{REMOVING}{recomp_id}"))
+}
+
+const REMOVING: &str = ".cerberus-removing-";
+
+/// Folders an uninstall set aside but couldn't finish deleting.
+pub fn sweep_removed(folders: &Folders) {
+    for root in [folders.installs(), folders.default_installs.clone()] {
+        let Ok(entries) = fs::read_dir(&root) else { continue };
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(REMOVING) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
     }
 }
 
@@ -1372,6 +1428,25 @@ mod tests {
         game.source = Source::Recomp { recomp_id: "x".into(), version: "1".into(), exe: exe.to_string_lossy().into(), generation: Default::default() };
         game.game_copy = copy.map(|c| c.to_string_lossy().into_owned());
         game
+    }
+
+    #[test]
+    fn an_uninstall_sets_the_folder_aside_before_deleting() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(root.path(), None);
+        let dir = folders.install_dir("x");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(MARKER), "x").unwrap();
+        fs::write(dir.join("Game.exe"), b"MZ").unwrap();
+        delete_files(&folders, "x", &dir).unwrap();
+        assert!(!dir.exists());
+        assert!(!removing_name(&dir, "x").exists());
+
+        // A leftover from an interrupted removal is cleared at start.
+        let left = removing_name(&dir, "y");
+        fs::create_dir_all(&left).unwrap();
+        sweep_removed(&folders);
+        assert!(!left.exists());
     }
 
     #[test]

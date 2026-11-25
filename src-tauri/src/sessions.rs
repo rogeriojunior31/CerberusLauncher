@@ -54,6 +54,12 @@ impl Sessions {
         self.lock().contains_key(id)
     }
 
+    /// The game, or one of the games its release carries (`{id}--part`), is open.
+    pub fn is_running_any(&self, id: &str) -> bool {
+        let part = format!("{id}--");
+        self.lock().keys().any(|k| k == id || k.starts_with(&part))
+    }
+
     /// How long the game has been played this time, in seconds.
     pub fn playing_for(&self, id: &str) -> Option<u64> {
         self.lock().get(id)?.as_ref().map(|round| round.started.elapsed().as_secs())
@@ -207,6 +213,10 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         }
     }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
+        // The filter put beside it, and the reservation, go too.
+        if let Ok(data) = app.path().app_data_dir() {
+            crate::looks::take_back(&data, &game.id);
+        }
         sessions.lock().remove(&game.id);
         let message = blocked_by_windows(e.raw_os_error()).map(str::to_string).unwrap_or_else(|| tr!("Não foi possível abrir {0}: {1}", exe.display(), e));
         crate::trail::note(app, &game.id, tk!("Abrir o jogo"), &Err(message.clone()));
