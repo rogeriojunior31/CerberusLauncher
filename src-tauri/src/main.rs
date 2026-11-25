@@ -1583,8 +1583,11 @@ fn clear_art_cache(app: AppHandle) -> Result<SettingsView, String> {
 
 #[tauri::command(async)]
 fn library_recovery_notice(library: State<'_, LocalLibrary>) -> Option<String> {
-    library.recovery_notice()
+    library.recovery_notice().or_else(|| LOCAL_LIBRARY_PROBLEM.lock().ok().and_then(|p| p.clone()))
 }
+
+/// Why the games added here and the recomps couldn't be read on the last listing (the stores' games still show).
+static LOCAL_LIBRARY_PROBLEM: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 #[tauri::command]
 async fn list_games(
@@ -1593,7 +1596,18 @@ async fn list_games(
     art: State<'_, Arc<ArtCache>>,
     http: State<'_, reqwest::Client>,
 ) -> Result<Vec<Game>, String> {
-    let mut games = library.games_with_parts()?;
+    // A library file that can't be read takes only its own games away: the
+    // stores' games still show, and the Library page says what happened.
+    let mut games = match library.games_with_parts() {
+        Ok(games) => {
+            *LOCAL_LIBRARY_PROBLEM.lock().unwrap_or_else(|p| p.into_inner()) = None;
+            games
+        }
+        Err(e) => {
+            *LOCAL_LIBRARY_PROBLEM.lock().unwrap_or_else(|p| p.into_inner()) = Some(tr!("Os jogos adicionados e os recomps não puderam ser lidos agora ({}). Os das lojas continuam aqui; nada foi apagado.", e));
+            Vec::new()
+        }
+    };
     games.iter_mut().for_each(recomp::apply_art);
     let owned = owned_games(&app);
     for game in &mut games {
