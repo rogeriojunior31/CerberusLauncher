@@ -58,6 +58,7 @@ fn send(archive: &Path, root: &Path, destination: &Path, folders: &Folders) -> i
     let current = folders.cloud.read().unwrap_or_else(|p| p.into_inner());
     if current.as_deref() == Some(root) {
         publish(temp, &destination.join(name))?;
+        super::saves::prune_cloud(destination);
         match fs::remove_file(archive.with_extension("upload")) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             result => result?,

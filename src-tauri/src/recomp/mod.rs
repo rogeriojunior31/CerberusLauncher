@@ -958,7 +958,7 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         crate::disc_image::write_iso(copy, &dir.join(Path::new(&name).with_extension("iso")))?;
         return Ok(());
     }
-    fs::copy(copy, dir.join(&name)).map_err(|e| tr!("Não foi possível copiar sua cópia do jogo: {}", e))?;
+    copy_whole(copy, &dir.join(&name)).map_err(|e| tr!("Não foi possível copiar sua cópia do jogo: {}", e))?;
     Ok(())
 }
 
@@ -1167,7 +1167,8 @@ async fn install_now(
         }
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
-    let file = match install::download(client, &asset, &folders.downloads, cancel, on_bytes).await {
+    // Each recomp in its own folder: two catalogs' "release.zip" never land on one name.
+    let file = match install::download(client, &asset, &folders.downloads.join(&entry.id), cancel, on_bytes).await {
         Err(e) if e == install::PAUSED => {
             report(InstallStep::Paused { done: got.load(Ordering::Relaxed), total: of.load(Ordering::Relaxed) });
             return Err(e);
@@ -1402,6 +1403,42 @@ fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
 }
 
 const REMOVING: &str = ".cerberus-removing-";
+
+/// Half-downloaded files nobody came back for in two weeks (a pause before a
+/// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
+pub fn sweep_stale_downloads(folders: &Folders) {
+    let two_weeks = std::time::Duration::from_secs(14 * 24 * 3600);
+    let mut pending = vec![folders.downloads.clone()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                pending.push(path);
+                continue;
+            }
+            let old = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > two_weeks);
+            if old && path.extension().is_some_and(|e| e == "part") {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
+}
+
+/// Copies a file under a temporary name and renames it when complete: a copy
+/// cut short (Cerberus closed, the disk full) never sits under the real name,
+/// where the game would take it for the whole thing.
+pub(crate) fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut partial = to.as_os_str().to_owned();
+    partial.push(".part");
+    let partial = PathBuf::from(partial);
+    if let Err(e) = fs::copy(from, &partial) {
+        let _ = fs::remove_file(&partial);
+        return Err(e);
+    }
+    let _ = fs::remove_file(to);
+    fs::rename(&partial, to)
+}
 
 /// Folders an uninstall set aside but couldn't finish deleting.
 pub fn sweep_removed(folders: &Folders) {

@@ -133,6 +133,13 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
     if NOT_GAMES.contains(&app_id) {
         return None;
     }
+    // Bit 4 is "fully installed": a game still downloading for the first time
+    // isn't ready to play yet. (An update on top keeps the bit.)
+    if let Some(flags) = first_value(&text, "stateflags").and_then(|f| f.parse::<u32>().ok()) {
+        if flags & 4 == 0 {
+            return None;
+        }
+    }
     let name = first_value(&text, "name")?;
     let install_dir = first_value(&text, "installdir")?;
     let install_dir = library.join("steamapps").join("common").join(install_dir);
@@ -205,11 +212,32 @@ fn first_value(text: &str, wanted: &str) -> Option<String> {
 /// flat keys, so scanning lines is enough and saves a parser dependency.
 fn pairs(text: &str) -> impl Iterator<Item = (String, String)> + '_ {
     text.lines().filter_map(|line| {
-        let mut quoted = line.split('"').skip(1).step_by(2);
+        let mut quoted = quoted_parts(line).into_iter();
         let key = quoted.next()?;
         let value = quoted.next()?;
-        Some((key.to_lowercase(), value.replace("\\\\", "\\")))
+        Some((key.to_lowercase(), value))
     })
+}
+
+/// The quoted strings of a line, with Steam's escapes read (a `\"` inside a name, `\` in a path).
+fn quoted_parts(line: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current: Option<String> = None;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match (&mut current, c) {
+            (None, '"') => current = Some(String::new()),
+            (None, _) => {}
+            (Some(text), '\\') => {
+                if let Some(next) = chars.next() {
+                    text.push(next);
+                }
+            }
+            (Some(_), '"') => parts.extend(current.take()),
+            (Some(text), c) => text.push(c),
+        }
+    }
+    parts
 }
 
 #[cfg(windows)]
@@ -265,5 +293,21 @@ mod tests {
     fn unescapes_windows_library_paths() {
         let vdf = "\"libraryfolders\"\n{\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"D:\\\\SteamLibrary\"\n\t}\n}";
         assert_eq!(first_value(vdf, "path").as_deref(), Some(r"D:\SteamLibrary"));
+    }
+
+    #[test]
+    fn names_with_quotes_and_games_still_downloading() {
+        let line = r#"	"name"		"The \"Real\" Game""#;
+        assert_eq!(first_value(line, "name").as_deref(), Some(r#"The "Real" Game"#));
+
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = |flags: u32| format!("\"AppState\"\n{{\n\t\"appid\"\t\t\"620\"\n\t\"name\"\t\t\"Portal 2\"\n\t\"StateFlags\"\t\t\"{flags}\"\n\t\"installdir\"\t\t\"Portal 2\"\n}}");
+        let file = dir.path().join("appmanifest_620.acf");
+        fs::write(&file, manifest(1026)).unwrap();
+        assert!(read_manifest(&file, dir.path(), dir.path()).is_none(), "first download still going");
+        fs::write(&file, manifest(4)).unwrap();
+        assert!(read_manifest(&file, dir.path(), dir.path()).is_some());
+        fs::write(&file, manifest(6)).unwrap();
+        assert!(read_manifest(&file, dir.path(), dir.path()).is_some(), "installed, with an update waiting");
     }
 }

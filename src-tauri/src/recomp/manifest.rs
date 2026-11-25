@@ -894,7 +894,7 @@ pub fn place(input: &Input, install: &Path, copy: &Path) -> Result<(), String> {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     crate::disk::require(target.parent().unwrap_or(install), fs::metadata(copy).map_err(|e| e.to_string())?.len())?;
-    fs::copy(copy, &target).map(|_| ()).map_err(|e| tr!("Não foi possível copiar o arquivo: {}", e))
+    super::copy_whole(copy, &target).map_err(|e| tr!("Não foi possível copiar o arquivo: {}", e))
 }
 
 #[cfg(test)]

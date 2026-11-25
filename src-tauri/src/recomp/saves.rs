@@ -328,6 +328,16 @@ fn manifest_in(zip: &mut zip::ZipArchive<fs::File>) -> Result<Manifest, String> 
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
+/// The copies a game's cloud folder keeps (all PCs together): the newest ones.
+/// Without a limit it grew by one per session forever, and each Play read more.
+const CLOUD_KEEP: usize = 20;
+
+pub(super) fn prune_cloud(folder: &Path) {
+    for old in list(folder).into_iter().skip(CLOUD_KEEP) {
+        let _ = fs::remove_file(folder.join(old.name));
+    }
+}
+
 fn prune(backups: &Path) {
     for old in list(backups).into_iter().skip(KEEP) {
         let archive = backups.join(old.name);

@@ -102,8 +102,15 @@ impl Update {
     }
 
     pub(super) fn publish(&self) -> Result<(), String> {
+        // The developer's file describes one release: the old one isn't carried
+        // into a new release that dropped or moved it.
+        let own_file = self.candidate().join(super::manifest::FILE);
+        let new_has_it = own_file.exists();
         preserve(&self.target, &self.candidate())
             .map_err(|e| tr!("Falha ao preparar a atualização: {}", e))?;
+        if !new_has_it {
+            let _ = fs::remove_file(&own_file);
+        }
         // An antivirus checking the new files (or the old ones) may hold them a moment.
         super::throttle::rename_patiently(&self.target, &self.work.join("previous"), 20)
             .map_err(|e| tr!("Falha ao reservar a versão anterior: {}", e))?;
@@ -209,9 +216,9 @@ pub(crate) fn recover(game: &Game) -> Result<(), String> {
 
 fn ordinary_file_type(path: &Path) -> io::Result<fs::FileType> {
     let metadata = fs::symlink_metadata(path)?;
-    #[cfg(windows)]
-    let linked = std::os::windows::fs::MetadataExt::file_attributes(&metadata) & 0x400 != 0;
-    #[cfg(not(windows))]
+    // Links and junctions only. Other reparse points are ordinary files to us:
+    // OneDrive keeps every file of a synced folder as one (Files On-Demand), and
+    // refusing them made every update of a game installed there fail.
     let linked = metadata.file_type().is_symlink();
     if linked || !(metadata.is_dir() || metadata.is_file()) {
         return Err(io::Error::other(tr!("Arquivo especial na instalação: {}", path.display())));

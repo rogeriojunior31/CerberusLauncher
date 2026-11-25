@@ -41,8 +41,19 @@ pub const CORES: &[(&str, &str, &str)] = &[
 const PS1_BIOS: u64 = 512 * 1024;
 const PS2_BIOS: u64 = 4 * 1024 * 1024;
 
+/// Where RetroArch reads BIOS files: its own `system` folder, or the one the
+/// player set in its settings (`:` meaning beside the program).
 fn system_dir(exe: &Path) -> PathBuf {
-    exe.parent().unwrap_or(Path::new(".")).join("system")
+    let base = exe.parent().unwrap_or(Path::new("."));
+    let chosen = fs::read_to_string(config_file(exe))
+        .ok()
+        .and_then(|text| config_value(&text, "system_directory"))
+        .filter(|v| !v.is_empty() && v != "default");
+    match chosen {
+        Some(v) if v.starts_with(':') => base.join(v.trim_start_matches(':').trim_start_matches(['\\', '/'])),
+        Some(v) => PathBuf::from(v),
+        None => base.join("system"),
+    }
 }
 
 fn ps2_bios_dir(exe: &Path) -> PathBuf {
@@ -360,7 +371,12 @@ pub fn disc_list(data: &Path, rom: &Path, discs: &[PathBuf], console: &str) -> R
     }
     let dir = data.join("emulators").join("playlists");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let list = dir.join(format!("{:08x}.m3u", crc32fast::hash(rom.to_string_lossy().as_bytes())));
+    // Named after the game (not a number): emulators name saves and memory
+    // cards after the list, so "Final Fantasy VII (USA).srm" is found again.
+    let stem = discs[0].file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let name: String = crate::roms::without_disc_tag(&stem).chars().filter(|c| !r#"<>:"/\|?*"#.contains(*c)).collect();
+    let name = if name.trim().is_empty() { format!("{:08x}", crc32fast::hash(rom.to_string_lossy().as_bytes())) } else { name };
+    let list = dir.join(format!("{name}.m3u"));
     let text: String = discs.iter().map(|d| format!("{}\n", d.display())).collect();
     fs::write(&list, text).map_err(|e| tr!("Não foi possível preparar a lista de discos: {}", e))?;
     Ok(list)
@@ -424,11 +440,25 @@ pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
     if same {
         return Ok(());
     }
-    if !text.is_empty() {
-        let _ = fs::copy(&cfg, cfg.with_extension("cfg.cerberus-bak"));
+    // The player's own settings, kept once: a second link mustn't replace them with ours.
+    let backup = cfg.with_extension("cfg.cerberus-bak");
+    if !text.is_empty() && !backup.exists() {
+        let _ = fs::copy(&cfg, &backup);
     }
     let updated = with_values(&text, &[("cheevos_enable", "true"), ("cheevos_username", name), ("cheevos_token", token), ("cheevos_password", "")]);
     fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
+}
+
+/// Takes the account Cerberus put in RetroArch's settings back out (when it is
+/// still that one: a token the player set there themselves stays).
+pub fn forget_token(exe: &Path, token: &str) {
+    let cfg = config_file(exe);
+    let Ok(text) = fs::read_to_string(&cfg) else { return };
+    if config_value(&text, "cheevos_token").as_deref() != Some(token) {
+        return;
+    }
+    let updated = with_values(&text, &[("cheevos_token", ""), ("cheevos_username", "")]);
+    let _ = fs::write(&cfg, updated);
 }
 
 /// Time played and when, per classic (by its file), kept in `classics.json`.
@@ -465,6 +495,7 @@ mod tests {
         let discs = vec![PathBuf::from(r"D:\ps1\FF7 (Disc 1).chd"), PathBuf::from(r"D:\ps1\FF7 (Disc 2).chd")];
         let list = disc_list(&data, &discs[0], &discs, "ps1").unwrap();
         assert!(list.starts_with(data.join("emulators").join("playlists")));
+        assert_eq!(list.file_name().unwrap(), "FF7.m3u", "named after the game, so its saves are found by name");
         assert_eq!(fs::read_to_string(&list).unwrap(), "D:\\ps1\\FF7 (Disc 1).chd\nD:\\ps1\\FF7 (Disc 2).chd\n");
         assert_eq!(disc_list(&data, &discs[0], &discs, "ps2").unwrap(), discs[0], "a core that can't swap: disc 1");
         let own = PathBuf::from(r"D:\ps1\FF7.m3u");
@@ -523,6 +554,37 @@ mod tests {
         let mut names: Vec<&str> = view.cores.iter().map(|c| c.core.as_str()).collect();
         names.dedup();
         assert_eq!(names.len(), view.cores.len());
+    }
+
+    #[test]
+    fn the_bios_is_looked_for_where_retroarch_is_set_to_read_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        assert_eq!(system_dir(&exe), dir.path().join("system"));
+        fs::write(config_file(&exe), "system_directory = \":\\bios\"\n").unwrap();
+        assert_eq!(system_dir(&exe), dir.path().join("bios"));
+        fs::write(config_file(&exe), "system_directory = \"D:\\BIOS\"\n").unwrap();
+        assert_eq!(system_dir(&exe), PathBuf::from(r"D:\BIOS"));
+        fs::write(config_file(&exe), "system_directory = \"default\"\n").unwrap();
+        assert_eq!(system_dir(&exe), dir.path().join("system"));
+    }
+
+    #[test]
+    fn forgetting_the_account_takes_only_our_token_out_of_retroarch() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        fs::write(config_file(&exe), "video_fullscreen = \"true\"
+").unwrap();
+        write_token(&exe, "me", "abc").unwrap();
+        write_token(&exe, "me", "def").unwrap();
+        // The player's original settings are the backup, not our first edit.
+        assert!(!fs::read_to_string(config_file(&exe).with_extension("cfg.cerberus-bak")).unwrap().contains("cheevos_token"));
+        forget_token(&exe, "other");
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_token").as_deref(), Some("def"), "not ours: kept");
+        forget_token(&exe, "def");
+        let text = fs::read_to_string(config_file(&exe)).unwrap();
+        assert_eq!(config_value(&text, "cheevos_token").as_deref(), Some(""));
+        assert_eq!(config_value(&text, "video_fullscreen").as_deref(), Some("true"));
     }
 
     #[test]

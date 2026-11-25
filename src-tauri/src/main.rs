@@ -591,6 +591,11 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     let chosen = settings::load(&data);
     let retroarch = emulation::retroarch(&data, picked.as_deref());
     if let Some((emulator, exe)) = standalone_for(&data, &chosen, &console, retroarch.is_some()) {
+        // DuckStation and Dolphin swap discs from a list too: all of them, not disc 1 alone.
+        let rom = match emulator.id {
+            "duckstation" | "dolphin" => emulation::disc_list(&data, &rom, &known.discs, &console)?,
+            _ => rom,
+        };
         return play_standalone(app, path, rom, emulator, &exe);
     }
     let exe = retroarch.ok_or(tr!("Instale o RetroArch, ou um emulador para esse console, em Configurações › Emulação para jogar os clássicos."))?;
@@ -1347,6 +1352,12 @@ async fn ra_profile(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
 fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
+    // "Forget the account on this PC" includes RetroArch, where it was written.
+    if let Some(token) = &chosen.ra_token {
+        if let Some(exe) = emulation::retroarch(&data.0, chosen.retroarch.as_deref()) {
+            emulation::forget_token(&exe, token);
+        }
+    }
     chosen.ra_user = None;
     chosen.ra_key = None;
     chosen.ra_token = None;
@@ -2866,6 +2877,7 @@ fn main() {
             folders.set_cloud(chosen.cloud_dir.clone());
             // An uninstall that couldn't finish deleting left its folder aside.
             recomp::sweep_removed(&folders);
+            recomp::sweep_stale_downloads(&folders);
             app.manage(folders);
             app.manage(recomp::Installing::default());
             awake::start(app.handle().clone());

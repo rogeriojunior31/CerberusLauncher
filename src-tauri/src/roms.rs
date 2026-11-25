@@ -186,6 +186,12 @@ fn identify(path: &Path) -> Option<RomFile> {
     Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
 }
 
+/// A disc's file name without its disc tag: "Final Fantasy VII (USA) (Disc 1)"
+/// is "Final Fantasy VII (USA)", the game's name for all its discs.
+pub fn without_disc_tag(stem: &str) -> String {
+    disc_tag(stem).map_or_else(|| stem.to_string(), |(_, base)| base)
+}
+
 /// "(Disc 2)", "(Disk 2 of 3)", "(CD2)": the disc's number, and the name without the tag.
 fn disc_tag(stem: &str) -> Option<(u32, String)> {
     // ASCII-only lowercase keeps every byte where it was, so the positions found
