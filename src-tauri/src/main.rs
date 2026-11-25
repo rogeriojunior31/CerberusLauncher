@@ -223,7 +223,7 @@ fn remember_source(app: &AppHandle, url: &str, source: Option<CatalogSource>) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn source_listings(sources: State<'_, Sources>, url: String, query: String, offset: usize) -> Result<SourcePage, String> {
     let list = sources.list.lock().unwrap_or_else(|p| p.into_inner());
     let source = list.iter().find(|(v, _)| v.url == url).and_then(|(_, s)| s.as_ref())
@@ -446,7 +446,7 @@ async fn art_pick_file(app: AppHandle) -> Result<Option<String>, String> {
 
 /// Keeps the framed picture for one kind of a game's art (`data: None` puts the
 /// game's own art back). The window reloads the library to show it.
-#[tauri::command]
+#[tauri::command(async)]
 fn art_save(art: State<'_, art_custom::CustomArt>, id: String, kind: String, data: Option<String>) -> Result<(), String> {
     art.set(&id, &kind, data.as_deref())
 }
@@ -499,7 +499,7 @@ async fn set_look(
 }
 
 /// Ends the first-run setup with how the player plays (desk or TV).
-#[tauri::command]
+#[tauri::command(async)]
 fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -889,7 +889,7 @@ async fn remove_standalone(app: AppHandle, id: String) -> Result<cerberus_shared
 }
 
 /// Opens an emulator on its own, to set controls, video or its BIOS folder.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_standalone(app: AppHandle, id: String) -> Result<(), String> {
     let emulator = standalone::find(&id).ok_or(tr!("Emulador desconhecido."))?;
     let data = app.state::<DataDir>().0.clone();
@@ -995,7 +995,7 @@ fn connect_retroarch(data: &Path, exe: &Path) {
 }
 
 /// The page the desktop window opens on.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> {
     if !matches!(page.as_str(), "home" | "library" | "discover") {
         return Err(tr!("Página inválida.").into());
@@ -1008,7 +1008,7 @@ fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> 
 }
 
 /// Opens Cerberus with Windows, or stops it.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_autostart(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app.autolaunch();
@@ -1018,7 +1018,7 @@ fn set_autostart(app: AppHandle, on: bool) -> Result<SettingsView, String> {
 }
 
 /// Whether Cerberus, opened with Windows, starts in the tray.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1033,7 +1033,7 @@ fn steam_api_account(app: &AppHandle) -> Option<(String, String)> {
 }
 
 /// The Steam account on this PC (the last to sign in), to offer it when connecting.
-#[tauri::command]
+#[tauri::command(async)]
 fn steam_local_account() -> Option<(String, String)> {
     steam::root().and_then(|root| achievements::steam_api::local_account(&root))
 }
@@ -1066,7 +1066,7 @@ async fn steam_connect(app: AppHandle, http: State<'_, reqwest::Client>, key: St
     Ok(account)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn steam_disconnect(app: AppHandle) -> Result<(), String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1076,7 +1076,7 @@ fn steam_disconnect(app: AppHandle) -> Result<(), String> {
 }
 
 /// Opens Steam's page for the key, the privacy settings, or the profile.
-#[tauri::command]
+#[tauri::command(async)]
 fn steam_open(app: AppHandle, page: String) -> Result<(), String> {
     let url = match page.as_str() {
         "key" => "https://steamcommunity.com/dev/apikey".to_string(),
@@ -1184,7 +1184,7 @@ async fn whats_new(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<O
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn whats_new_seen(app: AppHandle) -> Result<(), String> {
     let data = app.state::<DataDir>().0.clone();
     let mut chosen = settings::load(&data);
@@ -1193,7 +1193,7 @@ fn whats_new_seen(app: AppHandle) -> Result<(), String> {
 }
 
 /// A game's play sessions, oldest first, for its play-time chart.
-#[tauri::command]
+#[tauri::command(async)]
 fn game_sessions(app: AppHandle, id: String) -> Vec<cerberus_shared::PlaySession> {
     play_log::of_game(&app.state::<DataDir>().0, &id)
 }
@@ -1241,7 +1241,7 @@ async fn wiki_about(app: AppHandle, http: State<'_, reqwest::Client>, game: Stri
 }
 
 /// Opens a Wikipedia article in the browser; only Wikipedia's own links.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_wiki(app: AppHandle, url: String) -> Result<(), String> {
     let host = url.strip_prefix("https://").and_then(|r| r.split('/').next()).unwrap_or_default();
     if !(host.ends_with(".wikipedia.org") && !host.contains(['@', ':'])) {
@@ -1251,7 +1251,7 @@ fn open_wiki(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 /// Opens a post from Novidades in the browser; only Steam's own links.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_news(app: AppHandle, url: String) -> Result<(), String> {
     if !steam_news::steam_link(&url) {
         return Err(tr!("Esse link não é da Steam.").into());
@@ -1274,7 +1274,7 @@ fn list_monitors(app: AppHandle) -> Vec<cerberus_shared::MonitorView> {
 }
 
 /// Picks the app's language (none: Windows'). The window reloads itself to show it.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_language(app: AppHandle, code: Option<String>) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1286,7 +1286,7 @@ fn set_language(app: AppHandle, code: Option<String>) -> Result<SettingsView, St
 }
 
 /// Picks the monitor Cerberus opens on (none: where Windows puts it) and moves there now.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_monitor(app: AppHandle, name: Option<String>) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1308,7 +1308,7 @@ fn to_chosen_monitor(app: AppHandle) {
 }
 
 /// Whether closing the window keeps Cerberus in the tray.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_close_to_tray(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1318,7 +1318,7 @@ fn set_close_to_tray(app: AppHandle, on: bool) -> Result<SettingsView, String> {
 }
 
 /// Shows PC Game Pass's games in the library, or not.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_game_pass(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1329,7 +1329,7 @@ fn set_game_pass(app: AppHandle, on: bool) -> Result<SettingsView, String> {
 }
 
 /// Opens the Xbox app (to sign in, install, manage Game Pass).
-#[tauri::command]
+#[tauri::command(async)]
 fn xbox_open(app: AppHandle) -> Result<(), String> {
     app.opener().open_url("msxbox://", None::<&str>).map_err(|e| tr!("Não foi possível abrir o app Xbox: {}", e))
 }
@@ -1351,7 +1351,7 @@ async fn set_site_catalog(app: AppHandle, http: State<'_, reqwest::Client>, on: 
 }
 
 /// Shows the first-run setup again the next time it is asked for.
-#[tauri::command]
+#[tauri::command(async)]
 fn rerun_setup(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1398,7 +1398,7 @@ async fn ra_profile(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
 }
 
 /// Forgets the RetroAchievements account on this PC.
-#[tauri::command]
+#[tauri::command(async)]
 fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1416,7 +1416,7 @@ fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
 }
 
 /// Opens RetroAchievements: the player's profile, or the page with their API key.
-#[tauri::command]
+#[tauri::command(async)]
 fn ra_open(app: AppHandle, keys: bool) -> Result<(), String> {
     let chosen = settings::load(&app.state::<DataDir>().0);
     let url = match (keys, chosen.ra_user) {
@@ -1428,7 +1428,7 @@ fn ra_open(app: AppHandle, keys: bool) -> Result<(), String> {
 
 /// Whether the app opens in the TV screen; changed in Configurações.
 /// The recomp download limit (MB/s, 0 for none) and slowing down while playing.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1500,12 +1500,12 @@ async fn epic_status() -> Result<(bool, usize), String> {
 }
 
 /// Opens the Epic Games Launcher on its library.
-#[tauri::command]
+#[tauri::command(async)]
 fn epic_open(app: AppHandle) -> Result<(), String> {
     app.opener().open_url("com.epicgames.launcher://store/library", None::<&str>).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_notices(app: AppHandle, choices: cerberus_shared::Notices) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1515,7 +1515,7 @@ fn set_notices(app: AppHandle, choices: cerberus_shared::Notices) -> Result<Sett
     Ok(settings_view(&app))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_in_game(app: AppHandle, choices: cerberus_shared::InGame) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1526,7 +1526,7 @@ fn set_in_game(app: AppHandle, choices: cerberus_shared::InGame) -> Result<Setti
     Ok(settings_view(&app))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_start_in_tv(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
@@ -1535,7 +1535,7 @@ fn set_start_in_tv(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     Ok(settings_view(&app))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_settings(app: AppHandle) -> SettingsView {
     settings_view(&app)
 }
@@ -1552,7 +1552,7 @@ async fn pick_recomps_dir(app: AppHandle) -> Result<SettingsView, String> {
     use_recomps_dir(&app, Some(dir))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn reset_recomps_dir(app: AppHandle) -> Result<SettingsView, String> {
     use_recomps_dir(&app, None)
 }
@@ -1569,19 +1569,19 @@ fn use_recomps_dir(app: &AppHandle, dir: Option<PathBuf>) -> Result<SettingsView
     Ok(settings_view(app))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_data_dir(app: AppHandle) -> Result<(), String> {
     let dir = app.state::<DataDir>().0.to_string_lossy().into_owned();
     app.opener().open_path(dir, None::<&str>).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_art_cache(app: AppHandle) -> Result<SettingsView, String> {
     app.state::<Arc<ArtCache>>().clear()?;
     Ok(settings_view(&app))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn library_recovery_notice(library: State<'_, LocalLibrary>) -> Option<String> {
     library.recovery_notice()
 }
@@ -1903,7 +1903,7 @@ async fn finish_xbox_login(app: AppHandle, code: String) {
 }
 
 /// Forgets the Xbox account on this PC (its token and its library list).
-#[tauri::command]
+#[tauri::command(async)]
 fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>().0.clone();
     let user = settings::update(&data, |s| {
@@ -1921,7 +1921,7 @@ fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
 }
 
 /// Forgets the Epic account on this PC (its token and its library list).
-#[tauri::command]
+#[tauri::command(async)]
 fn epic_logout(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>().0.clone();
     let user = settings::update(&data, |s| {
@@ -2054,7 +2054,7 @@ async fn add_local_game(
     Ok(Some(game))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_game(library: State<'_, LocalLibrary>, id: String, name: String) -> Result<Game, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -2448,7 +2448,7 @@ async fn locate_game(app: AppHandle, id: String) -> Result<Option<Game>, String>
     result.map(Some)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tracking_mode(library: State<'_, LocalLibrary>, id: String) -> Result<Option<String>, String> {
     Ok(library.get(&id)?.as_ref().and_then(sessions::tracking_mode))
 }
@@ -2470,7 +2470,7 @@ async fn pick_tracking_exe(app: AppHandle, id: String, automatic: bool) -> Resul
     library.update(&id, |g| g.tracking_exe = selected).map(Some)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_launch_args(library: State<'_, LocalLibrary>, id: String, args: String) -> Result<Game, String> {
     let args = args.trim().to_string();
     library.update(&id, |game| game.launch_args = args)
@@ -2478,20 +2478,20 @@ fn set_launch_args(library: State<'_, LocalLibrary>, id: String, args: String) -
 
 /// Opens the "Pedir um recomp" form in Cerberus's repository: how players
 /// suggest projects for the catalog, with no server of our own.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_recomp_request(app: AppHandle) -> Result<(), String> {
     let url = "https://github.com/rogeriojunior31/CerberusLauncher/issues/new?template=pedir-recomp.yml";
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 /// Opens SteamGridDB's page where players make their free API key.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_steamgriddb_keys(app: AppHandle) -> Result<(), String> {
     app.opener().open_url("https://www.steamgriddb.com/profile/preferences/api", None::<&str>).map_err(|e| e.to_string())
 }
 
 /// Opens a catalog recomp's project page; only catalog repos, never an arbitrary link.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_project(app: AppHandle, id: String) -> Result<(), String> {
     let entry = recomp::find(&id).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let url = entry.forge().ok_or(tr!("O endereço do projeto no catálogo não é válido."))?.page();
@@ -2562,7 +2562,7 @@ fn running_games(sessions: State<'_, sessions::Sessions>) -> Vec<String> {
     sessions.running()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
     installing.cancel(&id);
 }
@@ -2603,7 +2603,7 @@ async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
     Ok(Some(moved))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn pause_install(installing: State<'_, recomp::Installing>, id: String) {
     installing.pause(&id);
 }
@@ -2708,7 +2708,7 @@ async fn adopt_recomp(app: AppHandle, recomp_id: String, program: Option<String>
 }
 
 /// The catalog recomps a game added by hand could be, the surest first.
-#[tauri::command]
+#[tauri::command(async)]
 fn recomp_suggestions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::AdoptFound>, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Local { exe } = &game.source else { return Ok(Vec::new()) };
@@ -2717,7 +2717,7 @@ fn recomp_suggestions(library: State<'_, LocalLibrary>, id: String) -> Result<Ve
 }
 
 /// Turns a game added by hand into the catalog recomp it is, keeping its play time.
-#[tauri::command]
+#[tauri::command(async)]
 fn link_to_recomp(app: AppHandle, library: State<'_, LocalLibrary>, id: String, recomp_id: String) -> Result<Game, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let Source::Local { exe } = &game.source else { return Err(tr!("Só jogos adicionados à mão podem ser vinculados.").into()) };
@@ -2740,20 +2740,20 @@ fn settings_of(library: &LocalLibrary, id: &str) -> Result<(Game, game_settings:
 }
 
 /// The setup step's ticks (a vendor's SDK), each on or off.
-#[tauri::command]
+#[tauri::command(async)]
 fn prepare_options(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     Ok(recomp::prepare_options(&game))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_prepare_option(library: State<'_, LocalLibrary>, id: String, option: String, on: bool) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
     let game = recomp::set_prepare_option(&library, &id, &option, on)?;
     Ok(recomp::prepare_options(&game))
 }
 
 /// Opens the license a setup tick asks the player to accept (an https address from the game's file).
-#[tauri::command]
+#[tauri::command(async)]
 fn open_prepare_license(app: AppHandle, library: State<'_, LocalLibrary>, id: String, option: String) -> Result<(), String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     let (_, url) = recomp::prepare_options(&game).into_iter().find(|o| o.id == option).and_then(|o| o.license).ok_or(tr!("Essa opção não tem licença."))?;
@@ -2775,14 +2775,14 @@ fn prepare_game(app: AppHandle, library: State<'_, LocalLibrary>, id: String) ->
 }
 
 /// The buttons the game's developer adds under its settings.
-#[tauri::command]
+#[tauri::command(async)]
 fn game_actions(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::GameAction>, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     Ok(recomp::game_actions(&game))
 }
 
 /// Opens the folder an action names, or empties it (the page asked first).
-#[tauri::command]
+#[tauri::command(async)]
 fn run_game_action(app: AppHandle, library: State<'_, LocalLibrary>, id: String, action: String) -> Result<(), String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     if app.state::<sessions::Sessions>().is_running(&id) {
@@ -2798,7 +2798,7 @@ fn run_game_action(app: AppHandle, library: State<'_, LocalLibrary>, id: String,
 
 /// The files besides the copy the game's `recomplauncher.json` asks for:
 /// other discs, DLC, an update, keys.
-#[tauri::command]
+#[tauri::command(async)]
 fn game_inputs(library: State<'_, LocalLibrary>, id: String) -> Result<Vec<cerberus_shared::SetupInput>, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     Ok(recomp::setup_inputs(&game))
@@ -2827,7 +2827,7 @@ async fn pick_game_input(app: AppHandle, library: State<'_, LocalLibrary>, id: S
 }
 
 /// The game's own settings and the choice each is on. `None` when the catalog offers none.
-#[tauri::command]
+#[tauri::command(async)]
 fn game_settings(library: State<'_, LocalLibrary>, id: String) -> Result<Option<cerberus_shared::GameSettings>, String> {
     let (game, offer) = settings_of(&library, &id)?;
     if offer.is_empty() {
@@ -2838,7 +2838,7 @@ fn game_settings(library: State<'_, LocalLibrary>, id: String) -> Result<Option<
 
 /// Puts one setting on a choice (`choice: None` puts every setting back on the
 /// game's defaults), and returns the settings as they are now.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_game_setting(
     app: AppHandle,
     library: State<'_, LocalLibrary>,
@@ -2874,7 +2874,7 @@ fn set_game_setting(
 /// What the launcher did for a game lately, newest first.
 /// Marks or unmarks a game as a favorite.
 /// Pauses (or resumes) a recomp's updates: it stays on its version meanwhile.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_updates_paused(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     let data = app.state::<DataDir>().0.clone();
     let mut chosen = settings::load(&data);
@@ -2887,59 +2887,59 @@ fn set_updates_paused(app: AppHandle, id: String, on: bool) -> Result<(), String
 }
 
 /// The player's status, rating and notes for a game.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_game_note(app: AppHandle, id: String, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
     game_notes::set(&app.state::<DataDir>().0, &id, game_notes::Note { status, rating, notes })
 }
 
 /// Status, rating, notes and favorite for an id that isn't a library game (a classic).
-#[tauri::command]
+#[tauri::command(async)]
 fn player_note(app: AppHandle, id: String) -> cerberus_shared::PlayerNote {
     let data = &app.state::<DataDir>().0;
     let note = game_notes::load(data).remove(&id).unwrap_or_default();
     cerberus_shared::PlayerNote { status: note.status, rating: note.rating, notes: note.notes, favorite: favorites::load(data).contains(&id) }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_favorite(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     favorites::set(&app.state::<DataDir>().0, &id, on)
 }
 
 /// Hides a game from the library, or shows it again.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_hidden(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     collections::set_hidden(&app.state::<DataDir>().0, &id, on)
 }
 
 /// The player's collections, in the order they were made.
-#[tauri::command]
+#[tauri::command(async)]
 fn list_collections(app: AppHandle) -> Vec<String> {
     collections::names(&app.state::<DataDir>().0)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_collection(app: AppHandle, name: String) -> Result<String, String> {
     collections::create(&app.state::<DataDir>().0, &name)
 }
 
 /// Puts a game in a collection (made when new) or takes it out.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_in_collection(app: AppHandle, name: String, id: String, on: bool) -> Result<(), String> {
     collections::set_in(&app.state::<DataDir>().0, &name, &id, on)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_collection(app: AppHandle, old: String, name: String) -> Result<String, String> {
     collections::rename(&app.state::<DataDir>().0, &old, &name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_collection(app: AppHandle, name: String) -> Result<(), String> {
     collections::delete(&app.state::<DataDir>().0, &name)
 }
 
 /// Opens the folder holding a classic; only files from the player's ROM folders.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_rom_folder(app: AppHandle, path: String) -> Result<(), String> {
     let rom = PathBuf::from(&path);
     if !app.state::<RomIndex>().get().iter().any(|r| r.path == rom) {
@@ -2962,7 +2962,7 @@ fn take_play_request(request: State<'_, PlayRequest>) -> Option<String> {
 }
 
 /// Puts a shortcut on the desktop that plays this game through Cerberus.
-#[tauri::command]
+#[tauri::command(async)]
 fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<String, String> {
     let game = match library.get(&id)? {
         Some(game) => game,
@@ -3025,7 +3025,7 @@ async fn dlss_swap(app: AppHandle, id: String, path: String) -> Result<Option<St
     result.map(Some)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn dlss_restore(app: AppHandle, id: String, path: String) -> Result<(), String> {
     let game = any_game(&app.state::<LocalLibrary>(), &id)?;
     let dir = dlss_dir(&game).ok_or(tr!("Esse jogo não tem DLSS."))?;
@@ -3127,7 +3127,7 @@ async fn add_all_to_steam(app: AppHandle, http: State<'_, reqwest::Client>) -> R
     Ok(added)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_from_steam(app: AppHandle, id: String) -> Result<(), String> {
     let steam = steam_closed()?;
     for config in steam_shortcuts::config_dirs(&steam) {
@@ -3158,7 +3158,7 @@ fn pc_now() -> cerberus_shared::PcStatus {
 }
 
 /// What the PC has that games need.
-#[tauri::command]
+#[tauri::command(async)]
 fn pc_status() -> cerberus_shared::PcStatus {
     pc_now()
 }
@@ -3184,24 +3184,24 @@ async fn install_dx(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
 }
 
 /// What happened lately across every game, newest first.
-#[tauri::command]
+#[tauri::command(async)]
 fn recent_activity(trail: State<'_, trail::Trail>) -> Vec<cerberus_shared::TrailEntry> {
     trail.recent(40)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn game_trail(trail: State<'_, trail::Trail>, id: String) -> Vec<cerberus_shared::TrailEntry> {
     trail.for_game(&id, 30)
 }
 
 /// The pictures taken of a game, newest first.
-#[tauri::command]
+#[tauri::command(async)]
 fn list_screenshots(app: AppHandle, id: String) -> Vec<cerberus_shared::Screenshot> {
     screenshots::list(&app.state::<DataDir>().0, &id)
 }
 
 /// Opens one picture in the PC's image viewer; only pictures Cerberus took.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_screenshot(app: AppHandle, path: String) -> Result<(), String> {
     if !screenshots::is_ours(&app.state::<DataDir>().0, Path::new(&path)) {
         return Err(tr!("Essa foto não é do Cerberus.").into());
@@ -3209,14 +3209,14 @@ fn open_screenshot(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| tr!("Não foi possível abrir a foto: {}", e))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_screenshots_folder(app: AppHandle, id: String) -> Result<(), String> {
     let dir = screenshots::dir_of(&app.state::<DataDir>().0, &id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<(), String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     app.opener()
@@ -3224,7 +3224,7 @@ fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> 
         .map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_backups(app: AppHandle, library: State<'_, LocalLibrary>, folders: State<'_, recomp::Folders>, id: String) -> Result<(), String> {
     let (recomp_id, _) = recomp_of(&library, &id)?;
     let dir = folders.backups_dir(&recomp_id);
@@ -3284,7 +3284,7 @@ fn restore_emulator_backup(app: AppHandle, id: String, name: String) -> Result<u
     emulator_saves::restore(&data, &id, &exe, &name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_emulator_backups(app: AppHandle, id: String) -> Result<(), String> {
     let dir = emulator_saves::backups_dir(&app.state::<DataDir>().0, &id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
