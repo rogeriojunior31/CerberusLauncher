@@ -165,9 +165,11 @@ impl Tv {
         let pending = self.pending_backdrop;
         let backdrop = self.backdrop;
         set_timeout(
+            // The TV may have closed in the meantime: only `try_` reads, never a panic.
             move || {
-                if pending.with_value(|p| *p == sources) && backdrop.with_untracked(|b| *b != sources) {
-                    backdrop.set(sources);
+                let still = pending.try_with_value(|p| *p == sources).unwrap_or(false);
+                if still && backdrop.try_with_untracked(|b| *b != sources).unwrap_or(false) {
+                    let _ = backdrop.try_set(sources);
                 }
             },
             Duration::from_millis(220),

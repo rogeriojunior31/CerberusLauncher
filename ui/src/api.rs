@@ -48,6 +48,49 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// Calls `handler` for every `event` while the component that asked is on
+/// screen: the listener goes when it does (one per visit otherwise, each
+/// reading the component's state after it was gone).
+fn on_event_here<T: DeserializeOwned + 'static>(event: &'static str, mut handler: impl FnMut(T) + 'static) {
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+    let closure = Rc::new(Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
+        let payload = js_sys::Reflect::get(&event, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
+        if let Ok(value) = serde_wasm_bindgen::from_value(payload) {
+            handler(value);
+        }
+    }));
+    let stop: Rc<RefCell<Option<js_sys::Function>>> = Rc::new(RefCell::new(None));
+    let gone = Rc::new(Cell::new(false));
+    {
+        let (closure, stop, gone) = (closure.clone(), stop.clone(), gone.clone());
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(unlisten) = listen(event, &closure).await {
+                let unlisten: js_sys::Function = unlisten.unchecked_into();
+                if gone.get() {
+                    let _ = unlisten.call0(&JsValue::NULL);
+                } else {
+                    *stop.borrow_mut() = Some(unlisten);
+                }
+            }
+        });
+    }
+    let held = send_wrapper::SendWrapper::new((closure, stop, gone));
+    leptos::prelude::on_cleanup(move || {
+        let (closure, stop, gone) = held.take();
+        gone.set(true);
+        if let Some(unlisten) = stop.borrow_mut().take() {
+            let _ = unlisten.call0(&JsValue::NULL);
+        }
+        drop(closure);
+    });
+}
+
+/// A picture was taken, while the asking component is on screen.
+pub fn on_screenshot_here(handler: impl FnMut(String) + 'static) {
+    on_event_here("screenshot-taken", handler);
+}
+
 /// The menu over a game was opened again (its window is kept between uses).
 pub fn on_overlay_opened(mut handler: impl FnMut() + 'static) {
     on_event("overlay-opened", move |_: ()| handler());
@@ -849,9 +892,11 @@ pub async fn install_retroarch() -> Result<cerberus_shared::EmulationView, Strin
     call("install_retroarch", &()).await
 }
 
-pub fn on_emu_progress(handler: impl FnMut((u64, u64)) + 'static) {
-    on_event("emu-progress", handler);
+/// Emulator download progress, while the asking component is on screen.
+pub fn on_emu_progress_here(handler: impl FnMut((u64, u64)) + 'static) {
+    on_event_here("emu-progress", handler);
 }
+
 
 pub async fn pick_retroarch() -> Result<cerberus_shared::EmulationView, String> {
     call("pick_retroarch", &()).await

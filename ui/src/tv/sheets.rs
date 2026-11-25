@@ -133,7 +133,8 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                         library.games.refetch();
                         library.recomps.refetch();
                         library.toast(tr!("Removido. Os backups de saves continuam guardados."));
-                        if tv.view.get_untracked() == View::Game(gid.clone()) && !tv.back() {
+                        // The TV may have closed while the files were deleted.
+                        if tv.view.try_get_untracked() == Some(View::Game(gid.clone())) && !tv.back() {
                             tv.tab(Tab::Home);
                         }
                     }

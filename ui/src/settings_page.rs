@@ -1176,7 +1176,9 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         });
     };
     refresh();
-    api::on_emu_progress(move |p| progress.set(p));
+    api::on_emu_progress_here(move |p| {
+        let _ = progress.try_set(p);
+    });
     // Runs one action, says what it did, and reads both states again.
     let act = move |label: &str, task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>>>>| {
         busy.set(Some(label.to_string()));

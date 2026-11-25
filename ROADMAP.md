@@ -962,7 +962,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 ### Lote F — Panics e travamentos da interface
 
-- [ ] Sinais descartados lidos em timers e depois de `await` [BP F1, BP F8, J F5]
+- [x] Sinais descartados lidos em timers e depois de `await` [BP F1, BP F8, J F5] — feito em 25/11/2026: `try_` no fundo da TV e depois de desinstalar; `on_event_here` desliga o ouvinte quando a tela sai (Fotos, progresso dos emuladores). Conferido no app: 4 visitas e evento depois de sair, sem erro.
 - [ ] Comandos síncronos pesados na thread principal [Fu F7, B F12]; I/O bloqueante em async [Fu F16]
 - [ ] `list_games` refeito a cada clique e em rajadas [B F4]; arte pedida de novo [B F6]
 - [ ] Varredura de ROMs sem cache, que baixa arquivos só na nuvem e cobre pastas demais [C F4, C F7, C F8, C F18]

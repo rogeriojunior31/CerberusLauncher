@@ -1646,8 +1646,8 @@ fn Photos(game_id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(game_id);
     let shots = LocalResource::new(move || async move { api::list_screenshots(&id.get_value()).await });
-    api::on_screenshot(move |taken: String| {
-        if taken == id.get_value() {
+    api::on_screenshot_here(move |taken: String| {
+        if id.try_get_value().is_some_and(|id| id == taken) {
             shots.refetch();
         }
     });
