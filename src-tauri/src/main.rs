@@ -2633,8 +2633,10 @@ async fn restore_backup(
     id: String,
     name: String,
 ) -> Result<u32, String> {
-    // The game would overwrite the restored files with what it has in memory.
-    if sessions.is_running_any(&id) {
+    // The game would overwrite the restored files with what it has in memory
+    // (also when it was opened outside Cerberus, or before a restart).
+    let open_now = library.get(&id).ok().flatten().is_some_and(|g| sessions::open_outside(&g));
+    if sessions.is_running_any(&id) || open_now {
         return Err(tr!("Feche o jogo antes de restaurar um backup.").into());
     }
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;

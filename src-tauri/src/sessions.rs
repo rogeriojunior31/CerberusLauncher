@@ -141,6 +141,13 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         if result.is_err() { release(app, &game.id); }
         return result;
     }
+    // Still open from before (Cerberus closed mid-game, or opened outside it): a
+    // second copy would fight over the saves, and pulling newer ones from the
+    // cloud would replace them under the running game.
+    if open_outside(game) {
+        release(app, &game.id);
+        return Err(tr!("{} já está aberto. Feche o jogo antes de abrir de novo pelo Cerberus.", game.name));
+    }
     // A setup step the release runs once with the player's copy (unpacking the
     // disc): it runs first, and the game starts when it's done.
     match recomp::preparation(game) {
@@ -795,5 +802,31 @@ mod tests {
             assert_eq!(rounds, 2);
             assert!(dir.path().join("menu-closed").exists());
         }
+    }
+}
+
+/// A program from the game's own folder is running now (seen by Windows, not
+/// only by this Cerberus): the game is open, however it was started.
+pub fn open_outside(game: &Game) -> bool {
+    if game.install_dir.trim().is_empty() {
+        return false;
+    }
+    running_inside(&crate::store_time::running_programs(), Path::new(&game.install_dir))
+}
+
+fn running_inside(programs: &[String], dir: &Path) -> bool {
+    let dir = dir.to_string_lossy().to_lowercase().replace('/', "\\");
+    let dir = dir.trim_end_matches('\\');
+    programs.iter().any(|p| p.to_lowercase().replace('/', "\\").starts_with(&format!("{dir}\\")))
+}
+
+#[cfg(test)]
+mod open_outside_tests {
+    #[test]
+    fn a_program_in_the_games_folder_counts_and_a_neighbor_doesnt() {
+        let programs = vec![r"C:\Games\Zelda\Zelda64Recompiled.exe".to_string(), r"C:\Games\Zelda2\x.exe".to_string()];
+        assert!(super::running_inside(&programs, std::path::Path::new(r"c:\games\zelda")));
+        assert!(!super::running_inside(&programs, std::path::Path::new(r"C:\Games\Zel")));
+        assert!(!super::running_inside(&[], std::path::Path::new(r"C:\Games\Zelda")));
     }
 }

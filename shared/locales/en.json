@@ -1814,6 +1814,7 @@
   "{} jogos seus têm recomp, prontos para instalar no Descobrir.": "{} of your games have a recomp, ready to install in Discover.",
   "{} jogos seus têm recomp. {} ainda estão no Descobrir, prontos para instalar.": "{} of your games have a recomp. {} are still in Discover, ready to install.",
   "{} já está aberto.": "{} is already running.",
+  "{} já está aberto. Feche o jogo antes de abrir de novo pelo Cerberus.": "{} is already open. Close the game before opening it again through Cerberus.",
   "{} já está instalado pelo Cerberus em {}. Desinstale esse antes de trazer outra pasta.": "{} is already installed by Cerberus in {}. Uninstall that one before bringing another folder.",
   "{} já está sendo instalado.": "{} is already being installed.",
   "{} já roda pelo recomp {}": "{} already runs through the {} recomp",
