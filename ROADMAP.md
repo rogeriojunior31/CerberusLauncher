@@ -896,7 +896,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6] — corrigido em 25/11/2026: a biblioteca é gravada antes de apagar a antiga; se não gravar, a mudança é desfeita. Testado com a biblioteca bloqueada.
 - [ ] Backup do DLSS interrompido vira o "original"; mod atualizado apaga o antigo antes do novo [RP F9, RP F10]
 - [ ] Preparação órfã, duas em paralelo [RP F12]; restos `.part`/`.tmp` [P F23]
-- [ ] Importar dados desfeito pelo cache na memória [Fu F5, P F5, P F17]
+- [x] Importar dados desfeito pelo cache na memória [Fu F5, P F5, P F17] — feito em 25/11/2026: a cópia é conferida e preparada à parte e trocada no próximo início, antes de qualquer leitura; recusada com jogo/download em andamento; guardar os dados atuais é obrigatório; tempo de jogo mesclado (maior por jogo); entradas acima de 256 MiB recusadas; só as 3 últimas before-restore ficam. Conferido com os dados reais.
 
 ### Lote C — Saves e nuvem sem confiar no relógio
 

@@ -1458,8 +1458,13 @@ async fn import_data(app: AppHandle) -> Result<Option<usize>, String> {
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())?;
     let Some(picked) = picked else { return Ok(None) };
     let from = picked.into_path().map_err(|e| e.to_string())?;
+    // A game, a store game or a download would write over the restored files.
+    if let Some(why) = background::busy(&app) {
+        return Err(tr!("Espere para trazer uma cópia. {}", why));
+    }
     let data = app.state::<DataDir>().0.clone();
-    let (count, _) = tauri::async_runtime::spawn_blocking(move || data_backup::restore(&data, &from)).await.map_err(|e| e.to_string())??;
+    // Checked and unpacked now; put in place when Cerberus starts again, before anything reads it.
+    let count = tauri::async_runtime::spawn_blocking(move || data_backup::stage(&data, &from)).await.map_err(|e| e.to_string())??;
     let again = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
@@ -3347,6 +3352,10 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
+            // A copy of the data brought in before the restart goes in place first.
+            if let Some(Err(e)) = data_backup::apply_pending(&data_dir) {
+                eprintln!("restore: {e}");
+            }
             let chosen = settings::load(&data_dir);
             language::apply(chosen.language.as_deref());
             app.manage(LocalLibrary::load(&data_dir));
