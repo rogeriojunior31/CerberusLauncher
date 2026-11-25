@@ -939,7 +939,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
       **Aceite:** com cada um dos 5 casos reproduzido em pasta temporária, Desinstalar termina (ou pergunta e termina),
       o jogo sai da Biblioteca e a mensagem diz o que aconteceu. Conferir no app com um recomp real de teste.
 
-- [ ] Instalação nova adota pasta alheia com o mesmo nome e depois a apaga inteira [RC F1]
+- [x] Instalação nova adota pasta alheia com o mesmo nome e depois a apaga inteira [RC F1] — feito em 25/11/2026: pasta existente sem a nossa marca nunca é usada; a instalação vai para `<id>-2`, `<id>-3`... Testado. (Uma instalação nossa interrompida antes da marca também vai para a próxima livre; limpar fica com RC F11.)
 - [ ] Reparar/Atualizar sobrescrevem configurações e mods [RC F2]; arquivos removidos pela versão nova ficam [RC F12]
 - [ ] Recomp que saiu do catálogo não desinstala [RC F4]; Reparar falha quando a pasta sumiu [RC F5]
 - [ ] Versão comparada como texto; ids antigos; checksum velho em loop [RC F8, RC F9, RC F10]

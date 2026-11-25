@@ -1242,7 +1242,7 @@ async fn install_now(
     let installed = installed_game(library, entry)?;
     let target = match &installed {
         Some(game) => PathBuf::from(&game.install_dir),
-        None => folders.install_dir(&entry.id),
+        None => free_install_dir(folders, &entry.id),
     };
     if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source) {
         check_install_folder(folders, recomp_id, &target)?;
@@ -1602,6 +1602,21 @@ pub fn sweep_removed(folders: &Folders) {
     }
 }
 
+/// Where a new install goes: the recomp's own folder, unless a folder of that
+/// name is already there and isn't ours (installed by hand, another program):
+/// then the next free `<id>-2`, `<id>-3`... so nothing of the player's is ever
+/// written over, or deleted on uninstall.
+fn free_install_dir(folders: &Folders, recomp_id: &str) -> PathBuf {
+    let first = folders.install_dir(recomp_id);
+    // Only our own marker counts here (not the old "default folder" allowance).
+    let ours = |dir: &Path| fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
+    let usable = |dir: &Path| !dir.exists() || ours(dir) || fs::read_dir(dir).is_ok_and(|mut d| d.next().is_none());
+    if usable(&first) {
+        return first;
+    }
+    (2..1000).map(|n| first.with_file_name(format!("{recomp_id}-{n}"))).find(|dir| usable(dir)).unwrap_or(first)
+}
+
 /// Whether `dir` is a folder Cerberus installed this recomp in (see `check_install_folder`).
 pub fn check_install_folder_pub(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
     if !dir.exists() {
@@ -1650,6 +1665,21 @@ mod tests {
         let fresh = root.path().join("game").join("other");
         assert!(fill_folder(&fresh, |_| Err("stopped".into())).is_err());
         assert!(!fresh.exists());
+    }
+
+    #[test]
+    fn a_new_install_never_lands_in_someone_elses_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(root.path(), None);
+        let theirs = folders.install_dir("zelda");
+        fs::create_dir_all(&theirs).unwrap();
+        fs::write(theirs.join("texture-pack.zip"), b"mine").unwrap();
+        let picked = free_install_dir(&folders, "zelda");
+        assert_ne!(picked, theirs);
+        assert!(picked.ends_with("zelda-2"));
+        // Ours (marked) or empty: used as is.
+        fs::write(theirs.join(MARKER), "zelda").unwrap();
+        assert_eq!(free_install_dir(&folders, "zelda"), theirs);
     }
 
     #[test]
