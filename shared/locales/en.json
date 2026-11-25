@@ -1141,6 +1141,7 @@
   "O DLSS original do jogo voltou.": "The game's original DLSS is back.",
   "O DirectX terminou, mas ainda falta uma parte.": "DirectX finished, but one part is still missing.",
   "O GameBanana respondeu {}.": "GameBanana replied {}.",
+  "O GitHub não informou o checksum dessa versão; por segurança ela não é instalada sozinha. Baixe pelo site do projeto.": "GitHub didn't give this version's checksum; for safety it isn't installed automatically. Download it from the project's site.",
   "O GitHub não respondeu como esperado ({}). Tente de novo em alguns minutos.": "GitHub didn't answer as expected ({}). Try again in a few minutes.",
   "O GitHub respondeu algo inesperado.": "GitHub replied with something unexpected.",
   "O PlayStation 2 precisa da BIOS do seu console. Adicione em Configurações › Emulação › BIOS.": "PlayStation 2 needs the BIOS from your console. Add it in Settings › Emulation › BIOS.",

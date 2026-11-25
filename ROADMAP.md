@@ -952,7 +952,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 - [x] Catálogo de terceiros manda no repositório e no checksum do catálogo próprio [RC F3] — feito em 25/11/2026: para os jogos do catálogo próprio, repositório, servidor, versão, arquivos/checksum, sistemas, programa e tipo vêm só dele; o site completa texto e arte. Testado.
 - [ ] Assinar o `recomps.json` do catálogo próprio (minisign/ed25519) e recusar cópia sem assinatura [RC F3, 2ª parte]
-- [ ] Autoatualização sem assinatura e às vezes sem hash; instalador no nome final [J F2, RC F15, Fu F15]
+- [x] Autoatualização às vezes sem hash; instalador no nome final [J F2, RC F15, Fu F15] — feito em 25/11/2026: checksum obrigatório (sem ele, não instala), download em `.part` renomeado só depois de conferido. Conferido com a release real do GitHub.
+- [ ] Autoatualização: exigir assinatura (Authenticode ou minisign) quando as releases forem assinadas [J F2]
 - [ ] Fontes no formato RecompLauncher baixam de qualquer servidor [RC F16]; executáveis de terceiros sem hash [RP F8, C F23]
 - [ ] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3]
 - [ ] Respostas sem limite e redirecionamento para http [Fu F8]; `..` nos lugares de saves do manifesto [Fu F9]
@@ -978,7 +979,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 ### Divergências do próprio roadmap (corrigir o texto)
 
-- 5.2 marca como feitos `version.json`, versão mínima e arquivo ruim marcado: não existem em `self_update.rs` [RC F15, J F2].
+- 5.2 marca como feitos `version.json`, versão mínima e arquivo ruim marcado: não existem em `self_update.rs` [RC F15, J F2]. Corrigir o texto da 5.2.
 - 6.1 diz que o aviso de conquista tem 6 posições, versão secreta, agrupamento e volume [J F11]: conferir e desmarcar o que falta.
 
 ### Ordem
