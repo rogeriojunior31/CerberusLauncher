@@ -167,6 +167,39 @@ fn region_from_name(name: &str) -> String {
     region.to_string()
 }
 
+/// Windows' marks for a file whose contents are in the cloud, fetched when read
+/// (RECALL_ON_DATA_ACCESS, RECALL_ON_OPEN, OFFLINE).
+fn only_in_cloud(attributes: u32) -> bool {
+    attributes & (0x0040_0000 | 0x0004_0000 | 0x0000_1000) != 0
+}
+
+#[cfg(windows)]
+fn attributes(meta: &fs::Metadata) -> u32 {
+    use std::os::windows::fs::MetadataExt;
+    meta.file_attributes()
+}
+
+#[cfg(not(windows))]
+fn attributes(_: &fs::Metadata) -> u32 {
+    0
+}
+
+/// What a file is by its name and folder alone (nothing is read from it).
+fn identify_by_name(path: &Path) -> Option<RomFile> {
+    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    let stem = path.file_stem()?.to_string_lossy().into_owned();
+    let system = if N64.contains(&ext.as_str()) {
+        "n64".to_string()
+    } else if let Some(system) = cartridge_system(&ext) {
+        system.to_string()
+    } else if ext == "m3u" || DISC.contains(&ext.as_str()) {
+        crate::disc_console::console_by_folder(path).unwrap_or_default().to_string()
+    } else {
+        return None;
+    };
+    Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
+}
+
 fn identify(path: &Path) -> Option<RomFile> {
     let ext = path.extension()?.to_string_lossy().to_lowercase();
     let stem = path.file_stem()?.to_string_lossy().into_owned();
@@ -335,7 +368,11 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
                 }
                 continue;
             }
-            if let Some(rom) = identify(&path) {
+            // A file kept only in the cloud (OneDrive "online only") is known by its
+            // name and folder: opening it would make the sync app download it.
+            let cloud_only = entry.metadata().is_ok_and(|m| only_in_cloud(attributes(&m)));
+            let rom = if cloud_only { identify_by_name(&path) } else { identify(&path) };
+            if let Some(rom) = rom {
                 found.push(rom);
             }
         }
@@ -500,6 +537,21 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_only_in_the_cloud_is_known_by_name_without_being_opened() {
+        assert!(only_in_cloud(0x0040_0000 | 0x20), "OneDrive online-only");
+        assert!(only_in_cloud(0x1000), "offline");
+        assert!(!only_in_cloud(0x20), "a plain file");
+        let dir = tempfile::tempdir().unwrap();
+        let ps2 = dir.path().join("PS2");
+        fs::create_dir_all(&ps2).unwrap();
+        // Not even there to open: known by name and folder all the same.
+        let rom = identify_by_name(&ps2.join("Shadow of the Colossus (USA).iso")).unwrap();
+        assert_eq!((rom.system.as_str(), rom.title.as_str()), ("ps2", "Shadow of the Colossus (USA)"));
+        assert_eq!(identify_by_name(&dir.path().join("Mario Kart 64 (USA).z64")).unwrap().system, "n64");
+        assert!(identify_by_name(&dir.path().join("readme.txt")).is_none());
+    }
 
     #[test]
     fn a_sequel_is_not_the_first_game() {
