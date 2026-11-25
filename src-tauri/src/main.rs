@@ -3702,8 +3702,14 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" && background::on_close(window, window.app_handle()) {
-                    api.prevent_close();
+                if window.label() == "main" {
+                    if background::on_close(window, window.app_handle()) {
+                        api.prevent_close();
+                    } else {
+                        // Closing for good: the hidden menu and notice windows would keep
+                        // the process alive with no window, and reopening would find none.
+                        window.app_handle().exit(0);
+                    }
                 }
             }
         })
