@@ -26,6 +26,7 @@ enum Section {
     Emulation,
     Steam,
     Epic,
+    Xbox,
     Retro,
     Pc,
     Storage,
@@ -45,7 +46,7 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
         ],
     ),
     (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Disc)]),
-    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::User), (Section::Epic, "Epic Games", Icon::Shelf), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::User), (Section::Epic, "Epic Games", Icon::Shelf), (Section::Xbox, "Xbox", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
     (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Cpu), (Section::Storage, tk!("Armazenamento"), Icon::Database), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
@@ -395,6 +396,7 @@ pub fn SettingsPage() -> impl IntoView {
             Section::Emulation => emulation(s).into_any(),
             Section::Steam => view! { <SteamAccountCard /> <SteamShortcutsCard /> }.into_any(),
             Section::Epic => view! { <EpicCard /> }.into_any(),
+            Section::Xbox => view! { <XboxCard /> }.into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() retroarch=s.ra_retroarch /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
             Section::Storage => storage(s, busy, apply).into_any(),
@@ -1780,6 +1782,65 @@ fn SteamShortcutsCard() -> impl IntoView {
             {row(tr!("Adicionar todos à Steam"), tr!("Recomps, jogos que você adicionou e os da Epic entram na Steam como jogos de fora, com capa, e abrem pelo Cerberus. Os que já estão lá ficam como estão. Feche a Steam antes."),
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=add_all>
                     {move || if busy.get() { tr!("Adicionando…") } else { tr!("Adicionar todos") }}</button> })}
+        </section>
+    }
+}
+
+/// The Xbox app: its installed games, and PC Game Pass in the library.
+#[component]
+fn XboxCard() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let settings = LocalResource::new(api::get_settings);
+    let busy = RwSignal::new(false);
+    let counts = move || {
+        library.games.with(|g| {
+            let all = g.as_ref().and_then(|r| r.as_ref().ok());
+            let xbox = |g: &&cerberus_shared::Game| matches!(g.source, cerberus_shared::Source::Xbox { .. });
+            let here = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| !g.install_dir.is_empty()).count());
+            let pass = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| g.install_dir.is_empty()).count());
+            (here, pass)
+        })
+    };
+    let body = move || {
+        let on = settings.get().and_then(Result::ok).is_some_and(|s| s.game_pass);
+        let (here, pass) = counts();
+        let installed = match here {
+            0 => tr!("Nenhum jogo instalado pelo app Xbox. Os que você instalar entram sozinhos na Biblioteca.").to_string(),
+            1 => tr!("1 jogo instalado pelo app Xbox está na Biblioteca.").to_string(),
+            n => tr!("{} jogos instalados pelo app Xbox estão na Biblioteca.", n),
+        };
+        let toggle = move || {
+            busy.set(true);
+            spawn_local(async move {
+                let _ = library.report(api::set_game_pass(!on).await);
+                settings.refetch();
+                library.games.refetch();
+                busy.set(false);
+            });
+        };
+        view! {
+            <div class="set-row">
+                <div><b>{tr!("App Xbox")}</b><p class="muted small">{installed}</p></div>
+                <span class="pill" class:ok={ here > 0 }>{if here > 0 { tr!("Encontrado") } else { tr!("Sem jogos") }}</span>
+            </div>
+            {row(
+                tr!("PC Game Pass na Biblioteca"),
+                if on && pass > 0 { tr!("{} jogos do Game Pass aparecem como não instalados: instalam pelo app Xbox. A lista vem do catálogo público da Microsoft.", pass) } else { tr!("Mostra os jogos do PC Game Pass como não instalados, para instalar pelo app Xbox.").to_string() },
+                switch(on, tr!("PC Game Pass na Biblioteca"), busy, toggle),
+            )}
+            <div class="row">
+                <button type="button" class="btn sm" disabled=here + pass == 0 on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
+                <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::xbox_open().await); })>
+                    <Svg icon=Icon::External size=16 />{tr!("Abrir o app Xbox")}
+                </button>
+            </div>
+            <p class="muted small">{tr!("Os jogos abrem e instalam pelo app Xbox, com a sua conta e o seu Game Pass. Tempo de jogo é contado.")}</p>
+        }
+    };
+    view! {
+        <section class="card set">
+            <div class="card-h"><h3>"Xbox"</h3></div>
+            {body}
         </section>
     }
 }

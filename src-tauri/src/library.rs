@@ -155,6 +155,15 @@ fn part_in(games: &[Game], id: &str) -> Option<(usize, crate::recomp::catalog::C
     Some((index, found))
 }
 
+/// A game with nothing filled in yet, for the stores' importers to complete.
+pub fn blank_game() -> Game {
+    let mut game = game_from_exe(Path::new(""));
+    game.id = String::new();
+    game.name = String::new();
+    game.install_dir = String::new();
+    game
+}
+
 pub fn game_from_exe(exe: &Path) -> Game {
     let install_dir = exe.parent().unwrap_or(exe).to_string_lossy().into_owned();
     let exe_text = exe.to_string_lossy().into_owned();

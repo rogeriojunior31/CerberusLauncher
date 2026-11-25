@@ -1247,3 +1247,16 @@ pub async fn restore_emulator_backup(id: &str, name: &str) -> Result<u32, String
 pub async fn open_emulator_backups(id: &str) -> Result<(), String> {
     call("open_emulator_backups", &Id { id }).await
 }
+
+
+pub async fn set_game_pass(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_game_pass", &Arg { on }).await
+}
+
+pub async fn xbox_open() -> Result<(), String> {
+    call("xbox_open", &()).await
+}

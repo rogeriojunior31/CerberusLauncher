@@ -5,6 +5,7 @@ mod art_cache;
 mod emulator_saves;
 mod epic;
 mod xbox;
+mod gamepass;
 mod disk;
 mod iso9660;
 mod library;
@@ -139,6 +140,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
         close_to_tray: chosen.close_to_tray,
+        game_pass: chosen.game_pass,
         autostart: {
             use tauri_plugin_autostart::ManagerExt;
             app.autolaunch().is_enabled().unwrap_or(false)
@@ -1290,6 +1292,23 @@ fn set_close_to_tray(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     Ok(settings_view(&app))
 }
 
+/// Shows PC Game Pass's games in the library, or not.
+#[tauri::command]
+fn set_game_pass(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>();
+    let mut chosen = settings::load(&data.0);
+    chosen.game_pass = on;
+    settings::save(&data.0, &chosen)?;
+    let _ = app.emit("catalog-changed", ());
+    Ok(settings_view(&app))
+}
+
+/// Opens the Xbox app (to sign in, install, manage Game Pass).
+#[tauri::command]
+fn xbox_open(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url("msxbox://", None::<&str>).map_err(|e| tr!("Não foi possível abrir o app Xbox: {}", e))
+}
+
 /// Turns recomplauncher.com's catalog on or off; Cerberus's own list stays.
 #[tauri::command]
 async fn set_site_catalog(app: AppHandle, http: State<'_, reqwest::Client>, on: bool) -> Result<SettingsView, String> {
@@ -1562,6 +1581,7 @@ async fn list_games(
         found
     });
     games.extend(scan.await.unwrap_or_default());
+    game_pass(&app, &http, &mut games);
     xbox_art(&app, &http, &mut games);
     owned_not_installed(&app, &http, &mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
@@ -1593,6 +1613,32 @@ async fn list_games(
     games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
+}
+
+/// PC Game Pass (when the player keeps it on): official art on the Xbox games
+/// installed, the others as not installed. The catalog comes from disk at once
+/// and is asked again in the background when old; the library is listed again then.
+fn game_pass(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
+    let data = app.state::<DataDir>().0.clone();
+    if !settings::load(&data).game_pass {
+        return;
+    }
+    gamepass::merge(games, &gamepass::cached(&data));
+    if !gamepass::stale(&data) {
+        return;
+    }
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (app, http) = (app.clone(), http.clone());
+    tauri::async_runtime::spawn(async move {
+        let fresh = gamepass::refresh(&http, &data).await;
+        ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        if fresh.is_ok() {
+            let _ = app.emit("catalog-changed", ());
+        }
+    });
 }
 
 /// The Xbox app's games get Steam's cover and backdrop: the ones found before
@@ -2130,7 +2176,9 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         // Through Windows, as the Start menu does (Xbox app sign-in and Game Pass included).
-        Source::Xbox { family, app: app_id } => {
+        // Not on this PC: its page in the Xbox app, where it installs (Game Pass or bought).
+        Source::Xbox { product, .. } if game.install_dir.is_empty() => format!("msxbox://game/?productId={product}"),
+        Source::Xbox { family, app: app_id, .. } => {
             return xbox::launch(family, app_id).map_err(|e| tr!("Não foi possível abrir o jogo pelo app Xbox: {}", e));
         }
         Source::Local { .. } => {
@@ -3132,6 +3180,8 @@ fn main() {
             set_game_setting,
             open_folder,
             open_backups,
+            set_game_pass,
+            xbox_open,
             emulator_backups,
             backup_emulator_saves,
             restore_emulator_backup,

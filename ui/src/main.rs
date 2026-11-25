@@ -218,7 +218,10 @@ pub fn play_game(library: Library, game: Game) {
             NextStep::Play | NextStep::RunInstaller => Some(game),
             // The store's own install window opens; the tile turns into Play when it's done.
             NextStep::Install => {
-                library.toast(tr!("A Steam vai instalar {}. Quando terminar, ele aparece pronto para jogar.", game.name));
+                library.toast(match game.source {
+                    cerberus_shared::Source::Xbox { .. } => tr!("O app Xbox abre na página de {}: instale por lá. Quando terminar, ele aparece pronto para jogar.", game.name),
+                    _ => tr!("A Steam vai instalar {}. Quando terminar, ele aparece pronto para jogar.", game.name),
+                });
                 Some(game)
             }
             NextStep::ChooseCopy { found } => {

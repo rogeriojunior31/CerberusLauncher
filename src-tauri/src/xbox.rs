@@ -120,7 +120,7 @@ fn to_game(install: Install) -> Game {
     Game {
         id: format!("xbox:{}", install.family),
         name: install.name,
-        source: Source::Xbox { family: install.family, app: install.app },
+        source: Source::Xbox { family: install.family, app: install.app, product: String::new(), game_pass: false },
         install_dir: install.content.to_string_lossy().into_owned(),
         cover_path: install.cover.map(|p| p.to_string_lossy().into_owned()),
         cover_url: None,

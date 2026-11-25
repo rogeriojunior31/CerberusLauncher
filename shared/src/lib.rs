@@ -463,6 +463,9 @@ pub struct SettingsView {
     /// Closing the window keeps Cerberus in the tray.
     #[serde(default)]
     pub close_to_tray: bool,
+    /// PC Game Pass's games listed in the library.
+    #[serde(default)]
+    pub game_pass: bool,
     /// Cerberus opens with Windows.
     #[serde(default)]
     pub autostart: bool,
@@ -983,7 +986,16 @@ pub enum Source {
     Steam { app_id: u32 },
     Epic { app_name: String, namespace: String, item_id: String },
     /// A PC game from the Xbox app (Game Pass, Microsoft Store), by its package family and app id.
-    Xbox { family: String, app: String },
+    Xbox {
+        family: String,
+        app: String,
+        /// The Store's product id: the Xbox app's page for the game (install, buy).
+        #[serde(default)]
+        product: String,
+        /// In PC Game Pass.
+        #[serde(default)]
+        game_pass: bool,
+    },
     /// Any executable the user added by hand.
     Local { exe: String },
     /// A recomp installed from its developer's GitHub releases.

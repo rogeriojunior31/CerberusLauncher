@@ -86,6 +86,9 @@ pub struct Settings {
     /// The folders the emulators already list games from are looked through too.
     #[serde(default = "yes")]
     pub emulator_folders: bool,
+    /// PC Game Pass's games listed in the library (not installed until the Xbox app installs them).
+    #[serde(default = "yes")]
+    pub game_pass: bool,
     /// What happens while a game is open.
     #[serde(default)]
     pub in_game: cerberus_shared::InGame,
