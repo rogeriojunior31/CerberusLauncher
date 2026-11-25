@@ -56,8 +56,9 @@ pub fn DownloadsPage() -> impl IntoView {
     let entry_of = move |id: &str| library.recomps.with(|r| r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == id).cloned()));
     let name_of = move |id: &str| {
         let rid = id.strip_prefix("recomp:").unwrap_or(id);
+        // The game's name first, as everywhere else; the recomp's follows it.
         entry_of(rid)
-            .map(|e| e.name)
+            .map(|e| match crate::tiles::entry_names(&e) { (game, Some(recomp)) => format!("{game} · {recomp}"), (game, None) => game })
             .or_else(|| library.games.with_untracked(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| x.name.clone()))))
             .unwrap_or_else(|| rid.to_string())
     };
@@ -70,12 +71,26 @@ pub fn DownloadsPage() -> impl IntoView {
             return None;
         }
         let count = jobs.len();
+        // With more than one: pause every download that has bytes to keep, or carry on with every paused one.
+        let running: Vec<String> = jobs.iter().filter(|(_, s)| matches!(s, InstallStep::Downloading { done, .. } if *done > 0)).map(|(id, _)| id.clone()).collect();
+        let waiting: Vec<String> = jobs.iter().filter(|(_, s)| matches!(s, InstallStep::Paused { .. })).map(|(id, _)| id.clone()).collect();
+        let all_buttons = (count > 1).then(|| {
+            let pause = (!running.is_empty()).then(|| {
+                view! { <button type="button" class="btn sm" on:click=move |_| { for id in running.clone() { crate::discover::pause_install(library, id); } }>
+                    <Svg icon=Icon::Pause size=16 />{tr!("Pausar tudo")}</button> }
+            });
+            let resume = (!waiting.is_empty()).then(|| {
+                view! { <button type="button" class="btn sm main" on:click=move |_| { for id in waiting.clone() { crate::discover::start_install(library, id); } }>
+                    <Svg icon=Icon::Play size=16 />{tr!("Continuar tudo")}</button> }
+            });
+            view! { <div class="row">{pause}{resume}</div> }
+        });
         let rows = jobs
             .into_iter()
             .enumerate()
             .map(|(i, (id, step))| {
                 let entry = entry_of(&id);
-                let name = entry.as_ref().map(|e| e.name.clone()).unwrap_or_else(|| id.clone());
+                let name = entry.as_ref().map(|e| crate::tiles::entry_names(e).0).unwrap_or_else(|| id.clone());
                 if i > 0 {
                     let covers = entry.as_ref().map(crate::art::recomp_covers).unwrap_or_default();
                     return view! {
@@ -146,7 +161,7 @@ pub fn DownloadsPage() -> impl IntoView {
             .collect_view();
         Some(view! {
             <section class="shelf">
-                <div class="shelf-h"><h2>{tr!("Baixando")}{(count > 1).then(|| view! { <span class="chip-n">{count}</span> })}</h2></div>
+                <div class="shelf-h"><h2>{tr!("Baixando")}{(count > 1).then(|| view! { <span class="chip-n">{count}</span> })}</h2>{all_buttons}</div>
                 <div class="dl-list">{rows}</div>
             </section>
         })
@@ -207,7 +222,7 @@ pub fn DownloadsPage() -> impl IntoView {
                 <div class="dl-row card">
                     <button type="button" class="thumb" on:click=move |_| library.go(page.clone())><Poster sources=crate::art::recomp_covers(&e) title=g.name.clone() /></button>
                     <div class="dl-info">
-                        <b>{g.name.clone()}</b>
+                        <b>{crate::tiles::game_names(&g, library).0}</b>
                         <span class="dl-ver">{from}<Svg icon=Icon::Right size=14 /><em>{to.version.clone()}</em>
                             {(to.size > 0).then(|| view! { <small class="muted">{format!("· {}", megabytes(to.size))}</small> })}
                         </span>
@@ -291,7 +306,7 @@ pub fn DownloadsPage() -> impl IntoView {
                         }
                     })
                     .collect_view();
-                view! { <h4 class="dl-day">{day}</h4><div class="dl-hist-list">{rows}</div> }
+                view! { <h3 class="dl-day">{day}</h3><div class="dl-hist-list">{rows}</div> }
             })
             .collect_view();
         Some(view! {
@@ -442,6 +457,8 @@ pub fn SavesPage() -> impl IntoView {
 /// A game's saves in one line (status, last copy, size); opens into its history.
 #[component]
 fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let (title, version) = crate::tiles::game_names(&game, library);
     let id = game.id.clone();
     let backups = LocalResource::new(move || {
         let id = id.clone();
@@ -466,9 +483,9 @@ fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl I
         <div class="card sv-row" class:open=is_open>
             <button type="button" class="sv-head" aria-expanded=move || is_open().to_string()
                 on:click=move |_| open.update(|o| *o = if o.as_deref() == Some(gid.get_value().as_str()) { None } else { Some(gid.get_value()) })>
-                <div class="thumb"><Poster sources=cover_sources(&game) title=game.name.clone() /></div>
+                <div class="thumb"><Poster sources=cover_sources(&game) title=title.clone() /></div>
                 <div class="dl-info">
-                    <b>{game.name.clone()}</b>
+                    <b>{title.clone()}{version.map(|v| view! { <small class="sv-ver">{v}</small> })}</b>
                     {move || { let (text, tone, _) = summary(); view! { <span class=format!("sv-status {tone}")><i></i>{text}</span> } }}
                 </div>
                 <small class="muted">{move || summary().2}</small>

@@ -2,6 +2,8 @@
 // Written for Cerberus (MIT). One strength, 0 to 1, shared by every look.
 
 uniform float Strength < ui_type = "slider"; ui_min = 0.0; ui_max = 1.0; ui_label = "Intensidade"; > = 0.6;
+// The game's own line count for the CRT look; 0 keeps a line every 3 pixels.
+uniform float Lines < ui_type = "drag"; ui_min = 0.0; ui_max = 1200.0; ui_label = "Linhas"; > = 0.0;
 
 texture BackBufferTex : COLOR;
 sampler BackBuffer { Texture = BackBufferTex; };
@@ -53,7 +55,7 @@ float4 CrtPS(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     if (any(bent < 0.0) || any(bent > 1.0))
         return float4(0.0, 0.0, 0.0, 1.0);
     float3 c = Source(bent);
-    float row = frac(pos.y / 3.0);
+    float row = Lines > 0.0 ? frac(bent.y * Lines) : frac(pos.y / 3.0);
     float lines = 1.0 - 0.45 * Strength * smoothstep(0.55, 1.0, row);
     float column = frac(pos.x / 3.0);
     float3 stripes = column < 0.333 ? float3(1.0, 0.85, 0.85) : (column < 0.666 ? float3(0.85, 1.0, 0.85) : float3(0.85, 0.85, 1.0));

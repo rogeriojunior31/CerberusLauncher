@@ -107,6 +107,59 @@ pub struct CatalogEntry {
     pub player_note: String,
     /// "local", "online" or "both"; empty for single player.
     pub multiplayer: String,
+    /// The developer's own `recomplauncher.json`, beside an installed game.
+    #[serde(skip)]
+    pub manifest: Option<Arc<super::manifest::Manifest>>,
+    /// The games a release carries, as the site lists them (with their art).
+    pub parts: Vec<CatalogPart>,
+    /// The release's own setup program, given the player's disc once before
+    /// the first start (`Tenkaichi3Decomp-setup.exe --install <disc>`).
+    pub setup: Option<String>,
+    /// What that setup leaves behind; missing means it hasn't run yet.
+    pub makes: Vec<String>,
+}
+
+/// One game of a several-game release, as the site lists it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct CatalogPart {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub cover: Option<String>,
+    pub hero: Option<String>,
+    pub logo: Option<String>,
+}
+
+/// An entry with what the game's own `recomplauncher.json` says, which wins over
+/// the catalog: how it takes the player's copy, its settings, where it saves.
+pub fn with_manifest(mut entry: CatalogEntry, manifest: Option<Arc<super::manifest::Manifest>>) -> CatalogEntry {
+    let Some(manifest) = manifest else { return entry };
+    if let Some(main) = manifest.main_input() {
+        entry.handoff = Some(CopyHandoff::Inputs);
+        entry.accepts_folder = main.takes_folder();
+        entry.copy_accepts = match (main.takes_file(), main.takes_folder()) {
+            (false, true) => "folder".into(),
+            (true, true) => "folder or file".into(),
+            _ => "file".into(),
+        };
+        entry.copy_contains = Vec::new();
+        entry.needs = main.label.trim().to_string();
+    }
+    if manifest.has_settings() {
+        entry.settings = crate::game_settings::offer_of(Some(&manifest.raw));
+    }
+    if !manifest.saves.is_empty() {
+        entry.saves = manifest.saves.clone();
+    }
+    // A release's backup keeps every one of its games' own saves too.
+    for place in manifest.games.iter().flat_map(|g| &g.saves) {
+        if !entry.saves.contains(place) {
+            entry.saves.push(place.clone());
+        }
+    }
+    entry.manifest = Some(manifest);
+    entry
 }
 
 impl CatalogEntry {
@@ -222,7 +275,11 @@ fn own_file(cache_dir: &Path) -> PathBuf {
 
 /// Our list in its JSON form; only a list that reads and isn't empty is taken.
 fn parse_own(text: &str) -> Option<Vec<CatalogEntry>> {
-    let list: Vec<CatalogEntry> = serde_json::from_str(text).ok()?;
+    let mut list: Vec<CatalogEntry> = serde_json::from_str(text).ok()?;
+    for entry in &mut list {
+        entry.origin = origin_id(&entry.origin);
+        entry.console = origin_name(&entry.origin, Some(&entry.console));
+    }
     (!list.is_empty()).then_some(list)
 }
 
@@ -233,7 +290,7 @@ async fn refresh_own(client: &Client, cache_dir: &Path, force: bool) {
     if !force && age.is_some_and(|a| a < FRESH_FOR) {
         return;
     }
-    let Ok(reply) = client.get(OWN_URL).timeout(Duration::from_secs(20)).send().await else {
+    let Ok(reply) = crate::net::send(client.get(OWN_URL).timeout(Duration::from_secs(20))).await else {
         return;
     };
     let Ok(text) = reply.error_for_status().map(|r| r.text()) else {
@@ -282,10 +339,7 @@ pub async fn refresh(client: &Client, cache_dir: &Path, force: bool) -> Result<(
     if !force && age.is_some_and(|a| a < FRESH_FOR) {
         return Ok(());
     }
-    let reply = client
-        .get(SOURCE_URL)
-        .timeout(Duration::from_secs(30))
-        .send()
+    let reply = crate::net::send(client.get(SOURCE_URL).timeout(Duration::from_secs(30)))
         .await
         .map_err(|_| tr!("Sem conexão com {0}.", SOURCE_NAME))?;
     if !reply.status().is_success() {
@@ -404,6 +458,9 @@ struct RlApp {
     hero: Option<String>,
     #[serde(default)]
     logo: Option<String>,
+    /// A release carrying several games: each with its name and art.
+    #[serde(default)]
+    games: Vec<CatalogPart>,
     #[serde(default)]
     genre: Option<String>,
     /// The original game's facts (IGDB), read loosely.
@@ -477,6 +534,8 @@ struct Boot {
     copy_contains: Vec<String>,
     player_note: String,
     multiplayer: String,
+    setup: Option<String>,
+    makes: Vec<String>,
 }
 
 /// The Windows release is a lone setup program ("srb2kart-v16-Installer.exe").
@@ -508,6 +567,8 @@ fn boot_of(boot: Option<Value>) -> Boot {
             .map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
             .unwrap_or_default(),
         player_note: value.get("player_note").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
+        setup: value.get("setup").and_then(Value::as_str).map(str::to_string).filter(|_| files.and_then(|f| f.get("how")).and_then(Value::as_str) == Some("setup")),
+        makes: value.get("makes").and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
         multiplayer: value.get("multiplayer").and_then(Value::as_str).unwrap_or_default().to_string(),
     }
 }
@@ -531,6 +592,8 @@ fn handoff_of(files: &Value) -> Option<CopyHandoff> {
     let text = |key: &str| files.get(key).and_then(Value::as_str).map(str::to_string);
     let handoff = match files.get("how")?.as_str()? {
         "self" => CopyHandoff::AsksItself,
+        // The release's setup program takes the disc, once, before the first start.
+        "setup" => CopyHandoff::Inputs,
         "flag" => CopyHandoff::Flag { flag: text("flag").unwrap_or_else(|| "--rom".into()) },
         "env" => CopyHandoff::Env { name: text("env")? },
         // Xbox disc images are unpacked by Cerberus; other kinds of unpacking are left to the player.
@@ -553,6 +616,37 @@ fn some(text: Option<String>) -> Option<String> {
     text.filter(|t| !t.trim().is_empty())
 }
 
+/// One id per console: lists name the same one in different ways ("nds", "ds").
+pub fn origin_id(raw: &str) -> String {
+    let id = raw.trim().to_lowercase();
+    match id.as_str() {
+        "nds" | "nintendods" => "ds",
+        "n3ds" | "nintendo3ds" => "3ds",
+        "megadrive" | "md" | "segagenesis" => "genesis",
+        "32x" | "sega32x" => "s32x",
+        "psx" | "ps" => "ps1",
+        "ngc" | "gamecube" => "gc",
+        "famicom" => "nes",
+        "superfamicom" | "sfc" => "snes",
+        "windows" | "win" => "pc",
+        "" => "pc",
+        _ => return id,
+    }
+    .to_string()
+}
+
+/// The console's name as the player reads it; lists' own names otherwise.
+pub fn origin_name(origin: &str, listed: Option<&str>) -> String {
+    match origin {
+        "other" => tr!("Outros").to_string(),
+        "ds" => "Nintendo DS".into(),
+        "genesis" => "Mega Drive".into(),
+        "3ds" => "Nintendo 3DS".into(),
+        "pc" => "PC".into(),
+        _ => listed.map(str::to_string).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| origin.to_uppercase()),
+    }
+}
+
 pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
     let catalog: RlCatalog = serde_json::from_str(text).map_err(|e| tr!("Catálogo ilegível: {}", e))?;
     let consoles: HashMap<String, String> = catalog.origins.into_iter().map(|o| (o.id, o.name)).collect();
@@ -570,7 +664,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
     let mut list: Vec<CatalogEntry> = Vec::new();
     let more = catalog.apps_min.into_iter().flat_map(|group| group.apps);
     for app in catalog.apps.into_iter().chain(more) {
-        let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer } = boot_of(app.boot);
+        let Boot { kind, start, handoff, n64, accepts_folder, settings, copy_accepts, copy_contains, player_note, multiplayer, setup, makes } = boot_of(app.boot);
         if app.repo.is_empty() || kind == "not-a-game" {
             continue;
         }
@@ -580,7 +674,8 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
         if !plain_id || list.iter().any(|e| e.id == app.id) {
             continue;
         }
-        let origin = app.origin.unwrap_or_default();
+        let listed = app.origin.unwrap_or_default();
+        let origin = origin_id(&listed);
         let (title, recommended, why) = match title_of.remove(&app.id) {
             Some(found) => found,
             None => (some(app.title).unwrap_or_else(|| app.id.clone()), false, String::new()),
@@ -589,13 +684,14 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             title,
             recommended,
             why: if recommended { why } else { String::new() },
-            console: consoles.get(&origin).cloned().unwrap_or_else(|| origin.to_uppercase()),
+            console: origin_name(&origin, consoles.get(&listed).map(String::as_str)),
             origin,
             name: app.name,
             game: app.game.unwrap_or_default(),
             repo: app.repo,
             host: app.host.unwrap_or_default(),
             icon: some(app.icon),
+            parts: app.games.into_iter().filter(|g| super::manifest::valid_part_id(&g.id) && !g.name.trim().is_empty()).collect(),
             cover: some(app.cover),
             hero: some(app.hero),
             logo: some(app.logo),
@@ -632,6 +728,9 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             copy_contains,
             player_note,
             multiplayer,
+            manifest: None,
+            setup,
+            makes,
             saves: Vec::new(),
             // Games installed under an old name still find their recomp.
             aliases: renamed.iter().filter(|(_, new)| **new == app.id).map(|(old, _)| old.clone()).collect(),
@@ -760,7 +859,19 @@ mod tests {
             Some(CopyHandoff::Folder { folder: "WWE 13".into(), file_name: None, extract: true })
         );
         assert_eq!(parse(r#"{"how": "folder", "extract": "wad"}"#), None, "other unpacking is left to the player");
-        assert_eq!(parse(r#"{"how": "setup"}"#), None);
+        assert_eq!(parse(r#"{"how": "setup"}"#), Some(CopyHandoff::Inputs), "the release's setup takes the disc");
+    }
+
+    #[test]
+    fn a_release_setup_step_is_read_with_what_it_makes() {
+        let boot = boot_of(Some(serde_json::json!({"kind": "portable", "start": "Tenkaichi3Decomp.exe", "setup": "Tenkaichi3Decomp-setup.exe",
+            "files": {"how": "setup", "accepts": "iso"}, "makes": ["gamedata/disc/SLUS_216.78"]})));
+        assert_eq!(boot.setup.as_deref(), Some("Tenkaichi3Decomp-setup.exe"));
+        assert_eq!(boot.makes, ["gamedata/disc/SLUS_216.78"]);
+        assert_eq!(boot.handoff, Some(CopyHandoff::Inputs));
+        // A setup the files don't hand the disc to isn't run by Cerberus.
+        let other = boot_of(Some(serde_json::json!({"setup": "x-setup.exe", "files": {"how": "self"}})));
+        assert_eq!(other.setup, None);
     }
 
     #[test]

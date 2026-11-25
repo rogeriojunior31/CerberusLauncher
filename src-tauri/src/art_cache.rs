@@ -98,7 +98,7 @@ impl ArtCache {
     }
 
     async fn fetch(&self, client: &Client, url: &str) -> Result<(), String> {
-        let reply = client.get(url).send().await.map_err(|e| e.to_string())?;
+        let reply = crate::net::send(client.get(url)).await.map_err(|e| e.to_string())?;
         if !reply.status().is_success() {
             return Err(format!("{} answered {}", url, reply.status()));
         }

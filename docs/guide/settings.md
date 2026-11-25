@@ -35,7 +35,7 @@ While a game is running, closing the window always keeps Cerberus in the tray, s
 
 | Setting | What it does |
 |---|---|
-| **Menu over the game** | <kbd>Ctrl</kbd>+<kbd>F12</kbd>, or View + Menu on a controller, opens the [in-game menu](in-game.md#the-in-game-menu). On by default |
+| **Menu over the game** | <kbd>Ctrl</kbd>+<kbd>F12</kbd>, or View + Menu (or holding View) on a controller, opens the [in-game menu](in-game.md#the-in-game-menu). On by default |
 | **Pictures with F12** | <kbd>F12</kbd> saves a [screenshot](in-game.md#screenshots) of the game. On by default |
 | **Step aside while playing** | Cerberus minimizes when a game opens and comes back when it closes. Off by default |
 | **Achievement notice** | The small notice over the game when an achievement unlocks, the **screen corner** it shows in, and **Test** to see it now |
@@ -95,13 +95,15 @@ Lists the controllers connected now, with their button layout (Xbox, PlayStation
 
 ### Emulation
 
-RetroArch (install or use yours), **Cores**, **BIOS** and **Achievements in RetroArch**. See [Classics](classics.md).
+RetroArch (install or use yours), **Cores**, **BIOS** and **Achievements in RetroArch**; then the standalone **Emulators** (DuckStation, PCSX2, RPCS3, PPSSPP, Dolphin, Cemu), **Who opens each console**, and **Use the emulators' folders**. See [Classics](classics.md#standalone-emulators).
 
 ## Accounts
 
 ### Steam
 
 Optional. Connect your free Steam Web API key so the [Achievements](achievements.md) page shows every game on your account, with achievements earned on any PC. Cerberus finds the Steam account signed in on this PC; **Use another account** takes a profile link or SteamID64. Your profile's **Game details** must be public. **Get my key on Steam** and **Profile privacy** open the right Steam pages.
+
+**Your games in Steam → Add all** puts every installed game that isn't from Steam (recomps, games you added, Epic games) into the Steam library at once, with covers, opening through Cerberus. Games already there are left as they are, and hidden games are skipped. Close Steam first: it rewrites its list of games when it closes.
 
 ### Epic Games
 

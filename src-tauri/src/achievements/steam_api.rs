@@ -29,10 +29,7 @@ fn steam_lang() -> &'static str {
 
 async fn get(http: &reqwest::Client, path: &str, query: &str) -> Result<Value, String> {
     let url = format!("{API}/{path}?{query}");
-    let reply = http
-        .get(&url)
-        .timeout(Duration::from_secs(20))
-        .send()
+    let reply = crate::net::send(http.get(&url).timeout(Duration::from_secs(20)))
         .await
         .map_err(|_| tr!("Não foi possível falar com a Steam. Confira a internet.").to_string())?;
     let status = reply.status().as_u16();

@@ -134,10 +134,10 @@ fn parse_projects(text: &str, value: Value) -> Result<(String, Vec<CatalogEntry>
         if own_links || !is_github_repo(&game.repo) || !plain_id(&game.id) || game.name.is_empty() {
             continue;
         }
-        let origin = if game.origin.is_empty() { "pc".to_string() } else { game.origin };
+        let origin = catalog::origin_id(&game.origin);
         list.push(CatalogEntry {
             title: game.id.clone(),
-            console: if game.console.is_empty() { "PC".to_string() } else { game.console },
+            console: catalog::origin_name(&origin, Some(&game.console)),
             game: if game.game.is_empty() { game.name.clone() } else { game.game },
             id: game.id,
             name: game.name,
@@ -172,7 +172,7 @@ pub async fn fetch(client: &Client, cache_dir: &Path, url: &str) -> Result<Catal
     if !url.starts_with("https://") {
         return Err(tr!("Use um endereço https://.").into());
     }
-    let reply = client.get(url).timeout(Duration::from_secs(30)).send().await.map_err(|_| tr!("Não foi possível baixar a fonte.").to_string())?;
+    let reply = crate::net::send(client.get(url).timeout(Duration::from_secs(30))).await.map_err(|_| tr!("Não foi possível baixar a fonte.").to_string())?;
     if reply.status().as_u16() == 451 {
         return Err(tr!("HTTP 451 · Acesso indisponível por restrição legal informada pelo servidor.").into());
     }

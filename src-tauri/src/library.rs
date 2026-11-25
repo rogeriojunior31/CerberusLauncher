@@ -48,7 +48,27 @@ impl LocalLibrary {
     }
 
     pub fn get(&self, id: &str) -> Result<Option<Game>, String> {
-        self.access(|games| Ok(games.iter().find(|game| game.id == id).cloned()))
+        self.access(|games| {
+            if let Some(found) = games.iter().find(|game| game.id == id) {
+                return Ok(Some(found.clone()));
+            }
+            Ok(part_in(games, id).map(|(release, part)| crate::recomp::part_view(&games[release], &part)))
+        })
+    }
+
+    /// The library as players see it: a release that carries several games
+    /// lists each as a game of its own, after the release (marked with their ids).
+    pub fn games_with_parts(&self) -> Result<Vec<Game>, String> {
+        let games = self.games()?;
+        let mut all = Vec::with_capacity(games.len());
+        for mut game in games {
+            let parts = crate::recomp::parts_of(&game);
+            game.part_ids = parts.iter().map(|p| crate::recomp::part_id(&game.id, &p.id)).collect();
+            let views: Vec<Game> = parts.iter().map(|p| crate::recomp::part_view(&game, p)).collect();
+            all.push(game);
+            all.extend(views);
+        }
+        Ok(all)
     }
 
     pub fn add(&self, game: Game) -> Result<(), String> {
@@ -65,9 +85,27 @@ impl LocalLibrary {
     pub fn update(&self, id: &str, change: impl FnOnce(&mut Game)) -> Result<Game, String> {
         self.access(|games| {
             let mut next = games.clone();
-            let game = next.iter_mut().find(|game| game.id == id).ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
-            change(game);
-            let updated = game.clone();
+            if let Some(game) = next.iter_mut().find(|game| game.id == id) {
+                change(game);
+                let updated = game.clone();
+                self.commit(games, next)?;
+                return Ok(updated);
+            }
+            // One game of a release: its play time is its own, the copy and setup the release's.
+            let (index, part) = part_in(games, id).ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+            let mut view = crate::recomp::part_view(&next[index], &part);
+            change(&mut view);
+            let release = &mut next[index];
+            release.parts.insert(
+                part.id.clone(),
+                cerberus_shared::PartState { playtime_secs: view.playtime_secs, last_played: view.last_played, last_session_secs: view.last_session_secs, launch_args: view.launch_args.clone() },
+            );
+            release.game_copy = view.game_copy.clone();
+            release.copy_verified = view.copy_verified.clone();
+            release.inputs = view.inputs.clone();
+            release.setting_picks = view.setting_picks.clone();
+            release.look = view.look.clone();
+            let updated = crate::recomp::part_view(release, &part);
             self.commit(games, next)?;
             Ok(updated)
         })
@@ -85,7 +123,9 @@ impl LocalLibrary {
 
     pub fn remove(&self, id: &str) -> Result<Option<Game>, String> {
         self.access(|games| {
-            let Some(index) = games.iter().position(|game| game.id == id) else { return Ok(None) };
+            // Removing one game of a release removes the release: its files are one.
+            let index = games.iter().position(|game| game.id == id).or_else(|| part_in(games, id).map(|(i, _)| i));
+            let Some(index) = index else { return Ok(None) };
             let mut next = games.clone();
             let removed = next.remove(index);
             self.commit(games, next)?;
@@ -98,6 +138,14 @@ impl LocalLibrary {
         *current = next;
         Ok(())
     }
+}
+
+/// The release a part's id points into, and the part: `recomp:cogbox--gow2`.
+fn part_in(games: &[Game], id: &str) -> Option<(usize, crate::recomp::catalog::CatalogPart)> {
+    let (release, part) = id.rsplit_once("--")?;
+    let index = games.iter().position(|g| g.id == release)?;
+    let found = crate::recomp::parts_of(&games[index]).into_iter().find(|p| p.id == part)?;
+    Some((index, found))
 }
 
 pub fn game_from_exe(exe: &Path) -> Game {
@@ -118,6 +166,8 @@ pub fn game_from_exe(exe: &Path) -> Game {
         launch_args: String::new(),
         tracking_exe: None,
         game_copy: None,
+        copy_verified: None,
+        inputs: Default::default(),
         setup_pending: false,
         next_step: Default::default(),
         setting_picks: Default::default(),
@@ -131,6 +181,9 @@ pub fn game_from_exe(exe: &Path) -> Game {
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     }
 }
 
@@ -226,6 +279,39 @@ mod tests {
 
     fn celeste() -> Game {
         game_from_exe(Path::new(r"C:\Games\Celeste\Celeste.exe"))
+    }
+
+    #[test]
+    fn each_game_of_a_release_keeps_its_own_play_time() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("srb2");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("srb2win.exe"), b"MZ").unwrap();
+        fs::write(dir.join("recomplauncher.json"), r#"{"format":1,"start":{"program":["srb2win.exe"]},
+            "games":[{"id":"one","name":"Game One","args":["--game=1"]},{"id":"two","name":"Game Two"}]}"#).unwrap();
+        let mut release = game_from_exe(&dir.join("srb2win.exe"));
+        // Any recomp the built-in catalog knows; its own file names the games.
+        release.source = Source::Recomp { recomp_id: "zelda64recomp".into(), version: "1".into(), exe: dir.join("srb2win.exe").to_string_lossy().into(), generation: 0 };
+        release.id = "recomp:zelda64recomp".into();
+        release.install_dir = dir.to_string_lossy().into();
+        let library = LocalLibrary::load(&root.path().join("data"));
+        library.add(release.clone()).unwrap();
+        let all = library.games_with_parts().unwrap();
+        let ids: Vec<&str> = all.iter().map(|g| g.id.as_str()).collect();
+        let one = crate::recomp::part_id(&release.id, "one");
+        assert_eq!(ids, [release.id.as_str(), one.as_str(), &crate::recomp::part_id(&release.id, "two")]);
+        assert_eq!(all[0].part_ids.len(), 2);
+        library.record_session(&one, 0, 90, Some(500)).unwrap();
+        let part = library.get(&one).unwrap().unwrap();
+        assert_eq!((part.name.as_str(), part.playtime_secs, part.last_played), ("Game One", 90, Some(500)));
+        let release_now = library.get(&release.id).unwrap().unwrap();
+        assert_eq!(release_now.playtime_secs, 0, "the release's own time is apart");
+        // The copy picked from a game's page is the release's.
+        library.update(&one, |g| g.game_copy = Some("D:/disc.iso".into())).unwrap();
+        assert_eq!(library.get(&release.id).unwrap().unwrap().game_copy.as_deref(), Some("D:/disc.iso"));
+        assert_eq!(crate::recomp::launch_plan(&library.get(&one).unwrap().unwrap()).args.first().map(String::as_str), Some("--game=1"));
+        library.remove(&one).unwrap();
+        assert!(library.games().unwrap().is_empty(), "removing a game of a release removes the release");
     }
 
     #[test]

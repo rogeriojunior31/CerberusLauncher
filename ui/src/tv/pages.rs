@@ -30,8 +30,8 @@ impl Item {
     }
     pub fn name(&self) -> String {
         match self {
-            Item::Game(g) => g.name.clone(),
-            Item::Entry(e) => e.name.clone(),
+            Item::Game(g) => crate::tiles::game_names(g, expect_context::<Library>()).0,
+            Item::Entry(e) => crate::tiles::entry_names(e).0,
             Item::Classic(r, _) => crate::classics::display_name(r),
         }
     }
@@ -128,16 +128,17 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
 
 /// Hidden games stay out of Big Picture.
 fn library_games(library: Library) -> Vec<Game> {
-    library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.next_step != cerberus_shared::NextStep::Install).collect()
+    library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.next_step != cerberus_shared::NextStep::Install).collect()
 }
 
-/// The player's classics RetroArch plays, the ones played lately first.
-fn classics(roms: &[cerberus_shared::RomView]) -> Vec<Item> {
+/// The player's classics an emulator here opens (as Play decides it), the
+/// ones played lately first.
+fn classics(roms: &[cerberus_shared::RomView], players: &[cerberus_shared::ClassicPlayer]) -> Vec<Item> {
     let mut list: Vec<Item> = roms
         .iter()
         .filter_map(|r| {
             let console = crate::classics::console_of(r);
-            crate::classics::is_emulated(console).then(|| Item::Classic(r.clone(), console))
+            crate::classics::ready_player(players, console).map(|_| Item::Classic(r.clone(), console))
         })
         .collect();
     list.sort_by_key(|i| match i {
@@ -147,17 +148,11 @@ fn classics(roms: &[cerberus_shared::RomView]) -> Vec<Item> {
     list
 }
 
-/// Starts a classic: the recomp's page when the catalog has one for it,
-/// otherwise the original in RetroArch.
-fn open_classic(library: Library, tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
-    let recomp = catalog(library).into_iter().find(|e| e.owned_copy.as_deref() == Some(rom.path.as_str()));
-    match recomp {
-        Some(e) => tv.open(View::Game(format!("recomp:{}", e.id))),
-        None => {
-            play(Sound::Select);
-            crate::classics::play_original(library, rom.path.clone(), console.to_string());
-        }
-    }
+/// Starts the classic itself, in the emulator that opens it here. Its recomp,
+/// if any, has a tile of its own once installed.
+fn open_classic(library: Library, _tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
+    play(Sound::Select);
+    crate::classics::play_original(library, rom.path.clone(), console.to_string());
 }
 
 fn catalog(library: Library) -> Vec<RecompEntry> {
@@ -173,9 +168,9 @@ pub fn Home() -> impl IntoView {
     let focus = Focus::new("home", false);
     tv.keep_position(focus);
 
-    let roms = LocalResource::new(|| async { api::get_settings().await.map(|s| s.roms).unwrap_or_default() });
+    library.roms.refetch();
     let shelves = Memo::new(move |_| {
-        let classic_items = classics(&roms.get().unwrap_or_default());
+        let classic_items = classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default());
         let mut games = library_games(library);
         games.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         let dock: Vec<Item> = games.iter().take(12).cloned().map(Item::Game).collect();
@@ -212,7 +207,9 @@ pub fn Home() -> impl IntoView {
         }
     });
 
-    tv.hints.set(vec![(Btn::A, tr!("Jogar")), (Btn::Y, tr!("Página do jogo")), (Btn::X, tr!("Opções"))]);
+    // Same buttons as the Library: A opens the game's page, Y plays it. A classic
+    // has no page here, so both play it (the hint says so).
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Jogar")), (Btn::X, tr!("Opções"))]);
     tv.handle_page(move |btn| {
         let item = focused();
         match btn {
@@ -222,13 +219,8 @@ pub fn Home() -> impl IntoView {
                 }
                 true
             }
-            // In the dock, A plays at once; elsewhere it opens the game.
             Btn::A => {
                 match item {
-                    Some(Item::Game(g)) if focus.row.get_untracked() == 0 => {
-                        play(Sound::Select);
-                        play_game(library, g);
-                    }
                     Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
                     Some(i) => tv.open(View::Game(i.id())),
                     None => {}
@@ -237,6 +229,10 @@ pub fn Home() -> impl IntoView {
             }
             Btn::Y => {
                 match item {
+                    Some(Item::Game(g)) => {
+                        play(Sound::Select);
+                        play_game(library, g);
+                    }
                     Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
                     Some(i) => tv.open(View::Game(i.id())),
                     None => {}
@@ -264,10 +260,7 @@ pub fn Home() -> impl IntoView {
             },
             Item::Entry(e) if e.owned_copy.is_some() => tr!("Você já tem o jogo").to_string(),
             Item::Entry(e) => format!("{} downloads", format::count(e.downloads)),
-            Item::Classic(r, c) => match r.last_played {
-                Some(t) => format!("{} · jogado {} · {}", crate::classics::console_name(c), format::ago(t), format::playtime(r.playtime_secs)),
-                None => tr!("Clássico · {}", crate::classics::console_name(c)),
-            },
+            Item::Classic(r, c) => crate::classics::classic_sub(r, c, &library.players.get_untracked().unwrap_or_default()),
         };
         let entry = match &item {
             Item::Game(g) => entry_of(library, g),
@@ -284,11 +277,10 @@ pub fn Home() -> impl IntoView {
             Some(path) => view! { <img class="tv-logo" src=crate::art::src(&path) alt=item.name() /> }.into_any(),
             None => view! { <h1>{item.name()}</h1> }.into_any(),
         };
-        let action = match &item {
-            Item::Game(g) if focus.row.get() == 0 => crate::launch_action(g).0,
-            Item::Game(_) => tr!("Abrir"),
-            Item::Entry(_) => tr!("Ver e instalar"),
-            Item::Classic(..) => tr!("Jogar"),
+        let (action, second) = match &item {
+            Item::Game(g) => (tr!("Abrir"), Some(crate::launch_action(g).0)),
+            Item::Entry(_) => (tr!("Ver e instalar"), None),
+            Item::Classic(..) => (tr!("Jogar"), None),
         };
         let kind = tv.pad.get();
         Some(view! {
@@ -298,7 +290,7 @@ pub fn Home() -> impl IntoView {
                 {based.map(|b| view! { <p class="tv-based">{b}</p> })}
                 <div class="tv-hero-actions">
                     <span>{glyph(Btn::A, kind)}{action}</span>
-                    <span>{glyph(Btn::Y, kind)}{tr!("Página do jogo")}</span>
+                    {second.map(|play| view! { <span>{glyph(Btn::Y, kind)}{play}</span> })}
                 </div>
             </div>
         })
@@ -345,7 +337,8 @@ fn grid_rows(len: usize) -> Vec<usize> {
     (0..len.div_ceil(COLUMNS)).map(|r| (len - r * COLUMNS).min(COLUMNS)).collect()
 }
 
-/// Every game in the library, the ones played lately first.
+/// Every game in the library, the classics an emulator here opens too, the
+/// ones played lately first.
 #[component]
 pub fn LibraryGrid() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -355,24 +348,36 @@ pub fn LibraryGrid() -> impl IntoView {
     // Row 0 is the chips: kinds of game, then the order.
     let kind = RwSignal::new(0usize);
     let order = RwSignal::new(0usize);
-    let kinds: [&'static str; 6] = [tr!("Todos"), tr!("Favoritos"), tr!("Jogando"), "Recomps", "Steam", "Epic"];
+    // The desktop library's tabs, in its order.
+    let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), "Recomps", "PC", tr!("Clássicos")];
     let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
+    library.roms.refetch();
     let games = Memo::new(move |_| {
-        let mut list: Vec<Game> = library_games(library)
+        let which = kind.get();
+        let mut list: Vec<Item> = library_games(library)
             .into_iter()
-            .filter(|g| match kind.get() {
+            .filter(|g| match which {
                 1 => g.favorite,
-                2 => g.status == Some(cerberus_shared::GameStatus::Playing),
-                3 => matches!(g.source, cerberus_shared::Source::Recomp { .. }),
-                4 => matches!(g.source, cerberus_shared::Source::Steam { .. }),
-                5 => matches!(g.source, cerberus_shared::Source::Epic { .. }),
+                2 => matches!(g.source, cerberus_shared::Source::Recomp { .. }),
+                3 => !matches!(g.source, cerberus_shared::Source::Recomp { .. }),
+                4 => false,
                 _ => true,
             })
+            .map(Item::Game)
             .collect();
+        // Todos is every game, as on the desktop; Clássicos is only them.
+        if matches!(which, 0 | 4) {
+            list.extend(classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default()));
+        }
+        let stats = |i: &Item| match i {
+            Item::Game(g) => (g.last_played, g.playtime_secs),
+            Item::Classic(r, _) => (r.last_played, r.playtime_secs),
+            Item::Entry(_) => (None, 0),
+        };
         match order.get() {
-            1 => list.sort_by_key(|g| g.name.to_lowercase()),
-            2 => list.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
-            _ => list.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase())),
+            1 => list.sort_by_key(|i| i.name().to_lowercase()),
+            2 => list.sort_by_key(|i| std::cmp::Reverse(stats(i).1)),
+            _ => list.sort_by_key(|i| (std::cmp::Reverse(stats(i).0), i.name().to_lowercase())),
         }
         list
     });
@@ -395,8 +400,8 @@ pub fn LibraryGrid() -> impl IntoView {
         }
     };
     Effect::new(move |_| {
-        if let Some(g) = focused() {
-            tv.show_backdrop(Item::Game(g).heroes());
+        if let Some(item) = focused() {
+            tv.show_backdrop(item.heroes());
         }
     });
     tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Jogar")), (Btn::X, tr!("Opções"))]);
@@ -411,21 +416,28 @@ pub fn LibraryGrid() -> impl IntoView {
             choose_chip(focus.col.get_untracked());
             true
         }
+        // A classic has no page here: A and Y both play it.
         Btn::A => {
-            if let Some(g) = focused() {
-                tv.open(View::Game(g.id));
+            match focused() {
+                Some(Item::Game(g)) => tv.open(View::Game(g.id)),
+                Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
+                _ => {}
             }
             true
         }
         Btn::Y => {
-            if let Some(g) = focused() {
-                play(Sound::Select);
-                play_game(library, g);
+            match focused() {
+                Some(Item::Game(g)) => {
+                    play(Sound::Select);
+                    play_game(library, g);
+                }
+                Some(Item::Classic(r, c)) => open_classic(library, tv, &r, c),
+                _ => {}
             }
             true
         }
         Btn::X => {
-            if let Some(g) = focused() {
+            if let Some(Item::Game(g)) = focused() {
                 tv.sheet.set(Some(Sheet::Options(g.id)));
                 play(Sound::Select);
             }
@@ -436,13 +448,14 @@ pub fn LibraryGrid() -> impl IntoView {
     let grid = move || {
         let list = games.get();
         if list.is_empty() {
-            return view! { <p class="tv-empty">{tr!("Nenhum jogo com esse filtro.")}</p> }.into_any();
+            let empty = if kind.get() == 4 { tr!("Nenhum clássico que algum emulador daqui abra. Veja Configurações › Emulação.") } else { tr!("Nenhum jogo com esse filtro.") };
+            return view! { <p class="tv-empty">{empty}</p> }.into_any();
         }
         list.into_iter()
             .enumerate()
-            .map(|(i, g)| {
+            .map(|(i, item)| {
                 let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
-                tile(Item::Game(g), focus.key(r, c), move || focus.is(r, c))
+                tile(item, focus.key(r, c), move || focus.is(r, c))
             })
             .collect_view()
             .into_any()

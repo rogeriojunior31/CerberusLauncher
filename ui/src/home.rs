@@ -34,7 +34,7 @@ struct Feature {
     steam_app: Option<u32>,
 }
 
-fn game_feature(game: &Game) -> Feature {
+fn game_feature(game: &Game, recomps: &[RecompEntry]) -> Feature {
     let mut facts = Vec::new();
     if let Some(last) = game.last_played {
         facts.push(tr!("Jogado {}", crate::format::ago(last)));
@@ -55,10 +55,15 @@ fn game_feature(game: &Game) -> Feature {
     let logo = game.logo_path.as_deref().map(crate::art::src).or_else(|| {
         steam_app.map(|id| format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png"))
     });
+    let entry = match &game.source {
+        Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id),
+        _ => None,
+    };
+    let (title, version) = crate::tiles::names_of(&game.name, entry);
     Feature {
         kicker: tr!("Continue jogando").to_string(),
-        title: game.name.clone(),
-        based: source_name(&game.source).to_string(),
+        title,
+        based: version.unwrap_or_else(|| source_name(&game.source).to_string()),
         facts,
         logo,
         steam_app,
@@ -72,10 +77,11 @@ fn game_feature(game: &Game) -> Feature {
 }
 
 fn recomp_feature(entry: &RecompEntry) -> Feature {
+    let (title, version) = crate::tiles::entry_names(entry);
     Feature {
         kicker: tr!("Recomp · {}", entry.console),
-        title: entry.name.clone(),
-        based: tr!("Baseado em {}", entry.game),
+        title,
+        based: version.unwrap_or_default(),
         facts: Vec::new(),
         logo: entry.logo.as_deref().map(crate::art::src),
         steam_app: None,
@@ -88,17 +94,18 @@ fn recomp_feature(entry: &RecompEntry) -> Feature {
     }
 }
 
-/// Up to five: games played lately that have a backdrop, then recomps not installed yet.
+/// Up to five: the player's own games played lately (up to four), then one
+/// recomp they don't have yet, so the top of Home is their collection.
 fn features(games: &[Game], recomps: &[RecompEntry]) -> Vec<Feature> {
     let mut played: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some()).collect();
     played.sort_by_key(|g| std::cmp::Reverse(g.last_played));
     let with_art = played.into_iter().filter(|g| !hero_sources(g).is_empty());
-    let mut list: Vec<Feature> = with_art.take(2).map(game_feature).collect();
+    let mut list: Vec<Feature> = with_art.take(4).map(|g| game_feature(g, recomps)).collect();
     // Then the most played recomps you don't have yet, games you own first.
     let mut games_once: Vec<RecompEntry> = one_each(recomps).into_iter().map(|(r, _)| r).collect();
     games_once.retain(|r| r.installed.is_none() && r.hero.is_some() && r.problem.is_none());
     games_once.sort_by_key(|r| (r.owned_copy.is_none(), std::cmp::Reverse(r.downloads)));
-    let remaining = 5 - list.len();
+    let remaining = if list.is_empty() { 5 } else { 1 };
     list.extend(games_once.iter().take(remaining).map(recomp_feature));
     list
 }
@@ -114,6 +121,8 @@ fn not_installed(recomps: &[RecompEntry]) -> Vec<RecompEntry> {
 #[component]
 pub fn Home() -> impl IntoView {
     let library = expect_context::<Library>();
+    // A classic played since the list was read shows in "Jogue de novo".
+    library.roms.refetch();
     move || {
         let library_state = library.games.get();
         let read_error = library_state.as_ref().and_then(|state| state.as_ref().err()).cloned();
@@ -122,9 +131,20 @@ pub fn Home() -> impl IntoView {
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
 
-        let mut recent: Vec<&Game> = games.iter().filter(|g| !g.hidden && (g.last_played.is_some() || g.is_tracked())).collect();
-        recent.sort_by_key(|g| std::cmp::Reverse(g.last_played));
-        let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|g| game_tile(g, library)).collect();
+        // Every kind of game played, newest first: the classics too.
+        let mut recent: Vec<(Option<u64>, TileInfo)> = games
+            .iter()
+            .filter(|g| !g.hidden && g.part_ids.is_empty() && (g.last_played.is_some() || g.is_tracked()))
+            .map(|g| (g.last_played, game_tile(g, library)))
+            .collect();
+        let players = library.players.get().unwrap_or_default();
+        recent.extend(
+            crate::classics::standalone(library).iter()
+                .filter(|r| r.last_played.is_some())
+                .map(|r| (r.last_played, crate::classics::tile(r, &players, &recomps, &games))),
+        );
+        recent.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+        let recent: Vec<TileInfo> = recent.into_iter().take(14).map(|(_, tile)| tile).collect();
 
         let candidates = not_installed(&recomps);
         let found: Vec<TileInfo> = candidates.iter().filter(|r| r.owned_copy.is_some()).map(recomp_tile).collect();
@@ -132,11 +152,22 @@ pub fn Home() -> impl IntoView {
         let mut newest = candidates.clone();
         newest.sort_by(|a, b| b.added.cmp(&a.added));
         let newest: Vec<TileInfo> = newest.iter().take(20).map(recomp_tile).collect();
-        let everything: Vec<TileInfo> = games.iter().take(24).map(|g| game_tile(g, library)).collect();
+        // The games played the most, not the first letters of the alphabet.
+        let mut most: Vec<&Game> = games.iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.playtime_secs > 0).collect();
+        most.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs));
+        let everything: Vec<TileInfo> = most
+            .into_iter()
+            .take(24)
+            .map(|g| {
+                let mut tile = game_tile(g, library);
+                tile.sub = tr!("{} jogados", crate::format::playtime(g.playtime_secs));
+                tile
+            })
+            .collect();
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
         let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });
-        let favorites: Vec<TileInfo> = games.iter().filter(|g| g.favorite && !g.hidden).map(|g| game_tile(g, library)).collect();
+        let favorites: Vec<TileInfo> = games.iter().filter(|g| g.favorite && !g.hidden && g.part_ids.is_empty()).map(|g| game_tile(g, library)).collect();
         let favorites = (!favorites.is_empty()).then(|| view! { <Shelf title=tr!("Favoritos").to_string() tiles=favorites see_all=Route::Library /> });
         let found = (!found.is_empty()).then(|| {
             view! {
@@ -161,7 +192,7 @@ pub fn Home() -> impl IntoView {
             view! { <Shelf title=tr!("Adicionados recentemente").to_string() tiles=newest see_all=Route::Discover /> }
         });
         let everything = (!everything.is_empty()).then(|| {
-            view! { <Shelf title=tr!("Na sua biblioteca").to_string() tiles=everything see_all=Route::Library /> }
+            view! { <Shelf title=tr!("Mais jogados").to_string() tiles=everything see_all=Route::Library /> }
         });
         let error = read_error.as_ref().map(|message| view! {
             <div class="card" role="alert">
@@ -171,7 +202,7 @@ pub fn Home() -> impl IntoView {
         });
         let loading = (read_error.is_none() && games.is_empty() && recomps.is_empty()).then(|| view! { <p class="muted">{tr!("Carregando...")}</p> });
 
-        view! { <div class="page home">{error}{loading}{slider}{recent}{favorites}{found}{popular}{newest}{everything}</div> }
+        view! { <div class="page home">{error}{loading}{slider}{recent}{favorites}{everything}{found}{popular}{newest}</div> }
     }
 }
 
@@ -238,13 +269,23 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
             let store = feature.steam_app.map(|app| LocalResource::new(move || async move { crate::api::steam_details(app).await.ok().map(|d| d.short) }));
             let fixed_about = feature.about.clone();
             let about = move || {
-                let text = store.and_then(|s| s.get().flatten()).unwrap_or_else(|| fixed_about.clone());
-                (!text.is_empty()).then(|| view! { <p class="sl-about">{text}</p> })
+                // The Steam store answers in the player's language; the catalog's blurb is the developer's English.
+                let (text, english) = match store.and_then(|s| s.get().flatten()) {
+                    Some(t) => (t, false),
+                    None => (fixed_about.clone(), cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt),
+                };
+                (!text.is_empty()).then(|| view! {
+                    <p class="sl-about" lang=english.then_some("en")>
+                        {text}
+                        {english.then(|| view! { <span class="lang-note">{tr!("em inglês, como o desenvolvedor escreveu")}</span> })}
+                    </p>
+                })
             };
-            let facts = (!feature.facts.is_empty()).then(|| {
+            let facts = {
+                let why = (!feature.kicker.is_empty()).then(|| view! { <span class="sl-why">{feature.kicker.clone()}</span> });
                 let items = feature.facts.iter().map(|f| view! { <span>{f.clone()}</span> }).collect_view();
-                view! { <div class="sl-facts">{items}</div> }
-            });
+                view! { <div class="sl-facts">{why}{items}</div> }
+            };
             let logo_failed = RwSignal::new(false);
             let title_text = StoredValue::new(feature.title.clone());
             let heading = match feature.logo.clone() {
@@ -260,7 +301,6 @@ fn Slider(features: Vec<Feature>) -> impl IntoView {
                 <div class="slide" class:on=on inert=move || !on() aria-hidden=move || (!on()).to_string()>
                     <Backdrop sources=feature.heroes.clone() soft=feature.soft />
                     <div class="sl-in">
-                        <span class="kick">{feature.kicker.clone()}</span>
                         {heading}
                         <span class="based">{feature.based.clone()}</span>
                         {facts}

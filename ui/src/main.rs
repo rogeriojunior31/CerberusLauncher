@@ -112,6 +112,10 @@ pub struct Toast {
 pub struct Library {
     games: LocalResource<Result<Vec<Game>, String>>,
     recomps: LocalResource<Result<Vec<RecompEntry>, String>>,
+    /// The classics in the player's ROM folders (refetched when a page shows them).
+    roms: LocalResource<Vec<cerberus_shared::RomView>>,
+    /// Who opens each console's classics on this PC.
+    players: LocalResource<Vec<cerberus_shared::ClassicPlayer>>,
     /// Recomps installing right now, by recomp id.
     progress: RwSignal<HashMap<String, InstallStep>>,
     /// Ids of games the launcher started that are still open.
@@ -234,7 +238,7 @@ pub fn play_game(library: Library, game: Game) {
             }
         };
         if let Some(game) = ready {
-            library.report(api::play(&game).await);
+            library.report(api::play(&game, library.route.get_untracked() == Route::BigPicture).await);
         }
     });
 }
@@ -244,6 +248,8 @@ fn App() -> impl IntoView {
     let library = Library {
         games: LocalResource::new(api::list_games),
         recomps: LocalResource::new(api::list_recomps),
+        roms: LocalResource::new(|| async { api::get_settings().await.map(|s| s.roms).unwrap_or_default() }),
+        players: LocalResource::new(api::classic_players),
         progress: RwSignal::new(HashMap::new()),
         running: RwSignal::new(HashSet::new()),
         route: RwSignal::new(Route::Home),
@@ -258,7 +264,20 @@ fn App() -> impl IntoView {
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
+    // Setup steps running now, by game: one listener for the whole app.
+    let preparing = game::Preparing(RwSignal::new(HashMap::new()));
+    api::on_prepare_progress(move |p| {
+        preparing.0.update(|all| {
+            if p.finished {
+                all.remove(&p.game_id);
+            } else {
+                all.insert(p.game_id.clone(), p);
+            }
+        })
+    });
+    provide_context(preparing);
     provide_context(updates::Updates::start());
+    provide_context(news::Activity::start());
     provide_context(library_page::LibraryView::default());
 
     // Games may already be open if the window was reloaded.
@@ -290,6 +309,8 @@ fn App() -> impl IntoView {
     api::on_catalog_changed(move || {
         library.recomps.refetch();
         library.games.refetch();
+        library.roms.refetch();
+        library.players.refetch();
     });
     api::on_toast(move |text| library.toast(text));
     tv::watch_for_tv(library);

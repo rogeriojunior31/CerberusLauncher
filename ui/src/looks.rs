@@ -26,14 +26,17 @@ pub fn LooksCard(game_id: String, preview: Option<String>) -> impl IntoView {
     let busy = RwSignal::new(None::<&'static str>);
     let strength = RwSignal::new(DEFAULT_STRENGTH);
 
-    spawn_local(async move {
-        if let Some(s) = library.report(api::look_status(&id.get_value()).await) {
-            if let Some(look) = &s.current {
-                strength.set(look.strength);
+    let load = move || {
+        spawn_local(async move {
+            if let Some(s) = library.report(api::look_status(&id.get_value()).await) {
+                if let Some(look) = &s.current {
+                    strength.set(look.strength);
+                }
+                status.set(Some(s));
             }
-            status.set(Some(s));
-        }
-    });
+        });
+    };
+    load();
 
     let choose = move |look: Option<Look>| {
         let first = look.is_some() && status.get_untracked().is_some_and(|s| s.current.is_none());
@@ -52,7 +55,7 @@ pub fn LooksCard(game_id: String, preview: Option<String>) -> impl IntoView {
 
     move || {
         let Some(s) = status.get() else {
-            return view! { <section class="card looks"><p class="muted small">{tr!("Carregando os filtros...")}</p></section> }.into_any();
+            return view! { <section class="card looks"><crate::game_overview::Waiting text=tr!("Carregando os filtros...") rows=2 retry=Callback::new(move |_| load()) /></section> }.into_any();
         };
         if let Some(why) = s.unsupported.clone() {
             return view! {

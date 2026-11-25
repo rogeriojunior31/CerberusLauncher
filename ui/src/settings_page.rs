@@ -33,20 +33,20 @@ enum Section {
 }
 
 const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
-    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Edit), (Section::InGame, tk!("Durante o jogo"), Icon::Gamepad), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv), (Section::Controllers, tk!("Controles"), Icon::Gamepad)]),
+    (tk!("App"), &[(Section::General, tk!("Geral"), Icon::Settings), (Section::Appearance, tk!("Aparência"), Icon::Palette), (Section::InGame, tk!("Durante o jogo"), Icon::Layers), (Section::Notices, tk!("Notificações"), Icon::Bell), (Section::BigPicture, tk!("Big Picture Mode"), Icon::Tv), (Section::Controllers, tk!("Controles"), Icon::Gamepad)]),
     (
         tk!("Jogos"),
         &[
             (Section::Library, tk!("Biblioteca e ROMs"), Icon::Library),
             (Section::Install, tk!("Instalação"), Icon::Download),
-            (Section::Saves, tk!("Saves e nuvem"), Icon::Saves),
-            (Section::Art, tk!("Arte dos jogos"), Icon::Edit),
+            (Section::Saves, tk!("Saves e nuvem"), Icon::Cloud),
+            (Section::Art, tk!("Arte dos jogos"), Icon::Photo),
             (Section::Catalog, tk!("Catálogo e fontes"), Icon::Discover),
         ],
     ),
-    (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Gamepad)]),
-    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::Gamepad), (Section::Epic, "Epic Games", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
-    (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Check), (Section::Storage, tk!("Armazenamento"), Icon::Folder), (Section::About, tk!("Sobre"), Icon::Info)]),
+    (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Disc)]),
+    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::User), (Section::Epic, "Epic Games", Icon::Shelf), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Cpu), (Section::Storage, tk!("Armazenamento"), Icon::Database), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
 /// What the search finds: each section's options, by the titles their rows show.
@@ -62,8 +62,8 @@ const FIND: &[(Section, &[&str])] = &[
     (Section::Saves, &[tk!("Saves na nuvem"), tk!("Backups neste PC")]),
     (Section::Art, &[tk!("Chave do SteamGridDB"), tk!("Capas e fundos")]),
     (Section::Catalog, &[tk!("Catálogo do recomplauncher.com"), tk!("Fontes de catálogo"), tk!("Adicionar por URL")]),
-    (Section::Emulation, &[tk!("Núcleos"), tk!("Conquistas no RetroArch"), tk!("Seus clássicos")]),
-    (Section::Steam, &[tk!("Chave da Web API da Steam"), tk!("Privacidade do perfil")]),
+    (Section::Emulation, &[tk!("Núcleos"), tk!("Conquistas no RetroArch"), tk!("Seus clássicos"), tk!("Emuladores"), tk!("Quem abre cada console"), tk!("Usar as pastas dos emuladores")]),
+    (Section::Steam, &[tk!("Chave da Web API da Steam"), tk!("Privacidade do perfil"), tk!("Adicionar todos à Steam")]),
     (Section::Retro, &[]),
     (Section::Pc, &[tk!("Visual C++ 2015-2022 (64 bits)")]),
     (Section::Storage, &[tk!("Dados do Cerberus"), tk!("Copiar meus dados"), tk!("Restaurar de uma cópia")]),
@@ -254,12 +254,40 @@ fn save_calm(on: bool) {
     apply_calm(on);
 }
 
+thread_local! {
+    /// The section the next Settings page opens on, when another page asks for one.
+    static NEXT: std::cell::Cell<Option<Section>> = const { std::cell::Cell::new(None) };
+}
+
+/// Opens Configurações › Emulação.
+/// Settings › Biblioteca e ROMs, where the ROM folders are.
+pub fn open_rom_folders(library: Library) {
+    NEXT.with(|n| n.set(Some(Section::Library)));
+    library.go(crate::Route::Settings);
+}
+
+thread_local! {
+    /// The console page to open in Emulação, when coming from a game.
+    static NEXT_CONSOLE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Settings › Emulação, on one console's page.
+pub fn open_console(library: Library, console: String) {
+    NEXT_CONSOLE.with(|n| *n.borrow_mut() = Some(console));
+    open_emulation(library);
+}
+
+pub fn open_emulation(library: Library) {
+    NEXT.with(|n| n.set(Some(Section::Emulation)));
+    library.go(crate::Route::Settings);
+}
+
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let library = expect_context::<Library>();
     let view_state: RwSignal<Option<SettingsView>> = RwSignal::new(None);
     let busy = RwSignal::new(false);
-    let section = RwSignal::new(Section::General);
+    let section = RwSignal::new(NEXT.with(|n| n.take()).unwrap_or(Section::General));
     let query = RwSignal::new(String::new());
 
     spawn_local(async move {
@@ -355,7 +383,7 @@ pub fn SettingsPage() -> impl IntoView {
             Section::Library => roms(s, busy, apply).into_any(),
             Section::Install => install(s, busy, apply).into_any(),
             Section::Saves => saves(s, busy, apply).into_any(),
-            Section::Art => view! { <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) /> {art_cache(s, busy, apply)} }.into_any(),
+            Section::Art => view! { <SteamGridDbKey has=s.steamgriddb_key.clone().is_some_and(|k| !k.is_empty()) /> }.into_any(),
             Section::Catalog => view! {
                 {catalog(s.clone(), busy, apply)}
                 <Sources sources=s.sources.clone() busy refresh=move |url| apply(Box::pin(api::refresh_source(url)), "")
@@ -365,7 +393,7 @@ pub fn SettingsPage() -> impl IntoView {
             }
             .into_any(),
             Section::Emulation => emulation(s).into_any(),
-            Section::Steam => view! { <SteamAccountCard /> }.into_any(),
+            Section::Steam => view! { <SteamAccountCard /> <SteamShortcutsCard /> }.into_any(),
             Section::Epic => view! { <EpicCard /> }.into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() retroarch=s.ra_retroarch /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
@@ -385,7 +413,15 @@ pub fn SettingsPage() -> impl IntoView {
                         <div class="set-hits">{results}</div>
                     </Show>
                 </nav>
-                <div class="settings">{body}</div>
+                <div class="settings">
+                    // The open section's name, for screen readers (the menu shows it highlighted).
+                    <h2 class="vh">{move || {
+                        let now = section.get();
+                        MENU.iter().flat_map(|(_, items)| items.iter()).find(|(s, _, _)| *s == now)
+                            .map(|(_, label, _)| cerberus_shared::i18n::t(label)).unwrap_or_default()
+                    }}</h2>
+                    {body}
+                </div>
             </div>
         </div>
     }
@@ -417,11 +453,12 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                     let on = !s.autostart;
                     apply(Box::pin(api::set_autostart(on)), if on { tr!("O Cerberus vai abrir com o Windows.") } else { tr!("O Cerberus não abre mais com o Windows.") })
                 }))}
-            {row(tr!("Começar escondido na bandeja"), tr!("Ao abrir com o Windows, fica perto do relógio sem mostrar a janela. Abrir pelo atalho mostra a janela normalmente."),
+            // Only means something when it opens with Windows.
+            {s.autostart.then(|| row(tr!("Começar escondido na bandeja"), tr!("Ao abrir com o Windows, fica perto do relógio sem mostrar a janela. Abrir pelo atalho mostra a janela normalmente."),
                 switch(s.start_hidden, tr!("Começar escondido na bandeja"), busy, move || {
                     let on = !s.start_hidden;
                     apply(Box::pin(api::set_start_hidden(on)), if on { tr!("Ao abrir com o Windows, o Cerberus fica na bandeja.") } else { tr!("Ao abrir com o Windows, a janela aparece.") })
-                }))}
+                })))}
         </section>
         <section class="card set">
             <h3>{tr!("Ao fechar a janela")}</h3>
@@ -502,9 +539,16 @@ fn appearance() -> impl IntoView {
         .into_iter()
         .map(|(id, name)| {
             let on = move || look.get().0 == id;
+            // A tiny window in that theme: sidebar, a highlighted tile, two cards.
             view! {
-                <button type="button" class="seg" role="radio" class:on=on aria-checked=move || on().to_string()
-                    on:click=move |_| { save_look(THEME_KEY, id); look.set(look_saved()); }>{cerberus_shared::i18n::t(name)}</button>
+                <button type="button" class=format!("theme-pick {id}") role="radio" class:on=on aria-checked=move || on().to_string()
+                    on:click=move |_| { save_look(THEME_KEY, id); look.set(look_saved()); }>
+                    <span class="tp-win" aria-hidden="true">
+                        <span class="tp-side"><i></i><i></i><i></i></span>
+                        <span class="tp-main"><i class="hot"></i><i></i><i></i></span>
+                    </span>
+                    <span class="tp-name">{cerberus_shared::i18n::t(name)}</span>
+                </button>
             }
         })
         .collect_view();
@@ -535,7 +579,7 @@ fn appearance() -> impl IntoView {
             <h3>{tr!("Aparência")}</h3>
             {language_row()}
             {row(tr!("Tema"), tr!("O fundo da janela. Preto (OLED) apaga o fundo de vez, bom para telas OLED e quartos escuros."),
-                view! { <div class="segs" role="radiogroup" aria-label=tr!("Tema")>{themes}</div> })}
+                view! { <div class="theme-picks" role="radiogroup" aria-label=tr!("Tema")>{themes}</div> })}
             {row(tr!("Cor de destaque"), tr!("A cor dos botões principais, das barras de progresso e da página aberta."),
                 view! { <div class="swatches" role="radiogroup" aria-label=tr!("Cor de destaque")>{accents}</div> })}
             {row(tr!("Tamanho"), tr!("Textos, capas e botões da janela. O Big Picture Mode segue o tamanho da tela."),
@@ -597,6 +641,8 @@ fn controllers() -> impl IntoView {
         ("LB / RB", tr!("Trocar de seção")),
         ("Menu", tr!("Configurações; segurado, sai do Big Picture")),
         ("View + Menu", tr!("Menu sobre o jogo, durante a partida")),
+        (tr!("Segurar View"), tr!("Também abre o menu sobre o jogo")),
+        ("View + RB", tr!("Foto do jogo, durante a partida")),
     ]
     .into_iter()
     .map(|(key, what)| view! { <div class="pad-key"><kbd>{key}</kbd><span>{what}</span></div> })
@@ -660,9 +706,13 @@ fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             let on = c.corner == code;
             let mut next = c.clone();
             next.corner = code.to_string();
+            // A little screen: click the corner where the notice should show.
             view! {
-                <button type="button" class="seg" class:on=on role="radio" aria-checked=on.to_string() disabled=move || busy.get() || !next.unlock_notice
-                    on:click={ let next = next.clone(); move |_| apply(Box::pin(api::set_in_game(next.clone())), tr!("Canto do aviso trocado.")) }>{label}</button>
+                <button type="button" class=format!("cs-spot {code}") class:on=on role="radio" aria-checked=on.to_string() aria-label=label title=label
+                    disabled=move || busy.get() || !next.unlock_notice
+                    on:click={ let next = next.clone(); move |_| apply(Box::pin(api::set_in_game(next.clone())), tr!("Canto do aviso trocado.")) }>
+                    {on.then(|| view! { <span class="cs-toast"><Svg icon=Icon::Trophy size=12 /><i></i></span> })}
+                </button>
             }
         })
         .collect_view();
@@ -684,7 +734,7 @@ fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
             </div>
             {row(tr!("Mostrar sobre o jogo"), tr!("Um aviso pequeno, sem tirar o foco do jogo, quando uma conquista é desbloqueada. Diz quando ela é rara."),
                 switch(c.unlock_notice, tr!("Mostrar sobre o jogo"), busy, change(|g| g.unlock_notice = !g.unlock_notice, "")))}
-            {row(tr!("Canto da tela"), (), view! { <div class="segs corner-segs" role="radiogroup" aria-label=tr!("Canto da tela")>{corners}</div> })}
+            {row(tr!("Canto da tela"), tr!("Clique no canto da tela onde o aviso aparece."), view! { <div class="corner-screen" class:off=!c.unlock_notice role="radiogroup" aria-label=tr!("Canto da tela")>{corners}</div> })}
         </section>
     }
 }
@@ -709,41 +759,143 @@ fn big_picture(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
     }
 }
 
-fn roms(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
-    let rom_rows = s
-        .rom_dirs
-        .iter()
-        .cloned()
-        .map(|dir| {
+fn roms(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + Send + Sync + 'static) -> impl IntoView {
+    rom_folders(s, busy, apply)
+}
+
+/// Biblioteca e ROMs: what the folders hold at a glance (games, the ones that
+/// open here, the ones with a recomp), then each folder as a card with its
+/// consoles and, on request, its games one by one, each saying whether it
+/// plays and how. Files the scan couldn't place get their own line, so "why
+/// isn't my game there?" has an answer.
+fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + Send + Sync + 'static) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let opened = RwSignal::new(None::<String>);
+    move || {
+        let players = library.players.get().unwrap_or_default();
+        let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let roms = s.roms.clone();
+        let opens = |r: &cerberus_shared::RomView| crate::classics::resolve(r, &players, &games, &recomps).playable();
+        let has_recomp = |r: &cerberus_shared::RomView| crate::classics::resolve(r, &players, &games, &recomps).recomp.is_some();
+        let playable = roms.iter().filter(|r| opens(r)).count();
+        let with_recomp = roms.iter().filter(|r| has_recomp(r)).count();
+
+        let add = view! {
+            <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::add_rom_dir()), "")>
+                <Svg icon=Icon::Plus size=16 />{tr!("Adicionar pasta")}
+            </button>
+        };
+        if s.rom_dirs.is_empty() {
+            return view! {
+                <section class="card set rf-empty">
+                    <Svg icon=Icon::Folder size=40 />
+                    <h3>{tr!("Suas ROMs e jogos")}</h3>
+                    <p class="muted">{tr!("Aponte as pastas onde você guarda ROMs e imagens de disco. O Cerberus mostra cada jogo na Biblioteca, diz qual emulador abre e quais têm recomp. Nada sai do seu PC.")}</p>
+                    {add}
+                </section>
+            }.into_any();
+        }
+
+        let stat = |n: usize, label: String| view! { <div class="rf-stat"><b>{n}</b><span>{label}</span></div> };
+        let head = view! {
+            <section class="card set rf-head">
+                <div class="rf-stats">
+                    {stat(roms.len(), if roms.len() == 1 { tr!("jogo nas suas pastas").to_string() } else { tr!("jogos nas suas pastas").to_string() })}
+                    {stat(playable, tr!("já abrem aqui").to_string())}
+                    {stat(with_recomp, if with_recomp == 1 { tr!("tem recomp").to_string() } else { tr!("têm recomp").to_string() })}
+                </div>
+                <div class="row">
+                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::scan_roms()), tr!("Pastas verificadas de novo."))>{tr!("Procurar de novo")}</button>
+                    {add}
+                </div>
+            </section>
+        };
+
+        let folders = s.rom_dirs.iter().cloned().map(|dir| {
+            let inside: Vec<cerberus_shared::RomView> = roms.iter().filter(|r| {
+                let p = r.path.to_lowercase().replace('/', "\\");
+                let d = dir.to_lowercase().replace('/', "\\");
+                p.starts_with(&format!("{}\\", d.trim_end_matches('\\')))
+            }).cloned().collect();
+            // The consoles in the folder, most games first, with their picture.
+            let mut consoles: Vec<(&'static str, usize)> = Vec::new();
+            for r in &inside {
+                let c = crate::classics::console_of(r);
+                match consoles.iter_mut().find(|(k, _)| *k == c) {
+                    Some(e) => e.1 += 1,
+                    None => consoles.push((c, 1)),
+                }
+            }
+            consoles.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            let chips = consoles.into_iter().map(|(c, n)| {
+                let name = if c.is_empty() { tr!("Não reconhecido").to_string() } else { crate::classics::console_name(c).to_string() };
+                view! {
+                    <span class="rf-console">
+                        {console_art(c).map(|src| view! { <img src=src alt="" /> })}
+                        <span>{name}</span><b>{n}</b>
+                    </span>
+                }
+            }).collect_view();
+            let count = inside.len();
+            let id = StoredValue::new(dir.clone());
+            let is_open = move || opened.get().as_deref() == Some(id.get_value().as_str());
+            let toggle = move |_| opened.update(|o| *o = if o.as_deref() == Some(id.get_value().as_str()) { None } else { Some(id.get_value()) });
+            let list = inside.into_iter().map(|r| {
+                // The same answer as the game's tile and page.
+                let res = crate::classics::resolve(&r, &players, &games, &recomps);
+                let installed = res.recomp_game.as_ref().map(|g| g.name.clone());
+                let (class, how) = match (&res.emulator, &installed, &res.recomp) {
+                    (Some(p), Some(rc), _) => ("ok", tr!("Original no {} · nativo pelo {}", p, rc)),
+                    (Some(p), None, Some(e)) => ("ok", tr!("Original no {} · versão nativa no catálogo: {}", p, e.name)),
+                    (Some(p), None, None) => ("ok", tr!("Original no {}", p)),
+                    (None, Some(rc), _) => ("ok", tr!("Joga nativo pelo {}", rc)),
+                    (None, None, _) => ("warn", res.problem.clone()),
+                };
+                let path = r.path.clone();
+                let file = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_string();
+                view! {
+                    <li class=format!("rf-game {class}")>
+                        <button type="button" class="rf-open" title=path.clone() on:click=move |_| library.go(Route::Classic(path.clone()))>
+                            <b>{crate::classics::display_name(&r)}</b>
+                            <small>{file}</small>
+                        </button>
+                        <span class="rf-how"><i></i>{how}</span>
+                    </li>
+                }
+            }).collect_view();
             let target = dir.clone();
             view! {
-                <div class="set-row sub">
-                    <small class="path">{dir}</small>
-                    <button type="button" class="btn sm" disabled=move || busy.get()
-                        on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), tr!("Pasta removida."))>{tr!("Remover")}</button>
-                </div>
+                <article class="card rf-folder" class:open=is_open>
+                    <header>
+                        <span class="rf-ic"><Svg icon=Icon::Folder size=22 /></span>
+                        <div class="rf-t">
+                            <b class="path">{dir.clone()}</b>
+                            <small>{match count { 0 => tr!("Nenhum jogo reconhecido aqui ainda").to_string(), 1 => tr!("1 jogo").to_string(), n => tr!("{} jogos", n) }}</small>
+                        </div>
+                        <div class="row">
+                            {(count > 0).then(|| view! {
+                                <button type="button" class="btn sm" aria-expanded=move || is_open().to_string() on:click=toggle>
+                                    {move || if is_open() { tr!("Esconder jogos") } else { tr!("Ver jogos") }}
+                                </button>
+                            })}
+                            <button type="button" class="btn sm" disabled=move || busy.get()
+                                on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), tr!("Pasta removida. Os arquivos continuam no seu PC."))>{tr!("Remover")}</button>
+                        </div>
+                    </header>
+                    {(count > 0).then(|| view! { <div class="rf-consoles">{chips}</div> })}
+                    <Show when=is_open>
+                        <ul class="rf-games">{list.clone()}</ul>
+                    </Show>
+                </article>
             }
-        })
-        .collect_view();
-    let summary = if s.rom_dirs.is_empty() {
-        tr!("Aponte as pastas onde você guarda ROMs e imagens de disco. O Cerberus mostra quais desses jogos têm recomp. Nada sai do seu PC.").to_string()
-    } else {
-        tr!("{} arquivos de jogo encontrados · {} recomps para jogos que você tem.", s.roms_found, s.roms_matched)
-    };
-    let scan = (!s.rom_dirs.is_empty()).then(|| {
-        view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::scan_roms()), tr!("Pastas verificadas de novo."))>{tr!("Procurar de novo")}</button> }
-    });
-    view! {
-        <section class="card set">
-            <h3>{tr!("Suas ROMs e jogos")}</h3>
-            {row(tr!("Pastas de ROMs e jogos"), summary, view! {
-                {scan}
-                <button type="button" class="btn sm main" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::add_rom_dir()), "")>
-                    <Svg icon=Icon::Plus size=16 />{tr!("Adicionar pasta")}
-                </button>
-            })}
-            {rom_rows}
-        </section>
+        }).collect_view();
+
+        view! {
+            {head}
+            <div class="rf-list">{folders}</div>
+            <p class="muted small rf-note">{tr!("O Cerberus só lê essas pastas: nunca move, renomeia ou altera os seus arquivos.")}</p>
+        }.into_any()
     }
 }
 
@@ -768,20 +920,21 @@ fn install(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 
 /// Download speed: a limit, and going slower while a game is open.
 fn download_speed(limit: u32, slow: bool, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
-    let options = [0u32, 1, 2, 5, 10, 20, 50]
+    let options = [0u32, 50, 20, 10, 5, 2, 1]
         .into_iter()
         .map(|mb| {
-            let label = if mb == 0 { tr!("Sem limite").to_string() } else { format!("{mb} MB/s") };
-            view! { <option value=mb.to_string() selected=mb == limit>{label}</option> }
+            let label = if mb == 0 { tr!("Sem limite").to_string() } else { mb.to_string() };
+            let name = if mb == 0 { tr!("Sem limite").to_string() } else { format!("{mb} MB/s") };
+            let on = mb == limit;
+            view! {
+                <button type="button" class="seg" class:on=on role="radio" aria-checked=on.to_string() aria-label=name disabled=move || busy.get()
+                    on:click=move |_| apply(Box::pin(api::set_download_limit(mb, slow)), tr!("Limite de velocidade salvo."))>{label}</button>
+            }
         })
         .collect_view();
     view! {
         {row(tr!("Limite de velocidade"), tr!("Para não ocupar a conexão inteira de quem mais usa a internet aí."), view! {
-            <select class="select" aria-label=tr!("Limite de velocidade") disabled=move || busy.get()
-                on:change=move |e| {
-                    let mb = event_target_value(&e).parse().unwrap_or(0);
-                    apply(Box::pin(api::set_download_limit(mb, slow)), tr!("Limite de velocidade salvo."));
-                }>{options}</select>
+            <div class="speed"><div class="segs speed-segs" role="radiogroup" aria-label=tr!("Limite de velocidade")>{options}</div><span class="unit">"MB/s"</span></div>
         })}
         {row(tr!("Mais devagar enquanto você joga"), tr!("Com um jogo aberto, os downloads ficam em até 3 MB/s, para não dar lag. Voltam ao normal quando você fecha o jogo."), view! {
             <button type="button" class="switch" class:on=slow role="switch" aria-checked=slow.to_string() aria-label=tr!("Mais devagar enquanto você joga")
@@ -796,9 +949,23 @@ fn download_speed(limit: u32, slow: bool, busy: RwSignal<bool>, apply: impl Fn(T
 fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static str) + Copy + 'static) -> impl IntoView {
     let pending = (s.pending_uploads > 0).then(|| tr!(" Envios pendentes na última verificação: {}. O Cerberus tenta de novo a cada minuto.", s.pending_uploads)).unwrap_or_default();
     let on = s.cloud_dir.is_some();
+    let library = expect_context::<Library>();
+    let flow = view! {
+        <div class="save-flow" class:on=on aria-hidden="true">
+            <span class="sf-node lit"><Svg icon=Icon::Saves size=22 /><b>{tr!("Este PC")}</b><small>{tr!("10 backups por jogo")}</small></span>
+            <span class="sf-line"></span>
+            <span class="sf-node" class:lit=on><Svg icon=Icon::Folder size=22 /><b>{tr!("Pasta da nuvem")}</b><small>{if on { tr!("Sincronizando") } else { tr!("Não escolhida") }}</small></span>
+            <span class="sf-line"></span>
+            <span class="sf-node" class:lit=on><Svg icon=Icon::Gamepad size=22 /><b>{tr!("Outro PC")}</b><small>{if on { tr!("Pega os saves mais novos") } else { tr!("Sem saves daqui") }}</small></span>
+        </div>
+    };
     view! {
         <section class="card set">
-            <h3>{tr!("Saves na nuvem")}</h3>
+            <div class="card-h">
+                <h3>{tr!("Saves na nuvem")}</h3>
+                <button type="button" class="btn sm" on:click=move |_| library.go(Route::Saves)>{tr!("Ver os saves")}</button>
+            </div>
+            {flow}
             {row(if on { tr!("Ligado") } else { tr!("Desligado") }, view! {
                 {s.cloud_dir.clone().map(|d| view! { <span class="path">{d}</span><br/> })}
                 {tr!("Escolha uma pasta que o OneDrive, Google Drive ou Dropbox sincroniza. Ao abrir um jogo, o Cerberus guarda o progresso local antes de trazer saves mais novos de outro PC.{}", pending)}
@@ -831,9 +998,9 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
     view! {
         <section class="card set">
             <h3>{tr!("Catálogo de recomps")}</h3>
-            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
+            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), tr!("Catálogo atualizado."))>{tr!("Atualizar agora")}</button> })}
-            {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com quase 1.900 recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes."),
+            {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes de projetos."),
                 switch(s.site_catalog, tr!("Catálogo do recomplauncher.com"), busy, move || {
                     let on = !s.site_catalog;
                     apply(Box::pin(api::set_site_catalog(on)), if on { tr!("Catálogo do recomplauncher.com ligado.") } else { tr!("Usando só o catálogo do Cerberus.") })
@@ -843,146 +1010,572 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 }
 
 fn emulation(s: SettingsView) -> impl IntoView {
-    view! { <Emulation roms=s.roms.len() ra_user=s.ra_user.clone() ra_retroarch=s.ra_retroarch /> }
+    view! { <EmulationPage roms=s.roms.len() ra_user=s.ra_user.clone() ra_retroarch=s.ra_retroarch /> }
 }
 
-/// RetroArch for the classics: install or pick it, its cores, and RetroAchievements in it.
+/// A console's name, as players know it.
+fn console_name(id: &str) -> &'static str {
+    match id {
+        "ps1" => "PlayStation",
+        "ps2" => "PlayStation 2",
+        "ps3" => "PlayStation 3",
+        "psp" => "PSP",
+        "gc" => "GameCube",
+        "wii" => "Wii",
+        "wiiu" => "Wii U",
+        _ => "",
+    }
+}
+
+
+
+/// The consoles that come on discs, each opened by RetroArch or a standalone emulator.
+const DISC_CONSOLES: [&str; 7] = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu"];
+
+/// How a console stands now.
+#[derive(Clone, Copy, PartialEq)]
+enum Ready {
+    Yes,
+    NeedsBios,
+    NeedsCore,
+    NoEmulator,
+}
+
+/// A console's picture: pixel art from Hydra, and Cerberus's own where Hydra
+/// has none (see ui/emulation/LICENSE.md).
+pub fn console_art(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "ps1" => "emulation/ps1.png",
+        "ps2" => "emulation/ps2.png",
+        "ps3" => "emulation/ps3.png",
+        "psp" => "emulation/psp.png",
+        "gc" => "emulation/gamecube.png",
+        "wii" => "emulation/wii.png",
+        "wiiu" => "emulation/wiiu.png",
+        "nes" => "emulation/nes.png",
+        "snes" => "emulation/snes.png",
+        "n64" => "emulation/n64.png",
+        "gb" => "emulation/gb.png",
+        "gbc" => "emulation/gbc.png",
+        "gba" => "emulation/gba.png",
+        "genesis" => "emulation/genesis.png",
+        "sms" => "emulation/sms.png",
+        "gg" => "emulation/gg.png",
+        _ => return None,
+    })
+}
+
+/// An emulator's own icon.
+fn emulator_icon(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "retroarch" => "emulation/icons/retroarch.png",
+        "duckstation" => "emulation/icons/duckstation.png",
+        "pcsx2" => "emulation/icons/pcsx2.png",
+        "rpcs3" => "emulation/icons/rpcs3.png",
+        "ppsspp" => "emulation/icons/ppsspp.png",
+        "dolphin" => "emulation/icons/dolphin.png",
+        _ => return None,
+    })
+}
+
+/// An emulator's icon, or its initial when it has none.
+fn emulator_badge(id: &str, name: &str) -> AnyView {
+    match emulator_icon(id) {
+        Some(src) => view! { <img class="emu-ico" src=src alt="" /> }.into_any(),
+        None => view! { <span class="emu-ico letter" aria-hidden="true">{name.chars().next().unwrap_or('?').to_string()}</span> }.into_any(),
+    }
+}
+
+/// The RetroArch core that plays each console (as the backend installs them).
+fn core_of(console: &str) -> Option<&'static str> {
+    Some(match console {
+        "nes" => "fceumm",
+        "snes" => "snes9x",
+        "n64" => "mupen64plus_next",
+        "gb" | "gbc" => "gambatte",
+        "gba" => "mgba",
+        "genesis" | "sms" | "gg" => "genesis_plus_gx",
+        "ps1" => "pcsx_rearmed",
+        "psp" => "ppsspp",
+        "gc" | "wii" => "dolphin",
+        "ps2" => "pcsx2",
+        _ => return None,
+    })
+}
+
+/// The cartridge consoles, each its own card (RetroArch today, others later).
+const CART_CONSOLES: [&str; 9] = ["nes", "snes", "n64", "gb", "gbc", "gba", "genesis", "sms", "gg"];
+
+/// Emulação: every console as a card with its picture, saying who opens its
+/// games and whether they're ready; the player's consoles first. A card opens
+/// that console's page right here: who opens it, what's missing, its games.
+/// RetroArch itself (program and cores) is one line under the cards.
 #[component]
-fn Emulation(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> impl IntoView {
+fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> impl IntoView {
     let library = expect_context::<Library>();
-    let state = RwSignal::new(None::<cerberus_shared::EmulationView>);
+    let emu = RwSignal::new(None::<cerberus_shared::EmulationView>);
+    let st = RwSignal::new(None::<cerberus_shared::StandaloneStatus>);
     let busy = RwSignal::new(None::<String>);
     let progress = RwSignal::new((0u64, 0u64));
-    spawn_local(async move {
-        state.set(library.report(api::emulation_status().await));
-    });
-    api::on_emu_progress(move |p| progress.set(p));
-    let run = move |label: String, task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<cerberus_shared::EmulationView, String>>>>, done: &'static str| {
-        busy.set(Some(label));
-        spawn_local(async move {
-            let got = library.report(task.await);
-            busy.set(None);
-            if let Some(v) = got {
-                state.set(Some(v));
-                if !done.is_empty() {
-                    library.toast(done);
+    // The console open: None shows them all (a game's page may ask for its console).
+    let open = RwSignal::new(NEXT_CONSOLE.with(|n| n.borrow_mut().take()));
+    // Into a console: its page from the top, the keyboard on "Todos os consoles".
+    // Back: the keyboard on the card it came from.
+    Effect::new(move |was: Option<Option<String>>| {
+        let now = open.get();
+        let target = match (&now, was.flatten()) {
+            (Some(_), _) => Some(".cd-back".to_string()),
+            (None, Some(prev)) => Some(format!(".cc[data-console=\"{prev}\"]")),
+            (None, None) => None,
+        };
+        if let Some(sel) = target {
+            let into = now.is_some();
+            request_animation_frame(move || {
+                if into {
+                    if let Some(main) = document().query_selector("main.main").ok().flatten() {
+                        main.set_scroll_top(0);
+                    }
                 }
+                if let Some(el) = document().query_selector(&sel).ok().flatten() {
+                    let el: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(el);
+                    let _ = el.focus();
+                }
+            });
+        }
+        now
+    });
+    // Consoles the player has no game of stay folded until asked for.
+    let everything = RwSignal::new(false);
+    // Removing an emulator takes a second click, as uninstalling a game does.
+    let armed_remove = RwSignal::new(None::<String>);
+    let refresh = move || {
+        spawn_local(async move {
+            if let Some(v) = library.report(api::emulation_status().await) {
+                emu.set(Some(v));
             }
+            if let Some(v) = library.report(api::standalone_status().await) {
+                st.set(Some(v));
+            }
+            library.players.refetch();
+        });
+    };
+    refresh();
+    api::on_emu_progress(move |p| progress.set(p));
+    // Runs one action, says what it did, and reads both states again.
+    let act = move |label: &str, task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>>>>| {
+        busy.set(Some(label.to_string()));
+        progress.set((0, 0));
+        spawn_local(async move {
+            let said = library.report(task.await);
+            busy.set(None);
+            if let Some(text) = said.filter(|t| !t.is_empty()) {
+                library.toast(text);
+            }
+            refresh();
         });
     };
     let ra_linked = ra_user.is_some();
+    let disabled = move || busy.get().is_some();
 
     move || {
-        let Some(v) = state.get() else {
+        let (Some(v), Some(s)) = (emu.get(), st.get()) else {
             return view! { <section class="card set"><h3>{tr!("Emulação")}</h3><p class="muted">{tr!("Verificando...")}</p></section> }.into_any();
         };
         let working = busy.get();
-        let status = match (&v.retroarch, &working) {
-            (_, Some(label)) if label == "install" => {
-                let (done, total) = progress.get();
-                let text = if total > 0 && done >= total {
-                    tr!("Extraindo o RetroArch... leva um minuto.").to_string()
-                } else if total > 0 {
-                    tr!("Baixando o RetroArch · {} de {}", format::megabytes(done), format::megabytes(total))
-                } else {
-                    tr!("Preparando o RetroArch...").to_string()
-                };
-                view! { <small>{text}</small> }.into_any()
+        let has_ra = v.retroarch.is_some();
+        let core_ok = |console: &str| core_of(console).is_some_and(|core| v.cores.iter().any(|c| c.core == core && c.installed));
+        let emulator = |id: &str| s.emulators.iter().find(|e| e.id == id).cloned();
+        // Who opens a console, as Play decides it: the player's pick, else RetroArch
+        // when it has the console, else an installed emulator for it.
+        let who_of = |console: &str| {
+            let picked = s.play_with.iter().find(|(c, _)| c == console).map(|(_, w)| w.clone()).unwrap_or_default();
+            if !picked.is_empty() {
+                return picked;
             }
-            (Some(path), _) => view! { <small><span class="path">{path.clone()}</span><br/>{if v.managed { tr!("Instalado pelo Cerberus, do site oficial do libretro.") } else { tr!("O seu RetroArch.") }}</small> }.into_any(),
-            (None, _) => view! { <small>{tr!("O RetroArch roda NES, Super Nintendo, Nintendo 64, Game Boy, GBA, Mega Drive, PlayStation, PlayStation 2, PSP, GameCube e Wii. O Cerberus instala a versão oficial (cerca de 200 MB) numa pasta só dele, ou usa o seu.")}</small> }.into_any(),
+            if has_ra && core_of(console).is_some() {
+                return "retroarch".to_string();
+            }
+            s.emulators.iter().find(|e| e.exe.is_some() && e.consoles.iter().any(|c| c == console)).map(|e| e.id.clone())
+                .unwrap_or_else(|| if core_of(console).is_some() { "retroarch".to_string() } else { String::new() })
         };
-        let has = v.retroarch.is_some();
-        let disabled = move || busy.get().is_some();
-        let cores = v
-            .cores
-            .iter()
-            .map(|c| {
-                let core = c.core.clone();
-                let installing = working.as_deref() == Some(core.as_str());
-                let control = if c.installed {
-                    view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />{tr!("Instalado")}</span> }.into_any()
+        let state_of = |console: &str, who: &str| -> Ready {
+            match who {
+                "retroarch" if !has_ra => Ready::NoEmulator,
+                "retroarch" if !core_ok(console) => Ready::NeedsCore,
+                "retroarch" if console == "ps2" && !v.ps2_bios => Ready::NeedsBios,
+                "retroarch" => Ready::Yes,
+                "" => Ready::NoEmulator,
+                id => match emulator(id) {
+                    Some(e) if e.exe.is_none() => Ready::NoEmulator,
+                    Some(e) if e.bios == Some(false) => Ready::NeedsBios,
+                    Some(_) => Ready::Yes,
+                    None => Ready::NoEmulator,
+                },
+            }
+        };
+        let status_words = |ready: Ready| match ready {
+            Ready::Yes => ("ok", tr!("Pronto")),
+            Ready::NeedsBios => ("warn", tr!("Falta a BIOS")),
+            Ready::NeedsCore => ("warn", tr!("Falta o núcleo")),
+            Ready::NoEmulator => ("off", tr!("Sem emulador")),
+        };
+        let progress_words = || {
+            let (done, total) = progress.get();
+            if total > 0 && done >= total { tr!("Extraindo… leva um minuto.").to_string() } else if total > 0 { tr!("Baixando {}%…", done * 100 / total) } else { tr!("Preparando…").to_string() }
+        };
+        let games_words = |n: usize| match n {
+            0 => tr!("Nenhum jogo seu").to_string(),
+            1 => tr!("1 jogo seu").to_string(),
+            n => tr!("{} jogos seus", n),
+        };
+        let name_of = |c: &str| { let n = console_name(c); if n.is_empty() { crate::classics::console_name(c) } else { n } };
+
+        // The player's own classics, by console.
+        let my_roms = library.roms.get().unwrap_or_default();
+        let players = library.players.get().unwrap_or_default();
+        let mine = |console: &str| my_roms.iter().filter(|r| crate::classics::console_of(r) == console).count();
+        // The same count as Biblioteca e ROMs: an installed recomp also opens a classic.
+        let playable = {
+            let games = library.games.get().and_then(Result::ok).unwrap_or_default();
+            let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+            my_roms.iter().filter(|r| crate::classics::resolve(r, &players, &games, &recomps).playable()).count()
+        };
+
+        // ---------- one console's page ----------
+        if let Some(console) = open.get() {
+            let back = view! {
+                <button type="button" class="link cd-back" on:click=move |_| open.set(None)>
+                    <Svg icon=Icon::Left size=16 />{tr!("Todos os consoles")}
+                </button>
+            };
+            let names: Vec<String> = my_roms.iter().filter(|r| crate::classics::console_of(r) == console).map(crate::classics::display_name).collect();
+            let games = (!names.is_empty()).then(|| view! {
+                <section class="cd-sec">
+                    <h3>{tr!("Seus jogos")}</h3>
+                    <div class="cd-games">{names.into_iter().map(|n| view! { <span class="emu-chip">{n}</span> }).collect_view()}</div>
+                </section>
+            });
+            let who = who_of(&console);
+            let ready = state_of(&console, &who);
+            let (class, label) = status_words(ready);
+            let mut choices: Vec<(String, String, bool)> = Vec::new();
+            if core_of(&console).is_some() {
+                choices.push(("retroarch".into(), "RetroArch".into(), has_ra));
+            }
+            choices.extend(s.emulators.iter().filter(|e| e.consoles.iter().any(|c| *c == console)).map(|e| (e.id.clone(), e.name.clone(), e.exe.is_some())));
+            let only_one = choices.len() == 1;
+            let cards = choices.into_iter().map(|(id, name, installed)| {
+                let chosen = id == who;
+                let c = console.clone();
+                let pick_id = id.clone();
+                let pick = move |_| {
+                    let (console, who) = (c.clone(), pick_id.clone());
+                    act("who", Box::pin(async move { api::set_play_with(&console, &who).await.map(|_| String::new()) }));
+                };
+                let here = working.as_deref() == Some(id.as_str());
+                let state = if here { progress_words() } else if installed { tr!("Instalado").to_string() } else { tr!("Não instalado").to_string() };
+                let actions = if installed {
+                    (!chosen).then(|| view! { <button type="button" class="btn sm" disabled=disabled on:click=pick>{tr!("Usar este")}</button> }).into_any()
                 } else {
-                    let core = core.clone();
+                    let (i1, i2) = (id.clone(), id.clone());
+                    let done = tr!("{} instalado. Seus jogos dele já podem abrir por aqui.", name);
                     view! {
-                        <button type="button" class="btn sm" disabled=move || disabled() || !has
-                            on:click=move |_| {
-                                let name = core.clone();
-                                run(name.clone(), Box::pin(api::install_core(name)), tr!("Núcleo instalado."));
-                            }>
-                            {if installing { tr!("Baixando...") } else { tr!("Instalar") }}
-                        </button>
-                    }
-                    .into_any()
+                        <button type="button" class="btn sm" disabled=disabled on:click=move |_| {
+                            let id = i1.clone();
+                            if id == "retroarch" {
+                                act("retroarch", Box::pin(async move { api::pick_retroarch().await.map(|_| String::new()) }))
+                            } else {
+                                act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }))
+                            }
+                        }>{tr!("Já tenho")}</button>
+                        <button type="button" class="btn sm main" disabled=disabled on:click=move |_| {
+                            let id = i2.clone();
+                            let done = done.clone();
+                            if id == "retroarch" {
+                                act("retroarch", Box::pin(async move { api::install_retroarch().await.map(|_| tr!("RetroArch instalado.").to_string()) }))
+                            } else {
+                                act(&id.clone(), Box::pin(async move { api::install_standalone(&id).await.map(|_| done) }))
+                            }
+                        }><Svg icon=Icon::Download size=16 />{tr!("Instalar")}</button>
+                    }.into_any()
                 };
                 view! {
-                    <div class="set-row sub">
-                        <div><b>{c.consoles.clone()}</b><small>{tr!("Núcleo {}", c.core)}</small></div>
-                        {control}
+                    <div class="who-card" class:on=chosen && installed class:installed=installed>
+                        {emulator_badge(&id, &name)}
+                        <div class="who-t">
+                            <b>{name.clone()}</b>
+                            <small>{if chosen && installed { tr!("Abre os seus jogos · {}", state) } else { state }}</small>
+                        </div>
+                        <div class="row">{actions}</div>
+                        {(chosen && installed).then(|| view! { <span class="who-check" aria-label=tr!("Em uso")><Svg icon=Icon::Check size=14 /></span> })}
                     </div>
                 }
+            }).collect_view();
+
+            // What the chosen emulator still needs from the player's console.
+            let needs = match who.as_str() {
+                "retroarch" if has_ra => {
+                    let core_line = core_of(&console).filter(|_| !core_ok(&console)).map(|core| {
+                        view! {
+                            <div class="emu-line">
+                                <span class="emu-flag warn">{tr!("Falta o núcleo {}", core)}</span>
+                                <div class="row">
+                                    <button type="button" class="btn sm main" disabled=disabled on:click=move |_| {
+                                        let name = core.to_string();
+                                        act(&name.clone(), Box::pin(async move { api::install_core(name).await.map(|_| tr!("Núcleo instalado.").to_string()) }));
+                                    }><Svg icon=Icon::Download size=16 />{if working.as_deref() == Some(core) { tr!("Baixando...") } else { tr!("Instalar núcleo") }}</button>
+                                </div>
+                            </div>
+                        }
+                    });
+                    let core_ready = core_of(&console).filter(|_| core_ok(&console)).map(|core| view! {
+                        <div class="emu-line"><span class="emu-flag ok">{tr!("Núcleo {} instalado", core)}</span></div>
+                    });
+                    let bios_line = matches!(console.as_str(), "ps1" | "ps2").then(|| {
+                        let ok = if console == "ps2" { v.ps2_bios } else { v.ps1_bios };
+                        let what = match (console.as_str(), ok) {
+                            ("ps2", true) => tr!("BIOS do PS2 pronta"),
+                            ("ps2", false) => tr!("Falta a BIOS do PS2"),
+                            (_, true) => tr!("BIOS do PS1 pronta"),
+                            (_, false) => tr!("BIOS do PS1: opcional"),
+                        };
+                        view! {
+                            <div class="emu-line">
+                                <span class=if ok { "emu-flag ok" } else if console == "ps2" { "emu-flag warn" } else { "emu-flag" }>{what}</span>
+                                <div class="row">
+                                    <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("ra-bios", Box::pin(async move { api::import_bios().await.map(|(_, said)| said) }))>
+                                        <Svg icon=Icon::Folder size=16 />{if ok { tr!("Trocar BIOS") } else { tr!("Adicionar BIOS") }}</button>
+                                </div>
+                            </div>
+                        }
+                    });
+                    Some(view! { {core_line}{core_ready}{bios_line} }.into_any())
+                }
+                id => emulator(id).filter(|e| e.exe.is_some()).map(|e| {
+                    let bios = e.bios.map(|ok| {
+                        let what = if e.firmware {
+                            if ok { tr!("Firmware do PS3 instalado") } else { tr!("Falta o firmware do PS3") }
+                        } else if ok { tr!("BIOS pronta") } else { tr!("Falta a BIOS") };
+                        let button = match (e.firmware, ok) { (true, true) => tr!("Reinstalar firmware"), (true, false) => tr!("Instalar firmware"), (false, true) => tr!("Trocar BIOS"), (false, false) => tr!("Adicionar BIOS") };
+                        let id = e.id.clone();
+                        view! {
+                            <div class="emu-line">
+                                <span class=if ok { "emu-flag ok" } else { "emu-flag warn" }>{what}</span>
+                                <div class="row">
+                                    <button type="button" class="btn sm" class:main=!ok disabled=disabled on:click=move |_| {
+                                        let id = id.clone();
+                                        act("bios", Box::pin(async move { api::standalone_bios(&id).await.map(|(_, said)| said) }))
+                                    }><Svg icon=Icon::Folder size=16 />{button}</button>
+                                </div>
+                            </div>
+                        }
+                    });
+                    let (i2, i3, managed) = (e.id.clone(), e.id.clone(), e.managed);
+                    view! {
+                        {bios}
+                        <div class="emu-line">
+                            <span class="emu-status" title=e.exe.clone().unwrap_or_default()>{if managed { tr!("Instalado pelo Cerberus").to_string() } else { tr!("Encontrado em {}", e.exe.clone().unwrap_or_default()) }}</span>
+                            <div class="row">
+                                <button type="button" class="btn sm" on:click=move |_| { let id = i2.clone(); spawn_local(async move { library.report(api::open_standalone(&id).await); }) }>{tr!("Abrir o {}", e.name)}</button>
+                                {
+                                    let armed_id = e.id.clone();
+                                    let is_armed = move || armed_remove.get().as_deref() == Some(armed_id.as_str());
+                                    let label_armed = is_armed.clone();
+                                    view! {
+                                        <button type="button" class="btn sm" class:warn=move || managed && is_armed() disabled=disabled on:click=move |_| {
+                                            let id = i3.clone();
+                                            if !managed {
+                                                act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }));
+                                            } else if armed_remove.get_untracked().as_deref() == Some(id.as_str()) {
+                                                armed_remove.set(None);
+                                                act(&id.clone(), Box::pin(async move { api::remove_standalone(&id).await.map(|_| String::new()) }));
+                                            } else {
+                                                armed_remove.set(Some(id));
+                                            }
+                                        }>{move || match (managed, label_armed()) {
+                                            (false, _) => tr!("Trocar"),
+                                            (true, true) => tr!("Confirmar: remover"),
+                                            (true, false) => tr!("Remover"),
+                                        }}</button>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }.into_any()
+                }),
+            };
+            let art = console_art(&console);
+            let name = name_of(&console);
+            return view! {
+                <section class=format!("card set cd {class}")>
+                    {back}
+                    <header class="cd-head">
+                        {match art {
+                            Some(src) => view! { <img class="cd-art" src=src alt="" /> }.into_any(),
+                            None => view! { <span class="cd-art none" aria-hidden="true">{name}</span> }.into_any(),
+                        }}
+                        <div>
+                            <h3 class="cd-name">{name}</h3>
+                            <span class="emu-dot">{label}</span>
+                            <p class="muted small">{games_words(mine(&console))}</p>
+                        </div>
+                    </header>
+                    <section class="cd-sec">
+                        <h3>{tr!("Quem abre os jogos")}</h3>
+                        <p class="muted small">{if only_one {
+                            tr!("Por enquanto só o RetroArch abre esse console aqui. Cada emulador vem da página oficial do projeto, sem BIOS nem firmware.")
+                        } else {
+                            tr!("Cada emulador vem da página oficial do projeto, sem BIOS nem firmware: esses arquivos são do seu console.")
+                        }}</p>
+                        <div class="who-grid">{cards}</div>
+                    </section>
+                    {needs.map(|n| {
+                        let heading = match (ready, who.as_str()) {
+                            (Ready::Yes, "retroarch") if matches!(console.as_str(), "ps1" | "ps2") => tr!("Núcleo e BIOS"),
+                            (Ready::Yes, "retroarch") => tr!("Núcleo"),
+                            (Ready::Yes, _) => tr!("BIOS e programa"),
+                            _ => tr!("O que falta"),
+                        };
+                        view! { <section class="cd-sec"><h3>{heading}</h3>{n}</section> }
+                    })}
+                    {games}
+                </section>
+            }.into_any();
+        }
+
+        // ---------- every console, as a card ----------
+        let mut order: Vec<&str> = DISC_CONSOLES.iter().chain(CART_CONSOLES.iter()).copied().collect();
+        order.sort_by_key(|c| std::cmp::Reverse(mine(c)));
+        let hidden = order.iter().filter(|c| mine(c) == 0).count();
+        let show_all = everything.get() || hidden == order.len();
+        let cards = order.into_iter().filter(|c| show_all || mine(c) > 0).map(|console| {
+            let who = who_of(console);
+            let (class, label) = match status_words(state_of(console, &who)) {
+                ("ok", l) => ("ok", l),
+                (_, _) if mine(console) == 0 => ("off", tr!("Sem jogos seus")),
+                other => other,
+            };
+            let who_name = match who.as_str() {
+                "" => None,
+                "retroarch" => Some("RetroArch".to_string()),
+                id => emulator(id).map(|e| e.name),
+            };
+            let n = mine(console);
+            let title = name_of(console);
+            let id = console.to_string();
+            view! {
+                <button type="button" class=format!("cc {class}") class:idle=n == 0 data-console=console.to_string() on:click=move |_| open.set(Some(id.clone()))>
+                    <span class="cc-art" aria-hidden="true">
+                        {match console_art(console) {
+                            Some(src) => view! { <img src=src alt="" /> }.into_any(),
+                            None => view! { <span class="cc-none">{title}</span> }.into_any(),
+                        }}
+                    </span>
+                    <span class="cc-name">{title}</span>
+                    <span class="emu-dot">{label}</span>
+                    <span class="cc-who">
+                        {match who_name {
+                            Some(name) => view! { {emulator_badge(&who, &name)}<span>{name}</span> }.into_any(),
+                            None => view! { <span>{tr!("Escolha um emulador")}</span> }.into_any(),
+                        }}
+                    </span>
+                    // The dot already says "Sem jogos seus": the count only when there are some.
+                    {(n > 0).then(|| view! { <small class="cc-games">{games_words(n)}</small> })}
+                </button>
+            }
+        }).collect_view();
+        let more = (hidden > 0 && hidden < DISC_CONSOLES.len() + CART_CONSOLES.len()).then(|| view! {
+            <button type="button" class="btn sm cc-more" aria-expanded=show_all.to_string() on:click=move |_| everything.update(|v| *v = !*v)>
+                {if show_all { tr!("Mostrar só os seus consoles").to_string() } else { tr!("Mostrar todos os consoles ({} mais)", hidden) }}
+            </button>
+        });
+
+        // Games of consoles nothing here plays yet, and the recomps that already do.
+        let known = |c: &str| DISC_CONSOLES.contains(&c) || CART_CONSOLES.contains(&c);
+        let unplayable_roms: Vec<&cerberus_shared::RomView> = my_roms.iter().filter(|r| !known(crate::classics::console_of(r))).collect();
+        let mut unplayable: Vec<&'static str> = unplayable_roms.iter().map(|r| crate::classics::console_name(crate::classics::console_of(r))).collect();
+        unplayable.sort_unstable();
+        unplayable.dedup();
+        let all_recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let lib_games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let native_ways = unplayable_roms.iter()
+            .filter_map(|r| crate::classics::recomp_game(r, &lib_games, &all_recomps).map(|g| (crate::classics::display_name(r), g.name.clone(), g.id.clone())))
+            .map(|(game, recomp, id)| view! {
+                <button type="button" class="link emu-native" on:click=move |_| library.go(crate::Route::Game(id.clone()))>
+                    {tr!("{} já roda pelo recomp {}", game, recomp)}
+                </button>
             })
             .collect_view();
-        // The account lives in Settings › Accounts; here is only whether RetroArch has it.
+
+        // RetroArch itself: the program and its cores, one line.
+        let total_cores = v.cores.len();
+        let have_cores = v.cores.iter().filter(|c| c.installed).count();
+        let ra_status = match working.as_deref() {
+            Some("retroarch") => progress_words(),
+            Some("cores") => { let (done, total) = progress.get(); tr!("Instalando núcleos · {} de {}", done, total) }
+            _ => match (&v.retroarch, v.managed) {
+                (Some(_), true) => tr!("Instalado pelo Cerberus · {} de {} núcleos", have_cores, total_cores),
+                (Some(path), false) => tr!("Encontrado em {} · {} de {} núcleos", path, have_cores, total_cores),
+                (None, _) => tr!("Não instalado. Abre NES, Super Nintendo, Nintendo 64, Game Boy, Mega Drive e também PlayStation, PSP, GameCube e Wii.").to_string(),
+            },
+        };
+        let ra_row = view! {
+            <div class="set-row">
+                <div class="ra-row">
+                    {emulator_badge("retroarch", "RetroArch")}
+                    <div><b>"RetroArch"</b><small title=v.retroarch.clone().unwrap_or_default()>{ra_status}</small></div>
+                </div>
+                <div class="row">
+                    {(has_ra && have_cores < total_cores).then(|| view! {
+                        <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("cores", Box::pin(async move {
+                            api::install_all_cores().await.map(|(_, n)| tr!("{} núcleos instalados.", n))
+                        }))><Svg icon=Icon::Download size=16 />{tr!("Instalar todos os núcleos")}</button>
+                    })}
+                    <button type="button" class="btn sm" disabled=disabled on:click=move |_| act("retroarch", Box::pin(async move { api::pick_retroarch().await.map(|_| String::new()) }))>{tr!("Usar o meu")}</button>
+                    <button type="button" class="btn sm" class:main=!has_ra disabled=disabled on:click=move |_| act("retroarch", Box::pin(async move { api::install_retroarch().await.map(|_| tr!("RetroArch instalado.").to_string()) }))>
+                        <Svg icon=Icon::Download size=16 />{if has_ra { tr!("Reinstalar") } else { tr!("Instalar") }}</button>
+                </div>
+            </div>
+        };
+
+        // Folders and achievements: one line each.
+        let use_folders = s.use_folders;
+        let folder_note = if !use_folders {
+            tr!("As pastas de jogos que os seus emuladores já conhecem também entram nos clássicos. O Cerberus só lê essas pastas.").to_string()
+        } else if s.folders.is_empty() {
+            tr!("Nenhum emulador deste PC lista pastas de jogos ainda.").to_string()
+        } else {
+            tr!("Lendo: {}", s.folders.join(" · "))
+        };
         let retro = match (&v.ra_user, ra_linked, ra_retroarch) {
             (Some(user), _, _) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conectado como {}", user)}</span> }.into_any(),
             (None, true, true) => view! { <span class="pill ok"><Svg icon=Icon::Trophy size=14 />{tr!("Conecta sozinho ao abrir um jogo")}</span> }.into_any(),
             (None, true, false) => view! { <small>{tr!("Informe sua senha em Contas › RetroAchievements para ligar as conquistas no RetroArch.")}</small> }.into_any(),
             (None, false, _) => view! { <small>{tr!("Conecte sua conta em Contas › RetroAchievements primeiro.")}</small> }.into_any(),
         };
+
         view! {
-            <section class="card set">
-                <div class="card-h">
-                    <h3>"RetroArch"</h3>
-                    <div class="row">
-                        <button type="button" class="btn sm" disabled=disabled
-                            on:click=move |_| run("pick".to_string(), Box::pin(api::pick_retroarch()), "")>{tr!("Usar o meu")}</button>
-                        <button type="button" class="btn sm main" disabled=disabled
-                            on:click=move |_| run("install".to_string(), Box::pin(api::install_retroarch()), tr!("RetroArch instalado."))>
-                            <Svg icon=Icon::Download size=16 />{if has { tr!("Reinstalar") } else { tr!("Instalar") }}
-                        </button>
-                    </div>
+            <section class="card set emu-top">
+                <div>
+                    <h3>{tr!("Emulação")}</h3>
+                    <p class="muted small">{tr!("{} clássicos nas suas pastas · {} já abrem aqui. Clique num console para escolher quem abre os jogos dele.", roms, playable)}</p>
                 </div>
-                {row(if has { tr!("Pronto") } else { tr!("Não instalado") }, status, ())}
+                <button type="button" class="btn sm" on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
             </section>
+            <div class="cc-grid">{cards}</div>
+            {more}
+            {(!unplayable.is_empty()).then(|| view! {
+                <section class="card set emu-none">
+                    <div class="emu-tile-h"><b>{unplayable.join(", ")}</b><span class="emu-dot">{tr!("Sem emulação")}</span></div>
+                    <p class="muted small">{tr!("Você tem jogos desses consoles, mas o Cerberus ainda não tem emulador para eles.")}</p>
+                    {native_ways}
+                </section>
+            })}
             <section class="card set">
-                <h3>{tr!("Núcleos")}</h3>
-                <p class="muted small">{tr!("Cada console usa um núcleo do RetroArch, baixado do site oficial do libretro.")}</p>
-                {cores}
-            </section>
-            <section class="card set">
-                <h3>"BIOS"</h3>
-                <p class="muted small">{tr!("A BIOS é o programa interno do console. O PlayStation 2 só roda com a do seu próprio console; o PlayStation roda sem, mas fica mais compatível com ela. O Cerberus nunca baixa BIOS: aponte a pasta onde você guarda as suas.")}</p>
-                {row("PlayStation", if v.ps1_bios { tr!("BIOS encontrada.") } else { tr!("Opcional. Arquivo de 512 KB, como scph5501.bin.") },
-                    if v.ps1_bios { view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />{tr!("Pronta")}</span> }.into_any() } else { view! { <span class="pill soon">{tr!("Embutida")}</span> }.into_any() })}
-                {row("PlayStation 2", if v.ps2_bios { tr!("BIOS encontrada.") } else { tr!("Necessária. Arquivos de 4 MB, como SCPH-70012.bin.") },
-                    if v.ps2_bios { view! { <span class="pill ok"><Svg icon=Icon::Check size=14 />{tr!("Pronta")}</span> }.into_any() } else { view! { <span class="pill soon">{tr!("Falta")}</span> }.into_any() })}
-                <div class="row">
-                    <button type="button" class="btn sm main" disabled=move || disabled() || !has
-                        on:click=move |_| {
-                            busy.set(Some("bios".to_string()));
-                            spawn_local(async move {
-                                let got = library.report(api::import_bios().await);
-                                busy.set(None);
-                                if let Some((view, said)) = got {
-                                    state.set(Some(view));
-                                    if !said.is_empty() {
-                                        library.toast(said);
-                                    }
-                                }
-                            });
-                        }>
-                        <Svg icon=Icon::Folder size=16 />{tr!("Adicionar BIOS de uma pasta")}
-                    </button>
-                </div>
-            </section>
-            <section class="card set">
-                <h3>{tr!("Conquistas no RetroArch")}</h3>
-                {row("RetroAchievements", tr!("A conta é a de Contas › RetroAchievements. O Cerberus grava no RetroArch só o código de acesso, nunca a senha, e faz uma cópia de segurança das configurações dele antes."), retro)}
-            </section>
-            <section class="card set">
-                {row(tr!("Seus clássicos"), tr!("{} jogos encontrados nas pastas de ROMs. Jogue pela aba Clássicos da Biblioteca.", roms),
-                    view! { <button type="button" class="btn sm" on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button> })}
+                {ra_row}
+                {row(tr!("Usar as pastas dos emuladores"), folder_note,
+                    switch(use_folders, tr!("Usar as pastas dos emuladores"), RwSignal::new(false), move || act("folders", Box::pin(async move { api::set_emulator_folders(!use_folders).await.map(|_| String::new()) }))))}
+                {row(tr!("Conquistas no RetroArch"), tr!("A conta é a de Contas › RetroAchievements. O Cerberus grava no RetroArch só o código de acesso, nunca a senha, e faz uma cópia de segurança das configurações dele antes."), retro)}
             </section>
         }
         .into_any()
@@ -1045,18 +1638,18 @@ fn YourPc() -> impl IntoView {
             <section class="card set">
                 <h3>{tr!("Seu PC")}</h3>
                 <p class="muted small">{tr!("O que os jogos precisam no Windows. Quando um jogo fecha logo ao abrir, o Cerberus diz qual destes falta.")}</p>
-                {row(tr!("Visual C++ 2015-2022 (64 bits)"), about, pill)}
-                <div class="row">
+                {row(tr!("Visual C++ 2015-2022 (64 bits)"), about, view! {
+                    {pill}
                     <button type="button" class="btn sm" class:main=!calm disabled=move || working.get() on:click=install>
-                        {move || if working.get() { tr!("Instalando... confirme no Windows").to_string() } else { tr!("{} pelo site da Microsoft", label) }}
+                        {move || if working.get() { tr!("Instalando... confirme no Windows").to_string() } else { label.to_string() }}
                     </button>
-                </div>
-                {row(tr!("DirectX (componentes antigos)"), dx_about, dx_pill)}
-                <div class="row">
+                })}
+                {row(tr!("DirectX (componentes antigos)"), dx_about, view! {
+                    {dx_pill}
                     <button type="button" class="btn sm" class:main=!dx_ok disabled=move || working_dx.get() on:click=install_dx>
-                        {move || if working_dx.get() { tr!("Instalando... confirme no Windows") } else if dx_ok { tr!("Reinstalar pelo site da Microsoft") } else { tr!("Instalar pelo site da Microsoft") }}
+                        {move || if working_dx.get() { tr!("Instalando... confirme no Windows") } else if dx_ok { tr!("Reinstalar") } else { tr!("Instalar") }}
                     </button>
-                </div>
+                })}
                 <p class="muted small">{tr!("Os instaladores oficiais são baixados da Microsoft e o Windows pede sua permissão.")}</p>
             </section>
         })
@@ -1152,6 +1745,33 @@ fn update_row() -> impl IntoView {
 /// Linking a RetroAchievements account and showing its progress.
 /// Steam's Web API, optional: with the player's own key, the achievements hub
 /// reads every owned game and the achievements unlocked on other PCs.
+/// Your other games inside Steam, for the Steam Deck and Steam's Big Picture.
+#[component]
+fn SteamShortcutsCard() -> impl IntoView {
+    let library = expect_context::<Library>();
+    let busy = RwSignal::new(false);
+    let add_all = move |_| {
+        busy.set(true);
+        spawn_local(async move {
+            match library.report(api::add_all_to_steam().await) {
+                Some(0) => library.toast(tr!("Seus jogos já estão todos na Steam.")),
+                Some(1) => library.toast(tr!("1 jogo foi para a Steam. Ele aparece quando a Steam abrir.")),
+                Some(n) => library.toast(tr!("{} jogos foram para a Steam. Eles aparecem quando a Steam abrir.", n)),
+                None => {}
+            }
+            busy.set(false);
+        });
+    };
+    view! {
+        <section class="card set">
+            <h3>{tr!("Seus jogos na Steam")}</h3>
+            {row(tr!("Adicionar todos à Steam"), tr!("Recomps, jogos que você adicionou e os da Epic entram na Steam como jogos de fora, com capa, e abrem pelo Cerberus. Os que já estão lá ficam como estão. Feche a Steam antes."),
+                view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=add_all>
+                    {move || if busy.get() { tr!("Adicionando…") } else { tr!("Adicionar todos") }}</button> })}
+        </section>
+    }
+}
+
 /// The Epic Games Launcher: found or not, and its installed games in the library.
 #[component]
 fn EpicCard() -> impl IntoView {
@@ -1450,9 +2070,13 @@ fn Sources(
         let value = url.get_untracked();
         if !busy.get_untracked() && !value.trim().is_empty() { apply_source(value, true); }
     };
-    let rows = sources
-        .into_iter()
-        .map(|source| {
+    // Hydra lists are reference only: one folded group under the project sources, said once.
+    let (hydra, projects): (Vec<SourceView>, Vec<SourceView>) = sources.into_iter().partition(|s| s.hydra);
+    let hydra_total: usize = hydra.iter().map(|s| s.games).sum();
+    let hydra_count = hydra.len();
+    let unfolded = RwSignal::new(false);
+    let row = move |source: SourceView| {
+        {
             let target = StoredValue::new(source.url.clone());
             let opened = RwSignal::new(false);
             let count = if source.hydra { tr!("Hydra · {} publicações", source.games) }
@@ -1484,15 +2108,32 @@ fn Sources(
                     {move || opened.get().then(|| view! { <HydraListings url=target.get_value() /> })}
                 </div>
             }
-        })
-        .collect_view();
+        }
+    };
+    let rows = projects.into_iter().map(row).collect_view();
+    let hydra_rows = hydra.into_iter().map(row).collect_view();
+    let hydra_group = (hydra_count > 0).then(|| view! {
+        <div class="set-row sub hydra-group">
+            <div>
+                <b>{if hydra_count == 1 { tr!("1 lista do Hydra").to_string() } else { tr!("{} listas do Hydra", hydra_count) }}</b>
+                <small>{tr!("{} publicações, só para consulta: não aparecem no Descobrir nem na Biblioteca, e o Cerberus não baixa nada delas.", format::count(hydra_total as u64))}</small>
+            </div>
+            <div class="row">
+                <button type="button" class="btn sm" aria-expanded=move || unfolded.get().to_string()
+                    on:click=move |_| unfolded.update(|v| *v = !*v)>
+                    {move || if unfolded.get() { tr!("Recolher") } else { tr!("Mostrar listas") }}
+                </button>
+            </div>
+        </div>
+        <div class="hydra-lists" class:hidden=move || !unfolded.get()>{hydra_rows}</div>
+    });
     view! {
         <section class="card set">
             <h3>{tr!("Fontes de catálogo")}</h3>
             <form class="set-row" on:submit=on_add>
                 <div>
                     <b>{tr!("Adicionar por URL")}</b>
-                    <small>{tr!("Consulte títulos, tamanhos e datas de listas Hydra aqui. Fontes de projetos para instalar aparecem em Descobrir.")}</small>
+                    <small>{tr!("Fontes de projetos (no formato do Cerberus ou do RecompLauncher) entram no Descobrir e instalam da página do desenvolvedor. Listas do Hydra ficam só para consulta aqui: títulos, tamanhos e datas.")}</small>
                 </div>
                 <div class="row">
                     <input class="input" type="url" required aria-label=tr!("URL da fonte") placeholder=tr!("https://.../jogos.json") prop:value=move || url.get() on:input=move |e| url.set(event_target_value(&e)) />
@@ -1500,6 +2141,7 @@ fn Sources(
                 </div>
             </form>
             {rows}
+            {hydra_group}
         </section>
     }
 }

@@ -17,6 +17,10 @@ A **recomp** is a native PC version of a console game, rebuilt by the community 
 
 The catalog combines Cerberus's own list with the public list from [recomplauncher.com](https://recomplauncher.com). The second one can be turned off in **Settings → Catalog and sources**. See [Recomp catalog](../development/catalog.md).
 
+## A recomp's page
+
+Besides installing and playing, a recomp's page has **About** the original game: release, developer, publisher, series, genres, modes, platforms and critics' score (from IGDB), and the opening of its Wikipedia article in your language, with **Read on Wikipedia**. The article is kept for a month.
+
 ## Install
 
 1. Open a recomp's page and click **Install**.
@@ -24,7 +28,7 @@ The catalog combines Cerberus's own list with the public list from [recomplaunch
 3. The file is checked against the checksum the host publishes. A file that doesn't match is discarded.
 4. The archive is unpacked into its own folder. Supported formats are `.zip`, `.7z` and `.tar.gz`, plus releases that ship a single `.exe` or an installer.
 
-You can **pause** a download and **resume** it later from where it stopped. **Cancel** deletes the partial file. Progress also shows on the **Downloads** page and in Big Picture Mode.
+While a recomp downloads or installs, the PC doesn't go to sleep (the screen still turns off as usual). You can **pause** a download and **resume** it later from where it stopped. With more than one at a time, **Downloads** has **Pause all** and **Resume all**. **Cancel** deletes the partial file. Progress also shows on the **Downloads** page and in Big Picture Mode.
 
 Some recomps ship a Windows installer. Cerberus runs it the first time you click **Play** and then looks for the installed game. If it can't find the game, it asks you to pick the program.
 
@@ -53,7 +57,11 @@ Before updating, Cerberus backs up your saves. It then prepares the new version 
 
 ## Versions of the same game
 
-Some games have several recomps or ports, like Majora's Mask with Zelda 64: Recompiled and 2 Ship 2 Harkinian. The game page shows **N versions**, where one of them is marked **Recommended**.
+Cerberus shows a recomp by **the game it brings**: covers, the side menu, Home, Discover and the game page say "Mario Kart 64", with the recomp ("SpaghettiKart") on the line under it. Searching finds either name, and **A to Z** puts it under the game's letter. Discover can still list by recomp with **Recomps** at the top.
+
+Some games have several recomps or ports, like Majora's Mask with Zelda 64: Recompiled and 2 Ship 2 Harkinian. On the game page, the line under the title says which version you're on ("SpaghettiKart · Nintendo 64 · by HarbourMasters"); with more than one, it opens the others: the one you have first, then the **Recommended** one, then the most downloaded, each with what it adds, its version, size and downloads (two with the same name also show their project). Arrow keys move, Enter picks, Escape closes. Picking one changes only what belongs to the version (buttons, details, what it adds); the game's art stays, and **Install** says which version it installs.
+
+The Overview starts with the game (its Wikipedia and IGDB facts), then **This version** (what it adds, its features, how to start), then what it needs. If the recomp has the original game's copy, **Play ▾** also offers **Play the original** in the emulator.
 
 ## Recomps you already have
 

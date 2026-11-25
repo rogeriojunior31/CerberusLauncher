@@ -115,7 +115,7 @@ async fn art(client: &Client, app_id: u32) -> Result<Art, String> {
 
 async fn fetch_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBuilder) -> Result<T, String> {
     let offline = |e: reqwest::Error| tr!("Não foi possível falar com a Steam: {}", e);
-    let reply = request.send().await.map_err(offline)?;
+    let reply = crate::net::send(request).await.map_err(|e| tr!("Não foi possível falar com a Steam: {}", e))?;
     let reply = reply.error_for_status().map_err(offline)?;
     reply.json().await.map_err(offline)
 }

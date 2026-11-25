@@ -13,20 +13,52 @@ use crate::{Library, Route, api};
 pub struct GameMenu(pub RwSignal<Option<(Game, i32, i32)>>);
 
 const WIDTH: i32 = 230;
+
+thread_local! {
+    /// What had the focus when the menu opened: it gets it back on close.
+    static OPENER: std::cell::RefCell<Option<web_sys::HtmlElement>> = const { std::cell::RefCell::new(None) };
+}
 const HEIGHT: i32 = 420;
 
 impl GameMenu {
-    /// Opens the menu at the pointer, kept inside the window.
+    /// Opens the menu at the pointer, kept inside the window. From the keyboard
+    /// (Enter on a button: no pointer), it opens under the button instead.
     pub fn open(self, game: Game, event: &leptos::ev::MouseEvent) {
         event.prevent_default();
+        let opener = document().active_element().map(|el| wasm_bindgen::JsCast::unchecked_into::<web_sys::HtmlElement>(el));
+        OPENER.with(|o| *o.borrow_mut() = opener);
         let (w, h) = window_size();
-        let x = event.client_x().min(w - WIDTH - 8).max(8);
-        let y = event.client_y().min(h - HEIGHT - 8).max(8);
+        let (mut x, mut y) = (event.client_x(), event.client_y());
+        if event.detail() == 0 {
+            if let Some(el) = event.current_target().and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok()) {
+                let r = el.get_bounding_client_rect();
+                x = (r.right() as i32) - WIDTH;
+                y = r.bottom() as i32 + 6;
+            }
+        }
+        let x = x.min(w - WIDTH - 8).max(8);
+        let y = y.min(h - HEIGHT - 8).max(8);
         self.0.set(Some((game, x, y)));
+        // The first choice takes the focus, so the keyboard lands in the menu.
+        request_animation_frame(|| {
+            if let Some(first) = document().query_selector(".ctx [role=menuitem]:not([disabled])").ok().flatten() {
+                let first: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(first);
+                let _ = first.focus();
+            }
+        });
     }
 
     fn close(self) {
         self.0.set(None);
+        // Back where the keyboard was, not lost on the page.
+        if let Some(el) = OPENER.with(|o| o.borrow_mut().take()) {
+            let _ = el.focus();
+        }
+    }
+
+    /// Open for this game, for the trigger's aria-expanded.
+    pub fn is_open_for(self, id: &str) -> bool {
+        self.0.with(|m| m.as_ref().is_some_and(|(g, _, _)| g.id == id))
     }
 }
 
@@ -92,10 +124,42 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
     }
 }
 
+/// Up and down move between the menu's items.
+fn step_items(e: &web_sys::KeyboardEvent) {
+    let step: i32 = match e.key().as_str() {
+        "ArrowDown" => 1,
+        "ArrowUp" => -1,
+        _ => return,
+    };
+    e.prevent_default();
+    let Some(list) = document().query_selector_all(".ctx [role=menuitem]:not([disabled])").ok() else { return };
+    let n = list.length() as i32;
+    if n == 0 {
+        return;
+    }
+    let active = document().active_element();
+    let at = (0..n).find(|i| list.item(*i as u32).zip(active.clone()).is_some_and(|(a, b)| wasm_bindgen::JsValue::from(a) == wasm_bindgen::JsValue::from(b))).unwrap_or(-1);
+    if let Some(next) = list.item(((at + step + n) % n) as u32) {
+        let next: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(next);
+        let _ = next.focus();
+    }
+}
+
 #[component]
 pub fn GameMenuLayer() -> impl IntoView {
     let library = expect_context::<Library>();
     let menu = expect_context::<GameMenu>();
+    let keys = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
+        if menu.0.with_untracked(Option::is_none) {
+            return;
+        }
+        if e.key() == "Escape" {
+            menu.close();
+        } else {
+            step_items(&e);
+        }
+    });
+    on_cleanup(move || keys.remove());
     move || {
         let (game, x, y) = menu.0.get()?;
         let running = library.running.with(|all| all.contains(&game.id));
@@ -105,6 +169,18 @@ pub fn GameMenuLayer() -> impl IntoView {
         let page_id = game.id.clone();
         let folder_id = game.id.clone();
         let play = game.clone();
+        let on_page = library.route.get_untracked() == Route::Game(game.id.clone());
+        let original = {
+            let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+            let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+            let players = library.players.get_untracked().unwrap_or_default();
+            library.roms.get_untracked().unwrap_or_default().into_iter()
+                .find(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|g| g.id == game.id))
+                .and_then(|r| {
+                    let console = crate::classics::console_of(&r);
+                    crate::classics::ready_player(&players, console).map(|name| (r.path.clone(), console.to_string(), name))
+                })
+        };
         let hidden = game.hidden;
         let hide_id = game.id.clone();
         let in_shelves = game.collections.clone();
@@ -114,12 +190,22 @@ pub fn GameMenuLayer() -> impl IntoView {
             <div class="ctx" role="menu" style:left=format!("{x}px") style:top=format!("{y}px")
                 on:keydown=move |e| if e.key() == "Escape" { menu.close(); }>
                 <span class="ctx-h">{game.name.clone()}</span>
-                <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
-                    <Svg icon=play_icon size=16 />{play_label}
-                </button>
-                <button type="button" role="menuitem" on:click=move |_| { menu.close(); library.go(Route::Game(page_id.clone())); }>
-                    <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
-                </button>
+                {(!on_page).then(|| view! {
+                    <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
+                        <Svg icon=play_icon size=16 />{play_label}
+                    </button>
+                })}
+                {original.filter(|_| !on_page).map(|(path, console, name)| view! {
+                    <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::classics::play_original(library, path.clone(), console.clone()); }>
+                        <Svg icon=Icon::Disc size=16 />{tr!("Jogar o original no {}", name)}
+                    </button>
+                })}
+                // Not offered on the page itself.
+                {(library.route.get_untracked() != Route::Game(page_id.clone())).then(|| view! {
+                    <button type="button" role="menuitem" on:click=move |_| { menu.close(); library.go(Route::Game(page_id.clone())); }>
+                        <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
+                    </button>
+                })}
                 <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
                     <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
                     {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}

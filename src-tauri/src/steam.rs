@@ -106,6 +106,8 @@ pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
         launch_args: String::new(),
         tracking_exe: None,
         game_copy: None,
+        copy_verified: None,
+        inputs: Default::default(),
         setup_pending: false,
         next_step: cerberus_shared::NextStep::Install,
         setting_picks: Default::default(),
@@ -119,6 +121,9 @@ pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     }
 }
 
@@ -148,6 +153,8 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         launch_args: String::new(),
         tracking_exe: None,
         game_copy: None,
+        copy_verified: None,
+        inputs: Default::default(),
         setup_pending: false,
         next_step: Default::default(),
         setting_picks: Default::default(),
@@ -161,6 +168,9 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         rating: 0,
         notes: String::new(),
         updates_paused: false,
+        part_of: None,
+        part_ids: Vec::new(),
+        parts: Default::default(),
     })
 }
 

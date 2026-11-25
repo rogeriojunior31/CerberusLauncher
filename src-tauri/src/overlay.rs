@@ -45,6 +45,13 @@ pub fn toggle(app: &AppHandle) {
         crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível abrir o menu"), tr!("o jogo está minimizado ou em tela cheia exclusiva"));
         return;
     };
+    // A small window in front is a notice the game is showing (a message box),
+    // not the game: the menu would be squeezed into it, and closing it doesn't
+    // close the game.
+    if width < 480 || height < 270 {
+        crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível abrir o menu"), tr!("o jogo está mostrando um aviso numa janela pequena; responda o aviso primeiro"));
+        return;
+    }
     app.state::<Overlay>().set(Some((game.id.clone(), window as isize)));
     let place = |w: &tauri::WebviewWindow| {
         let _ = w.set_position(PhysicalPosition::new(x, y));

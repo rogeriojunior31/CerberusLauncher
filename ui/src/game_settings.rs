@@ -59,7 +59,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
     let running = move || library.running.with(|all| all.contains(&id.get_value()));
 
     move || match state.get() {
-        None => view! { <p class="muted">{tr!("Lendo os ajustes do jogo...")}</p> }.into_any(),
+        None => view! { <crate::game_overview::Waiting text=tr!("Lendo os ajustes do jogo...") /> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(None)) => view! {
             <div class="empty small">
@@ -95,6 +95,9 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
                         <div>
                             <h3>{tr!("Ajustes do jogo")}</h3>
                             <p class="muted small">{tr!("Gravados direto no arquivo de configuração do jogo. Valem na próxima vez que ele abrir.")}</p>
+                            {(cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt).then(|| view! {
+                                <p class="muted small">{tr!("Os nomes e as descrições vêm do próprio recomp, em inglês.")}</p>
+                            })}
                         </div>
                         <div class="row">
                             {advanced_toggle}

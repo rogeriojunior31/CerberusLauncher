@@ -59,6 +59,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 - **Erro explicado:** quando um jogo fecha com erro, o Cerberus diz o motivo e onde está o log do jogo. O motivo pode ser uma DLL faltando, um Visual C++ antigo ou um travamento.
 - **DLSS:** mostra a versão que o jogo usa e troca por uma DLL que você já tem. Dá para voltar à original quando quiser.
 - **Steam:** você pode colocar qualquer jogo na Steam (para o Steam Deck e o Big Picture) ou criar um atalho na área de trabalho que abre pelo Cerberus.
+- **Emuladores dedicados:** DuckStation, PCSX2, RPCS3, PPSSPP, Dolphin e Cemu, instalados das páginas oficiais ou achados no seu PC. Você escolhe quem abre cada console, e os jogos que seus emuladores já conhecem entram nos clássicos.
 - **Clássicos com vários discos** aparecem como um jogo só. A troca de disco fica no menu do RetroArch.
 - **Integração com o Windows:** ícone na bandeja, abrir com o Windows, avisos que você escolhe um por um e uma janela só, mesmo se você abrir de novo.
 - **Controles:** **Configurações → Controles** mostra os controles conectados (Xbox, PlayStation, Nintendo) e testa cada botão.
@@ -111,8 +112,8 @@ Alguns jogos abrem um launcher antes do jogo. Nesses, escolha qual programa cont
 
 | Jogando | Teclado | Controle |
 |---|---|---|
-| Foto da janela do jogo | <kbd>F12</kbd> | — |
-| Abrir ou fechar o menu por cima do jogo | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu** |
+| Foto da janela do jogo | <kbd>F12</kbd> | **View + RB** |
+| Abrir ou fechar o menu por cima do jogo | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu**, ou segurar **View** |
 | Navegar, escolher e voltar no menu | Setas, <kbd>Enter</kbd>, <kbd>Esc</kbd> | Direcional, **A**, **B** |
 
 | No Big Picture Mode | Teclado | Controle |
@@ -201,6 +202,7 @@ Relatos de bug, pedidos de recomp e pull requests são bem-vindos. Comece pelo [
 ## Créditos
 
 - Algumas ideias de comportamento vêm do [RecompLauncher](https://github.com/elripalda/RecompLauncher) e do [Hydra](https://github.com/hydralauncher/hydra), reimplementadas aqui do zero.
+- As ilustrações dos consoles e os ícones dos emuladores em Configurações › Emulação vêm do [Hydra](https://github.com/hydralauncher/hydra) (MIT); veja `ui/emulation/LICENSE.md`.
 - O catálogo junta a lista própria do Cerberus com a lista pública do [recomplauncher.com](https://recomplauncher.com). Essa lista pode ser desligada nas configurações.
 - As capas dos clássicos vêm do [libretro-thumbnails](https://github.com/libretro-thumbnails). A arte da comunidade vem do [SteamGridDB](https://www.steamgriddb.com), com a sua chave gratuita.
 - As fontes são [Figtree](https://github.com/erikdkennedy/figtree) e [Archivo](https://github.com/Omnibus-Type/Archivo), sob a SIL Open Font License 1.1.

@@ -426,13 +426,13 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - Secretas escondidas até clicar, com opção para mostrar todas.
       - Selo de hardcore e conjuntos (subsets) do RA.
       - % de raridade com "<0,1%" para as raríssimas.
-- [ ] **Biblioteca:** progresso de conquistas na capa e opção de ordenar por conquistas.
-- [ ] **Big Picture Mode:** a mesma página de conquistas.
-- [ ] **Aviso ao desbloquear por cima do jogo:** janela transparente, sem foco e sempre no topo, num canto escolhido,
+- [x] **Biblioteca:** progresso de conquistas na capa e opção de ordenar por conquistas.
+- [x] **Big Picture Mode:** a mesma página de conquistas.
+- [x] **Aviso ao desbloquear por cima do jogo:** janela transparente, sem foco e sempre no topo, num canto escolhido,
       com ícone, raridade e "platina" quando completa o jogo.
       - Steam: vigiar a data de modificação do `UserGameStats` durante a partida.
       - RA: o log do RetroArch, que já lemos.
-- [ ] **Cartão "Seu tempo de jogo"** na página do jogo (ideia do RecompLauncher):
+- [x] **Cartão "Seu tempo de jogo"** na página do jogo (ideia do RecompLauncher):
       - Barras das últimas 2 semanas, total, semana, mês, número de sessões e sessão mais longa.
       - Soma Cerberus, Steam e Epic, separando a origem.
 
@@ -449,38 +449,45 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - As últimas linhas do log do jogo e a explicação que já temos.
       - "Usar a placa de vídeo mais rápida".
       - Botão para abrir uma issue com o log e o histórico.
-- [ ] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
+- [x] Explicar quando o **Smart App Control** do Windows bloqueia um jogo sem assinatura.
 - [ ] **Recuperar o WebView2** quando ele travar, sem derrubar jogos nem downloads; avisar que o RivaTuner é a causa comum.
-- [ ] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
-- [ ] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
+- [x] Ignorar programas auxiliares (crash handler, atualizador, desinstalador) ao acompanhar a partida.
+- [x] **Rede educada:** quando um site falha (tempo esgotado, 429, 5xx), esperar 30 s e ir dobrando até 1 h, com um
       pouco de aleatoriedade.
 - [ ] Achar o arquivo da release pelo sistema e pela CPU quando o padrão do catálogo parar de bater (projeto que
       renomeou os arquivos).
 
 ### 5.3 Recomps e Easy Setup (prioridade 3)
 
-- [ ] **Fila única de downloads:** downloads e builds juntos, "Pausar tudo" e contador no menu.
+- [x] **Fila única de downloads:** downloads e builds juntos, "Pausar tudo" e contador no menu.
 - [ ] Por jogo: atualizar sozinho e optar por versões de teste (pre-release).
 - [ ] "Liberar espaço": apagar arquivos de instalação que não são mais necessários.
 - [ ] Recomp que mudou de página no catálogo: "Mudar para ele", levando saves, tempo de jogo e arquivos.
 - [ ] **Recomps com vários jogos** numa instalação só, cada um com a própria capa, tempo, conquistas e atalhos.
-- [ ] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
-      ajustes, requisitos do sistema. É compatibilidade com o formato aberto deles; avisar sem bloquear quando o PC
-      não atende.
+- [x] **Ler o `recomplauncher.json`** que os desenvolvedores publicam na release: entradas, saves, arquivo e opções de
+      ajustes, requisitos do sistema, preparação, dumps, ações, mods, filtros e códigos de saída.
+- [x] `recomplauncher.json`: vários jogos numa release (`games`, com os saves de cada um no backup), chaves
+      compartilhadas, modo Big Picture e controle, `lines` do filtro CRT e "Preparar agora" no cartão do jogo.
+- [ ] `recomplauncher.json`: o DLSS que o launcher baixaria sozinho (precisa de aprovação), conquistas pelo
+      `title_id` (o Cerberus ainda não lê Recomp Achievements).
 - [ ] Conversão de mais formatos sem programa de fora: RVZ, WIA, WBFS, GCZ e NKit para ISO; CHD para BIN/CUE; ZSO.
-- [ ] Achar jogos nas pastas que os emuladores já conhecem: Dolphin, PCSX2, RPCS3, RetroArch, Cemu e Ryujinx, só lendo.
-- [ ] Reconhecer jogos de PlayStation pelo ID do disco (não só pelo nome).
+- [x] Achar jogos nas pastas que os emuladores já conhecem (Dolphin, PCSX2, DuckStation, PPSSPP, RPCS3, Cemu), só lendo, e instalar esses emuladores das páginas oficiais. Ryujinx ficou de fora: o projeto foi encerrado.
+- [x] Reconhecer o console de cada imagem de disco pelo próprio disco (PS1, PS2, PSP, GameCube, Wii, Xbox, Xbox 360) ou pelo nome da pasta.
 - [ ] Trazer recomps que já estão na Steam ou em outro launcher, além da pasta escolhida.
 - [ ] Notar uma instalação interrompida (cancelada, travada, falta de luz) e refazer antes de jogar.
 
 ### 5.4 Durante o jogo e integração (prioridade 4)
 
-- [ ] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
+- [x] Conquistas dos emuladores só no Cerberus: RetroArch, DuckStation e PCSX2 entram na conta com o token,
+  os avisos deles ficam desligados durante a partida (e voltam depois) e o Cerberus lê o log e mostra o próprio aviso.
+- [x] O mesmo para Dolphin (só pela linha de comando) e PPSSPP (o PPSSPP não tem como esconder o próprio aviso; só o som sai).
+- [ ] Troféus do RPCS3 (PS3) no hub de conquistas.
+
+- [x] Combos do controle mesmo com o jogo em foco: View+RB tira foto e segurar View abre o menu (hoje: View+Menu).
 - [ ] **Manter a Steam em dia:** todo jogo instalado entra na Steam sozinho, numa coleção "Cerberus", e sai ao desinstalar.
-- [ ] Menu da bandeja com os jogos recentes.
-- [ ] Impedir o PC de dormir durante downloads.
-- [ ] **HowLongToBeat** na página do jogo (tempo para zerar).
-- [ ] Informações do jogo original pela Wikipedia, guardadas por um mês.
+- [x] Menu da bandeja com os jogos recentes.
+- [x] Impedir o PC de dormir durante downloads.
+- [x] Informações do jogo original pela Wikipedia, guardadas por um mês.
 - [ ] Prévia ao vivo dos filtros visuais sobre a imagem do próprio jogo, e um filtro "Studio".
 - [ ] Arte de mídia: o jogo desenhado como o cartucho, cartão ou disco dele.
 - [ ] Saves na nuvem de jogos de PC comuns (Steam, Epic, adicionados) pelos locais de save conhecidos (base do
@@ -648,7 +655,7 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 ### 6.9 Precisa de servidor (só registro)
 
 - Placares, amigos, chat, perfil público e "Wrapped" [H]; relatos "Como rodou?", aviso de versão que trava, seguir
-  desenvolvedores e pedidos de recomp [R]; HowLongToBeat e arte do SteamGridDB sem chave do jogador vêm do servidor do
+  desenvolvedores e pedidos de recomp [R]; arte do SteamGridDB sem chave do jogador vem do servidor do
   Hydra [H]. Para nós, só com servidor próprio.
 
 ## Fora de vez

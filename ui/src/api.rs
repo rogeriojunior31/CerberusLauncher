@@ -136,6 +136,11 @@ pub fn on_install_progress(handler: impl FnMut(InstallProgress) + 'static) {
     on_event("recomp-progress", handler);
 }
 
+/// How a game's setup step is going.
+pub fn on_prepare_progress(handler: impl FnMut(cerberus_shared::PrepareProgress) + 'static) {
+    on_event("prepare-progress", handler);
+}
+
 /// A game the launcher started opened or closed.
 pub fn on_session(handler: impl FnMut(SessionEvent) + 'static) {
     on_event("game-session", handler);
@@ -211,10 +216,14 @@ pub async fn list_games() -> Result<Vec<Game>, String> {
 #[derive(Serialize)]
 struct PlayArgs<'a> {
     game: &'a Game,
+    /// "bigpicture" when Play was pressed in Big Picture mode, else "desktop".
+    mode: &'a str,
+    pad: Option<&'a str>,
 }
 
-pub async fn play(game: &Game) -> Result<(), String> {
-    call("play", &PlayArgs { game }).await
+pub async fn play(game: &Game, big_picture: bool) -> Result<(), String> {
+    let mode = if big_picture { "bigpicture" } else { "desktop" };
+    call("play", &PlayArgs { game, mode, pad: crate::tv::input::connected_pad() }).await
 }
 
 /// Opens a file picker; `None` when the user cancels.
@@ -683,6 +692,15 @@ pub async fn set_updates_paused(id: &str, on: bool) -> Result<(), String> {
     call("set_updates_paused", &Arg { id, on }).await
 }
 
+/// Status, rating, notes and favorite of a classic (any id outside the library).
+pub async fn player_note(id: &str) -> cerberus_shared::PlayerNote {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+    }
+    call("player_note", &Arg { id }).await.unwrap_or_default()
+}
+
 /// The player's status, rating and notes for a game.
 pub async fn set_game_note(id: &str, status: Option<cerberus_shared::GameStatus>, rating: u8, notes: String) -> Result<(), String> {
     #[derive(serde::Serialize)]
@@ -908,6 +926,69 @@ pub async fn set_game_copy(id: &str, use_found: bool, folder: bool) -> Result<Op
     call("set_game_copy", &CopyArgs { id, use_found, folder }).await
 }
 
+pub async fn prepare_options(id: &str) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
+    call("prepare_options", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct OptionArgs<'a> {
+    id: &'a str,
+    option: &'a str,
+    on: bool,
+}
+
+pub async fn set_prepare_option(id: &str, option: &str, on: bool) -> Result<Vec<cerberus_shared::PrepareOption>, String> {
+    call("set_prepare_option", &OptionArgs { id, option, on }).await
+}
+
+pub async fn open_prepare_license(id: &str, option: &str) -> Result<(), String> {
+    call("open_prepare_license", &OptionArgs { id, option, on: true }).await
+}
+
+/// Who opens each console's classics on this PC.
+pub async fn classic_players() -> Vec<cerberus_shared::ClassicPlayer> {
+    call("classic_players", &()).await.unwrap_or_default()
+}
+
+pub async fn preparation_pending(id: &str) -> Result<bool, String> {
+    call("preparation_pending", &Id { id }).await
+}
+
+pub async fn prepare_game(id: &str) -> Result<bool, String> {
+    call("prepare_game", &Id { id }).await
+}
+
+pub async fn game_actions(id: &str) -> Result<Vec<cerberus_shared::GameAction>, String> {
+    call("game_actions", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct ActionArgs<'a> {
+    id: &'a str,
+    action: &'a str,
+}
+
+pub async fn run_game_action(id: &str, action: &str) -> Result<(), String> {
+    call("run_game_action", &ActionArgs { id, action }).await
+}
+
+/// The files besides the copy the game's `recomplauncher.json` asks for.
+pub async fn game_inputs(id: &str) -> Result<Vec<cerberus_shared::SetupInput>, String> {
+    call("game_inputs", &Id { id }).await
+}
+
+#[derive(Serialize)]
+struct InputArgs<'a> {
+    id: &'a str,
+    input: &'a str,
+    clear: bool,
+}
+
+/// Picks the file for one of them (`clear` takes it away). `None` when cancelled.
+pub async fn pick_game_input(id: &str, input: &str, clear: bool) -> Result<Option<Game>, String> {
+    call("pick_game_input", &InputArgs { id, input, clear }).await
+}
+
 /// After an installer ran: the player points at the game's program. `None` when cancelled.
 pub async fn locate_game(id: &str) -> Result<Option<Game>, String> {
     call("locate_game", &Id { id }).await
@@ -1057,4 +1138,90 @@ pub async fn open_news(url: String) -> Result<(), String> {
         url: String,
     }
     call("open_news", &Arg { url }).await
+}
+
+/// The games played most recently, for the tray icon's menu.
+pub async fn set_tray_games(games: Vec<cerberus_shared::Game>) {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        games: Vec<cerberus_shared::Game>,
+    }
+    let _: Result<(), String> = call("set_tray_games", &Arg { games }).await;
+}
+
+/// The original game's Wikipedia summary, in the player's language (None: no article).
+pub async fn wiki_about(game: String) -> Result<Option<cerberus_shared::WikiAbout>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        game: String,
+    }
+    call("wiki_about", &Arg { game }).await
+}
+
+pub async fn open_wiki(url: String) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        url: String,
+    }
+    call("open_wiki", &Arg { url }).await
+}
+
+/// Puts every installed game that isn't Steam's into Steam; how many went in.
+pub async fn add_all_to_steam() -> Result<usize, String> {
+    call("add_all_to_steam", &()).await
+}
+
+/// The standalone emulators, who plays each console, and their game folders.
+pub async fn standalone_status() -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("standalone_status", &()).await
+}
+
+#[derive(serde::Serialize)]
+struct EmulatorId<'a> {
+    id: &'a str,
+}
+
+/// Installs a standalone emulator; progress comes through `on_emu_progress`.
+pub async fn install_standalone(id: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("install_standalone", &EmulatorId { id }).await
+}
+
+pub async fn pick_standalone(id: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("pick_standalone", &EmulatorId { id }).await
+}
+
+pub async fn remove_standalone(id: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    call("remove_standalone", &EmulatorId { id }).await
+}
+
+pub async fn set_play_with(console: &str, who: &str) -> Result<cerberus_shared::StandaloneStatus, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        console: &'a str,
+        who: &'a str,
+    }
+    call("set_play_with", &Arg { console, who }).await
+}
+
+pub async fn set_emulator_folders(on: bool) -> Result<cerberus_shared::StandaloneStatus, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_emulator_folders", &Arg { on }).await
+}
+
+/// Opens an emulator by itself, to set it up.
+pub async fn open_standalone(id: &str) -> Result<(), String> {
+    call("open_standalone", &EmulatorId { id }).await
+}
+
+/// The player's BIOS into a standalone emulator (or the PS3 firmware through RPCS3); what was done.
+pub async fn standalone_bios(id: &str) -> Result<(cerberus_shared::StandaloneStatus, String), String> {
+    call("standalone_bios", &EmulatorId { id }).await
+}
+
+/// Every RetroArch core not installed yet; how many came.
+pub async fn install_all_cores() -> Result<(cerberus_shared::EmulationView, usize), String> {
+    call("install_all_cores", &()).await
 }

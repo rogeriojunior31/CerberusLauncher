@@ -58,13 +58,12 @@ pub fn from_release(v: &Value) -> Option<AppUpdate> {
 }
 
 async fn github(http: &reqwest::Client, path: &str) -> Result<Value, String> {
-    http.get(format!("https://api.github.com/repos/{REPO}/{path}"))
-        .header("Accept", "application/vnd.github+json")
-        .timeout(Duration::from_secs(20))
-        .send()
+    let request = http.get(format!("https://api.github.com/repos/{REPO}/{path}")).header("Accept", "application/vnd.github+json").timeout(Duration::from_secs(20));
+    crate::net::send(request)
         .await
-        .and_then(|r| r.error_for_status())
-        .map_err(|_| tr!("Não foi possível falar com o GitHub.").to_string())?
+        .ok()
+        .and_then(|r| r.error_for_status().ok())
+        .ok_or_else(|| tr!("Não foi possível falar com o GitHub.").to_string())?
         .json()
         .await
         .map_err(|_| tr!("O GitHub respondeu algo inesperado.").to_string())

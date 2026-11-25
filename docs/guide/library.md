@@ -25,7 +25,7 @@ With your Steam Web API key connected (see [Achievements](achievements.md)), the
 - The source chips (**All sources**, **Steam**, **Epic**, **Added**) filter the PC games, with how many each one has.
 - **Installed** / **Not installed** separates what's on this PC from the rest of your Steam account.
 - The status chips (**Playing**, **Want to play**, **Beaten**...) show up once you mark a game.
-- Search by name, sort by **A to Z**, **Recently played**, **Most played** or **Your rating**, and switch between grid and list view.
+- Search by name, sort by **A to Z**, **Recently played**, **Most played**, **Your rating** or **Achievements** (closest to 100% first), and switch between grid and list view.
 - **Play something random** picks one of the installed games on screen, with **Pick another** and **Play**.
 
 ## Your status, rating and notes

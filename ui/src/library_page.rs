@@ -3,7 +3,7 @@
 //! store for PC games, and sorting.
 
 use cerberus_shared::tr;
-use cerberus_shared::{Game, GameStatus, Source};
+use cerberus_shared::{Game, GameStatus, RomView, Source};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -42,6 +42,10 @@ impl Category {
 
     /// Hidden games are only under Ocultos.
     fn keeps(self, game: &Game, shelf: Option<&str>) -> bool {
+        // A release carrying several games shows them, not itself.
+        if !game.part_ids.is_empty() {
+            return false;
+        }
         if game.hidden != (self == Category::Hidden) {
             return false;
         }
@@ -59,27 +63,35 @@ impl Category {
 #[derive(Clone, Copy, PartialEq)]
 enum Filter {
     All,
+    /// Recomps and decomps (with any merged classic inside).
+    Recomps,
     Steam,
     Epic,
     Added,
+    /// The classics in the ROM folders.
+    Roms,
 }
 
 impl Filter {
-    /// The stores a PC game comes from.
-    const STORES: [Filter; 4] = [Filter::All, Filter::Steam, Filter::Epic, Filter::Added];
+    /// Where a game comes from.
+    const STORES: [Filter; 6] = [Filter::All, Filter::Recomps, Filter::Steam, Filter::Epic, Filter::Added, Filter::Roms];
 
     fn label(self) -> &'static str {
         match self {
             Filter::All => tr!("Todas as origens"),
+            Filter::Recomps => "Recomps",
             Filter::Steam => tr!("Steam"),
             Filter::Epic => tr!("Epic"),
             Filter::Added => tr!("Adicionados"),
+            // The classics no installed recomp plays: the others count with their recomp.
+            Filter::Roms => tr!("Só ROM"),
         }
     }
 
     fn keeps(self, game: &Game) -> bool {
         match (self, &game.source) {
             (Filter::All, _) => true,
+            (Filter::Recomps, Source::Recomp { .. }) => true,
             (Filter::Steam, Source::Steam { .. }) => true,
             (Filter::Epic, Source::Epic { .. }) => true,
             (Filter::Added, Source::Local { .. }) => true,
@@ -94,6 +106,8 @@ enum Sort {
     Recent,
     Playtime,
     Rating,
+    /// Closest to 100% first; games without achievements at the end.
+    Achievements,
 }
 
 #[derive(Clone, Copy)]
@@ -123,6 +137,20 @@ impl Default for LibraryView {
             absent: RwSignal::new(false),
             status: RwSignal::new(None),
         }
+    }
+}
+
+/// One line of the library: a game, or a classic from the ROM folders.
+enum Row {
+    Game(Game),
+    Classic(RomView),
+}
+
+/// The search finds a game by both names: the game's and the recomp's.
+fn found(library: Library, game: &Game, needle: &str) -> bool {
+    needle.is_empty() || {
+        let (name, version) = crate::tiles::game_names(game, library);
+        format!("{name} {}", version.unwrap_or_default()).to_lowercase().contains(needle)
     }
 }
 
@@ -279,10 +307,13 @@ pub fn LibraryPage() -> impl IntoView {
         crate::api::library_recovery_notice()
     });
     let input = NodeRef::<leptos::html::Input>::new();
+    // Fresh play times for the classics shown under the other games.
+    library.roms.refetch();
     let clear = move |_| {
         search.set(String::new());
         filter.set(Filter::All);
         status.set(None);
+        absent.set(false);
         if let Some(input) = input.get_untracked() {
             let _ = input.focus();
         }
@@ -298,18 +329,37 @@ pub fn LibraryPage() -> impl IntoView {
     let counts = Memo::new(move |_| {
         let kind = category.get();
         let away = absent.get();
+        let needle = search.get().trim().to_lowercase();
+        let roms = if kind == Category::All { crate::classics::matching(crate::classics::standalone(library), &needle).len() } else { 0 };
         library.games.with(|all| {
             let all = all.as_ref().and_then(|r| r.as_ref().ok());
-            let in_tab: Vec<&Game> = all.into_iter().flatten().filter(|g| kind.keeps(g, None) || kind == Category::Collections).collect();
-            let stores = Filter::STORES.map(|f| in_tab.iter().filter(|g| f.keeps(g) && is_absent(g) == away).count());
+            let in_tab: Vec<&Game> = all
+                .into_iter()
+                .flatten()
+                .filter(|g| kind.keeps(g, None) || kind == Category::Collections)
+                .filter(|g| found(library, g, &needle))
+                .collect();
+            let mut stores = Filter::STORES.map(|f| in_tab.iter().filter(|g| f.keeps(g) && is_absent(g) == away).count());
+            // The classics are in the ROM folders: counted as here, never as not installed.
+            if !away {
+                stores[0] += roms;
+            }
+            stores[5] = if away { 0 } else { roms };
             let missing = in_tab.iter().filter(|g| is_absent(g)).count();
-            (stores, in_tab.len() - missing, missing)
+            (stores, in_tab.len() - missing + roms, missing)
         })
     });
     let chips = Filter::STORES.into_iter().enumerate().map(|(i, which)| {
         let active = move || filter.get() == which;
+        // ROMs only where classics are listed (Todos), and only with some.
+        let shown = move || {
+            active()
+                || which == Filter::All
+                || (counts.get().0[i] > 0 && (which != Filter::Roms || category.get() == Category::All))
+        };
         view! {
-            <button type="button" class="chip-btn" class:on=active aria-pressed=move || active().to_string()
+            <button type="button" class="chip-btn" class:on=active class:hidden=move || !shown() aria-pressed=move || active().to_string()
+                title=(which == Filter::Roms).then(|| tr!("Clássicos que nenhum recomp instalado joga; os outros contam junto com o recomp."))
                 on:click=move |_| filter.set(which)>
                 {which.label()}<span class="chip-n">{move || counts.get().0[i]}</span>
             </button>
@@ -320,7 +370,9 @@ pub fn LibraryPage() -> impl IntoView {
         let kind = category.get();
         let away = absent.get();
         let counts: Vec<(GameStatus, usize)> = library.games.with(|all| {
-            let all: Vec<&Game> = all.as_ref().and_then(|r| r.as_ref().ok()).into_iter().flatten().filter(|g| kind.keeps(g, None) && is_absent(g) == away).collect();
+            let needle = search.get().trim().to_lowercase();
+            let all: Vec<&Game> = all.as_ref().and_then(|r| r.as_ref().ok()).into_iter().flatten()
+                .filter(|g| kind.keeps(g, None) && is_absent(g) == away && found(library, g, &needle)).collect();
             GameStatus::ALL.into_iter().map(|s| (s, all.iter().filter(|g| g.status == Some(s)).count())).filter(|(_, n)| *n > 0).collect()
         });
         (!counts.is_empty()).then(|| {
@@ -395,12 +447,19 @@ pub fn LibraryPage() -> impl IntoView {
         }
         let away = absent.get();
         let only = status.get();
+        // Todos is every game, the classics in the ROM folders among the others
+        // (those an installed recomp plays are that game), unless a filter they
+        // can't match (a store, a status, not installed) is on.
+        let with_classics = kind == Category::All && matches!(source, Filter::All | Filter::Roms) && !away && only.is_none();
+        let classic_rows: Vec<RomView> =
+            if with_classics { crate::classics::matching(crate::classics::standalone(library), &needle) } else { Vec::new() };
         games.retain(|g| {
             kind.keeps(g, open.as_deref())
+                && source != Filter::Roms
                 && source.keeps(g)
                 && is_absent(g) == away
                 && only.is_none_or(|s| g.status == Some(s))
-                && (needle.is_empty() || g.name.to_lowercase().contains(&needle))
+                && found(library, g, &needle)
         });
         if games.is_empty() && kind == Category::Hidden && needle.is_empty() {
             return view! {
@@ -429,27 +488,97 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
             }.into_any();
         }
-        if games.is_empty() {
+        if games.is_empty() && classic_rows.is_empty() {
+            // Nothing here: where the search does find something, one click away.
+            let in_catalog = if needle.is_empty() { 0 } else {
+                let all = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+                crate::versions::one_each(&all).into_iter().filter(|(e, _)| crate::discover::matches_search(e, &needle)).count()
+            };
+            let elsewhere = if needle.is_empty() || away { 0 } else {
+                library.games.with(|all| all.as_ref().and_then(|r| r.as_ref().ok()).map_or(0, |all| all.iter().filter(|g| is_absent(g) && found(library, g, &needle)).count()))
+            };
+            let query = search.get_untracked();
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Search size=32 />
                     <h2>{tr!("Nenhum jogo encontrado")}</h2>
-                    <button type="button" class="btn" on:click=clear>{tr!("Limpar busca e filtros")}</button>
+                    <div class="row">
+                        {(in_catalog > 0).then(|| {
+                            let q = query.clone();
+                            view! { <button type="button" class="btn main" on:click=move |_| crate::discover::open_search(library, q.clone())>
+                                {if in_catalog == 1 { tr!("1 no Descobrir").to_string() } else { tr!("{} no Descobrir", in_catalog) }}
+                            </button> }
+                        })}
+                        {(elsewhere > 0).then(|| view! {
+                            <button type="button" class="btn" on:click=move |_| absent.set(true)>
+                                {if elsewhere == 1 { tr!("1 em Não instalados").to_string() } else { tr!("{} em Não instalados", elsewhere) }}
+                            </button>
+                        })}
+                        <button type="button" class="btn" on:click=clear>{tr!("Limpar busca e filtros")}</button>
+                    </div>
                 </div>
             }.into_any();
         }
+        let progress = progress_of();
         // list_games already returns alphabetical order, including ties below.
         match sort.get() {
-            Sort::Name => {}
+            // A to Z by the name shown: a recomp sits under its game's letter.
+            Sort::Name => games.sort_by_cached_key(|g| crate::tiles::game_names(g, library).0.to_lowercase()),
             Sort::Recent => games.sort_by_key(|g| std::cmp::Reverse(g.last_played)),
             Sort::Playtime => games.sort_by_key(|g| std::cmp::Reverse(g.playtime_secs)),
             Sort::Rating => games.sort_by_key(|g| std::cmp::Reverse(g.rating)),
+            Sort::Achievements => games.sort_by_key(|g| {
+                // Per mille, so 3/4 and 75/100 rank the same; then more unlocked first.
+                let (unlocked, total) = progress.get(&g.id).copied().filter(|p| p.1 > 0).unwrap_or((0, 0));
+                std::cmp::Reverse((total > 0, if total > 0 { unlocked * 1000 / total } else { 0 }, unlocked))
+            }),
         }
         shown.set_value(games.clone());
-        let count = games.len();
+        // Classics join the same order: by the name shown, when played, how long.
+        let players = library.players.get().unwrap_or_default();
+        let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+        let lib_games = library.games.get().and_then(Result::ok).unwrap_or_default();
+        let mut rows: Vec<Row> = games.into_iter().map(Row::Game).collect();
+        rows.extend(classic_rows.into_iter().map(Row::Classic));
+        let name_of = |r: &Row| match r {
+            Row::Game(g) => crate::tiles::game_names(g, library).0.to_lowercase(),
+            Row::Classic(rom) => crate::classics::display_name(rom).to_lowercase(),
+        };
+        match sort.get() {
+            Sort::Name => rows.sort_by_cached_key(name_of),
+            Sort::Recent => rows.sort_by_cached_key(|r| match r {
+                Row::Game(g) => (std::cmp::Reverse(g.last_played), name_of(r)),
+                Row::Classic(rom) => (std::cmp::Reverse(rom.last_played), name_of(r)),
+            }),
+            Sort::Playtime => rows.sort_by_cached_key(|r| match r {
+                Row::Game(g) => (std::cmp::Reverse(g.playtime_secs), name_of(r)),
+                Row::Classic(rom) => (std::cmp::Reverse(rom.playtime_secs), name_of(r)),
+            }),
+            // Rating and achievements are the library games' own: classics after them, in the order above.
+            Sort::Rating | Sort::Achievements => rows.sort_by_key(|r| matches!(r, Row::Classic(_))),
+        }
+        let count = rows.len();
         let list = compact.get();
-        let progress = progress_of();
-        let items = games.iter().map(|g| {
+        let items = rows.iter().map(|row| {
+            let g = match row {
+                Row::Game(g) => g,
+                Row::Classic(rom) => {
+                    let info = crate::classics::tile(rom, &players, &recomps, &lib_games);
+                    if !list {
+                        return view! { <Tile info /> }.into_any();
+                    }
+                    let hours = if rom.playtime_secs > 0 { format::playtime(rom.playtime_secs) } else { "—".into() };
+                    let open = info.open.clone();
+                    return view! {
+                        <button type="button" class="library-row" on:click=move |_| library.go(open.clone())>
+                            <span class="library-cover" aria-hidden="true"><Poster sources=info.covers title=info.title.clone() /></span>
+                            <span class="library-title"><strong>{info.title.clone()}</strong><small>{info.sub.clone()}</small></span>
+                            <span class="library-time" title=tr!("Tempo de jogo")>{hours}</span>
+                            <Svg icon=Icon::Right size=16 />
+                        </button>
+                    }.into_any();
+                }
+            };
             let mut info = game_tile(g, library);
             info.progress = progress.get(&g.id).copied();
             if !list {
@@ -482,6 +611,9 @@ pub fn LibraryPage() -> impl IntoView {
         }.into_any()
     };
 
+    // Origin, install state and status fold under "Filtros"; the button counts the ones on.
+    let filters_open = RwSignal::new(false);
+    let active_filters = move || (filter.get() != Filter::All) as usize + absent.get() as usize + status.get().is_some() as usize;
     let mode = move |list, icon, label: &'static str| {
         let active = move || compact.get() == list;
         view! {
@@ -519,13 +651,19 @@ pub fn LibraryPage() -> impl IntoView {
                     </label>
                     <select class="select" aria-label=tr!("Ordenar biblioteca")
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {
-                            "recent" => Sort::Recent, "time" => Sort::Playtime, "rating" => Sort::Rating, _ => Sort::Name,
+                            "recent" => Sort::Recent, "time" => Sort::Playtime, "rating" => Sort::Rating, "achievements" => Sort::Achievements, _ => Sort::Name,
                         })>
                         <option value="name" selected=move || sort.get() == Sort::Name>{tr!("A a Z")}</option>
                         <option value="recent" selected=move || sort.get() == Sort::Recent>{tr!("Jogados recentemente")}</option>
                         <option value="time" selected=move || sort.get() == Sort::Playtime>{tr!("Mais jogados")}</option>
                         <option value="rating" selected=move || sort.get() == Sort::Rating>{tr!("Sua nota")}</option>
+                        <option value="achievements" selected=move || sort.get() == Sort::Achievements>{tr!("Conquistas")}</option>
                     </select>
+                    <button type="button" class="btn lib-filter-btn" class:on=move || { filters_open.get() || active_filters() > 0 }
+                        aria-expanded=move || filters_open.get().to_string() on:click=move |_| filters_open.update(|o| *o = !*o)>
+                        <Svg icon=Icon::Filter size=18 />{tr!("Filtros")}
+                        {move || (active_filters() > 0).then(|| view! { <span class="tab-n">{active_filters()}</span> })}
+                    </button>
                     <div class="library-modes" role="group" aria-label=tr!("Visualização")>
                         {mode(false, Icon::Library, tr!("Ver em grade"))}
                         {mode(true, Icon::List, tr!("Ver em lista"))}
@@ -533,13 +671,18 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
                 <div class="lib-tabs">
                     <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
+                    <Show when=move || category.get() == Category::Collections>
+                        <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
+                    </Show>
+                </div>
+                <div class="lib-filters" class:hidden=move || !filters_open.get()>
                     <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
                         <div class="chips" role="group" aria-label=tr!("Origem do jogo")>{chips.clone()}</div>
                         {presence}
                     </Show>
                     {statuses}
-                    <Show when=move || category.get() == Category::Collections>
-                        <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
+                    <Show when=move || { active_filters() > 0 }>
+                        <button type="button" class="link" on:click=move |_| { filter.set(Filter::All); absent.set(false); status.set(None); }>{tr!("Limpar filtros")}</button>
                     </Show>
                 </div>
             </section>

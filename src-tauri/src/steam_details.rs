@@ -34,10 +34,7 @@ fn kept(data_dir: &Path, app: u32) -> Option<(StoreDetails, bool)> {
 
 async fn fetch(http: &reqwest::Client, data_dir: &Path, app: u32) -> Result<StoreDetails, String> {
     let url = format!("https://store.steampowered.com/api/appdetails?appids={app}&l={}&cc=br", steam_lang());
-    let reply = http
-        .get(&url)
-        .timeout(Duration::from_secs(20))
-        .send()
+    let reply = crate::net::send(http.get(&url).timeout(Duration::from_secs(20)))
         .await
         .map_err(|_| tr!("Não foi possível falar com a loja da Steam.").to_string())?;
     let v: Value = reply.json().await.map_err(|_| tr!("A loja da Steam respondeu algo inesperado.").to_string())?;

@@ -9,6 +9,8 @@ Play the ROMs and disc images in your folders through [RetroArch](https://www.re
 
 A classic's page shows play time, last played, console, region and the game's files.
 
+Disc images say which console they're from: Cerberus reads it from the disc itself (PlayStation, PlayStation 2 and PSP by their `SYSTEM.CNF` or `PSP_GAME`, GameCube and Wii by the disc header, Xbox and Xbox 360 by the disc layout, `.cue` files through their `.bin`), or from the folder's name ("PlayStation 2", "Xbox 360"...) when the disc doesn't say.
+
 ## RetroArch
 
 Go to **Settings → Emulation**:
@@ -18,7 +20,7 @@ Go to **Settings → Emulation**:
 
 ### Cores
 
-Each console uses one RetroArch core, downloaded from the libretro website when you install it:
+Each console uses one RetroArch core, downloaded from the libretro website when you click its chip on the RetroArch card, or all at once with **Install all**:
 
 | Consoles | Core |
 |---|---|
@@ -40,6 +42,25 @@ The BIOS is the console's built-in program. **Cerberus never downloads BIOS file
 - **PlayStation 2** needs the BIOS from your own console. These are 4 MB files like `SCPH-70012.bin`.
 - **PlayStation** runs without one, but is more compatible with it. It's a 512 KB file like `scph5501.bin`.
 
+## Standalone emulators
+
+Besides RetroArch, **Settings → Emulation → Emulators** has six standalone emulators, each installed from its own project's official release (the ones on GitHub come with their SHA-256 checked) into Cerberus's folder:
+
+| Emulator | Plays |
+|---|---|
+| DuckStation | PlayStation |
+| PCSX2 | PlayStation 2 |
+| RPCS3 | PlayStation 3 |
+| PPSSPP | PSP |
+| Dolphin | GameCube and Wii |
+| Cemu | Wii U |
+
+- **Install** downloads it; **I have it** uses the one already on your PC (Cerberus also finds them in the usual install folders on its own). **Open** starts the emulator by itself, to set its controls, video or BIOS folder. **Remove** deletes the copy Cerberus installed.
+- They never come with BIOS or firmware: those come from your own console. An emulator that needs them says so on its card: **Add BIOS** copies your BIOS files from a folder into the emulator's own BIOS folder (DuckStation: 512 KB PlayStation files; PCSX2: 4 MB PlayStation 2 files and their NVM/MEC), and **Install firmware** has RPCS3 install your `PS3UPDAT.PUP`.
+- **Your consoles**, at the top of the page, shows each disc console with who opens it and whether it's ready (green), missing a BIOS or a RetroArch core (yellow), or without an emulator (grey). It also picks, per console, RetroArch or an installed emulator. By default, RetroArch opens what it has a core for; PlayStation 3 and Wii U need their emulator.
+- **Use the emulators' folders** (on by default): the game folders your emulators already list (RetroArch's file browser folder and playlists, DuckStation's and PCSX2's game list, Dolphin's ISO folders, PPSSPP's last folder, Cemu's game paths, RPCS3's games) join your classics. Cerberus only reads them.
+- Play time is counted the same way. RetroAchievements notices on the spot are for RetroArch only.
+
 ## Multi-disc games
 
 Files named like `Game (Disc 1)`, `Game (Disc 2)` in the same folder show up as **one game**. If you have your own `.m3u` list, Cerberus uses it.
@@ -57,7 +78,15 @@ Recomp pages show **Original in RetroArch** when your copy of the original game 
 
 Cerberus trades your password for an access token on the RetroAchievements website and saves **only the token** in RetroArch's settings. The password is never stored. RetroArch's settings file is backed up before it's changed.
 
-When you unlock an achievement, Cerberus shows a Windows notification and adds it to the game's history.
+The same token signs in **DuckStation**, **PCSX2** and **Dolphin** when a game opens through them (another account you chose in the emulator is left alone).
+
+**Only Cerberus shows the achievement.** While a classic runs through Cerberus, the emulator's own achievement pop-ups and sounds are turned off (RetroArch, DuckStation, PCSX2 and Dolphin) and Cerberus reads its log instead: the moment one unlocks, Cerberus's own notice appears over the game, with the achievement's picture and description, a special one for rare achievements and for the last one of the game, and it goes into the game's history. RetroAchievements' own warnings (like "Unsupported Core") aren't shown as achievements.
+
+When the game closes, the emulator's settings go back to exactly what you had; if Cerberus closed before the game (or the PC turned off), they go back the next time Cerberus opens. Opening the emulator by itself, everything is as you set it.
+
+- **Dolphin:** its on-screen messages (where its unlock pop-up shows) and sound are turned off for that run only, through its command line, so no file of yours changes.
+- **PPSSPP:** it has no setting to hide its unlock pop-up (only where it shows), so it still appears; its sound is turned off and Cerberus's notice shows too. Sign in to RetroAchievements in PPSSPP once (it keeps its token apart).
+- RPCS3 and Cemu use their consoles' trophies, not RetroAchievements.
 
 ## See also
 

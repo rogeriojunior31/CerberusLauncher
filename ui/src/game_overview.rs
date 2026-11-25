@@ -41,13 +41,17 @@ fn day_label(ms: f64) -> String {
 
 /// "Your play time": the last 14 days as bars, and the numbers beside them.
 #[component]
-pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
+pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] title: Option<&'static str>) -> impl IntoView {
+    let title = title.unwrap_or(tr!("Sua jogatina"));
     let sessions = LocalResource::new(move || {
         let id = id.clone();
         async move { api::game_sessions(&id).await.unwrap_or_default() }
     });
     move || {
-        let list: Vec<PlaySession> = sessions.get().unwrap_or_default();
+        let Some(list) = sessions.get() else {
+            return view! { <section class="card play-card"><h3>{title}</h3><div class="sk sk-play"></div></section> }.into_any();
+        };
+        let list: Vec<PlaySession> = list;
         let now = js_sys::Date::now();
         let today = day_start(now);
         let mut days = [0u64; 14];
@@ -100,15 +104,21 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
             .into_iter()
             .map(|(icon, label, value)| view! { <li><Svg icon size=16 /><span>{label}</span><b>{value}</b></li> })
             .collect_view();
+        // The total also holds time from before sessions were written down one by one.
+        let logged: u64 = list.iter().map(|s| s.seconds).sum();
+        let older = (total > logged + 60).then(|| view! {
+            <p class="muted small pc-older">{tr!("O total inclui partidas mais antigas, de antes do registro por sessão.")}</p>
+        });
         // Nothing in two weeks: the numbers alone, in one row, instead of an empty chart.
         if !any_recent {
             return view! {
                 <section class="card pc compact">
                     <div class="pc-h">
-                        <h3>{tr!("Sua jogatina")}</h3>
+                        <h3>{title}</h3>
                         <small class="muted">{tr!("Não jogou nas últimas duas semanas.")}</small>
                     </div>
                     <ul class="pc-list row">{rows}</ul>
+                    {older}
                 </section>
             }
             .into_any();
@@ -116,13 +126,14 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
         view! {
             <section class="card pc">
                 <div class="pc-h">
-                    <h3>{tr!("Sua jogatina")}</h3>
+                    <h3>{title}</h3>
                     <small class="muted">{tr!("Últimas duas semanas")}</small>
                 </div>
                 <div class="pc-body">
                     <div class="pc-chart"><div class="pc-bars">{bars}</div></div>
                     <ul class="pc-list">{rows}</ul>
                 </div>
+                {older}
             </section>
         }
         .into_any()
@@ -370,9 +381,9 @@ pub fn AchievementsCard(data: LocalResource<Result<cerberus_shared::GameAchievem
                             <span>
                                 <b>{if secret { tr!("Conquista secreta").to_string() } else { a.name.clone() }}</b>
                                 <small>{match (a.unlocked_at, a.rarity) {
-                                    (Some(t), Some(r)) => format!("{} · {}", format::ago(t), tr!("{}% dos jogadores", format!("{r:.1}"))),
+                                    (Some(t), Some(r)) => format!("{} · {}", format::ago(t), tr!("{}% dos jogadores", format::decimal(format!("{r:.1}")))),
                                     (Some(t), None) => format::ago(t),
-                                    (None, Some(r)) => tr!("Bloqueada · {}% dos jogadores", format!("{r:.1}")),
+                                    (None, Some(r)) => tr!("Bloqueada · {}% dos jogadores", format::decimal(format!("{r:.1}"))),
                                     (None, None) => tr!("Bloqueada").to_string(),
                                 }}</small>
                             </span>
@@ -556,5 +567,30 @@ pub fn StoreSkeleton() -> impl IntoView {
         <div class="sk sk-media" role="status" aria-label=tr!("Carregando a página da loja")></div>
         <div class="sk sk-strip"></div>
         <div class="sk sk-card"></div>
+    }
+}
+
+/// Something still loading, at its final size: placeholder rows, the words for
+/// screen readers, and after a while a note that it's still going.
+#[component]
+pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize, #[prop(optional)] retry: Option<Callback<()>>) -> impl IntoView {
+    let slow = RwSignal::new(false);
+    let timer = set_timeout_with_handle(move || slow.set(true), std::time::Duration::from_secs(10)).ok();
+    on_cleanup(move || {
+        if let Some(t) = timer {
+            t.clear();
+        }
+    });
+    view! {
+        <div class="waiting" role="status">
+            <span class="vh">{text}</span>
+            {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
+            <Show when=move || slow.get()>
+                <p class="muted small">{tr!("Demorando mais que o normal. Na primeira vez pode levar alguns segundos.")}</p>
+                {retry.map(|again| view! {
+                    <button type="button" class="btn sm" on:click=move |_| { slow.set(false); again.run(()); }>{tr!("Tentar de novo")}</button>
+                })}
+            </Show>
+        </div>
     }
 }

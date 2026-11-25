@@ -10,6 +10,8 @@ Cerberus records how long each session lasts and saves the total every 15 second
 
 For games that open a launcher first, go to **Manage → Tracked process** and choose which program counts as playing.
 
+Programs that come along with a game but aren't it, like a crash reporter, an updater or Windows' error reporting, don't keep the session going: once only those are left, the session ends.
+
 Steam and Epic games are tracked by watching their programs while Cerberus is running, even from the tray.
 
 ## Achievement notifications
@@ -20,7 +22,7 @@ The notice, its corner, F12 and the menu can each be turned off in [Settings ›
 
 ## Screenshots
 
-Press <kbd>F12</kbd> while the game is in front. Cerberus takes a picture of **the game window only**, never the rest of the screen, and saves it as a PNG.
+Press <kbd>F12</kbd> (or **View + RB** on a controller) while the game is in front. Cerberus takes a picture of **the game window only**, never the rest of the screen, and saves it as a PNG.
 
 - The screenshots show up in the game's **Screenshots** tab, newest first. **Open folder** shows the files.
 - F12 still reaches the game and Steam, so their own screenshot keys keep working.
@@ -28,7 +30,7 @@ Press <kbd>F12</kbd> while the game is in front. Cerberus takes a picture of **t
 
 ## The in-game menu
 
-Press <kbd>Ctrl</kbd>+<kbd>F12</kbd>, or **View + Menu** together on a controller, to open a menu over the game. It shows:
+Press <kbd>Ctrl</kbd>+<kbd>F12</kbd> to open a menu over the game. On a controller, press **View + Menu** together, or hold **View** for a second (holding it while pressing other buttons, as in a game, doesn't count). It shows:
 
 - The game, how long you've been playing this session, and your total time.
 - **Back to the game**.

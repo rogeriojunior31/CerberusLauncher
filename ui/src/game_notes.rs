@@ -46,12 +46,18 @@ pub fn class(status: GameStatus) -> &'static str {
 /// "Your game": status, stars and notes. Saved as they change.
 #[component]
 pub fn NoteCard(game: Game) -> impl IntoView {
+    view! { <NoteCardFor id=game.id.clone() status=game.status rating=game.rating notes=game.notes.clone() /> }
+}
+
+/// The same card for anything with an id: a library game or a classic.
+#[component]
+pub fn NoteCardFor(id: String, status: Option<GameStatus>, rating: u8, notes: String) -> impl IntoView {
     let library = expect_context::<Library>();
-    let id = StoredValue::new(game.id.clone());
-    let status = RwSignal::new(game.status);
-    let rating = RwSignal::new(game.rating);
-    let notes = RwSignal::new(game.notes.clone());
-    let saved_notes = StoredValue::new(game.notes.clone());
+    let id = StoredValue::new(id);
+    let status = RwSignal::new(status);
+    let rating = RwSignal::new(rating);
+    let saved_notes = StoredValue::new(notes.clone());
+    let notes = RwSignal::new(notes);
     let hover = RwSignal::new(0u8);
     let save = move || {
         CHANGED.store(true, Ordering::Relaxed);
@@ -59,19 +65,21 @@ pub fn NoteCard(game: Game) -> impl IntoView {
             library.report(api::set_game_note(&id.get_value(), status.get_untracked(), rating.get_untracked(), notes.get_untracked()).await);
         });
     };
-    let chips = GameStatus::ALL
+    let options = GameStatus::ALL
         .into_iter()
-        .map(|s| {
-            view! {
-                <button type="button" class=format!("st-chip {}", class(s)) class:on=move || status.get() == Some(s)
-                    aria-pressed=move || (status.get() == Some(s)).to_string()
-                    on:click=move |_| {
-                        status.update(|cur| *cur = if *cur == Some(s) { None } else { Some(s) });
-                        save();
-                    }>{label(s)}</button>
-            }
-        })
+        .enumerate()
+        .map(|(i, s)| view! { <option value=i.to_string() selected=move || status.get() == Some(s)>{label(s)}</option> })
         .collect_view();
+    let chips = view! {
+        <select class=move || format!("select st-select {}", status.get().map(class).unwrap_or(""))
+            on:change=move |e| {
+                status.set(event_target_value(&e).parse::<usize>().ok().and_then(|i| GameStatus::ALL.get(i).copied()));
+                save();
+            }>
+            <option value="" selected=move || status.get().is_none()>{tr!("Sem situação")}</option>
+            {options}
+        </select>
+    };
     let stars = (1..=5u8)
         .map(|n| {
             let lit = move || {
@@ -93,7 +101,7 @@ pub fn NoteCard(game: Game) -> impl IntoView {
     view! {
         <section class="card rail-card note-card">
             <h3>{tr!("Seu jogo")}</h3>
-            <div class="st-chips" role="group" aria-label=tr!("Situação")>{chips}</div>
+            <label class="st-row"><span>{tr!("Situação")}</span>{chips}</label>
             <div class="stars" role="group" aria-label=tr!("Sua nota")>{stars}</div>
             <textarea class="input note-text" rows="3" placeholder=tr!("Anotações: onde parou, o que falta, dicas...") maxlength="4000"
                 prop:value=move || notes.get() on:input=move |e| notes.set(event_target_value(&e))

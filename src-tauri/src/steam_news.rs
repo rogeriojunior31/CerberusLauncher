@@ -91,7 +91,7 @@ fn parse(app: u32, name: &str, v: &Value) -> Vec<NewsItem> {
 
 async fn fetch(http: &reqwest::Client, data_dir: &Path, app: u32, name: &str) -> Option<Vec<NewsItem>> {
     let url = format!("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid={app}&count=3&maxlength=320&feeds=steam_community_announcements&format=json");
-    let v: Value = http.get(&url).timeout(Duration::from_secs(15)).send().await.ok()?.json().await.ok()?;
+    let v: Value = crate::net::send(http.get(&url).timeout(Duration::from_secs(15))).await.ok()?.json().await.ok()?;
     let items = parse(app, name, &v);
     let path = file(data_dir, app);
     let _ = fs::create_dir_all(path.parent().unwrap_or(data_dir));

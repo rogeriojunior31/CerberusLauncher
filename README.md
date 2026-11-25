@@ -59,6 +59,7 @@ Cerberus is a free, open-source game launcher for Windows, written entirely in R
 - **Crash explanations:** when a game closes with an error, Cerberus tells you the cause and where the game's log is. The cause can be a missing DLL, an old Visual C++ runtime or a crash.
 - **DLSS:** Cerberus shows which DLSS version a game uses. You can swap it for a DLL you already have and go back to the original at any time.
 - **Steam integration:** add any game to Steam (for Steam Deck and Big Picture), or create a desktop shortcut that opens the game through Cerberus.
+- **Standalone emulators:** DuckStation, PCSX2, RPCS3, PPSSPP, Dolphin and Cemu, installed from their official releases or found on your PC, with a choice of who opens each console, and the games your emulators already know join your classics.
 - **Multi-disc classics:** games on several discs show up as one game, and you swap discs from RetroArch's menu.
 - **Windows integration:** tray icon, start with Windows, notifications you choose one by one, and only one copy of Cerberus running at a time.
 - **Controllers:** **Settings → Controllers** lists the connected controllers (Xbox, PlayStation, Nintendo) and lets you test every button.
@@ -110,8 +111,8 @@ Some games open a launcher before the game itself. For those, choose which progr
 
 | While playing | Keyboard | Controller |
 |---|---|---|
-| Screenshot of the game window | <kbd>F12</kbd> | — |
-| Open or close the in-game menu | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu** |
+| Screenshot of the game window | <kbd>F12</kbd> | **View + RB** |
+| Open or close the in-game menu | <kbd>Ctrl</kbd>+<kbd>F12</kbd> | **View + Menu**, or hold **View** |
 | Move, select and go back in that menu | Arrow keys, <kbd>Enter</kbd>, <kbd>Esc</kbd> | D-pad, **A**, **B** |
 
 | In Big Picture Mode | Keyboard | Controller |
@@ -202,6 +203,7 @@ Bug reports, recomp requests and pull requests are welcome. Start with [CONTRIBU
 - Some behavior ideas come from [RecompLauncher](https://github.com/elripalda/RecompLauncher) and [Hydra](https://github.com/hydralauncher/hydra). Cerberus reimplements them from scratch.
 - The recomp catalog combines Cerberus's own list with the public list from [recomplauncher.com](https://recomplauncher.com). You can turn that list off in the settings.
 - Classic covers come from [libretro-thumbnails](https://github.com/libretro-thumbnails). Community art comes from [SteamGridDB](https://www.steamgriddb.com), using your own free API key.
+- Console artwork and emulator icons in Settings › Emulation come from [Hydra](https://github.com/hydralauncher/hydra) (MIT); see `ui/emulation/LICENSE.md`.
 - Fonts: [Figtree](https://github.com/erikdkennedy/figtree) and [Archivo](https://github.com/Omnibus-Type/Archivo), under the SIL Open Font License 1.1.
 - Every recomp belongs to its developers. Please support their projects.
 

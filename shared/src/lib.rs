@@ -40,6 +40,12 @@ pub struct Game {
     /// The player's copy of the original game (ROM or disc image) a recomp is set up with.
     #[serde(default)]
     pub game_copy: Option<String>,
+    /// The known good dump the copy matches ("USA"), from the developer's list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_verified: Option<String>,
+    /// The other files a recomp's `recomplauncher.json` asks for: input id -> path.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub inputs: std::collections::BTreeMap<String, String>,
     /// The release was an installer that hasn't run yet: the first Play runs it,
     /// and `exe` points at the installer until then.
     #[serde(default)]
@@ -82,6 +88,29 @@ pub struct Game {
     /// A recomp whose updates the player paused: it stays on its version.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub updates_paused: bool,
+    /// One game of a release that carries several: the release's library id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_of: Option<String>,
+    /// A release that carries several games: their library ids, each shown as a game of its own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub part_ids: Vec<String>,
+    /// What each of those games keeps of its own, by its id in the release.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub parts: std::collections::BTreeMap<String, PartState>,
+}
+
+/// What one game of a several-game release keeps of its own; the rest
+/// (files, copy, setup) belongs to the release.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PartState {
+    #[serde(default)]
+    pub playtime_secs: u64,
+    #[serde(default)]
+    pub last_played: Option<u64>,
+    #[serde(default)]
+    pub last_session_secs: Option<u64>,
+    #[serde(default)]
+    pub launch_args: String,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -122,6 +151,57 @@ pub enum CopyHandoff {
         #[serde(default)]
         extract: bool,
     },
+    /// The developer's `recomplauncher.json` says which files the game takes
+    /// (the copy, each disc, DLC, an update) and how each is passed.
+    Inputs,
+}
+
+/// A tick for the game's setup step (a vendor's SDK), from its `recomplauncher.json`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PrepareOption {
+    pub id: String,
+    pub label: String,
+    pub note: String,
+    /// Ticking it accepts this license: its name and address.
+    pub license: Option<(String, String)>,
+    pub required: bool,
+    pub on: bool,
+}
+
+/// A button the game's developer adds: open one of its folders, or empty one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GameAction {
+    pub id: String,
+    pub label: String,
+    pub help: String,
+    /// Empties a folder (asked first) instead of opening it.
+    pub clear: bool,
+}
+
+/// How the game's setup step is going: 0 to 1 when it says, and its line.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PrepareProgress {
+    pub game_id: String,
+    pub fraction: Option<f32>,
+    pub text: String,
+    pub finished: bool,
+}
+
+/// A file a recomp's `recomplauncher.json` asks the player for, besides the copy.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SetupInput {
+    pub id: String,
+    pub label: String,
+    /// disc, dlc, update or key.
+    pub role: String,
+    pub optional: bool,
+    /// Takes a folder (an extracted game) rather than a file.
+    pub folder: bool,
+    /// A key kept once for every game that asks for it.
+    #[serde(default)]
+    pub shared: bool,
+    /// What the player picked, when they did.
+    pub chosen: Option<String>,
 }
 
 /// A game's own settings, as its Ajustes tab shows them.
@@ -485,6 +565,14 @@ pub struct StoreLanguage {
     pub audio: bool,
 }
 
+/// The original game's Wikipedia article: its opening paragraph, as plain text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WikiAbout {
+    pub title: String,
+    pub extract: String,
+    pub url: String,
+}
+
 /// A post by a Steam game's developers, for Novidades. Plain text only.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NewsItem {
@@ -725,6 +813,35 @@ pub struct MonitorView {
     pub primary: bool,
 }
 
+/// A standalone emulator (DuckStation, PCSX2...) as Configurações shows it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StandaloneView {
+    pub id: String,
+    pub name: String,
+    /// The consoles it plays, as the ROM scan names them ("ps2").
+    pub consoles: Vec<String>,
+    /// Its program, when found.
+    pub exe: Option<String>,
+    /// Cerberus installed it (and may remove it).
+    pub managed: bool,
+    /// Its BIOS (or firmware) from the player's console is in place; None when it needs none.
+    #[serde(default)]
+    pub bios: Option<bool>,
+    /// What it needs is the PS3 firmware (installed by RPCS3), not BIOS files.
+    #[serde(default)]
+    pub firmware: bool,
+}
+
+/// Every standalone emulator, which one plays each console, and the folders they list games from.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StandaloneStatus {
+    pub emulators: Vec<StandaloneView>,
+    /// Console → "retroarch" or an emulator id: who opens its games now.
+    pub play_with: Vec<(String, String)>,
+    pub use_folders: bool,
+    pub folders: Vec<String>,
+}
+
 /// Emulation as Configurações shows it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EmulationView {
@@ -767,6 +884,16 @@ pub struct RomView {
     /// A game on several discs: each disc's file, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub discs: Vec<String>,
+}
+
+/// Who opens a console's classics on this PC, as Play would decide it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ClassicPlayer {
+    pub console: String,
+    /// The emulator that opens it ("PCSX2", "RetroArch"); `None` when nothing can.
+    pub name: Option<String>,
+    /// What's missing, in words the player can act on; `None` when it plays.
+    pub problem: Option<String>,
 }
 
 /// A linked RetroAchievements account, as the settings and the library show it.
@@ -929,6 +1056,15 @@ pub struct RecompEntry {
     /// How many of the game's own settings the launcher can change.
     #[serde(default)]
     pub settings_count: usize,
+    /// What the PC needs, from the developer's file ("Windows 10 ou mais novo").
+    #[serde(default)]
+    pub system_needs: Vec<String>,
+    /// This PC is older than that: why. The game still starts.
+    #[serde(default)]
+    pub system_problem: Option<String>,
+    /// The games a release carries, by name, when it carries more than one.
+    #[serde(default)]
+    pub parts: Vec<String>,
     /// What the player should know before the first start, from the catalog (in English).
     #[serde(default)]
     pub player_note: String,
@@ -1013,4 +1149,14 @@ impl Default for Notices {
     fn default() -> Self {
         Self { installed: true, crashed: true, screenshots: true, windows: true }
     }
+}
+
+/// The player's own word on a game kept apart from the library (a classic):
+/// status, rating, notes and favorite.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PlayerNote {
+    pub status: Option<GameStatus>,
+    pub rating: u8,
+    pub notes: String,
+    pub favorite: bool,
 }

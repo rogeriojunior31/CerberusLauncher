@@ -97,7 +97,11 @@ async fn fetch(client: &Client, forge: &Forge<'_>) -> Result<String, String> {
     if let Forge::GitHub(_) = forge {
         request = request.header("Accept", "application/vnd.github+json");
     }
-    let reply = request.send().await.map_err(|_| tr!("Sem conexão com o {}.", name))?;
+    let reply = match crate::net::send(request).await {
+        Ok(reply) => reply,
+        Err(crate::net::Failed::Resting(_)) => return Err(tr!("O {} limitou as consultas por agora. Tente de novo em alguns minutos.", name)),
+        Err(_) => return Err(tr!("Sem conexão com o {}.", name)),
+    };
     let status = reply.status();
     if status == StatusCode::FORBIDDEN || status == StatusCode::TOO_MANY_REQUESTS {
         return Err(tr!("O {} limitou as consultas por agora. Tente de novo em alguns minutos.", name));

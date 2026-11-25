@@ -77,6 +77,15 @@ pub struct Settings {
     /// A RetroArch the player picked, instead of Cerberus's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retroarch: Option<PathBuf>,
+    /// Standalone emulators the player pointed at, by id ("pcsx2" → its program).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub emulators: std::collections::BTreeMap<String, PathBuf>,
+    /// Which emulator plays each console ("retroarch" or a standalone id); unset: the usual one.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub play_with: std::collections::BTreeMap<String, String>,
+    /// The folders the emulators already list games from are looked through too.
+    #[serde(default = "yes")]
+    pub emulator_folders: bool,
     /// What happens while a game is open.
     #[serde(default)]
     pub in_game: cerberus_shared::InGame,

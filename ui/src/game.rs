@@ -14,12 +14,14 @@ use crate::discover::{progress_view, start_install};
 use crate::format::{self, megabytes};
 use crate::icons::{Icon, Svg};
 use crate::tiles::source_name;
-use crate::versions::{VersionPill, versions_of};
+use crate::versions::{Switching, VersionLine, versions_of};
 use crate::{Library, api, play_game};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
     Overview,
+    /// The player's own copy, played in its emulator.
+    Original,
     Saves,
     Mods,
     Photos,
@@ -28,11 +30,25 @@ enum Tab {
     Manage,
 }
 
+thread_local! {
+    /// The tab to open the next game page on.
+    static NEXT_TAB: std::cell::Cell<Option<Tab>> = const { std::cell::Cell::new(None) };
+}
+
+/// A recomp's page, where a merged classic lives: on its Original tab when an
+/// emulator here opens the copy, on the overview (Play is the recomp) when not.
+pub fn open_original(library: Library, id: String, playable: bool) {
+    if playable {
+        NEXT_TAB.with(|n| n.set(Some(Tab::Original)));
+    }
+    library.replace(crate::Route::Game(id));
+}
+
 #[component]
 pub fn GamePage(id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(id);
-    let tab = RwSignal::new(Tab::Overview);
+    let tab = RwSignal::new(NEXT_TAB.with(|n| n.take()).unwrap_or(Tab::Overview));
     let content = move || {
         let game = library.games.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|g| g.id == id.get_value()));
         let recomp_id = id.get_value().strip_prefix("recomp:").map(str::to_string);
@@ -47,8 +63,10 @@ pub fn GamePage(id: String) -> impl IntoView {
         }
         view! { <Page game entry tab /> }.into_any()
     };
+    let switching = Switching(RwSignal::new(false));
+    provide_context(switching);
     view! {
-        <div class="gp">
+        <div class="gp" class:switching=move || switching.0.get()>
             <button type="button" class="btn glass back" on:click=move |_| library.back()>
                 <Svg icon=Icon::Back size=18 />{tr!("Voltar")}
             </button>
@@ -59,24 +77,46 @@ pub fn GamePage(id: String) -> impl IntoView {
 
 #[component]
 fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> impl IntoView {
-    let title = game.as_ref().map(|g| g.name.clone()).or_else(|| entry.as_ref().map(|e| e.name.clone())).unwrap_or_default();
-    let covers = game.as_ref().map(cover_sources).filter(|c| !c.is_empty()).or_else(|| entry.as_ref().map(recomp_covers)).unwrap_or_default();
-    let heroes = game.as_ref().map(hero_sources).filter(|h| !h.is_empty()).or_else(|| entry.as_ref().map(recomp_heroes)).unwrap_or_default();
-    let kicker = match (&game, &entry) {
-        (_, Some(e)) => tr!("Recomp · {}", e.console),
-        (Some(g), None) => source_name(&g.source).to_string(),
+    let library = expect_context::<Library>();
+    // The game players know comes first; a recomp is a version of it.
+    let title = match (&game, &entry) {
+        (Some(g), _) => crate::tiles::game_names(g, library).0,
+        (None, Some(e)) => crate::tiles::entry_names(e).0,
         (None, None) => String::new(),
     };
-    // "Based on Crash Bandicoot" under "Crash Bandicoot PC" says nothing new.
-    let based = entry.as_ref().filter(|e| !e.name.to_lowercase().contains(&e.game.to_lowercase())).map(|e| view! { <span class="based">{tr!("Baseado em ")} <b>{e.game.clone()}</b></span> });
-    let library = expect_context::<Library>();
+    if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+        doc.set_title(&format!("{title} · Cerberus Launcher"));
+    }
+    on_cleanup(|| {
+        if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+            doc.set_title("Cerberus Launcher");
+        }
+    });
+    let covers = game.as_ref().map(cover_sources).filter(|c| !c.is_empty()).or_else(|| entry.as_ref().map(recomp_covers)).unwrap_or_default();
+    let heroes = game.as_ref().map(hero_sources).filter(|h| !h.is_empty()).or_else(|| entry.as_ref().map(recomp_heroes)).unwrap_or_default();
     let siblings = entry.as_ref().map_or(0, |e| {
         library.recomps.with_untracked(|list| match list {
             Some(Ok(all)) => versions_of(all, &e.title).len(),
             _ => 0,
         })
     });
-    let pill = entry.clone().filter(|_| siblings > 1).map(|current| view! { <VersionPill current /> });
+    // Under the title: which version this is (a recomp), or where the game comes from.
+    let meta = match (&game, &entry) {
+        // One game of a several-game release: it leads to the release's page.
+        (Some(g), Some(release)) if g.part_of.is_some() => {
+            let route = crate::Route::Game(g.part_of.clone().unwrap_or_default());
+            view! {
+                <button type="button" class="gp-ver" on:click=move |_| library.go(route.clone())>
+                    <span class="gp-ver-meta">{tr!("Parte de")}</span><b>{release.name.clone()}</b>
+                    <span class="gp-ver-more">{release.console.clone()}</span>
+                </button>
+            }
+            .into_any()
+        }
+        (_, Some(current)) => view! { <VersionLine current=current.clone() covers=covers.clone() /> }.into_any(),
+        (Some(g), None) => view! { <span class="gp-source">{source_name(&g.source)}</span> }.into_any(),
+        (None, None) => ().into_any(),
+    };
     let heart = game.as_ref().map(|g| {
         let (id, on) = (g.id.clone(), g.favorite);
         let label = if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") };
@@ -91,19 +131,34 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let more = game.clone().map(|g| {
         let menu = expect_context::<crate::game_menu::GameMenu>();
         view! {
-            <button type="button" class="btn glass icon-btn" title=tr!("Mais opções") aria-label=tr!("Mais opções")
+            <button type="button" class="btn glass icon-btn" title=tr!("Mais opções") aria-label=tr!("Mais opções") aria-haspopup="menu"
+                aria-expanded={ let id = g.id.clone(); move || menu.is_open_for(&id).to_string() }
                 on:click=move |e| menu.open(g.clone(), &e)>
                 <Svg icon=Icon::More size=22 />
             </button>
         }
     });
     // Your time with the game, under the title: Steam's count for Steam games.
+    // The player's own copy of this recomp's game, when they have it: its Original tab.
+    let original = game.as_ref().and_then(|g| {
+        let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        library.roms.get().unwrap_or_default().into_iter()
+            .find(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
+    });
     let played = game.as_ref().map(|g| {
-        let text = match (g.playtime_secs, g.last_played) {
+        // One game, one count: the original's time is added and said apart.
+        let extra = original.as_ref().map_or(0, |r| r.playtime_secs);
+        let last = g.last_played.max(original.as_ref().and_then(|r| r.last_played));
+        let total = g.playtime_secs + extra;
+        let mut text = match (total, last) {
             (0, None) => tr!("Você ainda não jogou").to_string(),
             (t, Some(last)) => tr!("Jogou por {} · última vez {}", format::playtime(t), format::ago(last)),
             (t, None) => tr!("Jogou por {}", format::playtime(t)),
         };
+        if extra > 0 && g.playtime_secs > 0 {
+            text = tr!("{} ({} no PC, {} no original)", text, format::playtime(g.playtime_secs), format::playtime(extra));
+        }
         view! { <span class="gp-played"><Svg icon=Icon::Clock size=15 />{text}</span> }
     });
     let has_saves = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. }));
@@ -131,7 +186,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     {
         tab.set(Tab::Overview);
     }
-    let action = primary_action(game.clone(), entry.clone());
+    let action = primary_action(game.clone(), entry.clone(), siblings > 1, tab);
     // The pill behind the chosen tab slides to it.
     Effect::new(move || {
         tab.track();
@@ -140,9 +195,19 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             let on: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(on);
             if let Some(bar) = on.parent_element() {
                 let bar: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(bar);
+                // The first placement lands at once; only moves between tabs slide.
+                let first = !bar.class_list().contains("pill-on");
+                if first {
+                    let _ = bar.class_list().add_1("pill-snap");
+                }
                 let _ = bar.style().set_property("--px", &format!("{}px", on.offset_left()));
                 let _ = bar.style().set_property("--pw", &format!("{}px", on.offset_width()));
                 let _ = bar.class_list().add_1("pill-on");
+                if first {
+                    request_animation_frame(move || {
+                        let _ = bar.class_list().remove_1("pill-snap");
+                    });
+                }
             }
         });
     });
@@ -160,30 +225,51 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             Tab::Mods => Icon::Puzzle,
             Tab::Photos => Icon::Photo,
             Tab::Achievements => Icon::Trophy,
+            Tab::Original => Icon::Disc,
             Tab::Manage => Icon::Edit,
         };
         view! {
-            <button type="button" class="tab with-icon" class:on=move || tab.get() == which on:click=move |_| tab.set(which)>
+            <button type="button" class="tab with-icon" class:tab-original=which == Tab::Original role="tab" class:on=move || tab.get() == which aria-selected=move || (tab.get() == which).to_string()
+                tabindex=move || if tab.get() == which { "0" } else { "-1" } on:click=move |_| tab.set(which)>
                 <Svg icon size=16 />{label}
                 {move || count(which).map(|n| view! { <span class="tab-n">{n}</span> })}
             </button>
         }
     };
+    // Left and right move between tabs, as tab lists do.
+    let tab_keys = move |e: leptos::ev::KeyboardEvent| {
+        let step: i32 = match e.key().as_str() {
+            "ArrowRight" => 1,
+            "ArrowLeft" => -1,
+            _ => return,
+        };
+        e.prevent_default();
+        let Some(list) = document().query_selector_all(".gp-page .tabs .tab").ok() else { return };
+        let n = list.length() as i32;
+        let at = (0..n).find(|i| list.item(*i as u32).and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok()).is_some_and(|t| t.class_list().contains("on"))).unwrap_or(0);
+        if let Some(next) = list.item(((at + step + n) % n) as u32) {
+            let next: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(next);
+            next.click();
+            let _ = next.focus();
+        }
+    };
     let tabs = view! {
-        <nav class="tabs">
+        <nav class="tabs" role="tablist" aria-label=tr!("Seções do jogo") on:keydown=tab_keys>
             {tab_button(Tab::Overview, tr!("Visão geral"))}
             {has_saves.then(|| tab_button(Tab::Saves, tr!("Saves")))}
             {has_settings.then(|| tab_button(Tab::Settings, tr!("Ajustes")))}
             {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
             {has_achievements.then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
             {photos.then(|| tab_button(Tab::Photos, tr!("Fotos")))}
+            {original.is_some().then(|| tab_button(Tab::Original, tr!("Original")))}
             {manageable.then(|| tab_button(Tab::Manage, tr!("Gerenciar")))}
         </nav>
     };
 
     let body_game = game.clone();
     let body_entry = entry.clone();
-    let body = move || match tab.get() {
+    let body_original = original.clone();
+    let tab_body = move |which: Tab| match which {
         Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() tab /> }.into_any(),
         Tab::Achievements => match &steam_app {
             Some(app) => view! { <crate::achievements::AchievementsTab source="steam".to_string() key=app.clone() /> }.into_any(),
@@ -209,6 +295,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                     <div class="settings-tab">
                         <crate::looks::LooksCard game_id=g.id.clone() preview />
                         {catalog.then(|| view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> })}
+                        <GameActions game_id=g.id.clone() />
                     </div>
                 }
                 .into_any()
@@ -216,6 +303,26 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             None => ().into_any(),
         },
         Tab::Manage => view! { <Manage game=body_game.clone() entry=body_entry.clone() /> }.into_any(),
+        Tab::Original => match &body_original {
+            Some(rom) => view! { <crate::classics::OriginalTab rom=rom.clone() /> }.into_any(),
+            None => ().into_any(),
+        },
+    };
+    // Each tab arrives with a short fade, so the switch reads as one place changing.
+    let body = move || {
+        let which = tab.get();
+        // The tab's name as the panel's heading, for screen readers: the cards below are its parts.
+        let name = match which {
+            Tab::Overview => tr!("Visão geral"),
+            Tab::Saves => tr!("Saves"),
+            Tab::Settings => tr!("Ajustes"),
+            Tab::Mods => "Mods",
+            Tab::Achievements => tr!("Conquistas"),
+            Tab::Original => tr!("Original"),
+            Tab::Photos => tr!("Fotos"),
+            Tab::Manage => tr!("Gerenciar"),
+        };
+        view! { <div class="tab-body" role="tabpanel"><h2 class="vh">{name}</h2>{tab_body(which)}</div> }
     };
 
     view! {
@@ -225,16 +332,14 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
         </div>
         <div class="page gp-page">
             <section class="gp-head">
-                <div class="gp-cover"><Poster sources=covers title=title.clone() /></div>
+                <div class="gp-cover"><Poster sources=covers.clone() title=title.clone() /></div>
                 <div class="gp-info">
-                    <span class="kick">{kicker}</span>
                     {match game.as_ref().and_then(|g| g.logo_path.clone()).or_else(|| entry.as_ref().and_then(|e| e.logo.clone())) {
-                        Some(logo) => view! { <img class="gp-logo" src=crate::art::src(&logo) alt=title.clone() /> }.into_any(),
+                        Some(logo) => view! { <h1 class="vh">{title.clone()}</h1><img class="gp-logo" src=crate::art::src(&logo) alt=title.clone() /> }.into_any(),
                         None => view! { <h1>{title.clone()}</h1> }.into_any(),
                     }}
-                    {based}
+                    {meta}
                     {played}
-                    {pill.map(|p| view! { <div class="gp-tags">{p}</div> })}
                 </div>
                 <div class="gp-act">{heart}{more}{action}</div>
             </section>
@@ -245,7 +350,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
 }
 
 /// Play, Playing, Install with its size, the install's progress, or Update.
-fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
+fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool, tab: RwSignal<Tab>) -> impl IntoView {
     let library = expect_context::<Library>();
     let recomp_id = entry.as_ref().map(|e| e.id.clone());
     move || {
@@ -275,20 +380,51 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
                 .or_else(|| entry.as_ref().and_then(|e| e.owned_copy.clone()))
                 .filter(|_| matches!(game.source, Source::Recomp { .. }))
                 .and_then(|copy| crate::classics::emulated_console(&copy).map(|c| (copy, c.to_string())))
-                .map(|(copy, console)| view! {
-                    <button type="button" class="btn big" title=tr!("Abrir a sua cópia original no RetroArch")
-                        on:click=move |_| crate::classics::play_original(library, copy.clone(), console.clone())>
-                        {tr!("Original no RetroArch")}
-                    </button>
-                });
-            return view! {
-                {update_button}
-                {original}
-                <button type="button" class="btn main big play" disabled=running on:click=move |_| play_game(library, game.clone())>
+                .map(|(copy, console)| (copy, console));
+            let game_id = game.id.clone();
+            let original_first = original.as_ref().is_some_and(|(_, console)| {
+                crate::classics::ready_player(&library.players.get_untracked().unwrap_or_default(), console).is_some()
+            }) && last_way(&game_id) == Some(Way::Original);
+            let play = view! {
+                <button type="button" class=if original_first { "btn glass big" } else { "btn main big play" } disabled=running on:click=move |_| play_game(library, game.clone())>
                     <Svg icon size=20 />{label}
                 </button>
-            }
-            .into_any();
+            };
+            // With the player's own copy, two named ways to play side by side. The one
+            // used last leads; the other stays one click away.
+            let Some((copy, console)) = original else {
+                return view! { {update_button}{play} }.into_any();
+            };
+            let players = library.players.get_untracked().unwrap_or_default();
+            let emulator = crate::classics::ready_player(&players, &console);
+            let original_label = if original_first { tr!("Jogar o original") } else { tr!("Original") };
+            let original_title = match &emulator {
+                Some(name) => tr!("A sua cópia do jogo, no {}", name),
+                None => tr!("A sua cópia do jogo: veja o que falta para abrir").to_string(),
+            };
+            let (way_id, native_id) = (game_id.clone(), game_id.clone());
+            let ready = emulator.is_some();
+            let original_button = view! {
+                <button type="button" class=if original_first { "btn main big play" } else { "btn glass big" } title=original_title
+                    disabled=running on:click=move |_| {
+                        if ready {
+                            remember_way(&way_id, Way::Original);
+                            crate::classics::play_original(library, copy.clone(), console.clone());
+                        } else {
+                            tab.set(Tab::Original);
+                        }
+                    }>
+                    <Svg icon=Icon::Disc size=20 />{original_label}
+                </button>
+            };
+            let native = view! {
+                <span class="way-native" on:click=move |_| remember_way(&native_id, Way::Native)>{play}</span>
+            };
+            return if original_first {
+                view! { {update_button}<div class="ways">{original_button}{native}</div> }.into_any()
+            } else {
+                view! { {update_button}<div class="ways">{native}{original_button}</div> }.into_any()
+            };
         }
         let Some(entry) = entry.clone() else {
             return ().into_any();
@@ -299,7 +435,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
                 view! {
                     <AlreadyInstalled recomp_id=entry.id.clone() />
                     <button type="button" class="btn main big play" on:click=move |_| start_install(library, rid.clone())>
-                        <Svg icon=Icon::Download size=20 />{tr!("Instalar · {}", megabytes(release.size))}
+                        <Svg icon=Icon::Download size=20 />{if several { tr!("Instalar {} · {}", entry.name, megabytes(release.size)) } else { tr!("Instalar · {}", megabytes(release.size)) }}
                     </button>
                 }
                 .into_any()
@@ -311,6 +447,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoVi
 
 #[component]
 fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> impl IntoView {
+    let lib = expect_context::<Library>();
     // Project facts go to the side rail; the player's own numbers live in the play card.
     let mut facts: Vec<(String, String)> = Vec::new();
     if let Some(g) = &game {
@@ -329,17 +466,19 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             }
         }
         facts.push((tr!("Console").to_string(), e.console.clone()));
-        if e.downloads > 0 {
-            facts.push((tr!("Downloads").to_string(), format::count(e.downloads)));
-        }
-        if e.stars > 0 {
-            facts.push((tr!("Estrelas").to_string(), format::count(e.stars)));
-        }
-        if e.players > 0 {
-            facts.push((tr!("Jogadores recentes").to_string(), format::count(e.players)));
-        }
-        if e.releases > 0 {
-            facts.push((tr!("Versões lançadas").to_string(), e.releases.to_string()));
+        if game.is_none() {
+            if e.downloads > 0 {
+                facts.push((tr!("Downloads").to_string(), format::count(e.downloads)));
+            }
+            if e.stars > 0 {
+                facts.push((tr!("Estrelas").to_string(), format::count(e.stars)));
+            }
+            if e.players > 0 {
+                facts.push((tr!("Jogadores recentes").to_string(), format::count(e.players)));
+            }
+            if e.releases > 0 {
+                facts.push((tr!("Versões lançadas").to_string(), e.releases.to_string()));
+            }
         }
         if !e.first_release.is_empty() {
             facts.push((tr!("Primeira versão").to_string(), day(&e.first_release)));
@@ -347,9 +486,16 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
     }
     let facts_card = (!facts.is_empty()).then(|| {
         let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
-        view! { <section class="card rail-card"><h3>{tr!("Detalhes")}</h3><dl class="facts">{rows}</dl></section> }
+        view! { <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{rows}</dl></section> }
     });
-    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played /> }.into_any());
+    // With the player's own copy merged in, this card is the PC version's time (the Original tab has the other).
+    let merged = game.as_ref().is_some_and(|g| {
+        let games = lib.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let recomps = lib.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        lib.roms.get_untracked().unwrap_or_default().iter().any(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
+    });
+    let play_title = if merged { tr!("Sua jogatina no PC") } else { tr!("Sua jogatina") };
+    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played title=play_title /> }.into_any());
     let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {
         Source::Steam { app_id } => Some(*app_id),
@@ -361,6 +507,9 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
     let problem = entry.as_ref().and_then(|e| e.problem.clone()).map(|text| view! { <p class="problem">{text}</p> });
+    // The developer's own words stay in English (a guessed translation would be worse); say so once.
+    let in_english = || (cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt)
+        .then(|| view! { <small class="lang-note">{tr!("em inglês, como o desenvolvedor escreveu")}</small> });
     let tags = entry.as_ref().filter(|e| !e.tags.is_empty() || !e.multiplayer.is_empty()).map(|e| {
         let players = match e.multiplayer.as_str() {
             "local" => Some(tr!("Multijogador local")),
@@ -370,27 +519,27 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         };
         let players = players.map(|p| view! { <span class="tag players">{p}</span> });
         let chips = e.tags.iter().map(|tag| view! { <span class="tag">{tag.clone()}</span> }).collect_view();
-        view! { <div class="tags">{players}{chips}</div> }
+        view! { <div class="ver-part"><span class="ver-label">{tr!("Recursos")}</span><div class="tags">{players}{chips}</div></div> }
     });
     let note = entry.as_ref().map(|e| e.player_note.clone()).filter(|n| !n.is_empty()).map(|text| {
         view! {
             <div class="note">
                 <Svg icon=Icon::Check size=18 />
-                <div><b>{tr!("Como começar")}</b><p>{text}</p></div>
+                <div><b>{tr!("Como começar")}{in_english()}</b><p lang="en">{text}</p></div>
             </div>
         }
     });
     let features = entry.as_ref().filter(|e| !e.features.is_empty()).map(|e| {
         let items = e.features.iter().map(|f| view! { <li><Svg icon=Icon::Check size=16 />{f.clone()}</li> }).collect_view();
-        view! { <ul class="features">{items}</ul> }
+        view! { <div class="ver-part"><span class="ver-label">{tr!("O que esta versão faz")}{in_english()}</span><ul class="features" lang="en">{items}</ul></div> }
     });
     let setup = entry.as_ref().filter(|e| !e.setup_steps.is_empty()).map(|e| {
         let steps = e.setup_steps.iter().map(|s| view! { <li>{s.clone()}</li> }).collect_view();
         view! {
             <section class="card setup">
                 <h3>{tr!("Precisa de configuração")}</h3>
-                <p class="muted small">{tr!("Esse recomp precisa de alguns passos feitos à mão antes de jogar:")}</p>
-                <ol>{steps}</ol>
+                <p class="muted small">{tr!("Esse recomp precisa de alguns passos feitos à mão antes de jogar:")}{in_english()}</p>
+                <ol lang="en">{steps}</ol>
             </section>
         }
     });
@@ -428,7 +577,8 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             <aside class="card ready">
                 <h3>{tr!("Antes de jogar")}</h3>
                 {copy}
-                <p class="muted small">{tr!("O Cerberus nunca baixa arquivos de jogo. Aponte suas pastas de ROMs em Configurações e ele avisa quais jogos você já tem.")}</p>
+                <p class="muted small">{tr!("O Cerberus nunca baixa arquivos de jogo. Ele procura sua cópia nas suas pastas de ROMs.")}</p>
+                <button type="button" class="link" on:click=move |_| crate::settings_page::open_rom_folders(lib)>{tr!("Escolher pastas de ROMs")}</button>
             </aside>
         }
     });
@@ -437,13 +587,33 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         <div class="ov">
             <div class="ov-main">
                 {play_card}
-                {about}
-                {note}
-                {tags}
-                {problem}
-                {setup}
-                {features}
+                // The game first, then what this version brings, then what it needs.
                 {entry.clone().and_then(|e| e.original.clone().map(|o| view! { <OriginalGameCard original=o game=e.game.clone() /> }))}
+                {entry.clone().map(|e| view! {
+                    <section class="card ver-card">
+                        <h3>{tr!("Esta versão")}<span class="ver-name">{e.name.clone()}</span></h3>
+                        {about}
+                        {problem}
+                        {tags}
+                        {features}
+                        {(!e.parts.is_empty()).then(|| view! {
+                            <div class="ver-part">
+                                <span class="ver-label">{tr!("Jogos nesta release ({})", e.parts.len())}</span>
+                                <div class="tags">{e.parts.iter().map(|n| view! { <span class="tag">{n.clone()}</span> }).collect_view()}</div>
+                                <p class="muted small">{tr!("Depois de instalar, cada um aparece na biblioteca como um jogo próprio.")}</p>
+                            </div>
+                        })}
+                        {(!e.system_needs.is_empty()).then(|| view! {
+                            <div class="ver-part">
+                                <span class="ver-label">{tr!("O que o PC precisa")}</span>
+                                <div class="tags">{e.system_needs.iter().map(|n| view! { <span class="tag">{n.clone()}</span> }).collect_view()}</div>
+                                {e.system_problem.clone().map(|p| view! { <p class="problem small">{p}</p> })}
+                            </div>
+                        })}
+                        {note}
+                    </section>
+                })}
+                {setup}
                 {entry.clone().map(|e| view! { <SimilarGames entry=e /> })}
             </div>
             <aside class="ov-rail">
@@ -546,7 +716,7 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
     let found = entry.owned_copy.clone();
     let what = if entry.needs.is_empty() { tr!("Sua cópia de {}.", entry.game) } else { entry.needs.clone() };
     let warning = move || lost.get().then(|| view! {
-        <p class="problem small">{tr!("A cópia escolhida não está mais onde o jogo procura. Escolha de novo.")}</p>
+        <p class="problem small">{tr!("A cópia escolhida não serve mais: ela mudou de lugar ou não é a que esse jogo pede. Escolha de novo.")}</p>
     });
     let body = move || match (current.get().filter(|_| !lost.get()), found.clone()) {
         (Some(path), _) => view! {
@@ -578,13 +748,258 @@ fn EasySetup(game: Game, entry: RecompEntry) -> impl IntoView {
         .into_any(),
     };
 
+    let verified = game.copy_verified.clone().map(|name| view! {
+        <p class="verified"><Svg icon=Icon::Check size=16 />{tr!("Confere com o disco verificado ({})", name)}</p>
+    });
     view! {
         <aside class="card ready">
-            <h3>{tr!("Easy Setup")}</h3>
+            <h3>{tr!("Configuração fácil")}</h3>
             {warning}
             {body}
+            {verified}
+            <MoreInputs game_id=id.get_value() />
+            <PrepareTicks game_id=id.get_value() />
+            <PrepareStatus game_id=id.get_value() />
             <p class="muted small">{tr!("O Cerberus entrega sua cópia ao jogo do jeito que ele espera. Nada sai do seu PC.")}</p>
         </aside>
+    }
+}
+
+/// The buttons the game's developer adds: open a folder, or empty one (clicked twice).
+#[component]
+fn GameActions(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let list = RwSignal::new(Vec::<cerberus_shared::GameAction>::new());
+    let armed = RwSignal::new(None::<String>);
+    spawn_local(async move {
+        list.set(api::game_actions(&id.get_value()).await.unwrap_or_default());
+    });
+    let run = move |action: cerberus_shared::GameAction| {
+        if action.clear && armed.get_untracked().as_deref() != Some(action.id.as_str()) {
+            armed.set(Some(action.id.clone()));
+            return;
+        }
+        armed.set(None);
+        spawn_local(async move {
+            if library.report(api::run_game_action(&id.get_value(), &action.id).await).is_some() && action.clear {
+                library.toast(tr!("Pronto: {} foi esvaziada.", action.label));
+            }
+        });
+    };
+    move || {
+        let all = list.get();
+        (!all.is_empty()).then(|| {
+            let rows = all
+                .into_iter()
+                .map(|a| {
+                    let key = a.id.clone();
+                    let label = a.label.clone();
+                    let shown = move || if armed.get().as_deref() == Some(key.as_str()) { tr!("Clique de novo para confirmar").to_string() } else { label.clone() };
+                    let help = a.help.clone();
+                    let icon = if a.clear { Icon::Close } else { Icon::Folder };
+                    view! {
+                        <div class="act-row">
+                            <button type="button" class="btn sm" on:click=move |_| run(a.clone())><Svg icon size=16 />{shown}</button>
+                            {(!help.is_empty()).then(|| view! { <small class="muted">{help}</small> })}
+                        </div>
+                    }
+                })
+                .collect_view();
+            view! {
+                <section class="card">
+                    <h3>{tr!("Pastas do jogo")}</h3>
+                    <div class="acts-col">{rows}</div>
+                </section>
+            }
+        })
+    }
+}
+
+/// The setup step's ticks (a vendor's SDK). One with a license starts off:
+/// ticking it is the player accepting that license.
+#[component]
+fn PrepareTicks(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let list = RwSignal::new(Vec::<cerberus_shared::PrepareOption>::new());
+    spawn_local(async move {
+        list.set(api::prepare_options(&id.get_value()).await.unwrap_or_default());
+    });
+    let flip = move |option: String, on: bool| {
+        spawn_local(async move {
+            if let Some(now) = library.report(api::set_prepare_option(&id.get_value(), &option, on).await) {
+                list.set(now);
+                library.games.refetch();
+            }
+        });
+    };
+    move || {
+        let all = list.get();
+        (!all.is_empty()).then(|| {
+            let rows = all
+                .into_iter()
+                .map(|o| {
+                    let key = o.id.clone();
+                    let on = o.on;
+                    let license_key = o.id.clone();
+                    let license = o.license.clone().map(|(name, _)| {
+                        view! {
+                            <small>{tr!("Marcar aceita: ")}
+                                <button type="button" class="linkish" on:click=move |e| {
+                                    e.prevent_default();
+                                    let option = license_key.clone();
+                                    spawn_local(async move { library.report(api::open_prepare_license(&id.get_value(), &option).await); });
+                                }>{name}</button>
+                            </small>
+                        }
+                    });
+                    view! {
+                        <label class="tick">
+                            <input type="checkbox" prop:checked=on on:change=move |e| flip(key.clone(), event_target_checked(&e)) />
+                            <span>
+                                <b>{o.label.clone()}{o.required.then(|| view! { <span class="vtag">{tr!("Necessário")}</span> })}</b>
+                                {(!o.note.is_empty()).then(|| view! { <small>{o.note.clone()}</small> })}
+                                {license}
+                            </span>
+                        </label>
+                    }
+                })
+                .collect_view();
+            view! {
+                <div class="inputs">
+                    <span class="ver-label">{tr!("Na preparação")}</span>
+                    {rows}
+                </div>
+            }
+        })
+    }
+}
+
+/// The setup steps running now, by game id.
+#[derive(Clone, Copy)]
+pub struct Preparing(pub RwSignal<std::collections::HashMap<String, cerberus_shared::PrepareProgress>>);
+
+/// The setup step running now: what it's doing and how far.
+#[component]
+fn PrepareStatus(game_id: String) -> impl IntoView {
+    let preparing = expect_context::<Preparing>();
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let running = move || preparing.0.with(|all| all.get(&id.get_value()).cloned());
+    // Asked again when a run ends or the game changes (a new copy, a tick).
+    let pending = LocalResource::new(move || {
+        let _ = running().is_some();
+        library.games.track();
+        async move { api::preparation_pending(&id.get_value()).await.unwrap_or(false) }
+    });
+    let start = move |_| {
+        spawn_local(async move {
+            library.report(api::prepare_game(&id.get_value()).await);
+        });
+    };
+    move || match running() {
+        Some(p) => {
+            let width = p.fraction.map(|f| format!("width: {:.0}%", f * 100.0));
+            let busy = width.is_none();
+            view! {
+                <div class="prep">
+                    <span class="ver-label">{tr!("Preparando o jogo")}</span>
+                    <div class="bar" class:busy=busy><i style=width.unwrap_or_default()></i></div>
+                    <small class="muted">{p.text}</small>
+                </div>
+            }
+            .into_any()
+        }
+        None => pending
+            .get()
+            .unwrap_or(false)
+            .then(|| view! {
+                <div class="prep">
+                    <span class="ver-label">{tr!("Falta preparar")}</span>
+                    <div class="act-row">
+                        <button type="button" class="btn sm" on:click=start>{tr!("Preparar agora")}</button>
+                        <small class="muted">{tr!("Roda uma vez só. Se preferir, ela roda sozinha no primeiro Jogar.")}</small>
+                    </div>
+                </div>
+            })
+            .into_any(),
+    }
+}
+
+/// The other files the game's developer asks for (the other discs, DLC, an
+/// update, keys), one row each: required ones first, add-ons after.
+#[component]
+fn MoreInputs(game_id: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let id = StoredValue::new(game_id);
+    let refresh = RwSignal::new(0u32);
+    let busy = RwSignal::new(None::<String>);
+    let list = LocalResource::new(move || {
+        refresh.track();
+        let id = id.get_value();
+        async move { api::game_inputs(&id).await.unwrap_or_default() }
+    });
+    let act = move |input: String, clear: bool| {
+        busy.set(Some(input.clone()));
+        spawn_local(async move {
+            let done = library.report(api::pick_game_input(&id.get_value(), &input, clear).await).flatten();
+            busy.set(None);
+            if done.is_some() {
+                refresh.update(|n| *n += 1);
+                library.games.refetch();
+            }
+        });
+    };
+    let role_name = |role: &str| match role {
+        "disc" => tr!("Disco"),
+        "dlc" => tr!("DLC"),
+        "update" => tr!("Atualização"),
+        "key" => tr!("Chave"),
+        _ => tr!("Arquivo"),
+    };
+    let row = move |input: cerberus_shared::SetupInput| {
+        let key = input.id.clone();
+        let (pick_key, clear_key) = (key.clone(), key.clone());
+        let working = move || busy.get().as_deref() == Some(key.as_str());
+        let chosen = input.chosen.clone();
+        let label = if chosen.is_some() { tr!("Trocar...") } else if input.folder { tr!("Escolher pasta...") } else { tr!("Escolher arquivo...") };
+        view! {
+            <div class="need inp" class:found=chosen.is_some()>
+                <Svg icon=Icon::Check size=18 />
+                <div>
+                    <b>{input.label.clone()}<span class="vtag">{role_name(&input.role)}</span></b>
+                    <span class="path">{chosen.clone().unwrap_or_else(|| if input.optional { tr!("Opcional").to_string() } else { tr!("Falta escolher").to_string() })}</span>
+                    {input.shared.then(|| view! { <small class="muted">{tr!("Guardada no Cerberus, só neste PC, e usada por todos os jogos que pedem essa chave.")}</small> })}
+                </div>
+                <div class="inp-act">
+                    <button type="button" class="btn sm" disabled=move || busy.get().is_some() on:click=move |_| act(pick_key.clone(), false)>
+                        {move || if working() { tr!("Conferindo...") } else { label }}
+                    </button>
+                    {chosen.is_some().then(|| view! {
+                        <button type="button" class="icon-btn sm" title=if input.shared { tr!("Tirar de todos os jogos") } else { tr!("Tirar") } aria-label=tr!("Tirar") disabled=move || busy.get().is_some()
+                            on:click=move |_| act(clear_key.clone(), true)>
+                            <Svg icon=Icon::Close size=16 />
+                        </button>
+                    })}
+                </div>
+            </div>
+        }
+    };
+    move || {
+        let all = list.get().unwrap_or_default();
+        if all.is_empty() {
+            return None;
+        }
+        let (needed, extra): (Vec<_>, Vec<_>) = all.into_iter().partition(|i| !i.optional);
+        Some(view! {
+            <div class="inputs">
+                {(!needed.is_empty()).then(|| view! { <span class="ver-label">{tr!("O jogo também precisa")}</span> })}
+                {needed.into_iter().map(row).collect_view()}
+                {(!extra.is_empty()).then(|| view! { <span class="ver-label">{tr!("Extras opcionais")}</span> })}
+                {extra.into_iter().map(row).collect_view()}
+            </div>
+        })
     }
 }
 
@@ -631,7 +1046,7 @@ fn Mods(game_id: String) -> impl IntoView {
     };
 
     let rows = move || match list.get() {
-        None => view! { <p class="muted">{tr!("Carregando os mods...")}</p> }.into_any(),
+        None => view! { <crate::game_overview::Waiting text=tr!("Carregando os mods...") retry=Callback::new(move |_| list.refetch()) /> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(None)) => view! { <p class="muted">{tr!("Esse jogo não tem mods no Thunderstore nem no GameBanana.")}</p> }.into_any(),
         Some(Ok(Some(mods))) => {
@@ -998,7 +1413,21 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{dlss}{history}{folder}{relocate}{hold}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
+    // Grouped by what they touch, the risky one last and apart.
+    let group = |title: &'static str, any: bool| any.then(|| view! { <h3 class="mg-h">{title}</h3> });
+    let files_h = group(tr!("Arquivos"), folder.is_some() || relocate.is_some() || repair.is_some() || hold.is_some());
+    let links_h = group(tr!("Integração"), shortcut.is_some() || steam.is_some() || project.is_some());
+    let look_h = group(tr!("Aparência"), customize.is_some() || edit.is_some());
+    let danger_h = remove.is_some().then(|| view! { <h3 class="mg-h danger">{tr!("Zona de perigo")}</h3> });
+    view! {
+        <div class="manage">
+            {outside}{link}{program}{options}{dlss}{history}
+            {files_h}{folder}{relocate}{repair}{hold}
+            {links_h}{shortcut}{steam}{project}
+            {look_h}{customize}{edit}
+            {danger_h}{remove}
+        </div>
+    }
 }
 
 #[component]
@@ -1083,7 +1512,7 @@ fn Photos(game_id: String) -> impl IntoView {
             </div>
             <p class="muted small">{tr!("Com o jogo aberto pelo Cerberus e na frente, aperte F12: a foto é só da janela do jogo e aparece aqui. Jogos em tela cheia exclusiva podem sair pretos; use janela sem bordas.")}</p>
             {move || match shots.get() {
-                None => view! { <p class="muted">{tr!("Carregando...")}</p> }.into_any(),
+                None => view! { <crate::game_overview::Waiting text=tr!("Carregando...") rows=1 retry=Callback::new(move |_| shots.refetch()) /> }.into_any(),
                 Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
                 Some(Ok(list)) if list.is_empty() => view! {
                     <div class="empty small">
@@ -1125,11 +1554,13 @@ pub fn History(id: String) -> impl IntoView {
     });
     move || {
         let list = entries.get().unwrap_or_default();
-        if list.is_empty() {
+        // "No emulation for this console" is a known limit, logged before it stopped being one: not a failure.
+        let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation");
+        if list.iter().all(limit) {
             return None;
         }
-        let failure = list.iter().find(|e| !e.ok).cloned();
-        let latest_failed = list.first().is_some_and(|e| !e.ok);
+        let failure = list.iter().find(|e| !e.ok && !limit(e)).cloned();
+        let latest_failed = list.iter().find(|e| !limit(e)).is_some_and(|e| !e.ok);
         let summary = match &failure {
             Some(f) if latest_failed => view! {
                 <p class="problem">{tr!("Última falha · {} · {}", f.step, format::date_time(f.at))}<br/>{f.message.clone()}</p>
@@ -1139,13 +1570,13 @@ pub fn History(id: String) -> impl IntoView {
             }.into_any(),
             None => view! { <p class="muted">{tr!("Nenhuma falha registrada.")}</p> }.into_any(),
         };
-        let rows = list.into_iter().map(|e| view! {
-            <li class:failed=!e.ok>
+        let rows = list.into_iter().map(|e| { let bad = !e.ok && !limit(&e); view! {
+            <li class:failed=bad>
                 <span class="when">{format::date_time(e.at)}</span>
                 <b>{cerberus_shared::i18n::translate(&e.step)}</b>
                 <span>{e.message}</span>
             </li>
-        }).collect_view();
+        } }).collect_view();
         Some(view! {
             <div class="card history">
                 <div class="card-h">
@@ -1239,17 +1670,53 @@ fn day(text: &str) -> String {
     }
 }
 
+/// IGDB's genre and mode names, in the player's language (the rest stay as IGDB has them).
+fn igdb_term(text: &str) -> String {
+    let pt = match text {
+        "Platform" => tr!("Plataformas"),
+        "Fighting" => tr!("Luta"),
+        "Racing" => tr!("Corrida"),
+        "Shooter" => tr!("Tiro"),
+        "Role-playing (RPG)" => "RPG",
+        "Adventure" => tr!("Aventura"),
+        "Puzzle" => tr!("Quebra-cabeça"),
+        "Sport" => tr!("Esportes"),
+        "Strategy" => tr!("Estratégia"),
+        "Real Time Strategy (RTS)" => tr!("Estratégia em tempo real"),
+        "Turn-based strategy (TBS)" => tr!("Estratégia por turnos"),
+        "Tactical" => tr!("Tático"),
+        "Simulator" => tr!("Simulação"),
+        "Music" => tr!("Música"),
+        "Hack and slash/Beat 'em up" => tr!("Ação e pancadaria"),
+        "Point-and-click" => tr!("Apontar e clicar"),
+        "Card & Board Game" => tr!("Cartas e tabuleiro"),
+        "Quiz/Trivia" => tr!("Perguntas"),
+        "Visual Novel" => tr!("Romance visual"),
+        "Indie" => "Indie",
+        "Arcade" => "Arcade",
+        "Single player" => tr!("Um jogador"),
+        "Multiplayer" => tr!("Multijogador"),
+        "Co-operative" => tr!("Cooperativo"),
+        "Split screen" => tr!("Tela dividida"),
+        "Massively Multiplayer Online (MMO)" => "MMO",
+        "Battle Royale" => "Battle Royale",
+        other => return other.to_string(),
+    };
+    pt.to_string()
+}
+
 /// What is known about the game the recomp was made from.
 #[component]
 fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> impl IntoView {
     let join = |list: &[String], most: usize| list.iter().take(most).cloned().collect::<Vec<_>>().join(", ");
+    let terms = |list: &[String], most: usize| list.iter().take(most).map(|t| igdb_term(t)).collect::<Vec<_>>().join(", ");
     let facts: Vec<(&'static str, String)> = [
         (tr!("Lançamento"), if original.released.is_empty() { String::new() } else { day(&original.released) }),
         (tr!("Desenvolvedora"), original.developer.clone()),
         (tr!("Publicadora"), original.publisher.clone()),
         (tr!("Série"), original.series.clone()),
-        (tr!("Gêneros"), join(&original.genres, 4)),
-        ("Modos", join(&original.modes, 4)),
+        (tr!("Gêneros"), terms(&original.genres, 4)),
+        (tr!("Modos"), terms(&original.modes, 4)),
         (tr!("Lançado para"), join(&original.platforms, 5)),
         (tr!("Nota da crítica"), original.rating.map(|r| format!("{:.0}/100", r)).unwrap_or_default()),
     ]
@@ -1257,20 +1724,47 @@ fn OriginalGameCard(original: cerberus_shared::OriginalGame, game: String) -> im
     .filter(|(_, v)| !v.trim().is_empty())
     .collect();
     let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
-    let summary = (!original.summary.is_empty()).then(|| view! { <p class="og-summary">{original.summary.clone()}</p> });
+    // The Wikipedia summary in the player's language, when there is one; IGDB's English text otherwise.
+    let library = expect_context::<Library>();
+    let wiki = LocalResource::new({
+        let game = game.clone();
+        move || api::wiki_about(game.clone())
+    });
+    let igdb = original.summary.clone();
+    let summary = move || match wiki.get().and_then(Result::ok).flatten() {
+        Some(w) => {
+            let url = w.url.clone();
+            view! {
+                <p class="og-summary">{w.extract.clone()}</p>
+                <button type="button" class="link og-wiki" on:click=move |_| {
+                    let url = url.clone();
+                    spawn_local(async move { library.report(api::open_wiki(url).await); });
+                }><Svg icon=Icon::External size=14 />{tr!("Ler na Wikipedia")}</button>
+            }
+            .into_any()
+        }
+        // IGDB writes in English: said once, as with the developer's own text.
+        None => (!igdb.is_empty()).then(|| view! {
+            <p class="og-summary" lang="en">{igdb.clone()}</p>
+            {(cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt).then(|| view! {
+                <p class="muted small">{tr!("Resumo do IGDB, em inglês: não há artigo em português sobre esse jogo.")}</p>
+            })}
+        }).into_any(),
+    };
     view! {
         <section class="card original">
             <h3>{tr!("Sobre {}", game)}</h3>
             {summary}
             <dl class="og-facts">{rows}</dl>
-            <p class="muted small">{tr!("Dados do jogo original pelo IGDB, em inglês.")}</p>
+            <p class="muted small">{tr!("Dados do jogo original pelo IGDB e pela Wikipedia.")}</p>
         </section>
     }
 }
 
 /// Other recomps someone who likes this one might like: shared tags count
-/// twice, then the same series, genre and console. Other versions of the same
-/// game are left out.
+/// twice, then the same series, genre and console; among those, the ones whose
+/// original the player has come first. Other versions of the same game are
+/// left out.
 pub fn similar(entry: &RecompEntry, all: &[RecompEntry], most: usize) -> Vec<RecompEntry> {
     let series = entry.original.as_ref().map(|o| o.series.clone()).filter(|s| !s.is_empty());
     let mut scored: Vec<(f32, &RecompEntry)> = crate::versions::one_each(all)
@@ -1289,7 +1783,12 @@ pub fn similar(entry: &RecompEntry, all: &[RecompEntry], most: usize) -> Vec<Rec
             if series.is_some() && x.original.as_ref().map(|o| &o.series) == series.as_ref() {
                 score += 4.0;
             }
-            (score >= 3.0).then_some((score, all.iter().find(|e| e.id == x.id)?))
+            let alike = score >= 3.0;
+            // The ones the player already has the original of can be played today: first.
+            if x.owned_copy.is_some() {
+                score += 3.0;
+            }
+            alike.then_some((score, all.iter().find(|e| e.id == x.id)?))
         })
         .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.downloads.cmp(&a.1.downloads)));
@@ -1306,5 +1805,32 @@ fn SimilarGames(entry: RecompEntry) -> impl IntoView {
             let tiles = list.iter().map(crate::tiles::recomp_tile).collect::<Vec<_>>();
             view! { <crate::tiles::Shelf title=tr!("Jogos parecidos").to_string() tiles /> }
         })
+    }
+}
+
+
+#[derive(Clone, Copy, PartialEq)]
+enum Way {
+    Native,
+    Original,
+}
+
+fn way_key(id: &str) -> String {
+    format!("cerberus.way.{id}")
+}
+
+/// How this game was last played (native or the original), so that way leads next time.
+fn last_way(id: &str) -> Option<Way> {
+    let store = web_sys::window()?.local_storage().ok()??;
+    match store.get_item(&way_key(id)).ok()??.as_str() {
+        "original" => Some(Way::Original),
+        "native" => Some(Way::Native),
+        _ => None,
+    }
+}
+
+fn remember_way(id: &str, way: Way) {
+    if let Some(store) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = store.set_item(&way_key(id), if way == Way::Original { "original" } else { "native" });
     }
 }

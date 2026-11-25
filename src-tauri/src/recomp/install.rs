@@ -285,10 +285,14 @@ fn install_staged(archive: &Path, staging: &Path, target: &Path, entry: &Catalog
     let program = if entry.kind == "installer" {
         installer_in(&root).ok_or(tr!("O instalador não foi encontrado na release."))?
     } else {
+        // The developer's own file names the program first, then the catalog.
+        let from_manifest = super::manifest::read(&root, None)
+            .and_then(|m| m.start.clone())
+            .and_then(|s| s.program.iter().filter_map(|p| super::manifest::inside(p)).map(|p| root.join(p)).find(|p| p.is_file()));
         let named = entry.start.as_deref().map(Path::new)
             .filter(|path| path.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)))
             .map(|path| root.join(path)).filter(|path| path.is_file());
-        named.or_else(|| find_program(&root, &[&entry.name, &entry.repo]))
+        from_manifest.or(named).or_else(|| find_program(&root, &[&entry.name, &entry.repo]))
             .ok_or(tr!("A release não contém o programa do jogo."))?
     };
     let resolved = program.canonicalize().map_err(|e| e.to_string())?;

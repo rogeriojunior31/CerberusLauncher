@@ -131,6 +131,19 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         if result.is_err() { release(app, &game.id); }
         return result;
     }
+    // A setup step the release runs once with the player's copy (unpacking the
+    // disc): it runs first, and the game starts when it's done.
+    match recomp::preparation(game) {
+        Ok(Some(step)) => {
+            notify(app, &game.id, true);
+            return prepare_then_start(app, game.clone(), Some(exe.to_path_buf()), step);
+        }
+        Ok(None) => {}
+        Err(problem) => {
+            release(app, &game.id);
+            return Err(problem);
+        }
+    }
     // Newer saves from another PC go in place before the game reads them.
     if let Source::Recomp { recomp_id, .. } = &game.source {
         let folders = app.state::<recomp::Folders>();
@@ -148,15 +161,38 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         }
     }
     // Many games load their data relative to where they start, so start them in their own folder.
-    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_else(PathBuf::new);
     let plan = recomp::launch_plan(game);
+    // The program on record is gone, but the developer's file names one that's there.
+    let exe = match &plan.program {
+        Some(named) if !exe.is_file() => named.as_path(),
+        _ => exe,
+    };
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_else(PathBuf::new);
+    // The settings files the developer's file keeps up; a file that can't be
+    // written is noted, and the game starts anyway.
+    if let Err(error) = recomp::prepare_start(game) {
+        crate::trail::note(app, &game.id, tk!("Ajustes do jogo"), &Err(error));
+    }
     let mut command = Command::new(exe);
     command.current_dir(dir).args(plan.args).envs(plan.env);
     // The picture filter: ReShade beside the game until it closes. A look that
     // can't go on never stops the game from starting.
-    if let Some(look) = &game.look {
+    // An older PC than the game asks for: said, and the game starts anyway.
+    if let Some(problem) = recomp::entry_for(game).and_then(|e| e.manifest).and_then(|m| recomp::manifest::system_problem(&m, recomp::this_windows_build())) {
+        let _ = app.emit("toast", problem);
+    }
+    let look = match recomp::look_rule(game) {
+        Some(Err(why)) => {
+            if game.look.is_some() {
+                crate::trail::note(app, &game.id, tk!("Filtro"), &Err(why));
+            }
+            None
+        }
+        _ => game.look.as_ref(),
+    };
+    if let Some(look) = look {
         let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        match crate::looks::prepare(&data, &game.id, exe, look) {
+        match crate::looks::prepare(&data, &game.id, exe, look, recomp::look_lines(game)) {
             Ok(prepared) => {
                 command.envs(prepared.env);
             }
@@ -168,7 +204,7 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
         sessions.lock().remove(&game.id);
-        let message = tr!("Não foi possível abrir {0}: {1}", exe.display(), e);
+        let message = blocked_by_windows(e.raw_os_error()).map(str::to_string).unwrap_or_else(|| tr!("Não foi possível abrir {0}: {1}", exe.display(), e));
         crate::trail::note(app, &game.id, tk!("Abrir o jogo"), &Err(message.clone()));
         message
     })?;
@@ -203,6 +239,21 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
 #[cfg(not(windows))]
 struct GameProcess(std::process::Child, Instant);
 
+/// Why Windows itself refused to start a game, in words the player can act on.
+fn blocked_by_windows(code: Option<i32>) -> Option<&'static str> {
+    Some(match code? {
+        // ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION and its reputation variants: Smart App Control.
+        4551 | 4553 | 4580 => tr!("O Smart App Control do Windows bloqueou o jogo, porque o programa não é assinado. Ele não abre exceções: para jogar, é preciso desligar o Smart App Control em Segurança do Windows › Controle de aplicativos e navegador."),
+        // ERROR_VIRUS_INFECTED / ERROR_VIRUS_DELETED
+        225 | 226 => tr!("O antivírus bloqueou o jogo. Se você confia no recomp, libere a pasta dele no antivírus e use Reparar instalação na aba Gerenciar."),
+        // ERROR_ACCESS_DISABLED_BY_POLICY
+        1260 => tr!("Uma política do Windows (da empresa ou do AppLocker) bloqueia programas nessa pasta. Instale os recomps numa pasta permitida, em Configurações › Instalação."),
+        // ERROR_ELEVATION_REQUIRED
+        740 => tr!("Esse jogo pede para abrir como administrador. O Cerberus não abre jogos como administrador; veja se o projeto tem uma versão que não precise disso."),
+        _ => return None,
+    })
+}
+
 #[cfg(not(windows))]
 fn spawn_game(mut command: Command, _selected: Option<&Path>) -> std::io::Result<GameProcess> {
     let started = Instant::now();
@@ -222,9 +273,164 @@ impl GameProcess {
     }
 }
 
+/// The setup step on its own, from the game's page: the game doesn't start after.
+/// `false` when there is nothing to prepare.
+pub fn prepare_now(app: &AppHandle, game: &Game) -> Result<bool, String> {
+    let sessions = app.state::<Sessions>();
+    sessions.reserve(game)?;
+    match recomp::preparation(game) {
+        Ok(Some(step)) => {
+            notify(app, &game.id, true);
+            prepare_then_start(app, game.clone(), None, step).map(|()| true)
+        }
+        other => {
+            release(app, &game.id);
+            other.map(|_| false)
+        }
+    }
+}
+
+/// `exe`: the game to start once the step is done; `None` to only prepare.
+fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: recomp::Preparation) -> Result<(), String> {
+    let fail = |message: String| {
+        release(app, &game.id);
+        message
+    };
+    let install = Path::new(&game.install_dir);
+    // A build needs room: at least 1 GB on the game's drive.
+    crate::disk::require(install, 1 << 30).map_err(fail)?;
+    if let Some(temp) = &step.temp {
+        let _ = std::fs::remove_dir_all(temp);
+        std::fs::create_dir_all(temp).map_err(|e| fail(e.to_string()))?;
+    }
+    let dir = step.program.parent().map(Path::to_path_buf).unwrap_or_default();
+    let mut command = Command::new(&step.program);
+    command.args(&step.args).envs(step.env.clone()).current_dir(dir).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // No window: the step never asks anything.
+        command.creation_flags(0x0800_0000);
+    }
+    let mut child = command.spawn().map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
+    let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
+    let say = |app: &AppHandle, fraction: Option<f32>, text: String, finished: bool| {
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished });
+    };
+    say(app, Some(0.0), step.label.clone(), false);
+
+    // What it prints: progress for the player, the last lines for an error.
+    let heard = std::sync::Arc::new(Mutex::new((Instant::now(), Vec::<String>::new())));
+    for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)].into_iter().flatten() {
+        let (heard, app, label) = (heard.clone(), app.clone(), step.label.clone());
+        let game_id = game.id.clone();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stream).lines().map_while(Result::ok) {
+                let line = line.trim().to_string();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some((fraction, text)) = progress_line(&line) {
+                    let text = if text.is_empty() { label.clone() } else { text };
+                    let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game_id.clone(), fraction, text, finished: false });
+                }
+                if let Ok(mut h) = heard.lock() {
+                    h.0 = Instant::now();
+                    h.1.push(line);
+                    let len = h.1.len();
+                    if len > 40 {
+                        h.1.drain(..len - 40);
+                    }
+                }
+            }
+        });
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let outcome = loop {
+            match child.try_wait() {
+                Ok(Some(status)) if status.success() => break Ok(()),
+                Ok(Some(status)) => {
+                    let said = heard.lock().map(|h| h.1.join("\n")).unwrap_or_default();
+                    let long_path = said.contains("PathTooLongException") || said.to_lowercase().contains("filename or extension is too long");
+                    break Err(if long_path {
+                        tr!("O caminho da pasta do jogo é longo demais para o Windows. Instale numa pasta com caminho mais curto ou ligue o suporte a caminhos longos do Windows.").to_string()
+                    } else {
+                        tr!("A preparação do jogo terminou com o código {}.", status.code().unwrap_or(-1)).to_string()
+                    });
+                }
+                Ok(None) => {
+                    let silent = heard.lock().map(|h| h.0.elapsed()).unwrap_or_default();
+                    // No limit for a long build, but an hour without a word is a stuck one.
+                    if step.timeout.is_some_and(|t| started.elapsed() > t) || silent > Duration::from_secs(3600) {
+                        let _ = child.kill();
+                        break Err(tr!("A preparação do jogo parou de responder e foi interrompida.").to_string());
+                    }
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+                Err(e) => break Err(e.to_string()),
+            }
+        };
+        if let Some(temp) = &step.temp {
+            let _ = std::fs::remove_dir_all(temp);
+        }
+        crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true });
+        release(&app, &game.id);
+        match outcome {
+            Ok(()) => {
+                let _ = std::fs::write(&step.marker, &step.done_with);
+                match &exe {
+                    Some(exe) => {
+                        if let Err(error) = start(&app, &game, exe) {
+                            let _ = app.emit("toast", error);
+                        }
+                    }
+                    None => {
+                        let _ = app.emit("toast", tr!("{}: pronto para jogar.", game.name));
+                    }
+                }
+            }
+            Err(message) => {
+                let _ = app.emit("toast", tr!("{0}: {1}", game.name, message));
+            }
+        }
+    });
+    Ok(())
+}
+
+/// "progress 0.4 Unpacking menu art" (the SDK's way), or "@note 89%, 68606 files"
+/// and "@step 2 3 Unpacking" (some setups' own): how far, and what.
+fn progress_line(line: &str) -> Option<(Option<f32>, String)> {
+    if let Some(rest) = line.strip_prefix("progress ") {
+        let (number, text) = rest.split_once(' ').unwrap_or((rest, ""));
+        let fraction = number.trim().parse::<f32>().ok()?.clamp(0.0, 1.0);
+        return Some((Some(fraction), text.trim().to_string()));
+    }
+    if let Some(rest) = line.strip_prefix("@note ") {
+        let percent = rest.split('%').next()?.trim().parse::<f32>().ok()?;
+        return Some((Some((percent / 100.0).clamp(0.0, 1.0)), String::new()));
+    }
+    if let Some(rest) = line.strip_prefix("@step ") {
+        let mut parts = rest.splitn(3, ' ');
+        let (_, _, text) = (parts.next()?, parts.next()?, parts.next().unwrap_or_default());
+        return Some((None, text.trim().to_string()));
+    }
+    None
+}
+
 /// A game that ended badly: why, in the history and as a notice, with its log.
 fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
-    let Some(mut why) = crate::crash::reason(code, played.as_secs()) else { return };
+    // The developer's own words for this code, or "ok": the game's normal close.
+    let own = recomp::entry_for(game).and_then(|e| e.manifest).and_then(|m| m.exit_message(code));
+    let why = match own {
+        Some(None) => return,
+        Some(Some(message)) => Some(message),
+        None => crate::crash::reason(code, played.as_secs()),
+    };
+    let Some(mut why) = why else { return };
     // "A DLL is too old": find which one, when something stands out.
     if code as u32 == crate::crash::OLD_DLL {
         let program_dir = match &game.source {
@@ -237,7 +443,10 @@ fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
         }
     }
     let since = SystemTime::now() - played - Duration::from_secs(5);
-    let log = crate::crash::newest_log(Path::new(&game.install_dir), since);
+    // The developer's `logs` folder first, then the game's own.
+    let install = Path::new(&game.install_dir);
+    let logs = recomp::entry_for(game).and_then(|e| e.manifest).map(|m| m.folder("logs", install)).unwrap_or_default();
+    let log = logs.iter().find_map(|dir| crate::crash::newest_log(dir, since)).or_else(|| crate::crash::newest_log(install, since));
     let detail = match &log {
         Some(path) => tr!("{1} Log do jogo: {0}", path.display(), why),
         None => why.clone(),
@@ -273,7 +482,7 @@ fn close_session(
 ) -> Vec<String> {
     let mut notices = Vec::new();
     let saved = sessions.close_round(library, &game.id, seconds, closed_at);
-    let played = format!("{} jogados", duration_text(seconds));
+    let played = played_text(seconds);
     trail.note(&game.id, tk!("Partida"), &saved.as_ref().map(|_| played).map_err(|e| tr!("Tempo não gravado: {}", e)));
     if let Err(e) = saved {
         notices.push(tr!("Não foi possível gravar o tempo de {0}: {1}", game.name, e));
@@ -289,6 +498,12 @@ fn close_session(
 }
 
 /// "1 h 5 min", "3 min", "40 s".
+/// "1 min jogado", "5 min jogados": what a session's history line says.
+pub fn played_text(seconds: u64) -> String {
+    let time = duration_text(seconds);
+    if time == "1 min" || time == "1 s" { format!("{time} jogado") } else { format!("{time} jogados") }
+}
+
 fn duration_text(seconds: u64) -> String {
     match seconds {
         0..60 => format!("{seconds} s"),
@@ -300,6 +515,7 @@ fn duration_text(seconds: u64) -> String {
 /// A backup's result as the history shows it.
 pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shared::Backup>, E>) -> Result<String, String> {
     match result {
+        Ok(Some(backup)) if backup.files == 1 => Ok("1 arquivo copiado".into()),
         Ok(Some(backup)) => Ok(format!("{} arquivos copiados", backup.files)),
         Ok(None) => Ok(tr!("Nada novo para copiar").into()),
         Err(e) => Err(e.to_string()),
@@ -386,9 +602,35 @@ fn durations_read_as_people_say_them() {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_refusals_are_explained() {
+        assert!(blocked_by_windows(Some(4551)).unwrap().contains("Smart App Control"));
+        assert!(blocked_by_windows(Some(225)).is_some() && blocked_by_windows(Some(740)).is_some() && blocked_by_windows(Some(1260)).is_some());
+        assert!(blocked_by_windows(Some(2)).is_none() && blocked_by_windows(None).is_none());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn crash_reporters_and_updaters_are_not_the_game() {
+        for helper in ["UnityCrashHandler64.exe", "crashpad_handler.exe", "CrashReportClient.exe", "Game-Updater.exe", "unins000.exe", "WerFault.exe", "BsSndRpt.exe-bugsplat.exe"] {
+            assert!(windows::is_helper(helper), "{helper}");
+        }
+        for game in ["Zelda64Recompiled.exe", "SpaghettiKart.exe", "Hollow Knight.exe", "ReStreet.exe", "UpdateGame.exe"] {
+            assert!(!windows::is_helper(game), "{game}");
+        }
+    }
     use std::os::windows::process::CommandExt;
     use std::process::Stdio;
     use std::time::Instant;
+
+    #[test]
+    fn setup_steps_say_how_far_they_are() {
+        assert_eq!(progress_line("progress 0.4 Unpacking menu art"), Some((Some(0.4), "Unpacking menu art".into())));
+        assert_eq!(progress_line("@note 89%, 68606 files"), Some((Some(0.89), String::new())));
+        assert_eq!(progress_line("@step 2 3 Unpacking the disc"), Some((None, "Unpacking the disc".into())));
+        assert_eq!(progress_line("some log line"), None);
+    }
 
     #[test]
     fn a_game_that_crashes_reports_its_windows_exit_code() {
