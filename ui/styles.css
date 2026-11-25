@@ -2209,3 +2209,25 @@ main.main { scrollbar-gutter: stable; }
 /* Scroll strips leave room for the selected ring at the edge */
 .gal-strip, .ach-strip { padding-left: 4px; padding-right: 4px; }
 .lib-presence .seg:disabled { opacity: 0.45; cursor: default; }
+
+/* The keyboard shortcuts, on "?" */
+.keys-sheet { width: min(520px, 100%); }
+.keys-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 2px; }
+.keys-list li { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 14px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.keys-list li:first-child { border-top: 0; }
+.keys { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+kbd { display: inline-block; min-width: 26px; padding: 3px 8px; border-radius: 7px; background: var(--fill2); border: 1px solid var(--line2); border-bottom-width: 2px; font: 700 12.5px/1.2 var(--font, inherit); color: var(--ink); text-align: center; }
+
+/* "/" in an empty, unfocused search: the shortcut, where it's used */
+.search { position: relative; }
+.search-key { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.75; }
+.search:focus-within .search-key, .search:has(input:not(:placeholder-shown)) .search-key { display: none; }
+
+/* A classic that can't open here: the reason in Play's place */
+.gp-blocked { display: inline-flex; align-items: center; gap: 9px; height: 54px; padding: 0 18px; border-radius: 17px; border: 1px dashed var(--line2); color: var(--muted); font-weight: 700; font-size: 14px; }
+.gp-blocked svg { color: var(--warn, #f5b14c); flex: none; }
+button.emu-chip { cursor: pointer; }
+button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
+
+/* "Can't play here": its two ways out with room between them */
+.card.blocked .row { margin-top: 12px; }

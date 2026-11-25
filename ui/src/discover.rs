@@ -344,7 +344,12 @@ pub fn DiscoverPage() -> impl IntoView {
                 <div class="empty">
                     <Svg icon=Icon::Search size=32 />
                     <h2>{tr!("Nenhum jogo encontrado")}</h2>
-                    <p class="muted">{tr!("Tente outro nome ou tire os filtros.")}</p>
+                    <p class="muted">{tr!("Tente outro nome ou tire os filtros. Não existe ainda? Dá para pedir.")}</p>
+                    <div class="row">
+                        <button type="button" class="btn" on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })>
+                            <Svg icon=Icon::Plus size=18 />{tr!("Pedir um recomp")}
+                        </button>
+                    </div>
                 </div>
             }
             .into_any();
@@ -419,6 +424,7 @@ pub fn DiscoverPage() -> impl IntoView {
                             prop:value=move || search.get()
                             on:input=move |e| search.set(event_target_value(&e))
                         />
+                        <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                     </label>
 
                     <select

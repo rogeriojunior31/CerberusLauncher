@@ -511,7 +511,13 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     </button>
                 }.into_any()
             }
-            (None, None) => ().into_any(),
+            // Can't open here: said where Play would be, not a lone heart.
+            (None, None) => view! {
+                <span class="gp-blocked" role="status">
+                    <crate::icons::Svg icon=crate::icons::Icon::Info size=18 />
+                    {tr!("Ainda não abre aqui: sem emulador para {}", console_name(console))}
+                </span>
+            }.into_any(),
         };
         let to_recomp = how.recomp.clone().map(|e| {
             let route = how.recomp_game.as_ref().map(|g| Route::Game(g.id.clone())).unwrap_or_else(|| Route::Game(format!("recomp:{}", e.id)));
@@ -715,7 +721,11 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         Some(
             view! {
                 <div class="gp-hero cl-hero">
-                    {console_bg.map(|src| view! { <img class="cl-console" src=src alt="" /> })}
+                    // The console's art, or (a console without it) the box art, blurred.
+                    {match console_bg {
+                        Some(src) => view! { <img class="cl-console" src=src alt="" /> }.into_any(),
+                        None => view! { <crate::art::Backdrop sources=art.clone() soft=true /> }.into_any(),
+                    }}
                     <div class="gp-shade"></div>
                 </div>
                 <div class="page gp-page">

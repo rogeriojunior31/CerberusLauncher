@@ -334,6 +334,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                     <Svg icon=Icon::Search size=18 />
                     <input type="search" placeholder=tr!("Buscar jogo") aria-label=tr!("Buscar jogo")
                         prop:value=move || search.get() on:input=move |e| search.set(event_target_value(&e)) />
+                        <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                 </label>
                 <select class="select" aria-label=tr!("Ordenar")
                     on:change=move |e| order.set(match event_target_value(&e).as_str() {

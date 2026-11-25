@@ -1248,11 +1248,14 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                     <Svg icon=Icon::Left size=16 />{tr!("Todos os consoles")}
                 </button>
             };
-            let names: Vec<String> = my_roms.iter().filter(|r| crate::classics::console_of(r) == console).map(crate::classics::display_name).collect();
+            // Each one opens its page.
+            let names: Vec<(String, String)> = my_roms.iter().filter(|r| crate::classics::console_of(r) == console).map(|r| (crate::classics::display_name(r), r.path.clone())).collect();
             let games = (!names.is_empty()).then(|| view! {
                 <section class="cd-sec">
                     <h3>{tr!("Seus jogos")}</h3>
-                    <div class="cd-games">{names.into_iter().map(|n| view! { <span class="emu-chip">{n}</span> }).collect_view()}</div>
+                    <div class="cd-games">{names.into_iter().map(|(n, path)| view! {
+                        <button type="button" class="emu-chip" title=path.clone() on:click=move |_| library.go(Route::Classic(path.clone()))>{n}</button>
+                    }).collect_view()}</div>
                 </section>
             });
             let who = who_of(&console);

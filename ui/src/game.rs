@@ -167,6 +167,23 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let manageable = game.is_some() || entry.is_some();
     // F12 takes pictures of the games Cerberus opens itself.
     let photos = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. } | Source::Local { .. }));
+    // Mods and Fotos only when there is something there: a mod source for the
+    // game, pictures already taken. Seven tabs where two are empty was noise.
+    let page_id = game.as_ref().map(|g| g.id.clone()).unwrap_or_default();
+    let mods_here = {
+        let id = page_id.clone();
+        LocalResource::new(move || {
+            let id = id.clone();
+            async move { if has_saves { api::list_mods(&id).await.ok().flatten().is_some() } else { false } }
+        })
+    };
+    let photos_here = {
+        let id = page_id.clone();
+        LocalResource::new(move || {
+            let id = id.clone();
+            async move { photos && api::list_screenshots(&id).await.is_ok_and(|l| !l.is_empty()) }
+        })
+    };
     // Steam games: their achievements, as the hub reads them.
     let steam_app = game.as_ref().and_then(|g| g.id.strip_prefix("steam:")).map(str::to_string);
     let has_achievements = steam_app.is_some();
@@ -258,9 +275,9 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             {tab_button(Tab::Overview, tr!("Visão geral"))}
             {has_saves.then(|| tab_button(Tab::Saves, tr!("Saves")))}
             {has_settings.then(|| tab_button(Tab::Settings, tr!("Ajustes")))}
-            {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
+            {move || (mods_here.get() == Some(true) || tab.get() == Tab::Mods).then(|| tab_button(Tab::Mods, "Mods"))}
             {has_achievements.then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
-            {photos.then(|| tab_button(Tab::Photos, tr!("Fotos")))}
+            {move || (photos_here.get() == Some(true) || tab.get() == Tab::Photos).then(|| tab_button(Tab::Photos, tr!("Fotos")))}
             {original.is_some().then(|| tab_button(Tab::Original, tr!("Original")))}
             {manageable.then(|| tab_button(Tab::Manage, tr!("Gerenciar")))}
         </nav>

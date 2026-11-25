@@ -622,6 +622,7 @@ pub fn LibraryPage() -> impl IntoView {
                         <Svg icon=Icon::Search size=18 />
                         <input node_ref=input type="search" placeholder=tr!("Buscar na biblioteca") aria-label=tr!("Buscar na biblioteca")
                             prop:value=move || search.get() on:input=move |e| search.set(event_target_value(&e)) />
+                        <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                     </label>
                     <select class="select" aria-label=tr!("Ordenar biblioteca")
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {

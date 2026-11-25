@@ -11,7 +11,7 @@ const SECTIONS: [Route; 7] = [Route::Home, Route::Library, Route::Discover, Rout
 
 /// Keyboard shortcuts for the desktop window (Big Picture has its own controls):
 /// "/" or Ctrl+F or Ctrl+K to search the page, Ctrl+, for settings, Ctrl+1-7 for the sections, Alt+Left to go back.
-fn shortcuts(library: Library) {
+fn shortcuts(library: Library, sheet: RwSignal<bool>) {
     let handle = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
         if library.route.get_untracked() == Route::BigPicture {
             return;
@@ -27,6 +27,22 @@ fn shortcuts(library: Library) {
         let typing = document().active_element().is_some_and(|el| matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT"));
         let ctrl = e.ctrl_key() || e.meta_key();
         let key = e.key();
+        // Escape closes the list of shortcuts, and leaves a search field.
+        if key == "Escape" {
+            if sheet.get_untracked() {
+                sheet.set(false);
+            } else if let Some(el) = document().active_element().filter(|el| el.get_attribute("type").as_deref() == Some("search") || el.class_list().contains("set-find")) {
+                let el: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(el);
+                let _ = el.blur();
+            }
+            return;
+        }
+        // "?" lists every shortcut.
+        if key == "?" && !typing {
+            e.prevent_default();
+            sheet.update(|open| *open = !*open);
+            return;
+        }
         let search = (key == "/" && !typing) || (ctrl && matches!(key.as_str(), "f" | "F" | "k" | "K"));
         if search {
             let found = document().query_selector(".page input[type=search], .set-find").ok().flatten();
@@ -67,7 +83,8 @@ fn shortcuts(library: Library) {
 pub fn Sidebar() -> impl IntoView {
     let library = expect_context::<Library>();
     let activity = expect_context::<crate::news::Activity>();
-    shortcuts(library);
+    let sheet = RwSignal::new(false);
+    shortcuts(library, sheet);
     let item = move |route: Route, icon: Icon, label: &'static str| {
         let target = route.clone();
         // A recomp's page belongs to the Library once it's installed, to Discover before.
@@ -135,6 +152,9 @@ pub fn Sidebar() -> impl IntoView {
                     </button>
                 </div>
             </div>
+            <Show when=move || sheet.get()>
+                <ShortcutSheet close=Callback::new(move |_| sheet.set(false)) />
+            </Show>
         </aside>
     }
 }
@@ -335,4 +355,44 @@ pub fn Toasts() -> impl IntoView {
             .collect_view()
     };
     view! { <div class="toasts" aria-live="polite">{list}</div> }
+}
+
+
+/// Every keyboard shortcut, on "?": otherwise they live only in tooltips.
+#[component]
+fn ShortcutSheet(close: Callback<()>) -> impl IntoView {
+    let rows: [(&str, &'static str); 7] = [
+        ("/", tr!("Buscar nesta página (ou na Biblioteca)")),
+        ("Ctrl+K", tr!("Buscar, também com Ctrl+F")),
+        ("Ctrl+1 … 7", tr!("Início, Biblioteca, Descobrir, Conquistas, Downloads, Saves, Novidades")),
+        ("Ctrl+,", tr!("Configurações")),
+        ("Alt+←", tr!("Voltar")),
+        ("Esc", tr!("Fechar um menu, sair de uma busca")),
+        ("?", tr!("Esta lista")),
+    ];
+    let list = rows
+        .into_iter()
+        .map(|(keys, what)| {
+            let caps = keys.split('+').map(|k| view! { <kbd>{k.to_string()}</kbd> }).collect_view();
+            view! { <li><span class="keys">{caps}</span><span>{what}</span></li> }
+        })
+        .collect_view();
+    request_animation_frame(|| {
+        if let Some(el) = document().query_selector(".keys-sheet .link").ok().flatten() {
+            let el: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(el);
+            let _ = el.focus();
+        }
+    });
+    view! {
+        <div class="backdrop-dim" on:click=move |_| close.run(())>
+            <section class="dialog keys-sheet" role="dialog" aria-modal="true" aria-label=tr!("Atalhos do teclado") on:click=|e| e.stop_propagation()>
+                <div class="card-h">
+                    <h2>{tr!("Atalhos do teclado")}</h2>
+                    <button type="button" class="link" on:click=move |_| close.run(())>{tr!("Fechar")}</button>
+                </div>
+                <ul class="keys-list">{list}</ul>
+                <p class="muted small">{tr!("Nos menus, as setas andam entre as opções. No Big Picture, o controle manda.")}</p>
+            </section>
+        </div>
+    }
 }
