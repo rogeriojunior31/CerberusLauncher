@@ -415,9 +415,17 @@ pub fn TvMode() -> impl IntoView {
 /// second, or pressing F11, opens it.
 pub fn watch_for_tv(library: Library) {
     let since = StoredValue::new(None::<f64>);
+    // After the TV (left by holding Menu), Menu must be let go before it counts again.
+    let wait_release = StoredValue::new(false);
     let poll = set_interval_with_handle(
         move || {
             if library.route.get_untracked() == Route::BigPicture {
+                since.set_value(None);
+                wait_release.set_value(true);
+                return;
+            }
+            // A game in front owns the pad.
+            if !web_sys::window().and_then(|w| w.document()).is_some_and(|d| d.has_focus().unwrap_or(true)) {
                 since.set_value(None);
                 return;
             }
@@ -431,6 +439,12 @@ pub fn watch_for_tv(library: Library) {
                         })
                     })
                 });
+            if wait_release.get_value() {
+                if !held {
+                    wait_release.set_value(false);
+                }
+                return;
+            }
             let now = js_sys::Date::now();
             match (held, since.get_value()) {
                 (true, None) => since.set_value(Some(now)),
@@ -445,7 +459,7 @@ pub fn watch_for_tv(library: Library) {
         Duration::from_millis(100),
     );
     let keys = window_event_listener(leptos::ev::keydown, move |e| {
-        if e.key() == "F11" && library.route.get_untracked() != Route::BigPicture {
+        if e.key() == "F11" && !e.repeat() && library.route.get_untracked() != Route::BigPicture {
             e.prevent_default();
             library.go(Route::BigPicture);
         }

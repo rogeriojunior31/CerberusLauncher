@@ -976,7 +976,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - Biblioteca: ~~B F3~~ (25/11/2026: `library.json` ilegível tira só os jogos dele; as lojas continuam e a Biblioteca explica), F7–F11, F13–F20.
 - Clássicos: ~~C F5~~ (25/11/2026: `.zip` pelo cartucho dentro, `.7z` pela pasta), F6, F9–F17, F19–F22, F24–F26.
 - Durante o jogo e app: ~~J F3~~ (25/11/2026: fechar a janela de vez encerra o app, com as janelas escondidas do menu e do aviso), F6–F9, F11–F13, F15–F24.
-- Big Picture: BP F2–F4, F6, F7, F9–F19.
+- Big Picture: ~~BP F2, BP F3~~ (25/11/2026: botões só contam depois de vistos soltos, Menu precisa ser solto depois de sair, F11 sem repetição, controle só com o Cerberus em foco; o controle real ainda precisa ser conferido à mão), BP F4, F6, F7, F9–F19.
 - Partidas: P F7–F9, F18, F20–F22, F24–F26.
 - Recomps: RC F17–F23; RP F16, F18–F22.
 

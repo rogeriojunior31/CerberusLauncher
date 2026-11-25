@@ -100,6 +100,10 @@ const STICK_REST: f64 = 0.3;
 
 #[derive(Default)]
 struct PadState {
+    /// The first snapshot was taken: buttons already held then don't count as presses.
+    primed: bool,
+    /// Menu was held when reading began (the hold that opened the TV): it counts once released.
+    menu_blocked: bool,
     pressed: [bool; 6],
     dir: Option<Btn>,
     next_repeat: f64,
@@ -152,6 +156,13 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
     let on_pad = on.clone();
     let poll = set_interval_with_handle(
         move || {
+            // Only while Cerberus is the window in front: with a game in front the
+            // pad is the game's. Coming back, what is held is read afresh.
+            let focused = web_sys::window().and_then(|w| w.document()).is_some_and(|d| d.has_focus().unwrap_or(true));
+            if !focused {
+                state.update_value(|s| s.primed = false);
+                return;
+            }
             let Some((face, menu, dpad, stick, kind)) = read_pad() else { return };
             if pad_kind.get_untracked() != kind {
                 pad_kind.set(kind);
@@ -159,6 +170,16 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             let t = now();
             let mut fire = Vec::new();
             state.update_value(|s| {
+                if !s.primed {
+                    s.primed = true;
+                    s.pressed = face;
+                    s.menu_blocked = menu;
+                    s.menu_since = None;
+                    s.stick_seen_resting = false;
+                }
+                if s.menu_blocked && !menu {
+                    s.menu_blocked = false;
+                }
                 const FACE: [Btn; 6] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb];
                 for (i, btn) in FACE.iter().enumerate() {
                     if face[i] && !s.pressed[i] {
@@ -168,7 +189,7 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
                 s.pressed = face;
 
                 // Menu: a tap opens Settings, a long hold leaves.
-                match (menu, s.menu_since) {
+                match (menu && !s.menu_blocked, s.menu_since) {
                     (true, None) => {
                         s.menu_since = Some(t);
                         s.menu_fired = false;
@@ -236,6 +257,8 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             "PageUp" => Btn::Lb,
             "PageDown" => Btn::Rb,
             "F10" => Btn::Menu,
+            // Held, F11 repeats: only the first press counts.
+            "F11" if e.repeat() => return,
             "F11" => Btn::MenuHold,
             k if k.chars().count() == 1 => {
                 let c = k.chars().next().unwrap_or(' ');
