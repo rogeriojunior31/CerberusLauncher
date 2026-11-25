@@ -164,6 +164,46 @@ impl Store {
         all
     }
 
+    /// From the kept full lists: the easiest locked achievements of games in
+    /// progress (the most common first), and the rarest ones unlocked.
+    pub fn highlights(&self, scopes: &[Scope], limit: usize) -> (Vec<RecentUnlock>, Vec<RecentUnlock>) {
+        let mut next = Vec::new();
+        let mut rarest = Vec::new();
+        for scope in scopes {
+            let Ok(mut q) = self.0.prepare(
+                "SELECT l.game, l.data, g.data FROM lists l JOIN games g ON g.source=l.source AND g.account=l.account AND g.key=l.game
+                 WHERE l.source=?1 AND l.account=?2",
+            ) else {
+                continue;
+            };
+            let rows = q.query_map(params![scope.source.code(), scope.account], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)));
+            for (game, list, g) in rows.into_iter().flatten().flatten() {
+                let (Ok(list), Ok(g)) = (serde_json::from_str::<Vec<Achievement>>(&list), serde_json::from_str::<AchievementGame>(&g)) else { continue };
+                let started = g.unlocked > 0 && g.unlocked < g.total;
+                for a in list {
+                    if a.rarity.is_none() {
+                        continue;
+                    }
+                    let item = |a: Achievement| RecentUnlock { source: scope.source, game_key: game.clone(), game_name: g.name.clone(), achievement: a };
+                    match a.unlocked_at {
+                        None if started && !a.hidden => next.push(item(a)),
+                        Some(_) => rarest.push(item(a)),
+                        None => {}
+                    }
+                }
+            }
+        }
+        let rarity = |r: &RecentUnlock| r.achievement.rarity.unwrap_or(0.0);
+        next.sort_by(|a, b| rarity(b).total_cmp(&rarity(a)));
+        rarest.sort_by(|a, b| rarity(a).total_cmp(&rarity(b)));
+        // One per game, so a single game doesn't fill the row.
+        let one_each = |list: Vec<RecentUnlock>| {
+            let mut seen = std::collections::HashSet::new();
+            list.into_iter().filter(|r| seen.insert((r.source, r.game_key.clone()))).take(limit).collect::<Vec<_>>()
+        };
+        (one_each(next), one_each(rarest))
+    }
+
     pub fn stamp(&self, scope: &Scope, name: &str) -> Option<u64> {
         self.0
             .query_row("SELECT value FROM stamps WHERE source=?1 AND account=?2 AND name=?3", params![scope.source.code(), scope.account, name], |r| r.get::<_, i64>(0))

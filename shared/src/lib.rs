@@ -661,6 +661,7 @@ pub enum AchievementSource {
     Steam,
     Retro,
     Xbox,
+    Epic,
 }
 
 impl AchievementSource {
@@ -670,6 +671,7 @@ impl AchievementSource {
             AchievementSource::Steam => "steam",
             AchievementSource::Retro => "retro",
             AchievementSource::Xbox => "xbox",
+            AchievementSource::Epic => "epic",
         }
     }
 
@@ -678,6 +680,7 @@ impl AchievementSource {
             "steam" => Some(AchievementSource::Steam),
             "retro" => Some(AchievementSource::Retro),
             "xbox" => Some(AchievementSource::Xbox),
+            "epic" => Some(AchievementSource::Epic),
             _ => None,
         }
     }
@@ -794,6 +797,15 @@ pub struct AchievementsHub {
     /// The Xbox account is signed in (its games are among `games`).
     #[serde(default)]
     pub xbox: bool,
+    /// The Epic account is signed in.
+    #[serde(default)]
+    pub epic: bool,
+    /// The easiest achievements still locked in games being played (most players have them).
+    #[serde(default)]
+    pub next: Vec<RecentUnlock>,
+    /// The player's rarest unlocks (fewest players have them).
+    #[serde(default)]
+    pub rarest: Vec<RecentUnlock>,
     pub games: Vec<AchievementGame>,
     /// Newest first.
     pub recent: Vec<RecentUnlock>,

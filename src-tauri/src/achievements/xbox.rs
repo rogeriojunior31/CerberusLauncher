@@ -58,7 +58,7 @@ pub(super) async fn get(http: &reqwest::Client, s: &Session, url: &str, contract
 }
 
 /// Unix seconds from Xbox Live's dates ("2024-05-01T20:11:45.1234567Z").
-fn seconds(text: &str) -> Option<u64> {
+pub(super) fn seconds(text: &str) -> Option<u64> {
     let date = text.get(..19)?;
     let (y, mo, d) = (date.get(0..4)?.parse::<i64>().ok()?, date.get(5..7)?.parse::<i64>().ok()?, date.get(8..10)?.parse::<i64>().ok()?);
     let (h, mi, s) = (date.get(11..13)?.parse::<i64>().ok()?, date.get(14..16)?.parse::<i64>().ok()?, date.get(17..19)?.parse::<i64>().ok()?);
@@ -162,7 +162,8 @@ pub async fn all_lists(http: &reqwest::Client, s: &Session) -> Result<HashMap<St
     for _ in 0..100 {
         let more = if token.is_empty() { String::new() } else { format!("&continuationToken={}", urlencoding(&token)) };
         let url = format!("https://achievements.xboxlive.com/users/xuid({})/achievements?maxItems=1000{more}", s.xuid);
-        let v = get(http, s, &url, "2").await?;
+        // Version 4 of the answer carries each achievement's rarity.
+        let v = get(http, s, &url, "4").await?;
         for a in v.get("achievements").and_then(Value::as_array).into_iter().flatten() {
             if let (Some(title), Some(achievement)) = (title_of(a), read_achievement(a)) {
                 by_title.entry(title).or_default().push(achievement);
@@ -187,7 +188,7 @@ fn urlencoding(text: &str) -> String {
 pub async fn title_list(http: &reqwest::Client, s: &Session, title: &str) -> Result<Vec<Achievement>, String> {
     let title: String = title.chars().filter(char::is_ascii_digit).collect();
     let url = format!("https://achievements.xboxlive.com/users/xuid({})/achievements?titleId={title}&maxItems=1000", s.xuid);
-    let v = get(http, s, &url, "2").await?;
+    let v = get(http, s, &url, "4").await?;
     tokio::time::sleep(PAUSE).await;
     Ok(v.get("achievements").and_then(Value::as_array).into_iter().flatten().filter_map(read_achievement).collect())
 }

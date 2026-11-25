@@ -1882,6 +1882,10 @@ fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
 fn epic_logout(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>().0.clone();
     let mut chosen = settings::load(&data);
+    // Its achievements leave the hub with it.
+    if let (Some(user), Ok(db)) = (chosen.epic_user.as_deref(), achievements::store::Store::open(&data)) {
+        db.forget(&achievements::store::Scope::new(cerberus_shared::AchievementSource::Epic, user));
+    }
     chosen.epic_user = None;
     chosen.epic_refresh = None;
     settings::save(&data, &chosen)?;

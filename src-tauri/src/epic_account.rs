@@ -59,10 +59,14 @@ pub struct Session {
     pub access: String,
     pub refresh: String,
     pub name: String,
+    /// The account's id (achievements are asked by it).
+    pub account: String,
 }
 
 #[derive(Deserialize)]
 struct TokenReply {
+    #[serde(default)]
+    account_id: String,
     access_token: String,
     refresh_token: String,
     #[serde(rename = "displayName", default)]
@@ -91,7 +95,7 @@ pub async fn token(client: &reqwest::Client, grant: Grant<'_>) -> Result<Session
         return Err(tr!("A Epic recusou o acesso: entre de novo em Configurações › Epic Games.").into());
     }
     let reply: TokenReply = response.json().await.map_err(|e| e.to_string())?;
-    Ok(Session { access: reply.access_token, refresh: reply.refresh_token, name: reply.display_name })
+    Ok(Session { access: reply.access_token, refresh: reply.refresh_token, name: reply.display_name, account: reply.account_id })
 }
 
 /// A game the account owns.
@@ -352,3 +356,4 @@ mod tests {
         assert_eq!(games[1].next_step, NextStep::Install);
     }
 }
+

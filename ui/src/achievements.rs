@@ -1,7 +1,7 @@
 //! The achievements hub: every game with achievements on Steam and
 //! RetroAchievements, the latest unlocks, and each game's own list.
 
-use cerberus_shared::{Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, GameAward, tr};
+use cerberus_shared::{RecentUnlock, Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, GameAward, tr};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -15,6 +15,7 @@ enum Platform {
     Steam,
     Retro,
     Xbox,
+    Epic,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -60,6 +61,7 @@ fn source_label(source: AchievementSource) -> &'static str {
         AchievementSource::Steam => "Steam",
         AchievementSource::Retro => "RetroAchievements",
         AchievementSource::Xbox => "Xbox",
+        AchievementSource::Epic => "Epic Games",
     }
 }
 
@@ -68,6 +70,7 @@ fn platform_chip(source: AchievementSource) -> impl IntoView {
         AchievementSource::Steam => "ach-src steam",
         AchievementSource::Retro => "ach-src retro",
         AchievementSource::Xbox => "ach-src xbox",
+        AchievementSource::Epic => "ach-src epic",
     };
     view! { <span class=class>{source_label(source)}</span> }
 }
@@ -212,7 +215,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
 
     // Each store on its own line: games, achievements, platinums, a click filters the list.
     let mut by_source: Vec<(Platform, AchievementSource, usize, u32, u32, usize)> = Vec::new();
-    for (p, src) in [(Platform::Steam, AchievementSource::Steam), (Platform::Xbox, AchievementSource::Xbox), (Platform::Retro, AchievementSource::Retro)] {
+    for (p, src) in [(Platform::Steam, AchievementSource::Steam), (Platform::Xbox, AchievementSource::Xbox), (Platform::Epic, AchievementSource::Epic), (Platform::Retro, AchievementSource::Retro)] {
         let mine: Vec<&AchievementGame> = hub.games.iter().filter(|g| g.source == src).collect();
         if mine.is_empty() {
             continue;
@@ -294,6 +297,38 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         </section>
     });
 
+    // An achievement with how many players have it.
+    let rare_item = move |r: &RecentUnlock, unlocked: bool| {
+        let a = r.achievement.clone();
+        let route = Route::AchievementGame(r.source.code().to_string(), r.game_key.clone());
+        let share = a.rarity.map(|p| {
+            let n = format!("{:.1}", p).replace(".0", "");
+            let n = if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt { n.replace('.', ",") } else { n };
+            tr!("{}% dos jogadores", n)
+        }).unwrap_or_default();
+        let title = a.description.clone();
+        view! {
+            <button type="button" class="ach-unlock" class:locked=!unlocked title=title on:click=move |_| library.go(route.clone())>
+                <AchIcon a=a.clone() unlocked />
+                <b>{a.name.clone()}</b>
+                <small>{r.game_name.clone()}</small>
+                <small class="ach-ago">{share}</small>
+            </button>
+        }
+    };
+    let next = (!hub.next.is_empty()).then(|| view! {
+        <section class="shelf">
+            <div class="shelf-h"><div><h2>{tr!("Próximas conquistas")}</h2><p class="muted small shelf-sub">{tr!("As mais comuns que ainda faltam nos jogos em andamento.")}</p></div></div>
+            <div class="ach-strip">{hub.next.iter().map(|r| rare_item(r, false)).collect_view()}</div>
+        </section>
+    });
+    let rarest = (!hub.rarest.is_empty()).then(|| view! {
+        <section class="shelf">
+            <div class="shelf-h"><div><h2>{tr!("Suas mais raras")}</h2><p class="muted small shelf-sub">{tr!("Conquistas que poucos jogadores têm.")}</p></div></div>
+            <div class="ach-strip">{hub.rarest.iter().map(|r| rare_item(r, true)).collect_view()}</div>
+        </section>
+    });
+
     let recent = (!hub.recent.is_empty()).then(|| {
         let items = hub.recent.iter().take(24).map(|r| {
             let a = r.achievement.clone();
@@ -326,6 +361,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
                 Platform::Xbox => g.source == AchievementSource::Xbox,
+                Platform::Epic => g.source == AchievementSource::Epic,
             })
             .filter(|g| in_state(g, state.get()))
             .filter(|g| needle.is_empty() || g.name.to_lowercase().contains(&needle) || g.platform.to_lowercase().contains(&needle))
@@ -353,7 +389,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let seg = |label: &'static str, on: Signal<bool>, set: Callback<()>| {
         view! { <button type="button" class="seg" role="tab" class:on=on aria-selected=move || on.get().to_string() on:click=move |_| set.run(())>{label}</button> }
     };
-    let platforms = [(Platform::All, tr!("Todas")), (Platform::Steam, "Steam"), (Platform::Retro, "RetroAchievements"), (Platform::Xbox, "Xbox")]
+    let platforms = [(Platform::All, tr!("Todas")), (Platform::Steam, "Steam"), (Platform::Retro, "RetroAchievements"), (Platform::Xbox, "Xbox"), (Platform::Epic, "Epic Games")]
         .into_iter()
         .map(|(p, label)| seg(label, Signal::derive(move || platform.get() == p), Callback::new(move |_| platform.set(p))))
         .collect_view();
@@ -367,6 +403,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
                 Platform::Xbox => g.source == AchievementSource::Xbox,
+                Platform::Epic => g.source == AchievementSource::Epic,
             })
             .filter(|g| in_state(g, s))
             .count()
@@ -388,7 +425,9 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         {notes}
         {plats}
         {near}
+        {next}
         {recent}
+        {rarest}
         <section class="shelf" id="ach-all">
             <div class="shelf-h"><h2>{tr!("Todos os jogos")}</h2></div>
             <div class="ach-tools" aria-label=tr!("Filtros das conquistas")>
