@@ -85,7 +85,8 @@ fn github_limit(reply: &Response) -> Option<Option<Duration>> {
 /// Sends the request unless its site is resting, and notes how the site answered.
 pub async fn send(request: RequestBuilder) -> Result<Response, Failed> {
     let (client, built) = request.build_split();
-    let request = built.map_err(Failed::Network)?;
+    // Errors never carry the address: it can hold a key or a token (`?key=`, `access_token=`).
+    let request = built.map_err(|e| Failed::Network(e.without_url()))?;
     let host = request.url().host_str().unwrap_or_default().to_string();
     if let Some(left) = with(|h| h.resting(&host, Instant::now())) {
         return Err(Failed::Resting(left));
@@ -110,7 +111,7 @@ pub async fn send(request: RequestBuilder) -> Result<Response, Failed> {
             if e.is_timeout() || e.is_connect() {
                 with(|h| h.failed(&host, Instant::now(), None));
             }
-            Err(Failed::Network(e))
+            Err(Failed::Network(e.without_url()))
         }
     }
 }
@@ -118,6 +119,18 @@ pub async fn send(request: RequestBuilder) -> Result<Response, Failed> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_request_never_shows_its_address() {
+        let client = reqwest::Client::new();
+        // Nothing listens on port 9 of this machine: the request fails at once.
+        let failed = tauri::async_runtime::block_on(send(client.get("http://127.0.0.1:9/api?key=SECRET&access_token=TOKEN")));
+        let text = match failed {
+            Err(e) => e.to_string(),
+            Ok(_) => String::new(),
+        };
+        assert!(!text.contains("SECRET") && !text.contains("TOKEN"), "{text}");
+    }
 
     #[test]
     fn a_failing_site_rests_longer_each_time_and_is_cleared_by_an_answer() {

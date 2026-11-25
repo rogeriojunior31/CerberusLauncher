@@ -797,8 +797,9 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [x] Remover ou reinstalar um emulador gerenciado apaga os saves dele (DuckStation, PCSX2, Dolphin, PPSSPP, RPCS3,
       Xenia) — [emulação L1](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
       Feito em 25/11/2026: troca que guarda os arquivos do jogador para os 8 emuladores; Remover guarda à parte e devolve ao reinstalar. Validado numa cópia do DuckStation (3 itens) e do PCSX2 (12 itens), idênticos depois.
-- [ ] Refresh tokens da Epic e do Xbox vão para o zip do backup e a restauração troca as contas — [lojas L6](docs/roadmap/lojas-e-contas.md);
+- [x] Refresh tokens da Epic e do Xbox vão para o zip do backup e a restauração troca as contas — [lojas L6](docs/roadmap/lojas-e-contas.md);
       erro de rede com a URL inteira pode vazar token no log ([plano Steam, etapa 0](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md)). — P
+      Feito em 25/11/2026: tokens fora da cópia, contas deste PC intocadas na restauração, erros de rede sem o endereço. Conferido com o backup dos dados reais (11 arquivos, sem token).
 - [ ] `settings.json` gravado por várias tarefas ao mesmo tempo: Sair durante uma renovação devolve a conta — [lojas L1](docs/roadmap/lojas-e-contas.md). — M
 - [ ] Um dono só da sessão de cada conta; a sessão da Epic de 30 min não é zerada ao sair nem presa à conta — [lojas L2](docs/roadmap/lojas-e-contas.md), [conquistas L3](docs/roadmap/conquistas-e-tempo.md). — P/M
 - [ ] Um jogo que falha derruba a sincronização da conta inteira e volta primeiro sempre — [conquistas L1](docs/roadmap/conquistas-e-tempo.md). — M

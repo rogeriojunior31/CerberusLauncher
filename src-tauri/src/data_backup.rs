@@ -30,10 +30,13 @@ const FILES: [&str; 9] = [
 const SETTINGS: &str = "settings.json";
 const MARK: &str = "cerberus-backup.json";
 /// Never written into a copy.
-const SECRETS: [&str; 4] = ["steam_key", "ra_key", "ra_token", "steamgriddb_key"];
+/// (The store accounts' refresh tokens too: a copy must never sign someone in.)
+const SECRETS: [&str; 6] = ["steam_key", "ra_key", "ra_token", "steamgriddb_key", "epic_refresh", "xbox_refresh"];
 /// Belong to this PC: a restore leaves them as they are.
-const THIS_PC: [&str; 11] = [
+/// (The store accounts signed in here stay too: a restore never swaps or signs out an account.)
+const THIS_PC: [&str; 15] = [
     "steam_key", "steam_id", "ra_user", "ra_key", "ra_token", "steamgriddb_key", "recomps_dir", "rom_dirs", "cloud_dir", "retroarch", "monitor",
+    "epic_user", "epic_refresh", "xbox_user", "xbox_refresh",
 ];
 
 fn now() -> u64 {
@@ -195,6 +198,26 @@ mod tests {
         assert!(settings.ra_token.is_none());
     }
 
+    #[test]
+    fn store_accounts_never_go_into_a_copy_nor_change_on_restore() {
+        let old_pc = tempfile::tempdir().unwrap();
+        write(old_pc.path(), SETTINGS, r#"{"epic_user":"Old","epic_refresh":"EPIC-TOKEN","xbox_user":"OldTag","xbox_refresh":"XBOX-TOKEN","start_page":"library"}"#);
+        let zip = old_pc.path().join("copy.zip");
+        export(old_pc.path(), &zip).unwrap();
+        let mut text = String::new();
+        zip::ZipArchive::new(fs::File::open(&zip).unwrap()).unwrap().by_name(SETTINGS).unwrap().read_to_string(&mut text).unwrap();
+        assert!(!text.contains("EPIC-TOKEN") && !text.contains("XBOX-TOKEN"), "{text}");
+
+        // A PC signed in to other accounts keeps them; one signed out stays signed out.
+        let new_pc = tempfile::tempdir().unwrap();
+        write(new_pc.path(), SETTINGS, r#"{"epic_user":"Mine","epic_refresh":"MY-TOKEN"}"#);
+        restore(new_pc.path(), &zip).unwrap();
+        let settings = crate::settings::load(new_pc.path());
+        assert_eq!((settings.epic_user.as_deref(), settings.epic_refresh.as_deref()), (Some("Mine"), Some("MY-TOKEN")));
+        assert!(settings.xbox_user.is_none() && settings.xbox_refresh.is_none(), "no account appears from a copy");
+        assert_eq!(settings.start_page, "library");
+    }
+
     /// With the real data folder (read only): its copy, put back into an empty
     /// folder, has the same files, and no key.
     /// `cargo test -p cerberus-launcher real_backup -- --ignored --nocapture`
@@ -221,6 +244,7 @@ mod tests {
         }
         let settings = crate::settings::load(&fresh);
         assert!(settings.steam_key.is_none() && settings.ra_token.is_none(), "an empty PC gets no keys");
+        assert!(settings.epic_refresh.is_none() && settings.xbox_refresh.is_none(), "an empty PC gets no store account");
         println!("restored {back} files, the same as the originals");
     }
 
