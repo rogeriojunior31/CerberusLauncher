@@ -241,7 +241,7 @@ fn pending_file(data: &Path) -> PathBuf {
 }
 
 fn documents() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join("Documents"))
+    crate::standalone::documents()
 }
 
 fn portable(exe: &Path) -> bool {

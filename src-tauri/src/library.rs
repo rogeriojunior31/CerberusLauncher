@@ -30,8 +30,15 @@ impl LocalLibrary {
                 if let Some(text) = notice {
                     let _ = self.recovery_notice.set(text);
                 }
-                for game in &games {
-                    crate::recomp::update::recover(game)?;
+                // One game's interrupted update that can't be put right yet (a
+                // file held by the antivirus) mustn't keep the whole library from
+                // opening: it is said, and tried again on the next start.
+                let stuck: Vec<String> = games
+                    .iter()
+                    .filter_map(|game| crate::recomp::update::recover(game).err().map(|e| format!("{}: {}", game.name, e)))
+                    .collect();
+                if !stuck.is_empty() {
+                    let _ = self.recovery_notice.set(tr!("Uma atualização interrompida não pôde ser desfeita agora; o Cerberus tenta de novo na próxima vez que abrir. {}", stuck.join(" · ")));
                 }
                 cache.insert(games)
             }

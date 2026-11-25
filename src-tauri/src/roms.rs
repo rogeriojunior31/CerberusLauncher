@@ -177,7 +177,9 @@ fn identify(path: &Path) -> Option<RomFile> {
     }
     let system = match cartridge_system(&ext) {
         Some(system) => system.to_string(),
-        // A disc says which console it's from (or its folder does); a list of discs, by its first.
+        // A list of discs is its first disc's console.
+        None if ext == "m3u" => listed_discs(path).first().and_then(|disc| crate::disc_console::console_of(disc)).or_else(|| crate::disc_console::console_of(path)).unwrap_or_default().to_string(),
+        // A disc says which console it's from (or its folder does).
         None if DISC.contains(&ext.as_str()) => crate::disc_console::console_of(path).unwrap_or_default().to_string(),
         None => return None,
     };
@@ -186,7 +188,9 @@ fn identify(path: &Path) -> Option<RomFile> {
 
 /// "(Disc 2)", "(Disk 2 of 3)", "(CD2)": the disc's number, and the name without the tag.
 fn disc_tag(stem: &str) -> Option<(u32, String)> {
-    let lower = stem.to_lowercase();
+    // ASCII-only lowercase keeps every byte where it was, so the positions found
+    // here cut `stem` at the same places ("İ" would not, and could panic).
+    let lower = stem.to_ascii_lowercase();
     for word in ["(disc", "(disk", "(cd"] {
         let Some(start) = lower.find(word) else { continue };
         let rest = &lower[start + word.len()..];
@@ -284,6 +288,18 @@ pub fn join_discs(found: Vec<RomFile>) -> Vec<RomFile> {
     out
 }
 
+/// Folders that never hold the player's games.
+const SKIPPED_DIRS: [&str; 6] = ["windows", "node_modules", "$recycle.bin", "system volume information", "program files", "program files (x86)"];
+
+/// A folder too wide to look through as a ROM folder when it comes from an
+/// emulator's settings (the last folder browsed can be a whole drive): a drive's
+/// root or the user's own folder.
+pub fn too_wide(dir: &Path) -> bool {
+    let parts = dir.components().filter(|c| matches!(c, std::path::Component::Normal(_))).count();
+    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
+    parts == 0 || home.is_some_and(|h| dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()) == dunce::canonicalize(&h).unwrap_or(h))
+}
+
 /// Every game file under `dirs`, folders included.
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
     let mut found = Vec::new();
@@ -301,12 +317,14 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
         for entry in entries.flatten() {
             looked += 1;
             if looked > MOST_ENTRIES {
-                return found;
+                // Stop looking, but what was found still gets its discs put together.
+                pending.clear();
+                break;
             }
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_lowercase();
-            if path.is_dir() {
-                if !name.starts_with('.') && name != "windows" && name != "node_modules" {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                if !name.starts_with('.') && !SKIPPED_DIRS.contains(&name.as_str()) {
                     pending.push(path);
                 }
                 continue;
@@ -354,10 +372,22 @@ fn same_game(game: &str, rom: &RomFile) -> bool {
     let covers = |pool: &[String]| {
         let has_all = !pool.is_empty() && wanted.iter().all(|w| pool.iter().any(|h| hit(w, h)));
         let mostly_game = pool.iter().filter(|h| wanted.iter().any(|w| hit(w, h))).count() * 2 >= pool.len();
-        has_all && mostly_game
+        // A number the game's name doesn't have is another game of the series:
+        // "God of War II" isn't "God of War", "Crackdown 2" isn't "Crackdown".
+        let another_number = pool.iter().any(|h| is_number_word(h) && !wanted.contains(h));
+        has_all && mostly_game && !another_number
     };
     let from_file = rom.path.file_stem().map(|s| words(&s.to_string_lossy())).unwrap_or_default();
     covers(&words(&rom.title)) || covers(&from_file) || header_fits(game, rom)
+}
+
+/// "2", "64", "ii", "2nd": a word that numbers a game in its series.
+fn is_number_word(word: &str) -> bool {
+    const ROMAN: [&str; 11] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii"];
+    let digits = word.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let suffix = &word[digits.len()..];
+    (!digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) && matches!(suffix, "" | "st" | "nd" | "rd" | "th"))
+        || ROMAN.contains(&word)
 }
 
 /// N64 headers squeeze names into 20 letters, often without spaces
@@ -466,12 +496,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_sequel_is_not_the_first_game() {
+        let disc = |name: &str| RomFile { path: PathBuf::from(format!(r"D:\ps2\{name}.iso")), system: "ps2".into(), title: name.into(), region: "US".into(), n64: None, discs: Vec::new() };
+        assert!(same_game("God of War", &disc("God of War (USA)")));
+        assert!(!same_game("God of War", &disc("God of War II (USA)")));
+        assert!(!same_game("Crackdown", &disc("Crackdown 2 (USA)")));
+        assert!(!same_game("Zone of the Enders", &disc("Zone of the Enders - The 2nd Runner (USA)")));
+        assert!(same_game("Mario Kart 64", &disc("Mario Kart 64 (USA)")));
+        assert!(same_game("Final Fantasy VII", &disc("Final Fantasy VII (USA) (Disc 1)")));
+    }
+
+    #[test]
     fn reads_the_disc_tag() {
         assert_eq!(disc_tag("Final Fantasy VII (USA) (Disc 2)"), Some((2, "Final Fantasy VII (USA)".into())));
         assert_eq!(disc_tag("Metal Gear Solid (Europe) (Disk 1 of 2) (En)"), Some((1, "Metal Gear Solid (Europe) (En)".into())));
         assert_eq!(disc_tag("Game (CD3)"), Some((3, "Game".into())));
         assert_eq!(disc_tag("Discworld (USA)"), None);
         assert_eq!(disc_tag("Game (Disc Edition)"), None);
+        assert_eq!(disc_tag("İstanbul (Disc 2)"), Some((2, "İstanbul".into())), "letters that change size in lowercase");
     }
 
     #[test]

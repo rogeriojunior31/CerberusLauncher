@@ -28,13 +28,34 @@ pub fn console_of(rom: &RomView) -> &'static str {
         "32x" => "32x",
         "sms" => "sms",
         "gg" => "gg",
+        // Read from the disc itself by the scan (SYSTEM.CNF, the GameCube/Wii
+        // header): surer than the folder's name.
+        "ps1" => "ps1",
+        "ps2" => "ps2",
+        "psp" => "psp",
+        "gc" => "gc",
+        "wii" => "wii",
+        "xbox" => "xbox",
+        "x360" => "x360",
         _ => "",
     };
     if !by_system.is_empty() {
         return by_system;
     }
     let path = rom.path.to_lowercase().replace('\\', "/");
-    let has = |w: &str| path.split('/').any(|part| part.contains(w));
+    // Folder names only (not the file's), as whole words: "PCSX2 e PSX" says
+    // psx, not ps2; "Playstation 2" is the two words in a row.
+    let folders: Vec<Vec<&str>> = path
+        .rsplit_once('/')
+        .map(|(dirs, _)| dirs)
+        .unwrap_or("")
+        .split('/')
+        .map(|part| part.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect())
+        .collect();
+    let has = |phrase: &str| {
+        let wanted: Vec<&str> = phrase.split(' ').collect();
+        folders.iter().any(|words| words.windows(wanted.len()).any(|run| run == wanted.as_slice()))
+    };
     if has("xbox 360") || has("x360") {
         "x360"
     } else if has("xbox") {
@@ -419,6 +440,10 @@ mod tests {
         assert_eq!(console_of(&rom("D:/ROMS/x/Mario.z64", "n64")), "n64");
         assert_eq!(console_of(&rom("D:\\ROMS\\Xbox 360\\FIFA Street.iso", "")), "x360");
         assert_eq!(console_of(&rom("D:\\ROMS\\Playstation\\Crash\\Crash Bandicoot (USA).cue", "")), "ps1");
+        assert_eq!(console_of(&rom("D:\\Jogos\\God of War (USA).iso", "ps2")), "ps2", "read from the disc");
+        assert_eq!(console_of(&rom("D:\\PCSX2 e PSX\\Crash (USA).cue", "")), "ps1", "psx, not the ps2 in PCSX2");
+        assert_eq!(console_of(&rom("D:\\ROMS\\Playstation 2\\Okami (USA).iso", "")), "ps2");
+        assert_eq!(console_of(&rom("D:\\ROMS\\Wii U\\x.wua", "")), "wiiu");
         assert_eq!(display_name(&rom("D:/x/Monster Hunter Generations (USA).3ds", "3ds")), "Monster Hunter Generations");
         assert_eq!(display_name(&rom("D:/x/Dragon Ball Z - Budokai Tenkaichi 3 (USA).iso", "ps2")), "Dragon Ball Z: Budokai Tenkaichi 3");
         assert_eq!(display_name(&rom("D:/x/Legend of Zelda, The - Ocarina of Time (USA).z64", "n64")), "The Legend of Zelda: Ocarina of Time");

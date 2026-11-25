@@ -200,7 +200,25 @@ fn rpcs3_paths(yml: &str) -> Vec<String> {
         .collect()
 }
 
-fn documents() -> Option<PathBuf> {
+/// The player's Documents folder where Windows really keeps it: often inside
+/// OneDrive, which is where emulators look too.
+pub(crate) fn documents() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Com::CoTaskMemFree;
+        use windows::Win32::UI::Shell::{FOLDERID_Documents, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
+        // SAFETY: the returned string is read once, then freed with the COM allocator that made it.
+        let known = unsafe {
+            SHGetKnownFolderPath(&FOLDERID_Documents, KF_FLAG_DEFAULT, None).ok().map(|text| {
+                let path = text.to_string().ok().map(PathBuf::from);
+                CoTaskMemFree(Some(text.0 as *const _));
+                path
+            })
+        };
+        if let Some(Some(path)) = known {
+            return Some(path);
+        }
+    }
     std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join("Documents"))
 }
 
@@ -673,5 +691,14 @@ mod tests {
             let args = (e.args)(rom);
             assert_eq!(args.last().map(String::as_str), Some(r"D:\ROMs\game.iso"), "{}", e.id);
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod documents_tests {
+    #[test]
+    fn documents_is_where_windows_keeps_it() {
+        let dir = super::documents().expect("Windows names a Documents folder");
+        assert!(dir.is_dir(), "{}", dir.display());
     }
 }

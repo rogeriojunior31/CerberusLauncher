@@ -124,6 +124,9 @@ pub fn watch(app: AppHandle) {
         let mut games: Vec<(String, String, String)> = Vec::new();
         let mut scanned = Instant::now() - Duration::from_secs(3600);
         let mut playing: HashMap<String, Instant> = HashMap::new();
+        // Seconds already written for each open game, and when: every minute, so
+        // closing Cerberus (or Windows) mid-game keeps all but the last minute.
+        let mut credited: HashMap<String, (u64, Instant)> = HashMap::new();
         let mut live = crate::achievements::live::Live::default();
         let steam_app = |id: &str| id.strip_prefix("steam:").and_then(|n| n.parse::<u32>().ok());
         loop {
@@ -152,6 +155,18 @@ pub fn watch(app: AppHandle) {
                     }
                 }
             }
+            if let Ok(data) = app.path().app_data_dir() {
+                for (id, started) in &playing {
+                    let so_far = started.elapsed().as_secs();
+                    let (done, at) = credited.get(id).copied().unwrap_or((0, *started));
+                    if so_far >= 30 && at.elapsed() >= Duration::from_secs(60) {
+                        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+                        if add(&data, id, so_far - done, now).is_ok() {
+                            credited.insert(id.clone(), (so_far, Instant::now()));
+                        }
+                    }
+                }
+            }
             let ended: Vec<String> = playing.keys().filter(|id| !now_running.contains(*id)).cloned().collect();
             for id in ended {
                 let Some(started) = playing.remove(&id) else { continue };
@@ -161,6 +176,7 @@ pub fn watch(app: AppHandle) {
                     live.stop(n);
                 }
                 let seconds = started.elapsed().as_secs();
+                let already = credited.remove(&id).map_or(0, |(done, _)| done);
                 crate::in_game::session(&app, false);
                 let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: false });
                 // A blink (a launcher checking for updates) isn't a session.
@@ -169,7 +185,7 @@ pub fn watch(app: AppHandle) {
                 }
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };
-                let saved = add(&data, &id, seconds, now);
+                let saved = add(&data, &id, seconds.saturating_sub(already), now);
                 crate::play_log::record(&data, &id, seconds, now);
                 let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { crate::sessions::played_text(seconds / 60 * 60) };
                 crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));

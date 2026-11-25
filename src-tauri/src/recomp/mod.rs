@@ -471,9 +471,13 @@ pub fn preparation(game: &Game) -> Result<Option<Preparation>, String> {
         if copy.is_none() && !prepare.keeps_copy {
             return Ok(None);
         }
-        // A copy picked before Cerberus read the developer's checks gets them now.
+        // A copy picked before Cerberus read the developer's checks gets them now:
+        // the quick ones (name, size), and the full hash only when those don't
+        // already vouch for it, so a page visit never hashes a whole disc.
         if let (Some(main), Some(copy)) = (manifest.main_input(), &copy) {
-            manifest::check(main, Path::new(copy))?;
+            if !manifest::still_fits(main, Path::new(copy)) {
+                manifest::check(main, Path::new(copy))?;
+            }
         }
         let program = prepare.program.iter().filter_map(|p| manifest::inside(p)).map(|p| install.join(p)).find(|p| p.is_file());
         let Some(program) = program else { return Ok(None) };
@@ -999,6 +1003,14 @@ fn problem_with(entry: &CatalogEntry) -> Option<String> {
     let for_this_pc = entry.systems.is_empty() || entry.systems.iter().any(|s| s == os_key());
     if !for_this_pc {
         return Some(tr!("Não tem versão para este sistema.").into());
+    }
+    // A file Cerberus can't unpack (a .rar, a .bat): said on the page, not
+    // after downloading all of it.
+    if let Some(file) = entry.files.get(os_key()) {
+        if assets::kind(&file.name).is_none() && !assets::is_program(&file.name) {
+            let format = file.name.rsplit('.').next().unwrap_or_default().to_uppercase();
+            return Some(tr!("A versão para este PC vem em {} ({}), um formato que o Cerberus ainda não instala. Baixe pela página do projeto.", format, file.name));
+        }
     }
     match entry.kind.as_str() {
         "source" => Some(tr!("Esse projeto só publica o código-fonte; precisa ser compilado. Veja a página do projeto.").into()),

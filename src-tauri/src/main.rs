@@ -311,6 +311,10 @@ fn classic_folders(data: &Path) -> Vec<PathBuf> {
     if chosen.emulator_folders {
         let retroarch = emulation::retroarch(data, chosen.retroarch.as_deref());
         for folder in standalone::game_folders(data, &chosen.emulators, retroarch.as_deref()) {
+            // An emulator's "last folder browsed" can be C:\ itself: not a ROM folder.
+            if roms::too_wide(&folder) {
+                continue;
+            }
             if !dirs.iter().any(|d| folder.starts_with(d)) {
                 dirs.push(folder);
             }
@@ -322,7 +326,10 @@ fn classic_folders(data: &Path) -> Vec<PathBuf> {
 /// Looks through the ROM folders again, off the UI's thread, and tells the window.
 async fn rescan_roms(app: &AppHandle) {
     let dirs = classic_folders(&app.state::<DataDir>().0);
-    let found = tauri::async_runtime::spawn_blocking(move || roms::scan(&dirs)).await.unwrap_or_default();
+    // A scan that fell over keeps the list from before, instead of an empty one.
+    let Ok(found) = tauri::async_runtime::spawn_blocking(move || roms::scan(&dirs)).await else {
+        return;
+    };
     roms::save_index(&app.state::<DataDir>().rom_index(), &found);
     app.state::<RomIndex>().set(found);
     let _ = app.emit("catalog-changed", ());
@@ -499,7 +506,7 @@ fn retroarch_choice(app: &AppHandle) -> (PathBuf, Option<PathBuf>) {
     (data, picked)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn emulation_status(app: AppHandle) -> cerberus_shared::EmulationView {
     let (data, picked) = retroarch_choice(&app);
     emulation::status(&data, picked.as_deref())
@@ -570,7 +577,7 @@ async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, 
 }
 
 /// Starts a classic from the ROM folders in RetroArch.
-#[tauri::command]
+#[tauri::command(async)]
 fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
     let (data, picked) = retroarch_choice(&app);
     let rom = PathBuf::from(&path);
@@ -578,6 +585,9 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     let Some(known) = app.state::<RomIndex>().get().into_iter().find(|r| r.path == rom) else {
         return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
     };
+    // What the scan read from the file itself (cartridge type, the disc's own
+    // header) wins over what the page guessed from folder names.
+    let console = if known.system.is_empty() { console } else { known.system.clone() };
     let chosen = settings::load(&data);
     let retroarch = emulation::retroarch(&data, picked.as_deref());
     if let Some((emulator, exe)) = standalone_for(&data, &chosen, &console, retroarch.is_some()) {
@@ -616,8 +626,20 @@ fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, s
     background::classic_started();
     std::thread::spawn(move || {
         let mut at = session.from;
+        // Written down every minute, so a Cerberus that closes (tray, update,
+        // Windows shutting down) mid-game keeps all but the last minute.
+        let mut credited = 0u64;
+        let mut last_credit = std::time::Instant::now();
+        let unix_now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
         loop {
             let done = child.try_wait().ok().flatten().is_some();
+            if !done && last_credit.elapsed() >= Duration::from_secs(60) {
+                let so_far = started.elapsed().as_secs();
+                if emulation::add_played(&data, &path, so_far - credited, unix_now()).is_ok() {
+                    credited = so_far;
+                }
+                last_credit = std::time::Instant::now();
+            }
             if let (Some(log), Some(format)) = (&session.log, session.format) {
                 let (lines, next) = cheevos::read_new(log, at);
                 at = next;
@@ -634,8 +656,8 @@ fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, s
         }
         cheevos::finish(&data, &session);
         let seconds = started.elapsed().as_secs();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
-        let saved = emulation::add_played(&data, &path, seconds, now);
+        let now = unix_now();
+        let saved = emulation::add_played(&data, &path, seconds.saturating_sub(credited), now);
         play_log::record(&data, &id, seconds, now);
         trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { sessions::played_text(seconds / 60 * 60) }));
         let _ = app.emit("catalog-changed", ());
@@ -705,7 +727,7 @@ fn standalone_for(data: &Path, chosen: &settings::Settings, console: &str, have_
 
 /// Who opens each console's classics, the way `play_classic` decides it, so a
 /// page never offers a Play that would fail.
-#[tauri::command]
+#[tauri::command(async)]
 fn classic_players(app: AppHandle) -> Vec<cerberus_shared::ClassicPlayer> {
     let (data, picked) = retroarch_choice(&app);
     let chosen = settings::load(&data);
@@ -907,7 +929,7 @@ async fn install_all_cores(app: AppHandle, http: State<'_, reqwest::Client>) -> 
 }
 
 /// Which emulator opens a console's games: "retroarch" or a standalone id.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_play_with(app: AppHandle, console: String, who: String) -> Result<cerberus_shared::StandaloneStatus, String> {
     let ok = who == "retroarch" && emulation::core_for(&console).is_some() || standalone::find(&who).is_some_and(|e| e.consoles.contains(&console.as_str()));
     if !ok {
@@ -1665,7 +1687,7 @@ async fn pick_cover(
 
 /// Removes a game from the library. A recomp's files are ours, so they go too;
 /// anything else stays on disk, since it belongs to the user or another launcher.
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_game(
     library: State<'_, LocalLibrary>,
     folder: State<'_, CoverFolder>,
@@ -2044,7 +2066,7 @@ fn set_tray_games(app: AppHandle, games: Vec<Game>) {
     background::set_recent(&app, games);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -> Result<(), String> {
     // What a game reading RECOMPLAUNCHER_MODE and _PAD is told: where Play was pressed, and with what.
     recomp::manifest::set_context(mode.as_deref() == Some("bigpicture"), pad.as_deref() == Some("playstation"));
@@ -2149,7 +2171,7 @@ fn recomp_of(library: &LocalLibrary, id: &str) -> Result<(String, PathBuf), Stri
     Ok((recomp_id, PathBuf::from(game.install_dir)))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_backups(library: State<'_, LocalLibrary>, folders: State<'_, recomp::Folders>, id: String) -> Result<Vec<Backup>, String> {
     let (recomp_id, _) = recomp_of(&library, &id)?;
     Ok(recomp::list_backups(&folders, &recomp_id))
@@ -2291,14 +2313,14 @@ fn open_prepare_license(app: AppHandle, library: State<'_, LocalLibrary>, id: St
 }
 
 /// The game's setup step hasn't run yet (or must run again).
-#[tauri::command]
+#[tauri::command(async)]
 fn preparation_pending(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<bool, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     Ok(!app.state::<sessions::Sessions>().is_running(&id) && recomp::needs_preparation(&game))
 }
 
 /// Runs the setup step now, without starting the game after.
-#[tauri::command]
+#[tauri::command(async)]
 fn prepare_game(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<bool, String> {
     let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
     sessions::prepare_now(&app, &game)
@@ -2673,7 +2695,7 @@ fn remove_from_steam(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 /// Whether Cerberus put this game in Steam.
-#[tauri::command]
+#[tauri::command(async)]
 fn in_steam(id: String) -> bool {
     let Some(steam) = steam::root() else { return false };
     steam_shortcuts::config_dirs(&steam).iter().any(|config| steam_shortcuts::load(config).is_ok_and(|list| steam_shortcuts::contains(&list, &id)))
