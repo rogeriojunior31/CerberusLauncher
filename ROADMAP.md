@@ -940,7 +940,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
       o jogo sai da Biblioteca e a mensagem diz o que aconteceu. Conferir no app com um recomp real de teste.
 
 - [x] Instalação nova adota pasta alheia com o mesmo nome e depois a apaga inteira [RC F1] — feito em 25/11/2026: pasta existente sem a nossa marca nunca é usada; a instalação vai para `<id>-2`, `<id>-3`... Testado. (Uma instalação nossa interrompida antes da marca também vai para a próxima livre; limpar fica com RC F11.)
-- [ ] Reparar/Atualizar sobrescrevem configurações e mods [RC F2]; arquivos removidos pela versão nova ficam [RC F12]
+- [x] Reparar/Atualizar sobrescrevem configurações e mods [RC F2] — feito em 25/11/2026: `.cerberus-files.json` com o hash do que cada versão trouxe; arquivo que o jogador mudou fica, o da versão nova vai para `<nome>.cerberus-new`. Vale a partir da próxima instalação/atualização (as antigas não têm o registro). Testado.; arquivos removidos pela versão nova ficam [RC F12]
 - [ ] Recomp que saiu do catálogo não desinstala [RC F4]; Reparar falha quando a pasta sumiu [RC F5]
 - [ ] Versão comparada como texto; ids antigos; checksum velho em loop [RC F8, RC F9, RC F10]
 - [ ] `.cue`/`.gdi`/`.m3u` sem as faixas [RP F4]; CHD de PS1 Mode 2 Form 2 [RP F15]

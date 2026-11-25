@@ -1328,8 +1328,10 @@ fn prepare_release(
             }
         }
         fs::write(marker_path, marker).map_err(|e| e.to_string())?;
-        if let Some(tx) = &transaction {
-            tx.publish()?;
+        match &transaction {
+            Some(tx) => tx.publish()?,
+            // A first install: what the release shipped, so a later update knows what the player changed.
+            None => update::write_release_files(&destination, &update::release_files(&destination)),
         }
         Ok(target.join(relative))
     };
