@@ -342,7 +342,7 @@ mod tests {
                 ..Default::default()
             };
             make_zip(&release, &[("Game.exe", "old")]);
-            let (exe, _) = prepare_release(&release, &target, &entry, None).unwrap();
+            let (exe, _) = prepare_release(&release, &target, &entry, None, &entry.id).unwrap();
             let original = register(&library, &entry, None, "v1", &exe, &target, false).unwrap();
             fs::write(target.join("slot.sav"), "level 3").unwrap();
             fs::write(target.join("settings.ini"), "language=pt").unwrap();
@@ -366,6 +366,7 @@ mod tests {
                 &self.target,
                 &self.entry,
                 Some(&self.original),
+                &self.entry.id,
             )
             .unwrap();
             (exe, tx.unwrap())
@@ -474,12 +475,12 @@ mod tests {
         let library = LocalLibrary::load(root.path());
         let entry = CatalogEntry { id: "demo".into(), start: Some("Game.exe".into()), ..Default::default() };
         make_zip(&release, &[("Game.exe", "v1"), ("config.ini", "A"), ("readme.txt", "r1")]);
-        let (exe, _) = prepare_release(&release, &target, &entry, None).unwrap();
+        let (exe, _) = prepare_release(&release, &target, &entry, None, &entry.id).unwrap();
         let original = register(&library, &entry, None, "v1", &exe, &target, false).unwrap();
         // The player changes a setting the release ships.
         fs::write(target.join("config.ini"), "B").unwrap();
         make_zip(&release, &[("Game.exe", "v2"), ("config.ini", "A2"), ("readme.txt", "r2")]);
-        let (exe, tx) = prepare_release(&release, &target, &entry, Some(&original)).unwrap();
+        let (exe, tx) = prepare_release(&release, &target, &entry, Some(&original), &entry.id).unwrap();
         tx.unwrap().finish(register(&library, &entry, Some(&original), "v2", &exe, &target, false)).unwrap();
         assert_eq!(fs::read_to_string(target.join("config.ini")).unwrap(), "B", "the player's setting stays");
         assert_eq!(fs::read_to_string(target.join("config.ini.cerberus-new")).unwrap(), "A2", "the new default is beside it");
@@ -496,7 +497,8 @@ mod tests {
                 &install.release,
                 &install.target,
                 &install.entry,
-                Some(&install.original)
+                Some(&install.original),
+                &install.entry.id,
             )
             .is_err()
         );

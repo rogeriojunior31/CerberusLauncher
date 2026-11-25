@@ -1246,10 +1246,17 @@ async fn install_now(
         Some(game) => PathBuf::from(&game.install_dir),
         None => free_install_dir(folders, &entry.id),
     };
-    if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source) {
+    // A folder that is gone (deleted, quarantined) is installed afresh in the
+    // same place: the library entry, play time and chosen copy stay.
+    let folder_gone = installed.is_some() && !target.exists();
+    if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source).filter(|_| !folder_gone) {
         check_install_folder(folders, recomp_id, &target)?;
         backup_saves(folders, recomp_id, &target, tk!("Antes de atualizar"))?;
     }
+    let marker = match installed.as_ref().map(|g| &g.source) {
+        Some(Source::Recomp { recomp_id, .. }) => recomp_id.clone(),
+        _ => entry.id.clone(),
+    };
 
     // Progress is sent at most once per percent; a 70 MB file has thousands of chunks.
     let last_percent = AtomicU64::new(u64::MAX);
@@ -1287,9 +1294,9 @@ async fn install_now(
     report(InstallStep::Unpacking);
     let unpack_target = target.clone();
     let release = effective.clone();
-    let previous = installed.clone();
+    let previous = installed.clone().filter(|_| !folder_gone);
     let prepared = tauri::async_runtime::spawn_blocking(move || {
-        let result = prepare_release(&file, &unpack_target, &release, previous.as_ref());
+        let result = prepare_release(&file, &unpack_target, &release, previous.as_ref(), &marker);
         let _ = fs::remove_file(&file);
         result
     }).await.map_err(|e| e.to_string())?;
@@ -1309,6 +1316,7 @@ fn prepare_release(
     target: &Path,
     entry: &CatalogEntry,
     installed: Option<&Game>,
+    marker: &str,
 ) -> Result<(PathBuf, Option<update::Update>), String> {
     let transaction = installed.map(update::Update::begin).transpose()?;
     let (destination, staging) = match &transaction {
@@ -1318,10 +1326,6 @@ fn prepare_release(
     let prepare = || {
         let program = install::unpack_over(file, &staging, &destination, entry)?;
         let relative = program.strip_prefix(&destination).map_err(|e| e.to_string())?;
-        let marker = match installed.map(|g| &g.source) {
-            Some(Source::Recomp { recomp_id, .. }) => recomp_id,
-            _ => &entry.id,
-        };
         let marker_path = destination.join(MARKER);
         // Replace an archive-supplied marker without following a link.
         if let Err(e) = fs::remove_file(&marker_path) {
@@ -2272,6 +2276,66 @@ mod tests {
         assert!(installed_exe.is_file(), "the list's archive unpacks to the game's exe");
         assert!(Path::new(&game.install_dir).join(MARKER).is_file(), "the install folder stays ours");
         assert!(library.games().unwrap().iter().any(|g| g.id == game.id), "registered in the library");
+    }
+
+    #[test]
+    fn repairing_a_recomp_whose_folder_is_gone_installs_it_again_in_place() {
+        use std::io::{BufRead, Write};
+        use std::net::TcpListener;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            zip.start_file("Game.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"MZ-fake-exe").unwrap();
+            zip.finish().unwrap();
+        }
+        let body = buf.into_inner();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (socket, _) = listener.accept().unwrap();
+                let mut reader = std::io::BufReader::new(&socket);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap() > 0 && !line.trim().is_empty() {
+                    line.clear();
+                }
+                let mut socket = &socket;
+                write!(socket, "HTTP/1.1 200 OK
+Content-Length: {}
+
+", body.len()).unwrap();
+                socket.write_all(&body).unwrap();
+            }
+        });
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        let library = LocalLibrary::load(data.path());
+        let entry = CatalogEntry {
+            id: "gone".into(),
+            title: "gone".into(),
+            name: "Gone".into(),
+            game: "Gone".into(),
+            console: "PC".into(),
+            origin: "pc".into(),
+            tag: Some("1".into()),
+            from_source: true,
+            systems: vec!["windows".into()],
+            kind: "portable".into(),
+            files: std::collections::HashMap::from([("windows".into(), catalog::DirectFile { name: "game.zip".into(), sha256: String::new(), url, hoster: String::new() })]),
+            ..Default::default()
+        };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let cancel = install::Halt::default();
+        let first = tauri::async_runtime::block_on(install_now(&client, &folders, &library, &entry, &cancel, &|_| {})).unwrap();
+        // Deleted by hand (or quarantined): Repair must not refuse the folder.
+        fs::remove_dir_all(&first.install_dir).unwrap();
+        let again = tauri::async_runtime::block_on(install_now(&client, &folders, &library, &entry, &cancel, &|_| {})).unwrap();
+        server.join().unwrap();
+        assert_eq!((again.id.as_str(), again.install_dir.as_str()), (first.id.as_str(), first.install_dir.as_str()));
+        assert!(Path::new(&again.install_dir).join("Game.exe").is_file());
+        assert!(Path::new(&again.install_dir).join(MARKER).is_file());
+        assert_eq!(library.games().unwrap().iter().filter(|g| g.id == again.id).count(), 1);
     }
 
     #[test]

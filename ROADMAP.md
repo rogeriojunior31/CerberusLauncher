@@ -941,7 +941,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 - [x] Instalação nova adota pasta alheia com o mesmo nome e depois a apaga inteira [RC F1] — feito em 25/11/2026: pasta existente sem a nossa marca nunca é usada; a instalação vai para `<id>-2`, `<id>-3`... Testado. (Uma instalação nossa interrompida antes da marca também vai para a próxima livre; limpar fica com RC F11.)
 - [x] Reparar/Atualizar sobrescrevem configurações e mods [RC F2] — feito em 25/11/2026: `.cerberus-files.json` com o hash do que cada versão trouxe; arquivo que o jogador mudou fica, o da versão nova vai para `<nome>.cerberus-new`. Vale a partir da próxima instalação/atualização (as antigas não têm o registro). Testado.; arquivos removidos pela versão nova ficam [RC F12]
-- [ ] Recomp que saiu do catálogo não desinstala [RC F4]; Reparar falha quando a pasta sumiu [RC F5]
+- [x] Reparar falha quando a pasta sumiu [RC F5] — feito em 25/11/2026: pasta que não existe mais é instalada de novo no mesmo lugar, com o mesmo jogo na biblioteca (tempo e cópia ficam). Teste ponta a ponta com servidor local.
+- [ ] Recomp que saiu do catálogo não desinstala [RC F4] (já desinstala sem backup desde 33a2db6; falta guardar a entrada)
 - [ ] Versão comparada como texto; ids antigos; checksum velho em loop [RC F8, RC F9, RC F10]
 - [x] `.cue`/`.gdi`/`.m3u` sem as faixas [RP F4] — feito em 25/11/2026: as faixas da folha vão junto, com os nomes delas (só arquivos ao lado da folha). Testado; conferido com o .cue real do Crash Bandicoot. Falta o selo de verificado por faixa.
 - [ ] CHD de PS1 Mode 2 Form 2 [RP F15]
