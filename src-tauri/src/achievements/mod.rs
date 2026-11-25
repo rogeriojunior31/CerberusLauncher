@@ -6,6 +6,25 @@ pub mod live;
 pub mod retro;
 pub mod steam;
 pub mod steam_api;
+pub mod xbox;
+
+/// Between two syncs of the same source, at least this: the page opened again
+/// (or the library listed) shows what's on disk instead of asking again.
+const SYNC_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The file was written within `SYNC_EVERY`.
+fn recent_file(file: &Path) -> bool {
+    std::fs::metadata(file).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < SYNC_EVERY)
+}
+
+/// The Xbox account's refresh token, renewed in the settings when Xbox Live hands a new one.
+fn save_xbox_refresh(data_dir: &Path, refresh: &str) {
+    let mut chosen = crate::settings::load(data_dir);
+    if chosen.xbox_refresh.as_deref() != Some(refresh) {
+        chosen.xbox_refresh = Some(refresh.to_string());
+        let _ = crate::settings::save(data_dir, &chosen);
+    }
+}
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -354,7 +373,8 @@ pub async fn hub(
         hub.retro = true;
         let file = retro_file(data_dir, &user);
         let kept: Option<RetroKept> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok());
-        let fresh = if online {
+        // Read a few minutes ago: no need to ask RetroAchievements again yet.
+        let fresh = if online && !(kept.is_some() && recent_file(&file)) {
             let (games, recent, points) = futures_util::join!(retro::games(http, &user, &key), retro::recent(http, &user, &key), retro::points(http, &user, &key));
             match (games, points) {
                 (Ok(games), Ok(points)) => {
@@ -375,6 +395,43 @@ pub async fn hub(
             hub.games.extend(r.games);
             hub.recent.extend(r.recent);
             (hub.retro_points, hub.retro_softcore) = r.points;
+        }
+    }
+    if let Some(refresh) = crate::settings::load(data_dir).xbox_refresh {
+        hub.xbox = true;
+        let file = xbox::hub_file(data_dir);
+        let kept: Option<xbox::HubKept> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok());
+        let fresh = if online && !(kept.is_some() && recent_file(&file)) {
+            let got = async {
+                let session = xbox::session(http, &refresh, |r| save_xbox_refresh(data_dir, r)).await?;
+                let games = xbox::games(http, &session).await?;
+                let recent = match xbox::recent(http, &session, &games).await {
+                    Ok(list) => list,
+                    Err(e) => {
+                        eprintln!("xbox recent: {e}");
+                        Vec::new()
+                    }
+                };
+                Ok::<_, String>(xbox::HubKept { games, recent })
+            }
+            .await;
+            match got {
+                Ok(got) => {
+                    let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
+                    let _ = std::fs::write(&file, serde_json::to_string(&got).unwrap_or_default());
+                    Some(got)
+                }
+                Err(e) => {
+                    hub.problems.push(tr!("Xbox: {}", e));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(x) = fresh.or(kept) {
+            hub.games.extend(x.games);
+            hub.recent.extend(x.recent);
         }
     }
     hub.recent.sort_by(|a, b| b.achievement.unlocked_at.cmp(&a.achievement.unlocked_at));
@@ -521,6 +578,18 @@ pub async fn game(
         AchievementSource::Retro => {
             let (user, key_) = retro_account.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
             let (game, achievements) = retro::game(http, &user, &key_, key).await?;
+            Ok(GameAchievements { game, achievements })
+        }
+        AchievementSource::Xbox => {
+            let refresh = crate::settings::load(data_dir).xbox_refresh.ok_or(tr!("Entre com a conta Microsoft em Configurações › Xbox primeiro."))?;
+            // The game as the hub last read it: its progress, and when it was played.
+            let kept: Option<xbox::HubKept> = std::fs::read_to_string(xbox::hub_file(data_dir)).ok().and_then(|t| serde_json::from_str(&t).ok());
+            let mut game = kept.and_then(|k| k.games.into_iter().find(|g| g.key == key)).ok_or(tr!("Esse jogo não está nas conquistas do Xbox."))?;
+            let session = xbox::session(http, &refresh, |r| save_xbox_refresh(data_dir, r)).await?;
+            let achievements = xbox::game_list(http, data_dir, &session, key, game.last_played).await?;
+            game.unlocked = achievements.iter().filter(|a| a.unlocked_at.is_some()).count() as u32;
+            game.total = game.total.max(achievements.len() as u32);
+            game.last_unlock = achievements.iter().filter_map(|a| a.unlocked_at).max();
             Ok(GameAchievements { game, achievements })
         }
     }

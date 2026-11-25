@@ -1419,6 +1419,7 @@ button.emu-chip:hover:not(:disabled) { border-color: var(--accent); }
 .ach-src { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 7px; font-size: 12px; font-weight: 800; letter-spacing: 0.02em; background: var(--fill2); color: var(--ink); white-space: nowrap; }
 .ach-src.steam { background: rgba(102, 192, 244, 0.16); color: #8fd1ff; }
 .ach-src.retro { background: rgba(255, 196, 61, 0.16); color: #ffd36b; }
+.ach-src.xbox { background: rgba(16, 124, 16, 0.2); color: #7fdc7f; }
 .ach-progress { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .ach-progress span { font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ach-bar { flex: 1; height: 8px; border-radius: 8px; background: var(--fill2); overflow: hidden; min-width: 60px; }

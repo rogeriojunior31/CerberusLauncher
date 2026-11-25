@@ -660,6 +660,7 @@ pub struct UnlockNotice {
 pub enum AchievementSource {
     Steam,
     Retro,
+    Xbox,
 }
 
 impl AchievementSource {
@@ -668,6 +669,7 @@ impl AchievementSource {
         match self {
             AchievementSource::Steam => "steam",
             AchievementSource::Retro => "retro",
+            AchievementSource::Xbox => "xbox",
         }
     }
 
@@ -675,6 +677,7 @@ impl AchievementSource {
         match code {
             "steam" => Some(AchievementSource::Steam),
             "retro" => Some(AchievementSource::Retro),
+            "xbox" => Some(AchievementSource::Xbox),
             _ => None,
         }
     }
@@ -788,6 +791,9 @@ pub struct RecentUnlock {
 /// Everything the hub shows.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AchievementsHub {
+    /// The Xbox account is signed in (its games are among `games`).
+    #[serde(default)]
+    pub xbox: bool,
     pub games: Vec<AchievementGame>,
     /// Newest first.
     pub recent: Vec<RecentUnlock>,

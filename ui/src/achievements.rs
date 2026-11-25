@@ -14,6 +14,7 @@ enum Platform {
     All,
     Steam,
     Retro,
+    Xbox,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -58,6 +59,7 @@ fn source_label(source: AchievementSource) -> &'static str {
     match source {
         AchievementSource::Steam => "Steam",
         AchievementSource::Retro => "RetroAchievements",
+        AchievementSource::Xbox => "Xbox",
     }
 }
 
@@ -65,6 +67,7 @@ fn platform_chip(source: AchievementSource) -> impl IntoView {
     let class = match source {
         AchievementSource::Steam => "ach-src steam",
         AchievementSource::Retro => "ach-src retro",
+        AchievementSource::Xbox => "ach-src xbox",
     };
     view! { <span class=class>{source_label(source)}</span> }
 }
@@ -268,6 +271,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::All => true,
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
+                Platform::Xbox => g.source == AchievementSource::Xbox,
             })
             .filter(|g| in_state(g, state.get()))
             .filter(|g| needle.is_empty() || g.name.to_lowercase().contains(&needle) || g.platform.to_lowercase().contains(&needle))
@@ -295,7 +299,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let seg = |label: &'static str, on: Signal<bool>, set: Callback<()>| {
         view! { <button type="button" class="seg" role="tab" class:on=on aria-selected=move || on.get().to_string() on:click=move |_| set.run(())>{label}</button> }
     };
-    let platforms = [(Platform::All, tr!("Todas")), (Platform::Steam, "Steam"), (Platform::Retro, "RetroAchievements")]
+    let platforms = [(Platform::All, tr!("Todas")), (Platform::Steam, "Steam"), (Platform::Retro, "RetroAchievements"), (Platform::Xbox, "Xbox")]
         .into_iter()
         .map(|(p, label)| seg(label, Signal::derive(move || platform.get() == p), Callback::new(move |_| platform.set(p))))
         .collect_view();
@@ -308,6 +312,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::All => true,
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
+                Platform::Xbox => g.source == AchievementSource::Xbox,
             })
             .filter(|g| in_state(g, s))
             .count()
