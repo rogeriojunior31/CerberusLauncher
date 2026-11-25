@@ -882,7 +882,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] `settings.json` [Fu F1, J F1, J F14, Fu F6, lojas L1] — Feito em 25/11/2026 (`state_file.rs`): lido com volta à última cópia boa (`.bak`), o arquivo ruim guardado à parte, gravação com trava; `settings::update` e `renew_token` para quem grava depois de uma espera. Falta migrar as outras ~35 gravações síncronas para `update`.
 - [x] favoritos, coleções, ocultos, notas, arte [Fu F2, B F1, B F2, B F5] — Feito em 25/11/2026 (`state_file.rs`): mudanças por `update` (uma por vez, nunca sobre um arquivo que não leu). Falta a lista de mods.
 - [x] tempo de jogo das lojas e dos clássicos [P F1, C F1] — Feito em 25/11/2026 (`state_file.rs`): dois clássicos fechando juntos somam os dois; arquivo ilegível nunca é trocado por uma sessão só.
-- [ ] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3]
+- [x] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3] — corrigido em 25/11/2026: arquivo que não se lê (em uso, UTF-16) nunca é regravado; gravação em um passo; o que não voltou ao fim da partida fica registrado e volta na próxima (C F10).
 - [ ] arquivos do próprio jogo nos Ajustes e no HedgeModManager [RP F1, RP F2, RP F13]
 - [ ] JSONL com linha cortada, gravações sem `sync_all`, caches com `fs::write` direto [P F10, P F11, Fu F11, Fu F12]
 

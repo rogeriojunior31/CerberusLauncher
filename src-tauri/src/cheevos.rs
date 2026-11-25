@@ -173,9 +173,34 @@ fn undo(text: &str, edit: &Edit) -> String {
     lines.join("\n") + "\n"
 }
 
+/// An emulator's settings file as text: empty when it doesn't exist yet, and
+/// `None` when it exists but can't be read (in use, not UTF-8): then nothing is
+/// written, so the player's settings are never replaced by ours alone.
+fn settings_text(file: &Path) -> Option<String> {
+    match fs::read_to_string(file) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(String::new()),
+        Err(_) => None,
+    }
+}
+
+/// Replaces a settings file in one step (a temporary file, then a rename).
+fn write_settings(file: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut name = file.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(".cerberus-tmp");
+    let temp = file.with_file_name(name);
+    fs::write(&temp, text)?;
+    fs::rename(&temp, file).inspect_err(|_| {
+        let _ = fs::remove_file(&temp);
+    })
+}
+
 /// Writes values into a settings file; returns the edits that undo them.
 fn apply(file: &Path, section: Option<&str>, values: &[(&str, &str)]) -> Vec<Edit> {
-    let mut text = fs::read_to_string(file).unwrap_or_default();
+    let Some(mut text) = settings_text(file) else { return Vec::new() };
     let mut edits = Vec::new();
     for (key, value) in values {
         let (next, original) = set_value(&text, section, key, value);
@@ -185,27 +210,22 @@ fn apply(file: &Path, section: Option<&str>, values: &[(&str, &str)]) -> Vec<Edi
             edits.push(Edit { file: file.to_path_buf(), section: section.map(str::to_string), key: key.to_string(), original, ours });
         }
     }
-    if !edits.is_empty() {
-        if let Some(dir) = file.parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        let _ = fs::write(file, text);
+    if !edits.is_empty() && write_settings(file, &text).is_err() {
+        // Nothing changed on disk: nothing to undo later.
+        return Vec::new();
     }
     edits
 }
 
 /// Values written for good (the account), not undone after the session.
 fn keep(file: &Path, section: Option<&str>, values: &[(&str, &str)]) {
-    let mut text = fs::read_to_string(file).unwrap_or_default();
+    let Some(mut text) = settings_text(file) else { return };
     let before = text.clone();
     for (key, value) in values {
         text = set_value(&text, section, key, value).0;
     }
     if text != before {
-        if let Some(dir) = file.parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        let _ = fs::write(file, text);
+        let _ = write_settings(file, &text);
     }
 }
 
@@ -401,30 +421,60 @@ pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>
 }
 
 /// Puts back what a session changed.
+/// Puts the emulator's own settings back. What couldn't be put back (the
+/// emulator still open, a file in use) stays listed, and is tried again the
+/// next time a classic starts.
 pub fn finish(data: &Path, session: &Session) {
-    undo_all(&session.edits);
-    let _ = fs::remove_file(pending_file(data));
+    keep_left(data, undo_all(&session.edits));
 }
 
-fn undo_all(edits: &[Edit]) {
-    let mut files: Vec<&PathBuf> = edits.iter().map(|e| &e.file).collect();
-    files.dedup();
-    for file in files {
-        let Ok(mut text) = fs::read_to_string(file) else { continue };
-        for edit in edits.iter().filter(|e| &e.file == file) {
-            text = undo(&text, edit);
+fn keep_left(data: &Path, left: Vec<Edit>) {
+    if left.is_empty() {
+        let _ = fs::remove_file(pending_file(data));
+    } else {
+        let file = pending_file(data);
+        if let Some(dir) = file.parent() {
+            let _ = fs::create_dir_all(dir);
         }
-        let _ = fs::write(file, text);
+        let _ = fs::write(file, serde_json::to_string(&left).unwrap_or_default());
     }
+}
+
+/// Undoes the edits; returns the ones that couldn't be undone.
+fn undo_all(edits: &[Edit]) -> Vec<Edit> {
+    let mut files: Vec<&PathBuf> = edits.iter().map(|e| &e.file).collect();
+    files.sort();
+    files.dedup();
+    let mut left = Vec::new();
+    for file in files {
+        let mine: Vec<&Edit> = edits.iter().filter(|e| &e.file == file).collect();
+        let done = match fs::read_to_string(file) {
+            Ok(mut text) => {
+                for edit in &mine {
+                    text = undo(&text, edit);
+                }
+                write_settings(file, &text).is_ok()
+            }
+            // The file is gone: nothing of ours is left in it.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+            Err(_) => false,
+        };
+        if !done {
+            left.extend(mine.into_iter().cloned());
+        }
+    }
+    left
 }
 
 /// A session Cerberus couldn't finish (it closed, or the PC turned off): its changes go back.
 pub fn restore_pending(data: &Path) {
     let file = pending_file(data);
-    if let Some(edits) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Vec<Edit>>(&t).ok()) {
-        undo_all(&edits);
+    match fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Vec<Edit>>(&t).ok()) {
+        Some(edits) => keep_left(data, undo_all(&edits)),
+        None => {
+            let _ = fs::remove_file(file);
+        }
     }
-    let _ = fs::remove_file(file);
 }
 
 /// Reads what the log gained since `from`; returns the new lines and where it ends now.
@@ -449,6 +499,37 @@ pub fn read_new(log: &Path, from: u64) -> (Vec<String>, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_settings_file_that_cant_be_read_is_never_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let ini = dir.path().join("settings.ini");
+        // UTF-16 text (as some Windows tools save it): not readable as UTF-8.
+        let mut utf16: Vec<u8> = vec![0xFF, 0xFE];
+        utf16.extend("[Main]\r\nFoo = 1\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()));
+        fs::write(&ini, &utf16).unwrap();
+        assert!(apply(&ini, Some("Cheevos"), &[("Notifications", "false")]).is_empty());
+        keep(&ini, Some("Cheevos"), &[("Token", "")]);
+        assert_eq!(fs::read(&ini).unwrap(), utf16, "the player's file is untouched");
+    }
+
+    #[test]
+    fn settings_that_couldnt_be_put_back_are_tried_again_later() {
+        let data = tempfile::tempdir().unwrap();
+        let ini = data.path().join("PCSX2.ini");
+        fs::write(&ini, "[Achievements]\nNotifications = true\n").unwrap();
+        let session = Session { edits: apply(&ini, Some("Achievements"), &[("Notifications", "false")]), ..Session::default() };
+        assert_eq!(session.edits.len(), 1);
+        // The file can't be read now (as when it is in use, or saved in another encoding).
+        fs::write(&ini, [0xFF, 0xFE, 0x5B, 0x00]).unwrap();
+        finish(data.path(), &session);
+        assert!(pending_file(data.path()).exists(), "kept to try again");
+        assert_eq!(fs::read(&ini).unwrap(), [0xFF, 0xFE, 0x5B, 0x00], "and the file is left alone");
+        fs::write(&ini, "[Achievements]\nNotifications = false\n").unwrap();
+        restore_pending(data.path());
+        assert!(fs::read_to_string(&ini).unwrap().contains("Notifications = true"), "put back on the next try");
+        assert!(!pending_file(data.path()).exists());
+    }
 
     #[test]
     fn unlocks_are_read_from_each_emulators_log() {
