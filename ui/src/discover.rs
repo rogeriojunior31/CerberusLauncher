@@ -171,7 +171,7 @@ fn save_by_game(on: bool) {
     }
 }
 
-fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
+pub fn matches_search(entry: &RecompEntry, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
     }
@@ -394,7 +394,7 @@ pub fn DiscoverPage() -> impl IntoView {
                 <div>
                     <h1>{tr!("Descobrir")}</h1>
                     <p class="muted">
-                        {tr!("Recomps são versões nativas para PC de jogos de console: você usa a sua cópia original e o jogo roda sem emulador. Catálogo de recomplauncher.com.")}
+                        {tr!("Versões nativas para PC, sem emulador: recomps de jogos de console, que usam a sua cópia original, e ports de jogos de código aberto. Catálogo de recomplauncher.com.")}
                     </p>
                 </div>
                 <div class="row">

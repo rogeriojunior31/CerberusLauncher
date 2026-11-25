@@ -16,6 +16,8 @@ use crate::{Library, api, format, play_game};
 #[derive(Clone)]
 enum Act {
     Play(Game),
+    /// The player's own copy in its emulator: path, console, emulator name.
+    PlayOriginal(String, String, String),
     Running,
     Install(String),
     Cancel(String),
@@ -30,6 +32,7 @@ enum Act {
 fn label(act: &Act, library: Library, entry: &Option<RecompEntry>) -> String {
     match act {
         Act::Play(g) => crate::launch_action(g).0.to_string(),
+        Act::PlayOriginal(_, _, name) => tr!("Jogar o original no {}", name),
         Act::Running => tr!("Voltar ao jogo").into(),
         Act::Install(_) => match entry.as_ref().and_then(|e| e.latest.clone()) {
             Some(r) if r.size > 0 => tr!("Instalar · {}", format::megabytes(r.size)),
@@ -91,6 +94,17 @@ pub fn GamePage(id: String) -> impl IntoView {
                     list.push(Act::Running);
                 } else {
                     list.push(Act::Play(g.clone()));
+                    // A merged classic: its original plays from here too, as on the desktop.
+                    let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+                    let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+                    let players = library.players.get_untracked().unwrap_or_default();
+                    let original = library.roms.get().unwrap_or_default().into_iter()
+                        .find(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
+                        .and_then(|r| {
+                            let console = crate::classics::console_of(&r);
+                            crate::classics::ready_player(&players, console).map(|name| Act::PlayOriginal(r.path.clone(), console.to_string(), name))
+                        });
+                    list.extend(original);
                 }
                 let update = e.as_ref().filter(|_| !g.external && !downloading).and_then(|e| {
                     let newest = e.latest.as_ref()?;
@@ -153,6 +167,10 @@ pub fn GamePage(id: String) -> impl IntoView {
         Act::Play(g) => {
             play(Sound::Select);
             play_game(library, g);
+        }
+        Act::PlayOriginal(path, console, _) => {
+            play(Sound::Select);
+            crate::classics::play_original(library, path, console);
         }
         Act::Install(rid) | Act::Update(rid) | Act::Resume(rid) => {
             play(Sound::Select);

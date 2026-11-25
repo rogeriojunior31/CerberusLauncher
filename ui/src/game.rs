@@ -350,6 +350,23 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool)
     let library = expect_context::<Library>();
     let recomp_id = entry.as_ref().map(|e| e.id.clone());
     let more_open = RwSignal::new(false);
+    // Opened, the menu takes the focus; Escape closes it from anywhere, as the "…" menu does.
+    Effect::new(move |_| {
+        if more_open.get() {
+            request_animation_frame(|| {
+                if let Some(first) = document().query_selector(".split-menu [role=menuitem]").ok().flatten() {
+                    let first: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(first);
+                    let _ = first.focus();
+                }
+            });
+        }
+    });
+    let escape = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
+        if e.key() == "Escape" && more_open.get_untracked() {
+            more_open.set(false);
+        }
+    });
+    on_cleanup(move || escape.remove());
     move || {
         let step = recomp_id.as_ref().and_then(|rid| library.progress.with(|all| all.get(rid).cloned()));
         if let (Some(step), Some(rid)) = (step, recomp_id.clone()) {
@@ -1552,8 +1569,10 @@ pub fn History(id: String) -> impl IntoView {
         if list.is_empty() {
             return None;
         }
-        let failure = list.iter().find(|e| !e.ok).cloned();
-        let latest_failed = list.first().is_some_and(|e| !e.ok);
+        // "No emulation for this console" is a known limit, logged before it stopped being one: not a failure.
+        let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation");
+        let failure = list.iter().find(|e| !e.ok && !limit(e)).cloned();
+        let latest_failed = list.iter().find(|e| !limit(e)).is_some_and(|e| !e.ok);
         let summary = match &failure {
             Some(f) if latest_failed => view! {
                 <p class="problem">{tr!("Última falha · {} · {}", f.step, format::date_time(f.at))}<br/>{f.message.clone()}</p>
@@ -1563,13 +1582,13 @@ pub fn History(id: String) -> impl IntoView {
             }.into_any(),
             None => view! { <p class="muted">{tr!("Nenhuma falha registrada.")}</p> }.into_any(),
         };
-        let rows = list.into_iter().map(|e| view! {
-            <li class:failed=!e.ok>
+        let rows = list.into_iter().map(|e| { let bad = !e.ok && !limit(&e); view! {
+            <li class:failed=bad>
                 <span class="when">{format::date_time(e.at)}</span>
                 <b>{cerberus_shared::i18n::translate(&e.step)}</b>
                 <span>{e.message}</span>
             </li>
-        }).collect_view();
+        } }).collect_view();
         Some(view! {
             <div class="card history">
                 <div class="card-h">

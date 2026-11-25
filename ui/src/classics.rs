@@ -175,7 +175,9 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry], g
         (None, Some(g)) => format!("{} · {}", console_name(console), g.name),
         _ => classic_sub(rom, console, players),
     };
-    crate::tiles::classic_tile(display_name(rom), sub, box_art(rom, console), rom.path.clone(), badge, how.playable())
+    let mut art = box_art(rom, console);
+    art.extend(how.recomp.as_ref().map(crate::art::recomp_covers).unwrap_or_default());
+    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable())
 }
 
 /// The classic is a version of an installed recomp (the recomp was given this
@@ -647,6 +649,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     {blocked}
                     {has_played.then(|| view! { <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played /> })}
                     <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
+                    <AboutCard title=title.clone() />
                     <crate::game::History id=history_id.clone() />
                 </div>
                 <aside class="ov-rail">
@@ -804,4 +807,30 @@ fn file_card(library: Library, rom: &RomView, emulator: Option<String>) -> AnyVi
         </section>
     }
     .into_any()
+}
+
+
+/// The game's Wikipedia summary in the player's language, when there is one.
+#[component]
+fn AboutCard(title: String) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let name = title.clone();
+    let about = LocalResource::new(move || {
+        let name = name.clone();
+        async move { crate::api::wiki_about(name).await.ok().flatten() }
+    });
+    move || {
+        let w = about.get().flatten()?;
+        let url = w.url.clone();
+        Some(view! {
+            <section class="card original">
+                <h3>{tr!("Sobre {}", title)}</h3>
+                <p class="og-summary">{w.extract.clone()}</p>
+                <button type="button" class="link og-wiki" on:click=move |_| {
+                    let url = url.clone();
+                    leptos::task::spawn_local(async move { library.report(crate::api::open_wiki(url).await); });
+                }><crate::icons::Svg icon=crate::icons::Icon::External size=14 />{tr!("Ler na Wikipedia")}</button>
+            </section>
+        })
+    }
 }

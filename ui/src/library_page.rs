@@ -483,11 +483,33 @@ pub fn LibraryPage() -> impl IntoView {
             }.into_any();
         }
         if games.is_empty() && classic_rows.is_empty() {
+            // Nothing here: where the search does find something, one click away.
+            let in_catalog = if needle.is_empty() { 0 } else {
+                let all = library.recomps.get().and_then(Result::ok).unwrap_or_default();
+                crate::versions::one_each(&all).into_iter().filter(|(e, _)| crate::discover::matches_search(e, &needle)).count()
+            };
+            let elsewhere = if needle.is_empty() || away { 0 } else {
+                library.games.with(|all| all.as_ref().and_then(|r| r.as_ref().ok()).map_or(0, |all| all.iter().filter(|g| is_absent(g) && found(library, g, &needle)).count()))
+            };
+            let query = search.get_untracked();
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Search size=32 />
                     <h2>{tr!("Nenhum jogo encontrado")}</h2>
-                    <button type="button" class="btn" on:click=clear>{tr!("Limpar busca e filtros")}</button>
+                    <div class="row">
+                        {(in_catalog > 0).then(|| {
+                            let q = query.clone();
+                            view! { <button type="button" class="btn main" on:click=move |_| crate::discover::open_search(library, q.clone())>
+                                {if in_catalog == 1 { tr!("1 no Descobrir").to_string() } else { tr!("{} no Descobrir", in_catalog) }}
+                            </button> }
+                        })}
+                        {(elsewhere > 0).then(|| view! {
+                            <button type="button" class="btn" on:click=move |_| absent.set(true)>
+                                {if elsewhere == 1 { tr!("1 em Não instalados").to_string() } else { tr!("{} em Não instalados", elsewhere) }}
+                            </button>
+                        })}
+                        <button type="button" class="btn" on:click=clear>{tr!("Limpar busca e filtros")}</button>
+                    </div>
                 </div>
             }.into_any();
         }
