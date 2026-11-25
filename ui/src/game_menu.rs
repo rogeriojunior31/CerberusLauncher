@@ -126,15 +126,26 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
 
 /// Up and down move between the menu's items.
 fn step_items(e: &web_sys::KeyboardEvent) {
-    let step: i32 = match e.key().as_str() {
+    let key = e.key();
+    let step: i32 = match key.as_str() {
         "ArrowDown" => 1,
         "ArrowUp" => -1,
+        "Home" | "End" => 0,
         _ => return,
     };
     e.prevent_default();
     let Some(list) = document().query_selector_all(".ctx [role=menuitem]:not([disabled])").ok() else { return };
     let n = list.length() as i32;
     if n == 0 {
+        return;
+    }
+    // Home and End: the first and the last item.
+    if step == 0 {
+        let index = if key == "Home" { 0 } else { n - 1 };
+        if let Some(item) = list.item(index as u32) {
+            let item: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(item);
+            let _ = item.focus();
+        }
         return;
     }
     let active = document().active_element();

@@ -270,7 +270,8 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
         let label = format!("{label} · {}", g.name);
         view! {
             <div class="qp-zone">
-                <button type="button" class="qp" title=label.clone() aria-label=label
+                // Out of the Tab order: one stop per cover (the keyboard plays from the page or the menu).
+                <button type="button" class="qp" tabindex="-1" title=label.clone() aria-label=label
                     on:click=move |e| { e.stop_propagation(); crate::play_game(library, g.clone()); }>
                     <Svg icon size=20 />
                 </button>

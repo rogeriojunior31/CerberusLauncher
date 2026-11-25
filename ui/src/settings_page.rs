@@ -998,7 +998,15 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
     view! {
         <section class="card set">
             <h3>{tr!("Catálogo de recomps")}</h3>
-            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
+            {row({
+                // Versions, and the games they are of (Descobrir counts games): said together.
+                let library = expect_context::<Library>();
+                let games = library.recomps.with_untracked(|r| r.as_ref().and_then(|r| r.as_ref().ok()).map(|all| crate::versions::one_each(all).len()));
+                match games {
+                    Some(games) if games != s.catalog_count => tr!("{} versões nativas de {} jogos", s.catalog_count, games),
+                    _ => format!("{} recomps", s.catalog_count),
+                }
+            }, if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), tr!("Catálogo atualizado."))>{tr!("Atualizar agora")}</button> })}
             {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes de projetos."),
                 switch(s.site_catalog, tr!("Catálogo do recomplauncher.com"), busy, move || {

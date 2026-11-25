@@ -253,6 +253,39 @@ fn navigate_rows(event: web_sys::KeyboardEvent) {
     }
 }
 
+/// Arrows move between the covers of the grid as they sit on screen (up and
+/// down by a whole row), Home and End to the first and last.
+fn navigate_grid(event: web_sys::KeyboardEvent) {
+    if event.alt_key() || event.ctrl_key() || event.meta_key() || event.shift_key() {
+        return;
+    }
+    let Some(grid) = event.current_target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else { return };
+    let Ok(found) = grid.query_selector_all(".tile-b") else { return };
+    let tiles: Vec<web_sys::HtmlElement> = (0..found.length()).filter_map(|i| found.item(i)).filter_map(|n| n.dyn_into::<web_sys::HtmlElement>().ok()).collect();
+    let Some(active) = document().active_element() else { return };
+    let Some(at) = tiles.iter().position(|t| wasm_bindgen::JsValue::from(t.clone()) == wasm_bindgen::JsValue::from(active.clone())) else { return };
+    // Covers in the first row: the grid's width in columns.
+    // Measured on screen (each cover's own offset is inside its tile).
+    let row_of = |t: &web_sys::HtmlElement| t.get_bounding_client_rect().top().round() as i64;
+    let top = row_of(&tiles[0]);
+    let columns = tiles.iter().take_while(|t| (row_of(t) - top).abs() < 4).count().max(1) as i64;
+    let last = tiles.len() as i64 - 1;
+    let to = match event.key().as_str() {
+        "ArrowRight" => at as i64 + 1,
+        "ArrowLeft" => at as i64 - 1,
+        "ArrowDown" => at as i64 + columns,
+        "ArrowUp" => at as i64 - columns,
+        "Home" => 0,
+        "End" => last,
+        _ => return,
+    };
+    event.prevent_default();
+    if let Some(tile) = tiles.get(to.clamp(0, last) as usize) {
+        let _ = tile.focus();
+        tile.scroll_into_view_with_bool(false);
+    }
+}
+
 #[component]
 pub fn LibraryPage() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -580,7 +613,7 @@ pub fn LibraryPage() -> impl IntoView {
             <section class="catalog-results">
                 <h2>{if count == 1 { tr!("1 jogo").into() } else { tr!("{} jogos", count) }}</h2>
                 <div class=if list { "library-list" } else { "grid" }
-                    on:keydown=move |e| { if list { navigate_rows(e); } }>{items}</div>
+                    on:keydown=move |e| { if list { navigate_rows(e) } else { navigate_grid(e) } }>{items}</div>
             </section>
         }.into_any()
     };
