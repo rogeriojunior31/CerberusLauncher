@@ -884,7 +884,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] tempo de jogo das lojas e dos clássicos [P F1, C F1] — Feito em 25/11/2026 (`state_file.rs`): dois clássicos fechando juntos somam os dois; arquivo ilegível nunca é trocado por uma sessão só.
 - [x] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3] — corrigido em 25/11/2026: arquivo que não se lê (em uso, UTF-16) nunca é regravado; gravação em um passo; o que não voltou ao fim da partida fica registrado e volta na próxima (C F10).
 - [x] arquivos do próprio jogo nos Ajustes [RP F1] — feito em 25/11/2026: arquivo que existe e não se lê (UTF-16, JSON com comentário, em uso) nunca é regravado; JSON com BOM lido; cópia `.cerberus-orig` do original na primeira mudança. Testado.
-- [ ] HedgeModManager e valores de INI com `#`/`;` [RP F2, RP F13]
+- [x] HedgeModManager [RP F2] — feito em 25/11/2026: `ModsDB.ini`/`cpkredir.ini` ilegível ou travado é recusado sem mudança; os dois ganham cópia antes da primeira mudança; gravação inteira ou nada; mod atualizado: o novo entra antes de sair o velho. Testado.
+- [ ] Valores de INI com `#`/`;` [RP F13]
 - [ ] JSONL com linha cortada, gravações sem `sync_all`, caches com `fs::write` direto [P F10, P F11, Fu F11, Fu F12]
 
 ### Lote B — Nada se perde quando algo é interrompido ou o app fecha
@@ -895,7 +896,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Cópia/extração pela metade conta como pronta [RP F3] — feito em 25/11/2026: `fill_folder` copia/extrai numa pasta ao lado e só dá o nome no fim; falha deixa a escolha anterior intacta. Teste de interrupção.
 - [ ] Instalação nova parcial não é notada [RC F11]
 - [x] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6] — corrigido em 25/11/2026: a biblioteca é gravada antes de apagar a antiga; se não gravar, a mudança é desfeita. Testado com a biblioteca bloqueada.
-- [x] Backup do DLSS interrompido vira o "original"; mod atualizado apaga o antigo antes do novo [RP F9, RP F10] — feito em 25/11/2026: DLL guardada por cópia conferida (tamanho e versão) e nunca restaurada danificada; mods do Thunderstore: o novo entra antes de sair o velho; registro de mods pelo state_file. Falta o HedgeModManager (hedge.rs remove antes de mover).
+- [x] Backup do DLSS interrompido vira o "original"; mod atualizado apaga o antigo antes do novo [RP F9, RP F10] — feito em 25/11/2026: DLL guardada por cópia conferida (tamanho e versão) e nunca restaurada danificada; mods do Thunderstore: o novo entra antes de sair o velho; registro de mods pelo state_file. HedgeModManager feito em 25/11/2026 (o novo entra antes de sair o velho).
 - [ ] Preparação órfã, duas em paralelo [RP F12]; restos `.part`/`.tmp` [P F23]
 - [x] Importar dados desfeito pelo cache na memória [Fu F5, P F5, P F17] — feito em 25/11/2026: a cópia é conferida e preparada à parte e trocada no próximo início, antes de qualquer leitura; recusada com jogo/download em andamento; guardar os dados atuais é obrigatório; tempo de jogo mesclado (maior por jogo); entradas acima de 256 MiB recusadas; só as 3 últimas before-restore ficam. Conferido com os dados reais.
 
