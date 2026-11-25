@@ -1,7 +1,45 @@
 # Roadmap
 
-Comparado ao RecompLauncher (referência de comportamento) e ao Hydra. Cada onda só fecha com teste
-real, não só compilação.
+Comparado ao RecompLauncher (referência de comportamento), ao Hydra, ao Playnite e ao Heroic. Cada onda só
+fecha com teste real, não só compilação.
+
+## Mapa rápido (atualizado em 25/11/2026)
+
+Onde estamos e o que vem a seguir, para não se perder. O detalhe de cada item está nas ondas abaixo; a Onda 7 é o
+levantamento de 25/11 (um agente por launcher: Heroic, Hydra, Playnite e RecompLauncher).
+
+**Feito agora (branch `ajustes-rapidos`, 23 a 25/11, sem PR ainda):**
+
+- Lojas: jogos do app Xbox e do PC Game Pass (com arte oficial e instalação pelo app Xbox), login da Epic (inclusive
+  com Xbox/Google/Apple) e da conta Microsoft, biblioteca inteira das duas contas com os não instalados, filtro por
+  plataforma e não instalados em Todos; Game Pass não duplica jogo comprado em outra loja.
+- Conquistas: banco local `achievements.db` (SQLite) que nunca perde um desbloqueio, sincronização econômica com espera
+  gravada depois de recusa; Xbox completo (249 jogos na conta real) e Epic; cartão por plataforma, Platinados e Perto
+  dos 100% com Ver todos, Próximas conquistas e Suas mais raras; aba Conquistas nos jogos Epic e Xbox.
+- Tempo de jogo das contas Xbox (horas e última vez) e Epic na Biblioteca, sincronizado em segundo plano.
+- Página do jogo com dados da loja também para Epic e Xbox (Steam quando vende lá, senão Microsoft Store).
+- Capas com selo de origem (Steam, Epic, Xbox/Game Pass, Recomp, emulador e console) e fotos reais dos consoles
+  (Hydra + domínio público do Evan Amos).
+- Backup dos saves dos emuladores, Xenia e xemu para os clássicos de Xbox, varredura de bugs do backend.
+
+**Próximos, nesta ordem:**
+
+1. **Saves de qualquer jogo de PC** (Steam, Epic, Xbox, GOG, adicionados) pelos locais conhecidos, reaproveitando o
+   backup e a nuvem dos recomps — apontado por Hydra, Heroic e Playnite. (7.1)
+2. **GOG**: jogos instalados pelo GOG Galaxy, depois login e biblioteca, conquistas e tempo de jogo como Epic e Xbox.
+   Depois Amazon, Ubisoft, EA e Battle.net. (7.2)
+3. **Steam sem chave** (token da sessão da loja) e **biblioteca da família**. (6.1)
+4. **Gerenciar jogos das lojas sem sair do Cerberus**: desinstalar, verificar e mover pela própria loja; argumentos de
+   inicialização da Steam. (7.2)
+5. **Ações antes e depois de jogar** e variáveis de ambiente por jogo. (6.4, 7.4)
+6. **Metadados guardados na biblioteca** (gênero, desenvolvedora, ano, série...) que destravam filtros salvos,
+   agrupamento e edição de vários jogos. (7.3, 6.3)
+7. **Estatísticas e "seu ano"** só com dados locais. (6.3, 7.3)
+8. **Troféus do RPCS3 e do shadPS4** e **foto no momento da conquista**. (5.4, 6.1)
+9. **Recomps**: escolher, fixar e voltar uma versão; campos do SDK ainda ignorados; RVZ e cia.; janela "Resolver
+   problemas" com o log do jogo. (7.5)
+10. Pequenos de alto retorno: aviso de sem internet, central de notificações, som e volume do aviso de conquista,
+    HowLongToBeat e anti-cheat na página do jogo. (7.4, 7.6)
 
 ## Referência Hydra e próximas entregas
 
@@ -398,7 +436,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - `API_GetGameInfoAndUserProgress` dá as conquistas do jogo com pontos, emblema e data, separando normal e hardcore.
       - `API_GetUserCompletionProgress` dá todos os jogos com o progresso de cada um, para o hub.
       - Falta descobrir o id do jogo no RA para cada clássico (pelo hash da ROM ou pela linha do log do RetroArch). *A validar.*
-- [ ] **Epic (fase 3, precisa de login na conta Epic):**
+- [x] **Epic (fase 3, precisa de login na conta Epic):** feito em 25/11/2026 (conquistas e tempo de jogo, no banco local).
       - Login OAuth com o cliente público do launcher, o mesmo do Legendary, do Heroic e do Hydra.
       - Conquistas pela GraphQL do launcher (`playerAchievementGameRecordsBySandbox`).
       - Tempo de jogo pelo `library-service` (`/library/api/public/playtime/account/<id>/all`).
@@ -538,19 +576,25 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
       `earned.json`, linhas do log) e mostrar no hub; nomes e ícones num JSON nosso no catálogo. — M
 - [ ] **Foto no momento da conquista** [H]: capturar a janela do jogo quando a conquista cai; no RetroArch, ligar a
       opção dele de foto ao desbloquear só durante a partida. — M
-- [ ] Conquistas da Epic [H] (GraphQL da loja da Epic), depois do login da Epic (6.2). — M
+- [x] Conquistas da Epic [H] (GraphQL da loja da Epic), depois do login da Epic (6.2). — M (25/11/2026)
+- [x] **Conquistas do Xbox** (conta Microsoft): todos os jogos da conta, com raridade, guardados no banco local. (25/11/2026)
+- [x] **Banco local de conquistas** (`achievements.db`, SQLite): um desbloqueio visto nunca se perde; 5 min entre
+      sincronizações e espera de 2 min a 6 h depois de recusa, gravadas. (25/11/2026)
+- [x] Hub: cartão por plataforma, Ver todos em Platinados e Perto dos 100%, Próximas conquistas e Suas mais raras. (25/11/2026)
 - [ ] Separar conquistas do jogo base e das DLCs [H]. — P
 
 ### 6.2 Biblioteca e lojas (prioridade 2)
 
-- [x] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" e
-      "Desinstalar" por `steam://install|uninstall/<id>`, e o jogo vira instalado sozinho quando aparece o
-      `appmanifest_*.acf`. — M
+- [x] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" por
+      `steam://install/<id>`, e o jogo vira instalado sozinho quando aparece o `appmanifest_*.acf`. — M
+      - [ ] "Desinstalar" por `steam://uninstall/<id>`: ainda não existe (conferido no código em 25/11/2026).
 - [ ] Opções de inicialização passadas à Steam: `steam://run/<id>//<argumentos>/` [H]. — P
 - [ ] Ler o `appinfo.vdf` da Steam para saber o executável real de cada jogo [H] (medir a partida certo). — M
-- [ ] **Login da Epic e biblioteca completa** [H]: login numa janela da Epic e o Legendary para listar, instalar,
-      verificar e abrir (conferir a licença do Legendary, GPL, antes de distribuir junto); tempo de jogo da Epic pelos
-      servidores dela. — G
+- [x] **Login da Epic e biblioteca completa** [H]: login na página da Epic, biblioteca inteira com os não instalados,
+      tempo de jogo pelos servidores dela; instalar abre o launcher da Epic. (25/11/2026)
+      - [ ] Instalar, verificar e abrir sem o launcher da Epic (Legendary é GPL: só como programa à parte). — G
+- [x] **Conta Microsoft e PC Game Pass**: jogos do app Xbox instalados, catálogo do Game Pass e jogos de PC da conta,
+      instalando pelo app Xbox; tempo de jogo e última vez da conta. (24–25/11/2026)
 - [ ] **Importar o tempo de jogo das lojas** com escolha: sempre, só para jogos novos ou nunca; "última vez" da loja só
       vale se for mais nova [P]. Tempo separado por fonte (Cerberus, Steam, Epic), editar e zerar [H]. — P
 - [ ] **Achar jogos fora das lojas** [P][H]: atalhos do Menu Iniciar (ignorando desinstaladores, setup, vc_redist,
@@ -559,8 +603,9 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 - [ ] O mesmo jogo na Steam e na Epic aparece como um só [H]. — M
 - [ ] Ordem pelo nome sem "The"/"A" e com algarismos romanos na ordem certa [P]. — P
 - [ ] Tamanho instalado de cada jogo, agrupar por disco e mover um jogo de PC para outro disco [P][H]. — M
-- [ ] **Página do jogo com dados da loja** [H]: descrição, requisitos mínimo e recomendado, idiomas, suporte a controle,
-      imagens e trailers (`store.steampowered.com/api/appdetails`). — M
+- [x] **Página do jogo com dados da loja** [H]: descrição, requisitos mínimo e recomendado, idiomas, suporte a controle,
+      imagens e trailers (`store.steampowered.com/api/appdetails`); Epic e Xbox pela Steam ou pela Microsoft Store
+      (`ms_store.rs`). — M (25/11/2026)
 - [ ] Atalho no Menu Iniciar além da área de trabalho [H][R]. — P
 
 ### 6.3 Organizar a coleção (prioridade 3)
@@ -615,6 +660,9 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
       shadPS4 pelas releases oficiais; conferir BIOS e firmware (sem baixar BIOS); levar o login do RetroAchievements
       para eles e ler as conquistas pelos logs; troféus do RPCS3 e do shadPS4; tempo de jogo deles. — G
 - [ ] Cartões de memória de PS1 e PS2: listar e exportar saves [H]. — M
+      - [x] Backup e restauração dos memory cards e estados dos emuladores (`emulator_saves.rs`, 24/11/2026).
+- [x] Xenia e xemu para os clássicos de Xbox 360 e Xbox (24/11/2026).
+- [x] Selo de origem na capa (loja, Recomp, emulador e console) e fotos reais dos consoles (25/11/2026).
 
 ### 6.6 Big Picture (prioridade 6)
 
@@ -657,6 +705,79 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 - Placares, amigos, chat, perfil público e "Wrapped" [H]; relatos "Como rodou?", aviso de versão que trava, seguir
   desenvolvedores e pedidos de recomp [R]; arte do SteamGridDB sem chave do jogador vem do servidor do
   Hydra [H]. Para nós, só com servidor próprio.
+
+## Onda 7: consolidado de Heroic, Hydra, Playnite e RecompLauncher (levantamento de 25/11/2026)
+
+Quatro agentes, um por launcher, leram o código de cada um e o do Cerberus. Aqui entra só o que **não** estava nas
+ondas 5 e 6. Licenças: **Heroic GPL-3** e **RecompLauncher GPL** só ideias; **Hydra MIT**, **Playnite MIT** e
+**RecompLauncher-SDK MIT** podem ser adaptados com crédito. Origem: [E] Heroic, [H] Hydra, [P] Playnite,
+[R] RecompLauncher, [S] SDK. Esforço: P, M, G.
+
+### 7.1 Saves de jogos de PC (prioridade 1)
+
+- [ ] Achar os saves de qualquer jogo de PC pelos locais conhecidos (manifesto do Ludusavi/PCGamingWiki; conferir a
+      licença dos dados) e usar o mesmo backup, rodízio e nuvem por pasta dos recomps [H][E][P]. — M
+- [ ] Versões de backup com nome, conflito entre dois PCs resolvido com escolha clara, e caminho de save adicionado
+      pelo jogador [H]. — M
+- [ ] Backup automático da biblioteca do Cerberus (configurações, notas, tempo, artes próprias) diário ou semanal com
+      rodízio; hoje só o zip manual (`data_backup.rs`) [P]. — P
+
+### 7.2 Mais lojas e gerenciar os jogos delas (prioridade 2)
+
+- [ ] **GOG**: jogos instalados pelo GOG Galaxy (registro do Windows), depois login, biblioteca com os não instalados,
+      conquistas e tempo de jogo [E]. — P para os instalados, G para a conta
+- [ ] Amazon (Prime Gaming), itch.io, Ubisoft Connect, EA app e Battle.net: primeiro os instalados, depois contas [E]. — P/M cada
+- [ ] Desinstalar, verificar e mover jogos das lojas pelos próprios links ou janelas delas (Steam, Epic, Xbox) [E][P]. — P
+- [ ] Argumentos de inicialização para jogos da Steam (`steam://run/<id>//<args>`); Epic e Xbox a verificar [E]. — P
+- [ ] DLC: listar e, quando a loja deixar, instalar [E]. — M
+- [ ] Fila de downloads com ordem e "desligar o PC ao terminar" [E]. — P/M
+
+### 7.3 Biblioteca rica (prioridade 3)
+
+- [ ] **Metadados guardados no jogo**: gênero, desenvolvedora, publicadora, ano, série, classificação, descrição, links e
+      nota da crítica; baixados da loja ou do IGDB, escolhendo a fonte por campo e comparando antes de sobrescrever [P].
+      É o que destrava filtros salvos, agrupar e editar vários jogos (6.3). — G
+- [ ] Seleção de vários jogos na grade (caixas de seleção) para ocultar, coleção, situação [P]. — M
+- [ ] Lista de exclusão na importação (o jogo removido não volta) [P]. — P
+- [ ] Perfil local e "seu ano": tempo total, jogos e conquistas por mês, por loja e por situação, a partir de
+      `sessions.jsonl` e `achievements.db` [H][P]. — M
+- [ ] Descobrir também para jogos de PC: listas como Steam250 (joias escondidas, melhores do ano), filtros por ano e
+      gênero, abrindo a página da loja [H]. — M
+
+### 7.4 Partidas e avisos (prioridade 4)
+
+- [ ] Script antes e depois de jogar e variáveis de ambiente por jogo, também para jogos de loja [E][P]. — P
+- [ ] Aviso de sem internet e modo offline por jogo [E]. — P
+- [ ] Som do aviso de conquista com volume e som próprio do jogador [H]. — P
+- [ ] Controles além do XInput (DualSense, Switch Pro) para os combos e o menu por cima do jogo (SDL) [R]. — M/G
+- [ ] Discord Rich Presence [R]. — P
+
+### 7.5 Recomps (prioridade 5)
+
+- [ ] Escolher uma versão anterior, fixar e voltar (hoje só "pausar atualizações") [R]. — M
+- [ ] Campos do `recomplauncher.json` que o Cerberus ainda ignora: `extract`, `contains`, `destination` e
+      `check.nup_build_id` [S]. — P/M
+- [ ] Colocar as entradas como link em vez de cópia (ISOs grandes ocupam o dobro) [S]. — P
+- [ ] Teclas do jogo nos ajustes (`settings[].bindings`) [S]. — M
+- [ ] Liberar espaço depois de um build com `keeps_copy` [R]. — P
+- [ ] Janela "Resolver problemas": guardar a saída do jogo num log, tirar a marca "baixado da internet", preferir a placa
+      de vídeo mais rápida, avisar caminho com acento, exportar os logs num zip [R]. — M
+- [ ] Conquistas dos recomps pelo canal de sessão e pelos arquivos de unlock do ReXGlue (`title_id`) [R]. — M/G
+
+### 7.6 Página do jogo e aparência (prioridade 6)
+
+- [ ] HowLongToBeat (não oficial, pode quebrar) e situação do anti-cheat [E][H]. — P/M
+- [ ] Temas instaláveis (CSS) e editor de tema [H][P]. — M
+- [ ] Promoções e lista de desejos [E]. — M
+- [ ] Extensões/plugins com permissões; o primeiro passo são os scripts da 7.4 [P][R]. — G
+
+### Onde o Cerberus já está à frente (segundo os quatro levantamentos)
+
+- Hub de conquistas entre Steam, RetroAchievements, Xbox e Epic, guardado para sempre e com aviso por cima do jogo.
+- Xbox app, Game Pass e conta Microsoft (nenhum dos outros tem).
+- Recomps com catálogo, Easy Setup, ajustes por jogo, nuvem sem conta e listas por URL.
+- Emuladores instalados com um clique e RetroAchievements levado para eles.
+- Mods do GameBanana, troca de DLSS, filtros visuais e pacotes do Windows.
 
 ## Fora de vez
 
