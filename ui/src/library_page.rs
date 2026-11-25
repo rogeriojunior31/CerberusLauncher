@@ -44,7 +44,7 @@ impl Category {
     fn meaning(self) -> Option<&'static str> {
         match self {
             Category::Recomps => Some(tr!("Versões nativas para PC de jogos de console (recomps, decomps e ports): rodam sem emulador, quase sempre com a sua cópia original do jogo.")),
-            Category::Pc => Some(tr!("Jogos de PC: da Steam, da Epic e os que você adicionou.")),
+            Category::Pc => Some(tr!("Jogos de PC: da Steam, da Epic, do app Xbox e os que você adicionou.")),
             Category::Classics => Some(tr!("Seus jogos originais (ROMs e discos) das suas pastas, abertos num emulador. Os que têm versão nativa instalada ficam juntos dela.")),
             _ => None,
         }

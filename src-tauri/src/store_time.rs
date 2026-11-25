@@ -56,7 +56,7 @@ pub fn apply(data: &Path, games: &mut [Game]) {
 }
 
 fn is_store(game: &Game) -> bool {
-    matches!(game.source, Source::Steam { .. } | Source::Epic { .. })
+    matches!(game.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. })
 }
 
 /// A folder as compared: lower case, backslashes, ending in one.
@@ -134,6 +134,7 @@ pub fn watch(app: AppHandle) {
             if scanned.elapsed() >= Duration::from_secs(60) {
                 let mut found = crate::steam::installed_games();
                 found.extend(crate::epic::installed_games());
+                found.extend(crate::xbox::installed_games());
                 let before: HashSet<String> = games.iter().map(|(id, _, _)| id.clone()).collect();
                 games = found.into_iter().map(|g| (g.id, g.install_dir, g.name)).collect();
                 // A game finished installing (or was removed) in its store: the library shows it.

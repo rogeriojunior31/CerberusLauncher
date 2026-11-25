@@ -982,6 +982,8 @@ pub struct SessionEvent {
 pub enum Source {
     Steam { app_id: u32 },
     Epic { app_name: String, namespace: String, item_id: String },
+    /// A PC game from the Xbox app (Game Pass, Microsoft Store), by its package family and app id.
+    Xbox { family: String, app: String },
     /// Any executable the user added by hand.
     Local { exe: String },
     /// A recomp installed from its developer's GitHub releases.

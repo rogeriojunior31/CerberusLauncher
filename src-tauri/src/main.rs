@@ -4,6 +4,7 @@
 mod art_cache;
 mod emulator_saves;
 mod epic;
+mod xbox;
 mod disk;
 mod iso9660;
 mod library;
@@ -1557,6 +1558,7 @@ async fn list_games(
     let scan = tauri::async_runtime::spawn_blocking(|| {
         let mut found = steam::installed_games();
         found.extend(epic::installed_games());
+        found.extend(xbox::installed_games());
         found
     });
     games.extend(scan.await.unwrap_or_default());
@@ -2093,6 +2095,10 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
         Source::Steam { app_id } if game.install_dir.is_empty() => format!("steam://install/{app_id}"),
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
+        // Through Windows, as the Start menu does (Xbox app sign-in and Game Pass included).
+        Source::Xbox { family, app: app_id } => {
+            return xbox::launch(family, app_id).map_err(|e| tr!("Não foi possível abrir o jogo pelo app Xbox: {}", e));
+        }
         Source::Local { .. } => {
             let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or(tr!("O jogo foi removido da biblioteca."))?;
             ready_to_play(&current)?;
@@ -2537,6 +2543,7 @@ fn create_shortcut(app: AppHandle, library: State<'_, LocalLibrary>, id: String)
         None => {
             let mut found = steam::installed_games();
             found.extend(epic::installed_games());
+            found.extend(xbox::installed_games());
             found.into_iter().find(|g| g.id == id).ok_or(tr!("Esse jogo não está mais na biblioteca."))?
         }
     };
@@ -2557,6 +2564,7 @@ fn any_game(library: &LocalLibrary, id: &str) -> Result<Game, String> {
     }
     let mut found = steam::installed_games();
     found.extend(epic::installed_games());
+    found.extend(xbox::installed_games());
     found.into_iter().find(|g| g.id == id).ok_or_else(|| tr!("Esse jogo não está mais na biblioteca.").to_string())
 }
 
@@ -3044,6 +3052,12 @@ fn main() {
             let steam_covers = steam::root().map(|root| steam::cover_cache_dir(&root));
             if let Some(Ok(steam_covers)) = steam_covers.map(dunce::canonicalize) {
                 app.asset_protocol_scope().allow_directory(steam_covers, true)?;
+            }
+            // The Xbox app's games: their logo files only, not the folders.
+            for game in xbox::installed_games() {
+                if let Some(cover) = game.cover_path {
+                    let _ = app.asset_protocol_scope().allow_file(cover);
+                }
             }
             Ok(())
         })

@@ -38,6 +38,7 @@ pub fn source_name(source: &Source) -> &'static str {
     match source {
         Source::Steam { .. } => tr!("Steam"),
         Source::Epic { .. } => tr!("Epic Games"),
+        Source::Xbox { .. } => "Xbox",
         Source::Local { .. } => tr!("Adicionado à mão"),
         Source::Recomp { .. } => tr!("Recomp"),
     }
