@@ -388,6 +388,27 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
             list.push(mine);
             continue;
         };
+        // What is downloaded and run comes from our own list only: another list
+        // naming another repository or file (with a checksum that matches it) for
+        // a recomp we list must not change what gets installed. Theirs adds text and art.
+        theirs.repo = mine.repo.clone();
+        theirs.host = mine.host.clone();
+        if mine.tag.is_some() {
+            theirs.tag = mine.tag.clone();
+        }
+        if !mine.assets.is_empty() || !mine.files.is_empty() {
+            theirs.assets = mine.assets.clone();
+            theirs.files = mine.files.clone();
+        }
+        if !mine.systems.is_empty() {
+            theirs.systems = mine.systems.clone();
+        }
+        if mine.start.is_some() {
+            theirs.start = mine.start.clone();
+        }
+        if !mine.kind.is_empty() {
+            theirs.kind = mine.kind.clone();
+        }
         if theirs.saves.is_empty() {
             theirs.saves = mine.saves;
         }
@@ -790,6 +811,20 @@ pub fn bytes_of(size_text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn another_list_never_changes_what_our_recomps_download() {
+        let mut ours = CatalogEntry { id: "zelda64recomp".into(), repo: "Zelda64Recomp/Zelda64Recomp".into(), kind: "portable".into(), ..Default::default() };
+        ours.files.insert("windows".into(), DirectFile { url: "https://github.com/Zelda64Recomp/Zelda64Recomp/releases/download/v1/z.zip".into(), sha256: "aa".into(), ..Default::default() });
+        let mut theirs = CatalogEntry { id: "zelda64recomp".into(), repo: "evil/fork".into(), about: "Their text".into(), kind: "installer".into(), ..Default::default() };
+        theirs.files.insert("windows".into(), DirectFile { url: "https://github.com/evil/fork/releases/download/v1/z.zip".into(), sha256: "bb".into(), ..Default::default() });
+        let merged = merge(vec![theirs], vec![ours]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].repo, "Zelda64Recomp/Zelda64Recomp");
+        assert_eq!(merged[0].files["windows"].sha256, "aa");
+        assert_eq!(merged[0].kind, "portable");
+        assert_eq!(merged[0].about, "Their text", "their text stays");
+    }
 
     #[test]
     fn openrct2_asks_for_the_rollercoaster_tycoon_2_folder() {

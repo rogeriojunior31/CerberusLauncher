@@ -950,7 +950,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 ### Lote E — Segurança
 
-- [ ] Catálogo de terceiros manda no repositório e no checksum do catálogo próprio [RC F3]
+- [x] Catálogo de terceiros manda no repositório e no checksum do catálogo próprio [RC F3] — feito em 25/11/2026: para os jogos do catálogo próprio, repositório, servidor, versão, arquivos/checksum, sistemas, programa e tipo vêm só dele; o site completa texto e arte. Testado.
+- [ ] Assinar o `recomps.json` do catálogo próprio (minisign/ed25519) e recusar cópia sem assinatura [RC F3, 2ª parte]
 - [ ] Autoatualização sem assinatura e às vezes sem hash; instalador no nome final [J F2, RC F15, Fu F15]
 - [ ] Fontes no formato RecompLauncher baixam de qualquer servidor [RC F16]; executáveis de terceiros sem hash [RP F8, C F23]
 - [ ] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3]
