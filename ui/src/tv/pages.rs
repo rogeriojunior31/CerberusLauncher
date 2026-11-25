@@ -339,6 +339,23 @@ fn grid_rows(len: usize) -> Vec<usize> {
 
 /// Every game in the library, the classics an emulator here opens too, the
 /// ones played lately first.
+/// Lowercase and without accents, so "pokemon" finds "Pokémon".
+pub fn fold(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            c => c,
+        })
+        .collect()
+}
+
 #[component]
 pub fn LibraryGrid() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -354,6 +371,7 @@ pub fn LibraryGrid() -> impl IntoView {
     library.roms.refetch();
     let games = Memo::new(move |_| {
         let which = kind.get();
+        let needle = fold(&tv.lib_search.get());
         let mut list: Vec<Item> = library_games(library)
             .into_iter()
             .filter(|g| match which {
@@ -374,15 +392,21 @@ pub fn LibraryGrid() -> impl IntoView {
             Item::Classic(r, _) => (r.last_played, r.playtime_secs),
             Item::Entry(_) => (None, 0),
         };
+        if !needle.trim().is_empty() {
+            list.retain(|i| {
+                let name = fold(&i.name());
+                needle.split_whitespace().all(|w| name.contains(w))
+            });
+        }
         match order.get() {
-            1 => list.sort_by_key(|i| i.name().to_lowercase()),
+            1 => list.sort_by_key(|i| fold(&i.name())),
             2 => list.sort_by_key(|i| std::cmp::Reverse(stats(i).1)),
             _ => list.sort_by_key(|i| (std::cmp::Reverse(stats(i).0), i.name().to_lowercase())),
         }
         list
     });
     let rows = move || {
-        let mut r = vec![kinds.len() + 1];
+        let mut r = vec![kinds.len() + 2];
         r.extend(grid_rows(games.with(Vec::len)));
         r
     };
@@ -395,8 +419,53 @@ pub fn LibraryGrid() -> impl IntoView {
         play(Sound::Select);
         if c < kinds.len() {
             kind.set(c);
-        } else {
+        } else if c == kinds.len() {
             order.update(|o| *o = (*o + 1) % orders.len());
+        } else {
+            tv.kb_lib.set(true);
+            tv.sheet.set(Some(Sheet::Keyboard));
+        }
+    };
+    // LT/RT: in A to Z, the next (or previous) first letter, shown big; else a page.
+    let jumped = RwSignal::new(None::<char>);
+    // First letters, worked out where the page's context is (a button press has none).
+    let initials = Memo::new(move |_| games.with(|l| l.iter().map(|i| fold(&i.name()).chars().next().unwrap_or(' ')).collect::<Vec<char>>()));
+    let jump = move |forward: bool| {
+        let list = initials.get_untracked();
+        if list.is_empty() {
+            return;
+        }
+        let row = focus.row.get_untracked();
+        let here = if row == 0 { 0 } else { ((row - 1) * COLUMNS + focus.col.get_untracked()).min(list.len() - 1) };
+        let initial = |i: usize| list[i];
+        let to = if order.get_untracked() == 1 {
+            let letter = initial(here);
+            let mut start = here;
+            while start > 0 && initial(start - 1) == letter {
+                start -= 1;
+            }
+            if forward {
+                (here..list.len()).find(|&i| initial(i) != letter).unwrap_or(list.len() - 1)
+            } else if start < here || start == 0 {
+                start
+            } else {
+                let previous = initial(start - 1);
+                let mut i = start - 1;
+                while i > 0 && initial(i - 1) == previous {
+                    i -= 1;
+                }
+                i
+            }
+        } else if forward {
+            (here + COLUMNS * 4).min(list.len() - 1)
+        } else {
+            here.saturating_sub(COLUMNS * 4)
+        };
+        focus.set(1 + to / COLUMNS, to % COLUMNS);
+        play(Sound::Move);
+        if order.get_untracked() == 1 {
+            jumped.set(Some(initial(to).to_ascii_uppercase()));
+            leptos::prelude::set_timeout(move || { let _ = jumped.try_set(None); }, std::time::Duration::from_millis(700));
         }
     };
     Effect::new(move |_| {
@@ -404,8 +473,12 @@ pub fn LibraryGrid() -> impl IntoView {
             tv.show_backdrop(item.heroes());
         }
     });
-    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Jogar")), (Btn::X, tr!("Opções"))]);
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Jogar")), (Btn::X, tr!("Opções")), (Btn::Rt, tr!("Saltar"))]);
     tv.handle_page(move |btn| match btn {
+        Btn::Lt | Btn::Rt => {
+            jump(btn == Btn::Rt);
+            true
+        }
         Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
             if focus.step(btn, &rows()) {
                 play(Sound::Move);
@@ -472,7 +545,12 @@ pub fn LibraryGrid() -> impl IntoView {
                     on:mouseenter=move |_| focus.set(0, kinds.len()) on:click=move |_| choose_chip(kinds.len())>
                     {move || tr!("Ordem: {}", orders[order.get()])}
                 </span>
+                <span class="tv-chip" class:sel=move || !tv.lib_search.get().is_empty() class:on=move || focus.is(0, kinds.len() + 1) data-tvf=focus.key(0, kinds.len() + 1)
+                    on:mouseenter=move |_| focus.set(0, kinds.len() + 1) on:click=move |_| choose_chip(kinds.len() + 1)>
+                    {move || { let q = tv.lib_search.get(); if q.is_empty() { tr!("Buscar").to_string() } else { tr!("Buscar: {}", q) } }}
+                </span>
             </div>
+            <div class="tv-jump" class:on=move || jumped.get().is_some()>{move || jumped.get().map(String::from).unwrap_or_default()}</div>
             <div class="tv-grid">{grid}</div>
         </div>
     }
@@ -515,12 +593,12 @@ pub fn Discover() -> impl IntoView {
     let shown = RwSignal::new(48usize);
 
     let results = Memo::new(move |_| {
-        let needle = tv.search.get().to_lowercase();
+        let needle = fold(&tv.search.get());
         let all = catalog(library);
         let mut list: Vec<RecompEntry> = one_each(&all)
             .into_iter()
             .filter_map(|(lead, _)| {
-                if needle.split_whitespace().all(|w| format!("{} {}", lead.name, lead.game).to_lowercase().contains(w)) {
+                if needle.split_whitespace().all(|w| fold(&format!("{} {}", lead.name, lead.game)).contains(w)) {
                     return Some(lead);
                 }
                 // A game shows when any of its versions matches.
@@ -562,7 +640,10 @@ pub fn Discover() -> impl IntoView {
     let press = move |col: usize| {
         play(Sound::Select);
         match col {
-            0 => tv.sheet.set(Some(Sheet::Keyboard)),
+            0 => {
+                tv.kb_lib.set(false);
+                tv.sheet.set(Some(Sheet::Keyboard));
+            }
             1 => owned_only.update(|o| *o = !*o),
             2 => genres.with_untracked(|all| {
                 // The next genre, then back to all of them.
@@ -600,6 +681,7 @@ pub fn Discover() -> impl IntoView {
             true
         }
         Btn::Y => {
+            tv.kb_lib.set(false);
             tv.sheet.set(Some(Sheet::Keyboard));
             play(Sound::Select);
             true
