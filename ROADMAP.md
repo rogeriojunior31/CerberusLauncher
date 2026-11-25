@@ -943,7 +943,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Reparar/Atualizar sobrescrevem configurações e mods [RC F2] — feito em 25/11/2026: `.cerberus-files.json` com o hash do que cada versão trouxe; arquivo que o jogador mudou fica, o da versão nova vai para `<nome>.cerberus-new`. Vale a partir da próxima instalação/atualização (as antigas não têm o registro). Testado.; arquivos removidos pela versão nova ficam [RC F12]
 - [ ] Recomp que saiu do catálogo não desinstala [RC F4]; Reparar falha quando a pasta sumiu [RC F5]
 - [ ] Versão comparada como texto; ids antigos; checksum velho em loop [RC F8, RC F9, RC F10]
-- [ ] `.cue`/`.gdi`/`.m3u` sem as faixas [RP F4]; CHD de PS1 Mode 2 Form 2 [RP F15]
+- [x] `.cue`/`.gdi`/`.m3u` sem as faixas [RP F4] — feito em 25/11/2026: as faixas da folha vão junto, com os nomes delas (só arquivos ao lado da folha). Testado; conferido com o .cue real do Crash Bandicoot. Falta o selo de verificado por faixa.
+- [ ] CHD de PS1 Mode 2 Form 2 [RP F15]
 - [ ] Instalador que pede administrador (erro 740) [RP F5]; programa de outro jogo adotado [RP F6]
 - [ ] Mods mexem em arquivos que não são deles [RP F11]; filtro aplicado no programa errado [RP F7]
 - [ ] Cópias grandes sem espaço conferido, progresso ou cancelamento [RP F14]; fila e disco cheio [RC F13, RC F14]

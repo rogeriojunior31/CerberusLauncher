@@ -1039,6 +1039,8 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         return Ok(());
     }
     copy_whole(copy, &dir.join(&name)).map_err(|e| tr!("Não foi possível copiar sua cópia do jogo: {}", e))?;
+    // A disc sheet (.cue, .gdi, .m3u) brings its tracks, with their names.
+    copy_sheet_files(copy, &dir)?;
     Ok(())
 }
 
@@ -1580,6 +1582,64 @@ pub fn sweep_stale_downloads(folders: &Folders) {
 /// Copies a file under a temporary name and renames it when complete: a copy
 /// cut short (Cerberus closed, the disk full) never sits under the real name,
 /// where the game would take it for the whole thing.
+/// The files a disc sheet points at, beside it: a `.cue`'s `FILE` tracks, a
+/// `.gdi`'s tracks, a `.m3u`'s discs (and their own tracks). Other files: none.
+pub(crate) fn sheet_files(sheet: &Path) -> Vec<PathBuf> {
+    let ext = sheet.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !["cue", "gdi", "m3u"].contains(&ext.as_str()) {
+        return Vec::new();
+    }
+    let Ok(text) = fs::read_to_string(sheet) else { return Vec::new() };
+    let dir = sheet.parent().unwrap_or(Path::new("."));
+    // Only plain names beside the sheet: a sheet never reaches elsewhere.
+    let plain = |name: &str| {
+        let p = Path::new(name);
+        (p.components().count() == 1 && p.components().all(|c| matches!(c, std::path::Component::Normal(_)))).then(|| dir.join(p))
+    };
+    let mut found: Vec<PathBuf> = Vec::new();
+    for line in text.trim_start_matches('\u{feff}').lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let name = match ext.as_str() {
+            "cue" => line
+                .strip_prefix("FILE ")
+                .map(|rest| rest.trim().strip_prefix('"').and_then(|r| r.split('"').next()).unwrap_or_else(|| rest.split_whitespace().next().unwrap_or_default()).to_string()),
+            // "1 0 4 2352 track01.bin 0" (a quoted name may hold spaces); the first line is the count.
+            "gdi" => {
+                let quoted = line.split('"').nth(1).map(str::to_string);
+                quoted.or_else(|| line.split_whitespace().nth(4).map(str::to_string))
+            }
+            _ => Some(line.to_string()),
+        };
+        if let Some(file) = name.as_deref().and_then(plain).filter(|p| p.is_file()) {
+            if ext == "m3u" {
+                found.extend(sheet_files(&file));
+            }
+            if !found.contains(&file) {
+                found.push(file);
+            }
+        }
+    }
+    found
+}
+
+pub(crate) fn copy_sheet_files_pub(sheet: &Path, into: &Path) -> Result<(), String> {
+    copy_sheet_files(sheet, into)
+}
+
+/// Copies a disc sheet's tracks next to where the sheet was copied, with their names.
+fn copy_sheet_files(sheet: &Path, into: &Path) -> Result<(), String> {
+    let files = sheet_files(sheet);
+    if files.is_empty() {
+        return Ok(());
+    }
+    let size: u64 = files.iter().filter_map(|f| fs::metadata(f).ok()).map(|m| m.len()).sum();
+    crate::disk::require(into, size)?;
+    for file in files {
+        let name = file.file_name().ok_or(tr!("Faixa sem nome."))?;
+        copy_whole(&file, &into.join(name)).map_err(|e| tr!("Não foi possível copiar as faixas do disco: {}", e))?;
+    }
+    Ok(())
+}
+
 pub(crate) fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut partial = to.as_os_str().to_owned();
     partial.push(".part");
@@ -1644,6 +1704,31 @@ fn is_arm() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cue_sheet_brings_its_tracks() {
+        let root = tempfile::tempdir().unwrap();
+        let roms = root.path().join("roms");
+        fs::create_dir_all(&roms).unwrap();
+        fs::write(roms.join("Game (Track 1).bin"), b"data").unwrap();
+        fs::write(roms.join("Game (Track 2).bin"), b"audio").unwrap();
+        let cue = roms.join("Game.cue");
+        fs::write(&cue, "FILE \"Game (Track 1).bin\" BINARY\n  TRACK 01 MODE2/2352\nFILE \"Game (Track 2).bin\" BINARY\n  TRACK 02 AUDIO\n").unwrap();
+        let gdi = roms.join("Game.gdi");
+        fs::write(roms.join("track01.bin"), b"x").unwrap();
+        fs::write(&gdi, "1\n1 0 4 2352 track01.bin 0\n").unwrap();
+        assert_eq!(sheet_files(&cue).len(), 2);
+        assert_eq!(sheet_files(&gdi), vec![roms.join("track01.bin")]);
+        // Placed with another name: the tracks go beside it with theirs.
+        let install = root.path().join("game");
+        put_in_folder(&install.to_string_lossy(), "disc", Some("game.cue".into()), false, false, &cue).unwrap();
+        assert!(install.join("disc").join("game.cue").is_file());
+        assert_eq!(fs::read(install.join("disc").join("Game (Track 2).bin")).unwrap(), b"audio");
+        // A sheet can't reach outside its folder.
+        let evil = roms.join("evil.cue");
+        fs::write(&evil, "FILE \"..\\\\secret.bin\" BINARY\n").unwrap();
+        assert!(sheet_files(&evil).is_empty());
+    }
 
     #[test]
     fn an_interrupted_folder_fill_is_not_ready_and_the_old_one_stays() {
@@ -2216,3 +2301,4 @@ fn real_downloads_resolve_on_every_server() {
         }
     });
 }
+
