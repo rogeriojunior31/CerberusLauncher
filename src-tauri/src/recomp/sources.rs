@@ -13,10 +13,11 @@ use cerberus_shared::{SourceListing, SourcePage};
 use futures_util::StreamExt;
 
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::steam_store;
 use super::catalog::{self, CatalogEntry, DirectFile};
 
 /// One game in our source format. Only `id`, `name` and `repo` are required.
@@ -154,6 +155,117 @@ fn hydra_game(row: &Value, source: &str) -> Option<CatalogEntry> {
     None
 }
 
+/// A title without the markers repack lists decorate it with, for a Steam search:
+/// bracketed groups drop out and version tokens are removed, so "SpaghettiKart
+/// [MULTi] (USA) v1.2.3" searches as "SpaghettiKart".
+pub fn clean_title(title: &str) -> String {
+    let mut bare = String::new();
+    let mut depth = 0u32;
+    for c in title.chars() {
+        match c {
+            '[' | '(' | '{' => depth += 1,
+            ']' | ')' | '}' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => bare.push(c),
+            _ => {}
+        }
+    }
+    bare.split_whitespace().filter(|word| !is_version(word)).collect::<Vec<_>>().join(" ")
+}
+
+/// "v1.2.3", "1.2.3", "r2", "b4" — a version, not a word of the title. A bare
+/// number stays: "64" in "Celeste 64" is the title, not a version.
+fn is_version(word: &str) -> bool {
+    let lower = word.to_ascii_lowercase();
+    if !lower.chars().any(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let letters: String = lower.chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    matches!(letters.as_str(), "v" | "r" | "b" | "rev" | "build" | "beta" | "alpha")
+        || (letters.is_empty() && lower.contains('.'))
+}
+
+/// The Steam store's cover and hero, looked up once per game and kept on disk.
+#[derive(Default, Serialize, Deserialize)]
+struct ArtCache {
+    entries: std::collections::HashMap<String, ArtEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ArtEntry {
+    cover: Option<String>,
+    hero: Option<String>,
+    at: u64,
+}
+
+fn art_file(cache_dir: &Path) -> PathBuf {
+    cache_dir.join("hydra-art.json")
+}
+
+fn load_art(cache_dir: &Path) -> ArtCache {
+    std::fs::read_to_string(art_file(cache_dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+fn save_art(cache_dir: &Path, cache: &ArtCache) {
+    let file = art_file(cache_dir);
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&file, serde_json::to_string(cache).unwrap_or_default());
+}
+
+/// Puts the art already found into the games, so a restart never asks Steam again.
+fn apply_cached_art(cache_dir: &Path, source: &mut CatalogSource) {
+    let cache = load_art(cache_dir);
+    let Entries::Hydra { games, .. } = &mut source.entries else { return };
+    for game in games {
+        if game.cover.is_some() {
+            continue;
+        }
+        if let Some(entry) = cache.entries.get(&game.id) {
+            game.cover = entry.cover.clone();
+            game.hero = entry.hero.clone();
+        }
+    }
+}
+
+/// Fills Hydra games' covers from the Steam store, a few per sync so a big list
+/// (shortcut: the rest fill in on later refreshes) never stalls the app.
+pub async fn enrich(client: &Client, cache_dir: &Path, source: &mut CatalogSource) {
+    const CAP: usize = 40;
+    let Entries::Hydra { games, .. } = &mut source.entries else { return };
+    let now = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let mut cache = load_art(cache_dir);
+    let mut done = 0;
+    let mut changed = false;
+    for game in games {
+        if game.cover.is_some() {
+            continue;
+        }
+        let fresh = cache.entries.get(&game.id).is_some_and(|e| now.saturating_sub(e.at) < 7 * 86_400);
+        if !fresh {
+            if done >= CAP {
+                break;
+            }
+            // Exact match only: a wrong cover for a different game is worse than none.
+            let art = steam_store::identify(client, &[clean_title(&game.name)]).await.map(|found| found.art);
+            cache.entries.insert(game.id.clone(), ArtEntry {
+                cover: art.as_ref().and_then(|a| a.cover.clone()),
+                hero: art.as_ref().and_then(|a| a.hero.clone()),
+                at: now,
+            });
+            changed = true;
+            done += 1;
+        }
+        if let Some(entry) = cache.entries.get(&game.id) {
+            game.cover = entry.cover.clone();
+            game.hero = entry.hero.clone();
+        }
+    }
+    if changed {
+        save_art(cache_dir, &cache);
+    }
+}
+
 fn parse(text: &str) -> Result<CatalogSource, String> {
     let value: Value = serde_json::from_str(text).map_err(|_| tr!("Isso não é um JSON válido.").to_string())?;
     let (name, entries) = if value.get("games").is_none() && value.get("apps").is_none()
@@ -250,7 +362,9 @@ pub async fn fetch(client: &Client, cache_dir: &Path, url: &str) -> Result<Catal
         bytes.extend_from_slice(&chunk);
     }
     let text = std::str::from_utf8(&bytes).map_err(|_| tr!("A fonte precisa usar UTF-8."))?;
-    store(cache_dir, url, text.trim_start_matches('\u{feff}'))
+    let mut source = store(cache_dir, url, text.trim_start_matches('\u{feff}'))?;
+    enrich(client, cache_dir, &mut source).await;
+    Ok(source)
 }
 
 fn store(cache_dir: &Path, url: &str, text: &str) -> Result<CatalogSource, String> {
@@ -279,6 +393,7 @@ pub fn load_copy(cache_dir: &Path, url: &str) -> Option<CatalogSource> {
         return None;
     }
     let mut source = parse(&text).ok()?;
+    apply_cached_art(cache_dir, &mut source);
     source.synced_at = modified(&file);
     Some(source)
 }
@@ -381,6 +496,16 @@ mod tests {
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(&file, old).unwrap();
         assert!(load_copy(cache.path(), url).is_none(), "an old cache must be re-fetched");
+    }
+
+    #[test]
+    fn title_cleaning_drops_repack_markers_for_search() {
+        assert_eq!(clean_title("SpaghettiKart [MULTi] (USA) v1.2.3"), "SpaghettiKart");
+        assert_eq!(clean_title("Hollow Knight [FitGirl Repack]"), "Hollow Knight");
+        assert_eq!(clean_title("A {DL} Game [Update + DLCs]"), "A Game");
+        assert_eq!(clean_title("Plain Title"), "Plain Title");
+        assert_eq!(clean_title("Celeste 64 v1.1.1"), "Celeste 64");
+        assert_eq!(clean_title("  [only markers]  "), "");
     }
 
     #[test]
