@@ -22,6 +22,11 @@ pub fn classic_started() {
     CLASSICS.fetch_add(1, Ordering::SeqCst);
 }
 
+/// A classic is open in an emulator right now.
+pub fn classic_running() -> bool {
+    CLASSICS.load(Ordering::SeqCst) > 0
+}
+
 pub fn classic_ended(app: &AppHandle) {
     let _ = CLASSICS.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1));
     game_ended(app);

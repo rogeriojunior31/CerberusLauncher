@@ -1225,3 +1225,25 @@ pub async fn standalone_bios(id: &str) -> Result<(cerberus_shared::StandaloneSta
 pub async fn install_all_cores() -> Result<(cerberus_shared::EmulationView, usize), String> {
     call("install_all_cores", &()).await
 }
+
+
+pub async fn emulator_backups() -> Result<Vec<cerberus_shared::EmulatorBackups>, String> {
+    call("emulator_backups", &()).await
+}
+
+pub async fn backup_emulator_saves(id: &str) -> Result<Option<cerberus_shared::Backup>, String> {
+    call("backup_emulator_saves", &Id { id }).await
+}
+
+pub async fn restore_emulator_backup(id: &str, name: &str) -> Result<u32, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        name: &'a str,
+    }
+    call("restore_emulator_backup", &Arg { id, name }).await
+}
+
+pub async fn open_emulator_backups(id: &str) -> Result<(), String> {
+    call("open_emulator_backups", &Id { id }).await
+}

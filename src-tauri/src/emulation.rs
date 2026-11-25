@@ -44,15 +44,20 @@ const PS2_BIOS: u64 = 4 * 1024 * 1024;
 /// Where RetroArch reads BIOS files: its own `system` folder, or the one the
 /// player set in its settings (`:` meaning beside the program).
 fn system_dir(exe: &Path) -> PathBuf {
+    retroarch_dir(exe, "system_directory", "system")
+}
+
+/// A folder RetroArch's settings name (`key`), else its usual one beside the program.
+pub fn retroarch_dir(exe: &Path, key: &str, usual: &str) -> PathBuf {
     let base = exe.parent().unwrap_or(Path::new("."));
     let chosen = fs::read_to_string(config_file(exe))
         .ok()
-        .and_then(|text| config_value(&text, "system_directory"))
+        .and_then(|text| config_value(&text, key))
         .filter(|v| !v.is_empty() && v != "default");
     match chosen {
         Some(v) if v.starts_with(':') => base.join(v.trim_start_matches(':').trim_start_matches(['\\', '/'])),
         Some(v) => PathBuf::from(v),
-        None => base.join("system"),
+        None => base.join(usual),
     }
 }
 

@@ -2233,3 +2233,7 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .card.blocked .row { margin-top: 12px; }
 /* The snap keeps the strip's padding as room at the start */
 .ach-strip { scroll-padding-inline: 4px; }
+
+/* Saves › Clássicos: one card per emulator */
+.sv-emu { display: grid; gap: 14px; }
+.sv-emu-note { margin: -4px 0 12px; }

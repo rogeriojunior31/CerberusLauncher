@@ -978,7 +978,7 @@ fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static st
                     <Svg icon=Icon::Folder size=16 />{tr!("Escolher pasta")}
                 </button>
             })}
-            {row(tr!("Backups neste PC"), tr!("Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada recomp. Jogos da Steam usam a nuvem da Steam; os saves dos clássicos ficam na pasta do emulador."), ())}
+            {row(tr!("Backups neste PC"), tr!("Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada recomp, e de cada emulador quando um clássico fecha. Jogos da Steam usam a nuvem da Steam."), ())}
         </section>
     }
 }

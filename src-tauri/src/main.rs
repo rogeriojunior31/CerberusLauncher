@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod art_cache;
+mod emulator_saves;
 mod epic;
 mod disk;
 mod iso9660;
@@ -617,14 +618,14 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
             return Err(e);
         }
     };
-    watch_classic(app, path, child, session);
+    watch_classic(app, path, child, session, ("retroarch", exe.clone()));
     Ok(())
 }
 
 /// While a classic runs: its achievements, from the emulator's log, shown by
 /// Cerberus alone. When it closes: the time played is kept and the emulator's
 /// settings go back to what the player had.
-fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, session: cheevos::Session) {
+fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, session: cheevos::Session, emulator: (&'static str, PathBuf)) {
     let data = app.state::<DataDir>().0.clone();
     let id = format!("classic:{path}");
     let started = std::time::Instant::now();
@@ -665,6 +666,10 @@ fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, s
         let saved = emulation::add_played(&data, &path, seconds.saturating_sub(credited), now);
         play_log::record(&data, &id, seconds, now);
         trail::note(&app, &id, tk!("Partida"), &saved.map(|_| if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { sessions::played_text(seconds / 60 * 60) }));
+        // The emulator's saves (memory cards, states), copied as the recomps' are.
+        let (emulator_id, emulator_exe) = &emulator;
+        let copied = emulator_saves::backup(&data, emulator_id, emulator_exe, tk!("Depois de jogar"));
+        trail::note(&app, &id, tk!("Backup depois de jogar"), &sessions::backup_outcome(&copied));
         let _ = app.emit("catalog-changed", ());
         background::classic_ended(&app);
     });
@@ -778,7 +783,7 @@ fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'stati
             return Err(e);
         }
     };
-    watch_classic(app, path, child, session);
+    watch_classic(app, path, child, session, (emulator.id, exe.to_path_buf()));
     Ok(())
 }
 
@@ -2795,6 +2800,63 @@ fn open_backups(app: AppHandle, library: State<'_, LocalLibrary>, folders: State
         .map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
 }
 
+/// The emulators on this PC (RetroArch and the dedicated ones) with where they
+/// keep saves and the copies Cerberus made of them.
+fn emulators_here(data: &Path) -> Vec<(&'static str, &'static str, PathBuf)> {
+    let chosen = settings::load(data);
+    let mut found = Vec::new();
+    if let Some(exe) = emulation::retroarch(data, chosen.retroarch.as_deref()) {
+        found.push(("retroarch", "RetroArch", exe));
+    }
+    for emulator in standalone::ALL {
+        if let Some((exe, _)) = standalone::locate(data, chosen.emulators.get(emulator.id).map(PathBuf::as_path), emulator) {
+            found.push((emulator.id, emulator.name, exe));
+        }
+    }
+    found
+}
+
+#[tauri::command(async)]
+fn emulator_backups(app: AppHandle) -> Vec<cerberus_shared::EmulatorBackups> {
+    let data = app.state::<DataDir>().0.clone();
+    emulators_here(&data)
+        .into_iter()
+        .filter_map(|(id, name, exe)| {
+            let places = emulator_saves::places(id, &exe)?;
+            Some(cerberus_shared::EmulatorBackups {
+                id: id.to_string(),
+                name: name.to_string(),
+                folder: places.root.to_string_lossy().into_owned(),
+                backups: emulator_saves::list(&data, id),
+            })
+        })
+        .collect()
+}
+
+#[tauri::command(async)]
+fn backup_emulator_saves(app: AppHandle, id: String) -> Result<Option<cerberus_shared::Backup>, String> {
+    let data = app.state::<DataDir>().0.clone();
+    let (_, _, exe) = emulators_here(&data).into_iter().find(|(e, _, _)| *e == id).ok_or(tr!("Esse emulador não está neste PC."))?;
+    emulator_saves::backup(&data, &id, &exe, tk!("Manual"))
+}
+
+#[tauri::command(async)]
+fn restore_emulator_backup(app: AppHandle, id: String, name: String) -> Result<u32, String> {
+    if background::classic_running() {
+        return Err(tr!("Feche o emulador antes de restaurar os saves.").into());
+    }
+    let data = app.state::<DataDir>().0.clone();
+    let (_, _, exe) = emulators_here(&data).into_iter().find(|(e, _, _)| *e == id).ok_or(tr!("Esse emulador não está neste PC."))?;
+    emulator_saves::restore(&data, &id, &exe, &name)
+}
+
+#[tauri::command]
+fn open_emulator_backups(app: AppHandle, id: String) -> Result<(), String> {
+    let dir = emulator_saves::backups_dir(&app.state::<DataDir>().0, &id);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))
+}
+
 /// The native file dialog blocks until closed, so it must not run on an async worker.
 async fn pick_one(dialog: FileDialogBuilder<tauri::Wry>) -> Result<Option<PathBuf>, String> {
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file());
@@ -3022,6 +3084,10 @@ fn main() {
             set_game_setting,
             open_folder,
             open_backups,
+            emulator_backups,
+            backup_emulator_saves,
+            restore_emulator_backup,
+            open_emulator_backups,
             get_settings,
             finish_setup,
             set_start_in_tv,

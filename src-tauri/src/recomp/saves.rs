@@ -95,6 +95,8 @@ fn base_folder(key: &str, install: &Path) -> Option<PathBuf> {
         "{local}" | "{appdata}" => config,
         "{config}" if cfg!(windows) => env("APPDATA"),
         "{config}" => config,
+        // Where Windows really keeps Documents (often inside OneDrive).
+        "{documents}" if cfg!(windows) => crate::standalone::documents(),
         "{documents}" => home.map(|h| h.join("Documents")),
         "{home}" => home,
         _ => None,
@@ -354,7 +356,7 @@ pub fn restore(backups: &Path, name: &str, install: &Path) -> Result<u32, String
     restore_open(open_backup(backups, name)?, install, None)
 }
 
-pub(super) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<fs::File>, String> {
+pub(crate) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<fs::File>, String> {
     // Only a plain file name from our own list, never a path.
     let plain = Path::new(name).components().count() == 1 && name.ends_with(".zip");
     if !plain {
@@ -365,7 +367,7 @@ pub(super) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<
     zip::ZipArchive::new(file).map_err(|e| tr!("Esse backup não pode ser lido: {}", e))
 }
 
-pub(super) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, allowed_places: Option<&[String]>) -> Result<u32, String> {
+pub(crate) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, allowed_places: Option<&[String]>) -> Result<u32, String> {
     let manifest = manifest_in(&mut zip)?;
     if allowed_places.is_some_and(|places| manifest.places.iter().any(|p| !places.contains(p))) {
         return Err(tr!("As pastas do backup na nuvem diferem das pastas de saves deste jogo.").into());

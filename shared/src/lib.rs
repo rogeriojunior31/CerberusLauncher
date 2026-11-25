@@ -347,6 +347,15 @@ impl Game {
 
 /// A copy of a recomp's saves, kept by the launcher.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmulatorBackups {
+    pub id: String,
+    pub name: String,
+    /// Where the emulator keeps the saves that are copied.
+    pub folder: String,
+    pub backups: Vec<Backup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Backup {
     /// The file's name, used to ask for it back.
     pub name: String,

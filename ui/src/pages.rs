@@ -445,12 +445,39 @@ pub fn SavesPage() -> impl IntoView {
             <header class="page-h">
                 <div>
                     <h1>{tr!("Saves")}</h1>
-                    <p class="muted">{tr!("Cópias automáticas dos saves dos recomps: ao fechar o jogo, antes de atualizar e antes de desinstalar. As 10 mais recentes de cada um ficam guardadas. Jogos da Steam guardam os saves na nuvem da Steam; os clássicos, na pasta do emulador.")}</p>
+                    <p class="muted">{tr!("Cópias automáticas dos saves: dos recomps ao fechar, antes de atualizar e antes de desinstalar; dos emuladores sempre que um clássico fecha. As 10 mais recentes ficam guardadas. Jogos da Steam guardam os saves na nuvem da Steam.")}</p>
                 </div>
             </header>
             {cloud}
             {rows}
+            <EmulatorSaves />
         </div>
+    }
+}
+
+/// The classics' saves: one card per emulator on this PC, with the copies made
+/// after each classic closed.
+#[component]
+fn EmulatorSaves() -> impl IntoView {
+    let found = LocalResource::new(|| async { api::emulator_backups().await.unwrap_or_default() });
+    move || {
+        let list = found.get().unwrap_or_default();
+        (!list.is_empty()).then(|| {
+            let cards = list
+                .into_iter()
+                .map(|e| {
+                    let note = tr!("Memory cards e estados salvos de {}. Os 10 backups mais recentes ficam guardados.", e.folder);
+                    view! { <crate::backups::Backups game_id=e.id emulator=true title=e.name note /> }
+                })
+                .collect_view();
+            view! {
+                <section class="shelf">
+                    <div class="shelf-h"><h2>{tr!("Clássicos")}</h2></div>
+                    <p class="muted small sv-emu-note">{tr!("Cada emulador guarda os saves de todos os seus jogos juntos; o Cerberus copia essa pasta sempre que um clássico fecha.")}</p>
+                    <div class="sv-emu">{cards}</div>
+                </section>
+            }
+        })
     }
 }
 
