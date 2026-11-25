@@ -1,8 +1,9 @@
 # Console artwork and emulator icons
 
-The console illustrations (`*.png`) and emulator icons (`icons/*.png`) in this folder come from
+The emulator icons (`icons/*.png`) and the PlayStation, PS2, PS3, PSP, GameCube and Wii pictures come from
 [Hydra](https://github.com/hydralauncher/hydra) (`src/renderer/src/assets/emulation`), scaled down for
-Cerberus. Hydra is distributed under the MIT License:
+Cerberus. The other console pictures are public-domain photos listed further down, except `wiiu.png`.
+Hydra is distributed under the MIT License:
 
 > MIT License
 >

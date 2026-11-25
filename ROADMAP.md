@@ -24,20 +24,24 @@ levantamento de 25/11 (um agente por launcher: Heroic, Hydra, Playnite e RecompL
 
 **Próximos, nesta ordem:**
 
+0. **Deixar completo o que já foi entregue** (Onda 8): primeiro o que perde dados ou mexe em contas — saves dos
+   emuladores apagados ao remover/reinstalar, tokens indo no backup, conta que volta depois de Sair, uma falha
+   derrubando a sincronização inteira. Revisões: [lojas e contas](docs/roadmap/lojas-e-contas.md),
+   [conquistas e tempo](docs/roadmap/conquistas-e-tempo.md), [emulação](docs/roadmap/emulacao-e-saves-dos-emuladores.md).
 1. **Saves de qualquer jogo de PC** (Steam, Epic, Xbox, GOG, adicionados) pelos locais conhecidos, reaproveitando o
-   backup e a nuvem dos recomps — apontado por Hydra, Heroic e Playnite. (7.1)
+   backup e a nuvem dos recomps — apontado por Hydra, Heroic e Playnite. (7.1, [plano](docs/roadmap/saves-de-jogos-de-pc.md))
 2. **GOG**: jogos instalados pelo GOG Galaxy, depois login e biblioteca, conquistas e tempo de jogo como Epic e Xbox.
-   Depois Amazon, Ubisoft, EA e Battle.net. (7.2)
-3. **Steam sem chave** (token da sessão da loja) e **biblioteca da família**. (6.1)
+   Depois Amazon, Ubisoft, EA e Battle.net. (7.2, [plano](docs/roadmap/gog-e-outras-lojas.md))
+3. **Steam sem chave** (token da sessão da loja) e **biblioteca da família**. (6.1, [plano](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md))
 4. **Gerenciar jogos das lojas sem sair do Cerberus**: desinstalar, verificar e mover pela própria loja; argumentos de
-   inicialização da Steam. (7.2)
+   inicialização da Steam. (7.2, mesmo [plano](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md))
 5. **Ações antes e depois de jogar** e variáveis de ambiente por jogo. (6.4, 7.4)
 6. **Metadados guardados na biblioteca** (gênero, desenvolvedora, ano, série...) que destravam filtros salvos,
-   agrupamento e edição de vários jogos. (7.3, 6.3)
-7. **Estatísticas e "seu ano"** só com dados locais. (6.3, 7.3)
-8. **Troféus do RPCS3 e do shadPS4** e **foto no momento da conquista**. (5.4, 6.1)
+   agrupamento e edição de vários jogos. (7.3, 6.3, [plano](docs/roadmap/metadados-filtros-e-estatisticas.md))
+7. **Estatísticas e "seu ano"** só com dados locais. (6.3, 7.3, mesmo plano)
+8. **Troféus do RPCS3 e do shadPS4** e **foto no momento da conquista**. (5.4, 6.1, [plano](docs/roadmap/trofeus-e-lembrancas.md))
 9. **Recomps**: escolher, fixar e voltar uma versão; campos do SDK ainda ignorados; RVZ e cia.; janela "Resolver
-   problemas" com o log do jogo. (7.5)
+   problemas" com o log do jogo. (7.5, [plano](docs/roadmap/recomps-robustos.md))
 10. Pequenos de alto retorno: aviso de sem internet, central de notificações, som e volume do aviso de conquista,
     HowLongToBeat e anti-cheat na página do jogo. (7.4, 7.6)
 
@@ -612,12 +616,14 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 
 - [x] **Situação do jogo** [P]: Não jogado, Jogado, Jogando, Zerado, Completo, Abandonado, Em pausa, Quero jogar,
       editáveis. Vira "Jogado" na primeira partida; os selos do hub (Zerado, Completo, Dominado) sugerem a situação. — P
-- [x] Nota pessoal (0 a 100) e anotações por jogo [P]. — P
+- [x] Nota pessoal (de 1 a 5 estrelas; a ideia original era 0 a 100) e anotações por jogo [P]. — P
 - [ ] **Filtros salvos** com ordem e agrupamento [P]: prontos "Todos", "Jogados recentemente", "Favoritos" e
       "Mais jogados"; aparecem também no Big Picture. — M
 - [ ] **Agrupar** por plataforma, loja, situação, ano, disco, faixa de tempo de jogo (menos de 1 h, 1 a 10 h, 10 a
       100 h...) e última vez jogado (hoje, ontem, esta semana, este mês, este ano, nunca) [P]. — M
-- [x] Mais ordens: adicionado em, nota, situação, tamanho, vezes jogado [P]. — P
+- [ ] Mais ordens: adicionado em, situação, tamanho, vezes jogado [P]. — P
+      (Corrigido em 25/11/2026: estava marcado como feito, mas a Biblioteca só tem nome, recentes, tempo, nota e
+      conquistas. Desenho em `docs/roadmap/metadados-filtros-e-estatisticas.md`.)
 - [ ] Fixar jogos no topo e ordem manual por arrasto, também dentro das coleções [H][R]. — M
 - [ ] **Editar vários jogos de uma vez** (situação, coleção, ocultar) [P]. — M
 - [ ] **Página de estatísticas** [P]: total de jogos, instalados, tempo total e médio, os 50 mais jogados, quantos por
@@ -778,6 +784,84 @@ ondas 5 e 6. Licenças: **Heroic GPL-3** e **RecompLauncher GPL** só ideias; **
 - Recomps com catálogo, Easy Setup, ajustes por jogo, nuvem sem conta e listas por URL.
 - Emuladores instalados com um clique e RetroAchievements levado para eles.
 - Mods do GameBanana, troca de DLSS, filtros visuais e pacotes do Windows.
+
+## Onda 8: deixar completo o que já foi entregue (revisão de 25/11/2026)
+
+Três agentes revisaram o código das entregas de 23 a 25/11 procurando o que falta para cada feature ficar completa
+(bordas, estados de tela, segurança, testes). Cada item abaixo tem, no documento ligado, o problema, como reproduzir,
+como resolver, os arquivos, o critério de aceite e o teste. **Regra daqui em diante:** uma feature só é marcada [x]
+quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados aqui.
+
+### 8.0 Perde dados ou mexe em contas (fazer antes de qualquer feature nova)
+
+- [ ] Remover ou reinstalar um emulador gerenciado apaga os saves dele (DuckStation, PCSX2, Dolphin, PPSSPP, RPCS3,
+      Xenia) — [emulação L1](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+- [ ] Refresh tokens da Epic e do Xbox vão para o zip do backup e a restauração troca as contas — [lojas L6](docs/roadmap/lojas-e-contas.md);
+      erro de rede com a URL inteira pode vazar token no log ([plano Steam, etapa 0](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md)). — P
+- [ ] `settings.json` gravado por várias tarefas ao mesmo tempo: Sair durante uma renovação devolve a conta — [lojas L1](docs/roadmap/lojas-e-contas.md). — M
+- [ ] Um dono só da sessão de cada conta; a sessão da Epic de 30 min não é zerada ao sair nem presa à conta — [lojas L2](docs/roadmap/lojas-e-contas.md), [conquistas L3](docs/roadmap/conquistas-e-tempo.md). — P/M
+- [ ] Um jogo que falha derruba a sincronização da conta inteira e volta primeiro sempre — [conquistas L1](docs/roadmap/conquistas-e-tempo.md). — M
+- [ ] Sincronização pulada conta como sucesso e apaga a espera depois de uma recusa — [conquistas L2](docs/roadmap/conquistas-e-tempo.md). — P
+- [ ] Restaurar saves com o emulador aberto por fora — [emulação L3](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+- [ ] Backup do Dolphin leva a BIOS do GameCube e deixa de fora os saves do Wii — [emulação L2](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+
+### 8.1 Contas e lojas — [revisão completa](docs/roadmap/lojas-e-contas.md)
+
+- [ ] Token revogado ou vencido vira "entre de novo" visível; erros distintos para 400/401/429/5xx (L3). — M
+- [ ] Conta identificada pelo id (xuid, account id, steamid), não pelo nome; Sair sem apagar conquistas (L4; conquistas L3). — M
+- [ ] Resposta parcial, limites de uso e custo de cada sincronização (L5). — M
+- [ ] Tokens fora do texto puro (Cofre de credenciais do Windows) (L6). — M
+- [ ] Endurecer a janela de login (L7). — P
+- [ ] Cartões de conta com carregando, erro, "sincronizado há" e "Atualizar agora" (L8). — P/M
+- [ ] Xbox: "jogos da conta" vem do histórico, não da posse (L9); pacotes instalados de verdade (L10). — M
+- [ ] Epic: plataforma, demos e limite de páginas (L11). — M
+- [ ] Game Pass: padrão, mercado e selos (L12); mesmo jogo com nomes diferentes entre lojas (L13). — M
+- [ ] Página da loja: vazio, fonte e "abrir na loja" (L14). — P
+- [ ] Big Picture e Início coerentes com a Biblioteca (L15). — M
+- [ ] Instalar, desinstalar e verificar pela loja com o launcher ausente (L16; ver também o plano da Steam). — P/M
+- [ ] Testes que faltam (L17). — M
+
+### 8.2 Conquistas e tempo de jogo — [revisão completa](docs/roadmap/conquistas-e-tempo.md)
+
+- [ ] Sessão vencida aparece como "loja ocupada" (L4). — P/M
+- [ ] Data desconhecida aparece como 31/12/1969 (L5). — P
+- [ ] Conquistas revogadas ou zeradas nunca saem do hub (L6). — M
+- [ ] Listas guardadas sem idioma (L7). — P/M
+- [ ] Steam e RetroAchievements quase não alimentam Próximas e Mais raras; página da Epic só lê o banco (L8). — M
+- [ ] Estados por fonte: quando sincronizou, quando tenta de novo, forçar (L9). — M
+- [ ] Concorrência no SQLite com escrita que some em silêncio (L10); esquema com versão (L11). — P/M
+- [ ] Banco fora do backup e órfãos acumulando (L12). — P/M
+- [ ] Menos consultas por sincronização (L13; tabela de orçamento no documento). — M
+- [ ] Aviso ao vivo e releitura ao fechar o jogo também para Xbox e Epic (L14). — M/G
+- [ ] DLC, Xbox 360 e totais (L15). — P
+- [ ] Testes que faltam (L16). — M
+
+### 8.3 Emulação e saves dos emuladores — [revisão completa](docs/roadmap/emulacao-e-saves-dos-emuladores.md)
+
+- [ ] RPCS3, Cemu e Xenia sem backup, e o cartão some sem explicar (L4); xemu: arquivos do console, HD e saves (L5). — M
+- [ ] Um lugar só decide a pasta de cada emulador (L6). — P
+- [ ] Rodízio com limite de espaço e nuvem por pasta (L7). — M
+- [ ] Saves por jogo, não só a pasta inteira (L8). — M
+- [ ] Atualizar Xenia, xemu e os outros emuladores sem perder nada (L9, depende do 8.0). — M
+- [ ] Xenia e xemu: formatos, configuração, controles e conquistas (L10). — M
+- [ ] Uma tabela só de consoles: nomes, siglas e imagens (L11). — P
+- [ ] Imagens que faltam (Wii U, 32X, Dreamcast, Saturn, Switch, Sega CD, PC Engine, PS4 têm foto em domínio público)
+      e licença das existentes (L12). — P
+- [ ] Estados da UI e testes (L13). — M
+
+## Planos detalhados (25/11/2026)
+
+Cada tópico novo ganhou um plano escrito por um agente que leu o código do Cerberus e as referências. Os planos
+têm etapas pequenas com critério de aceite e testes; o que não foi confirmado está marcado "não verificado".
+
+| Tópico | Plano | Primeira etapa |
+| --- | --- | --- |
+| Saves de jogos de PC | [saves-de-jogos-de-pc.md](docs/roadmap/saves-de-jogos-de-pc.md) | Ler o manifesto do Ludusavi baixado sob demanda (não embutir: licença dos dados ambígua) |
+| GOG e outras lojas | [gog-e-outras-lojas.md](docs/roadmap/gog-e-outras-lojas.md) | GOG instalados pelo registro e pelo `galaxy-2.0.db` (biblioteca e tempo sem login) |
+| Steam sem chave e gerenciar lojas | [steam-sem-chave-e-gerenciar-lojas.md](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md) | Etapa 0 (segredos no backup e na URL), depois teste descartável do `webapi_token` |
+| Metadados, filtros e estatísticas | [metadados-filtros-e-estatisticas.md](docs/roadmap/metadados-filtros-e-estatisticas.md) | E1: tipos de filtro, agrupamento e ordem no `shared`, medidos com 1.500 jogos |
+| Troféus e lembranças | [trofeus-e-lembrancas.md](docs/roadmap/trofeus-e-lembrancas.md) | Parsers puros do `TROPUSR.DAT` e `TROPCONF.SFM` com arquivos sintéticos |
+| Recomps robustos | [recomps-robustos.md](docs/roadmap/recomps-robustos.md) | `extract`, `contains`, `destination` e entradas como link |
 
 ## Fora de vez
 
