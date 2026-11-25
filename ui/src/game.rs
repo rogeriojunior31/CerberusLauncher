@@ -470,17 +470,26 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
         let Some(entry) = entry.clone() else {
             return ().into_any();
         };
+        let install_button = |label: String, rid: String| view! {
+            <AlreadyInstalled recomp_id=entry.id.clone() />
+            <button type="button" class="btn main big play" on:click=move |_| start_install(library, rid.clone())>
+                <Svg icon=Icon::Download size=20 />{label}
+            </button>
+        };
         match entry.latest.clone() {
             Some(release) => {
-                let rid = entry.id.clone();
-                view! {
-                    <AlreadyInstalled recomp_id=entry.id.clone() />
-                    <button type="button" class="btn main big play" on:click=move |_| start_install(library, rid.clone())>
-                        <Svg icon=Icon::Download size=20 />{if several { tr!("Instalar {} · {}", entry.name, megabytes(release.size)) } else { tr!("Instalar · {}", megabytes(release.size)) }}
-                    </button>
-                }
-                .into_any()
+                let label = if several {
+                    tr!("Instalar {} · {}", entry.name, megabytes(release.size))
+                } else if release.size > 0 {
+                    tr!("Instalar · {}", megabytes(release.size))
+                } else {
+                    tr!("Instalar").to_string()
+                };
+                install_button(label, entry.id.clone()).into_any()
             }
+            // A source whose version is only known from its repository once the
+            // download starts is still installable: offer it without a size.
+            None if entry.problem.is_none() => install_button(tr!("Instalar").to_string(), entry.id.clone()).into_any(),
             None => view! { <button type="button" class="btn big" disabled=true>{tr!("Indisponível")}</button> }.into_any(),
         }
     }

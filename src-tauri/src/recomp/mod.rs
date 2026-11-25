@@ -1901,6 +1901,75 @@ mod tests {
     }
 
     #[test]
+    fn installs_a_hydra_direct_link_end_to_end() {
+        use std::io::Write;
+        use std::net::TcpListener;
+
+        // A zip holding a fake game, served over HTTP like a list's download link.
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            zip.start_file("HydraGame.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"MZ-fake-exe").unwrap();
+            zip.finish().unwrap();
+        }
+        let bytes = buf.into_inner();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        let body = bytes.clone();
+        let server = std::thread::spawn(move || {
+            // Read the request first: closing a socket with unread bytes still in
+            // its receive buffer makes Windows answer with RST, which discards the reply.
+            let (socket, _) = listener.accept().unwrap();
+            {
+                use std::io::BufRead;
+                let mut buf = std::io::BufReader::new(&socket);
+                let mut line = String::new();
+                while buf.read_line(&mut line).unwrap() > 0 && !line.trim().is_empty() {
+                    line.clear();
+                }
+            }
+            let mut socket = &socket;
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: {}\r\n\r\n", body.len()).unwrap();
+            socket.write_all(&body).unwrap();
+        });
+
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        let library = LocalLibrary::load(data.path());
+        let entry = CatalogEntry {
+            id: "hydra-e2e".into(),
+            title: "hydra-e2e".into(),
+            name: "Hydra End to End".into(),
+            game: "Hydra End to End".into(),
+            console: "PC".into(),
+            origin: "pc".into(),
+            tag: Some("1".into()),
+            from_source: true,
+            systems: vec!["windows".into()],
+            kind: "portable".into(),
+            files: std::collections::HashMap::from([("windows".into(), catalog::DirectFile {
+                name: "game.zip".into(),
+                sha256: String::new(),
+                url: url.clone(),
+                hoster: String::new(),
+            })]),
+            ..Default::default()
+        };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let cancel = install::Halt::default();
+        let report = |_step: InstallStep| {};
+        let game = tauri::async_runtime::block_on(install_now(&client, &folders, &library, &entry, &cancel, &report)).unwrap();
+        server.join().unwrap();
+
+        assert_eq!(game.id, "recomp:hydra-e2e");
+        let installed_exe = Path::new(&game.install_dir).join("HydraGame.exe");
+        assert!(installed_exe.is_file(), "the list's archive unpacks to the game's exe");
+        assert!(Path::new(&game.install_dir).join(MARKER).is_file(), "the install folder stays ours");
+        assert!(library.games().unwrap().iter().any(|g| g.id == game.id), "registered in the library");
+    }
+
+    #[test]
     fn staging_sits_beside_the_install() {
         let target = Path::new(r"D:\Recomps\zelda64recomp");
         assert_eq!(staging_for(target, "zelda64recomp"), Path::new(r"D:\Recomps\.staging-zelda64recomp"));
