@@ -1850,6 +1850,42 @@ fn XboxCard() -> impl IntoView {
 fn EpicCard() -> impl IntoView {
     let library = expect_context::<Library>();
     let status = LocalResource::new(api::epic_status);
+    // The account: read again when the window comes back to the front (the
+    // sign-in window just closed).
+    let account = LocalResource::new(api::get_settings);
+    let focus = window_event_listener(leptos::ev::focus, move |_| {
+        account.refetch();
+        library.games.refetch();
+    });
+    on_cleanup(move || focus.remove());
+    let busy = RwSignal::new(false);
+    let signed = move || {
+        let user = account.get().and_then(Result::ok).and_then(|s| s.epic_user);
+        match user {
+            Some(name) => view! {
+                <div class="set-row">
+                    <div><b>{tr!("Conta Epic")}</b><p class="muted small">{tr!("Conectada como {}. Os jogos da conta que não estão neste PC aparecem na Biblioteca como não instalados.", name)}</p></div>
+                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| {
+                        busy.set(true);
+                        spawn_local(async move {
+                            let _ = library.report(api::epic_logout().await);
+                            account.refetch();
+                            library.games.refetch();
+                            busy.set(false);
+                        });
+                    }>{tr!("Sair")}</button>
+                </div>
+            }
+            .into_any(),
+            None => view! {
+                <div class="set-row">
+                    <div><b>{tr!("Conta Epic")}</b><p class="muted small">{tr!("Entre para ver todos os jogos da sua conta, inclusive os que não estão instalados. O login é na página da própria Epic: o Cerberus nunca vê a sua senha e só guarda o acesso.")}</p></div>
+                    <button type="button" class="btn sm main" on:click=move |_| spawn_local(async move { library.report(api::epic_login().await); })>{tr!("Entrar na Epic")}</button>
+                </div>
+            }
+            .into_any(),
+        }
+    };
     let body = move || match status.get() {
         None => view! { <p class="muted small">{tr!("Procurando a Epic neste PC…")}</p> }.into_any(),
         Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
@@ -1877,7 +1913,7 @@ fn EpicCard() -> impl IntoView {
                         <Svg icon=Icon::External size=16 />{tr!("Abrir a Epic")}
                     </button>
                 </div>
-                <p class="muted small">{tr!("Sem conta e sem senha: o Cerberus lê o que a Epic já guarda no PC. Os jogos abrem pela Epic, que precisa estar instalada. Tempo de jogo é contado; conquistas da Epic ainda não.")}</p>
+                <p class="muted small">{tr!("Os jogos instalados vêm do que a Epic já guarda no PC, sem conta. Abrem e instalam pela Epic, que precisa estar instalada. Tempo de jogo é contado; conquistas da Epic ainda não.")}</p>
             }
             .into_any()
         }
@@ -1885,6 +1921,7 @@ fn EpicCard() -> impl IntoView {
     view! {
         <section class="card set">
             <div class="card-h"><h3>"Epic Games"</h3></div>
+            {signed}
             {body}
         </section>
     }

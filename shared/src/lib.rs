@@ -475,6 +475,9 @@ pub struct SettingsView {
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,
+    /// The Epic Games account signed in (its name only).
+    #[serde(default)]
+    pub epic_user: Option<String>,
     /// The RetroAchievements password was given once: RetroArch gets connected by itself.
     #[serde(default)]
     pub ra_retroarch: bool,

@@ -4,6 +4,7 @@
 mod art_cache;
 mod emulator_saves;
 mod epic;
+mod epic_account;
 mod xbox;
 mod gamepass;
 mod disk;
@@ -149,6 +150,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         monitor: chosen.monitor.clone(),
         language: chosen.language.clone(),
         ra_user: chosen.ra_user.clone(),
+        epic_user: chosen.epic_user.clone(),
         ra_retroarch: chosen.ra_token.is_some(),
         roms: {
             let played = emulation::played(&data.0);
@@ -1582,6 +1584,7 @@ async fn list_games(
     });
     games.extend(scan.await.unwrap_or_default());
     game_pass(&app, &http, &mut games);
+    epic_library(&app, &http, &mut games);
     xbox_art(&app, &http, &mut games);
     owned_not_installed(&app, &http, &mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
@@ -1613,6 +1616,132 @@ async fn list_games(
     games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
+}
+
+/// The Epic account's games (when signed in): from disk at once, asked again in
+/// the background when an hour old (renewing the token), the library listed again then.
+fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
+    let data = app.state::<DataDir>().0.clone();
+    let Some(refresh) = settings::load(&data).epic_refresh else { return };
+    epic_account::merge(games, &epic_account::cached(&data));
+    if !epic_account::stale(&data) {
+        return;
+    }
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (app, http) = (app.clone(), http.clone());
+    tauri::async_runtime::spawn(async move {
+        let result = async {
+            let session = epic_account::token(&http, epic_account::Grant::Refresh(&refresh)).await?;
+            let mut chosen = settings::load(&data);
+            chosen.epic_refresh = Some(session.refresh.clone());
+            settings::save(&data, &chosen)?;
+            epic_account::library(&http, &session.access).await
+        }
+        .await;
+        ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        match result {
+            Ok(owned) => {
+                epic_account::keep(&data, owned);
+                let _ = app.emit("catalog-changed", ());
+            }
+            Err(e) => trail::note(&app, "epic", tk!("Biblioteca da Epic"), &Err(e)),
+        }
+    });
+}
+
+/// Opens Epic's own sign-in page in a window of its own (private: nothing stays
+/// in it). When it reaches the page that hands the code, Cerberus asks for the
+/// code with that window's cookies, trades it for a token and closes it.
+#[tauri::command]
+fn epic_login(app: AppHandle) -> Result<(), String> {
+    if let Some(open) = app.get_webview_window("epic-login") {
+        let _ = open.set_focus();
+        return Ok(());
+    }
+    let url = tauri::Url::parse(&epic_account::login_url()).map_err(|e| e.to_string())?;
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    DONE.store(false, std::sync::atomic::Ordering::SeqCst);
+    let handle = app.clone();
+    let finish = move |at: &tauri::Url| {
+        if epic_account::is_return(at) && !DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let app = handle.clone();
+            tauri::async_runtime::spawn(async move { finish_epic_login(app).await });
+        }
+    };
+    let on_load = finish.clone();
+    tauri::WebviewWindowBuilder::new(&app, "epic-login", tauri::WebviewUrl::External(url))
+        .title(tr!("Entrar na Epic Games"))
+        .inner_size(800.0, 860.0)
+        .incognito(true)
+        .on_navigation(move |at| {
+            finish(at);
+            // Only Epic's secure pages open here.
+            at.scheme() == "https"
+        })
+        .on_page_load(move |_, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                on_load(payload.url());
+            }
+        })
+        .build()
+        .map_err(|e| tr!("Não foi possível abrir o login da Epic: {}", e))?;
+    Ok(())
+}
+
+async fn finish_epic_login(app: AppHandle) {
+    let result = async {
+        // The sign-in's cookies (the window keeps them while it's open), then the code.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let window = app.get_webview_window("epic-login").ok_or(tr!("A janela de login fechou antes de terminar."))?;
+        let cookies = window
+            .cookies_for_url(tauri::Url::parse("https://www.epicgames.com/").map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        let header = cookies.iter().map(|c| format!("{}={}", c.name(), c.value())).collect::<Vec<_>>().join("; ");
+        let http = app.state::<reqwest::Client>().inner().clone();
+        let code = epic_account::code_with_cookies(&http, &header).await?;
+        let session = epic_account::token(&http, epic_account::Grant::Code(&code)).await?;
+        let data = app.state::<DataDir>().0.clone();
+        let mut chosen = settings::load(&data);
+        chosen.epic_user = Some(if session.name.is_empty() { tr!("Conta Epic").to_string() } else { session.name.clone() });
+        chosen.epic_refresh = Some(session.refresh.clone());
+        settings::save(&data, &chosen)?;
+        // The account's games now, not in an hour.
+        if let Ok(owned) = epic_account::library(&http, &session.access).await {
+            epic_account::keep(&data, owned);
+        }
+        Ok::<String, String>(chosen.epic_user.unwrap_or_default())
+    }
+    .await;
+    if let Some(window) = app.get_webview_window("epic-login") {
+        let _ = window.close();
+    }
+    match result {
+        Ok(name) => {
+            trail::note(&app, "epic", tk!("Conta Epic"), &Ok(tr!("Conectada como {}", name)));
+            let _ = app.emit("toast", tr!("Epic conectada como {}. Os jogos da conta entram na Biblioteca.", name));
+            let _ = app.emit("accounts-changed", ());
+            let _ = app.emit("catalog-changed", ());
+        }
+        Err(e) => {
+            let _ = app.emit("toast", tr!("Não foi possível entrar na Epic: {}", e));
+        }
+    }
+}
+
+/// Forgets the Epic account on this PC (its token and its library list).
+#[tauri::command]
+fn epic_logout(app: AppHandle) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    chosen.epic_user = None;
+    chosen.epic_refresh = None;
+    settings::save(&data, &chosen)?;
+    epic_account::forget(&data);
+    let _ = app.emit("catalog-changed", ());
+    Ok(settings_view(&app))
 }
 
 /// PC Game Pass (when the player keeps it on): official art on the Xbox games
@@ -2174,6 +2303,8 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
         // Not on this PC yet: Steam's own install window.
         Source::Steam { app_id } if game.install_dir.is_empty() => format!("steam://install/{app_id}"),
         Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
+        // Owned, not on this PC: the Epic launcher installs it.
+        Source::Epic { app_name, namespace, item_id } if game.install_dir.is_empty() => epic_account::install_url(namespace, item_id, app_name),
         Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         // Through Windows, as the Start menu does (Xbox app sign-in and Game Pass included).
         // Not on this PC: its page in the Xbox app, where it installs (Game Pass or bought).
@@ -3181,6 +3312,8 @@ fn main() {
             open_folder,
             open_backups,
             set_game_pass,
+            epic_login,
+            epic_logout,
             xbox_open,
             emulator_backups,
             backup_emulator_saves,

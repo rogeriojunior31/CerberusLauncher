@@ -220,6 +220,7 @@ pub fn play_game(library: Library, game: Game) {
             NextStep::Install => {
                 library.toast(match game.source {
                     cerberus_shared::Source::Xbox { .. } => tr!("O app Xbox abre na página de {}: instale por lá. Quando terminar, ele aparece pronto para jogar.", game.name),
+                    cerberus_shared::Source::Epic { .. } => tr!("A Epic vai instalar {}. Quando terminar, ele aparece pronto para jogar.", game.name),
                     _ => tr!("A Steam vai instalar {}. Quando terminar, ele aparece pronto para jogar.", game.name),
                 });
                 Some(game)

@@ -1260,3 +1260,12 @@ pub async fn set_game_pass(on: bool) -> Result<SettingsView, String> {
 pub async fn xbox_open() -> Result<(), String> {
     call("xbox_open", &()).await
 }
+
+
+pub async fn epic_login() -> Result<(), String> {
+    call("epic_login", &()).await
+}
+
+pub async fn epic_logout() -> Result<SettingsView, String> {
+    call("epic_logout", &()).await
+}

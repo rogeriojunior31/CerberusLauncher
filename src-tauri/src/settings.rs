@@ -36,6 +36,11 @@ pub struct Settings {
     /// The player's RetroAchievements account: username and their own Web API key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_user: Option<String>,
+    /// The Epic Games account signed in: its name, and the refresh token (never a password).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epic_user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epic_refresh: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
     /// RetroAchievements' connect token, traded once for the password (which is
