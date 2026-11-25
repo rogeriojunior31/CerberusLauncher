@@ -273,7 +273,8 @@ pub fn GamePage(id: String) -> impl IntoView {
         let e = entry.get();
         let g = game.get();
         let kicker = match &e {
-            Some(e) => tr!("Recomp · {}", e.console),
+            // As on the desktop page: which native version, and its console.
+            Some(e) => format!("{} · {}", e.name, e.console),
             None => g.as_ref().map(|g| crate::tiles::source_name(&g.source).to_string()).unwrap_or_default(),
         };
         let title = match g.as_ref().and_then(|g| g.logo_path.clone()).or_else(|| e.as_ref().and_then(|e| e.logo.clone())) {

@@ -879,7 +879,7 @@ fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
                                     {move || if is_open() { tr!("Esconder jogos") } else { tr!("Ver jogos") }}
                                 </button>
                             })}
-                            <button type="button" class="btn sm" disabled=move || busy.get()
+                            <button type="button" class="btn sm remove" disabled=move || busy.get()
                                 on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), tr!("Pasta removida. Os arquivos continuam no seu PC."))>{tr!("Remover")}</button>
                         </div>
                     </header>
@@ -1382,7 +1382,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                                     let is_armed = move || armed_remove.get().as_deref() == Some(armed_id.as_str());
                                     let label_armed = is_armed.clone();
                                     view! {
-                                        <button type="button" class="btn sm" class:warn=move || managed && is_armed() disabled=disabled on:click=move |_| {
+                                        <button type="button" class="btn sm" class:warn=move || managed && is_armed() class:remove=managed disabled=disabled on:click=move |_| {
                                             let id = i3.clone();
                                             if !managed {
                                                 act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }));

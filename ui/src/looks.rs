@@ -55,7 +55,8 @@ pub fn LooksCard(game_id: String, preview: Option<String>) -> impl IntoView {
 
     move || {
         let Some(s) = status.get() else {
-            return view! { <section class="card looks"><crate::game_overview::Waiting text=tr!("Carregando os filtros...") rows=2 retry=Callback::new(move |_| load()) /></section> }.into_any();
+            // Last on the tab and secondary: it appears when ready, without a second waiting card.
+            return ().into_any();
         };
         if let Some(why) = s.unsupported.clone() {
             return view! {

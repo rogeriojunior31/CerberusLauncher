@@ -2190,3 +2190,16 @@ main.main { scrollbar-gutter: stable; }
 .about-body p, .about-body li { max-width: 72ch; }
 .looks-off { margin: 4px 2px 0; }
 .looks-off b { color: var(--muted); font-weight: 700; }
+
+/* Installed / not installed: always in sight, at the end of the tabs row */
+.lib-presence { margin-left: auto; }
+.lib-presence:empty { display: none; }
+
+/* A slow read: one quiet line with a compact retry, never a stretched bar */
+.wait-note { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.wait-note p { margin: 0; }
+.wait-note .btn { width: auto; flex: none; }
+
+/* Remover keeps its distance from the safe buttons beside it, in the danger tone */
+.btn.sm.remove { margin-left: 10px; background: transparent; color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.btn.sm.remove:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }

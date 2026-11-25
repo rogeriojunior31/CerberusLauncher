@@ -407,7 +407,8 @@ pub fn AchievementsCard(data: LocalResource<Result<cerberus_shared::GameAchievem
 pub fn StoreFacts(details: StoreDetails, #[prop(optional)] extra: Vec<(String, String)>) -> impl IntoView {
     let mut rows: Vec<(String, String)> = Vec::new();
     if !details.released.is_empty() {
-        rows.push((tr!("Lançamento").to_string(), if details.coming_soon { tr!("{} (em breve)", details.released) } else { details.released.clone() }));
+        let released = store_day(&details.released);
+        rows.push((tr!("Lançamento").to_string(), if details.coming_soon { tr!("{} (em breve)", released) } else { released }));
     }
     if !details.developers.is_empty() {
         rows.push((tr!("Desenvolvedora").to_string(), details.developers.iter().take(3).cloned().collect::<Vec<_>>().join(", ")));
@@ -572,23 +573,63 @@ pub fn StoreSkeleton() -> impl IntoView {
 /// screen readers, and after a while a note that it's still going.
 #[component]
 pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize, #[prop(optional)] retry: Option<Callback<()>>) -> impl IntoView {
-    let slow = RwSignal::new(false);
-    let timer = set_timeout_with_handle(move || slow.set(true), std::time::Duration::from_secs(10)).ok();
+    // Seconds since this read (or its retry) began: slow at 8, given up at 30.
+    let elapsed = RwSignal::new(0u32);
+    let tick = set_interval_with_handle(move || elapsed.set(elapsed.get_untracked() + 1), std::time::Duration::from_secs(1)).ok();
     on_cleanup(move || {
-        if let Some(t) = timer {
+        if let Some(t) = tick {
             t.clear();
         }
     });
+    let stuck = move || elapsed.get() >= 30;
+    let again = move || {
+        elapsed.set(0);
+        if let Some(r) = retry {
+            r.run(());
+        }
+    };
     view! {
         <div class="waiting" role="status">
             <span class="vh">{text}</span>
-            {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
-            <Show when=move || slow.get()>
-                <p class="muted small">{tr!("Demorando mais que o normal. Na primeira vez pode levar alguns segundos.")}</p>
-                {retry.map(|again| view! {
-                    <button type="button" class="btn sm" on:click=move |_| { slow.set(false); again.run(()); }>{tr!("Tentar de novo")}</button>
-                })}
+            <Show when=move || !stuck()>
+                {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
+            </Show>
+            <Show when=move || { elapsed.get() >= 8 }>
+                <div class="wait-note">
+                    <p class="muted small">{move || if stuck() {
+                        tr!("Não deu para ler agora. A pasta do jogo pode estar ocupada (uma atualização, o próprio jogo aberto).")
+                    } else {
+                        tr!("Está demorando mais que o normal.")
+                    }}</p>
+                    {retry.is_some().then(|| view! { <button type="button" class="btn sm" on:click=move |_| again()>{tr!("Tentar de novo")}</button> })}
+                </div>
             </Show>
         </div>
+    }
+}
+
+
+/// The store's date ("10/set./2019", "10 Sep, 2019") in the same numbers as the
+/// rest of the app ("10/09/2019"); anything else ("Em breve") as the store wrote it.
+fn store_day(text: &str) -> String {
+    const MONTHS: [[&str; 2]; 12] = [
+        ["jan", "jan"], ["fev", "feb"], ["mar", "mar"], ["abr", "apr"], ["mai", "may"], ["jun", "jun"],
+        ["jul", "jul"], ["ago", "aug"], ["set", "sep"], ["out", "oct"], ["nov", "nov"], ["dez", "dec"],
+    ];
+    let words: Vec<String> = text
+        .split(|c: char| c == '/' || c == ' ' || c == ',' || c == '.')
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let month_of = |w: &str| MONTHS.iter().position(|m| m.iter().any(|n| w.starts_with(n))).map(|i| i + 1);
+    let (day, month, year) = match words.as_slice() {
+        [d, m, y] if d.parse::<u32>().is_ok() => (d.clone(), month_of(m), y.clone()),
+        [m, d, y] if d.parse::<u32>().is_ok() => (d.clone(), month_of(m), y.clone()),
+        _ => return text.to_string(),
+    };
+    match (day.parse::<u32>(), month, year.len() == 4 && year.parse::<u32>().is_ok()) {
+        (Ok(d), Some(m), true) if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::En => format!("{m:02}/{d:02}/{year}"),
+        (Ok(d), Some(m), true) => format!("{d:02}/{m:02}/{year}"),
+        _ => text.to_string(),
     }
 }

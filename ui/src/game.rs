@@ -157,7 +157,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             (t, None) => tr!("Jogou por {}", format::playtime(t)),
         };
         if extra > 0 && g.playtime_secs > 0 {
-            text = tr!("{} ({} no PC, {} no original)", text, format::playtime(g.playtime_secs), format::playtime(extra));
+            text = tr!("{} ({} nativo, {} no original)", text, format::playtime(g.playtime_secs), format::playtime(extra));
         }
         view! { <span class="gp-played"><Svg icon=Icon::Clock size=15 />{text}</span> }
     });
@@ -492,7 +492,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         let recomps = lib.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
         lib.roms.get_untracked().unwrap_or_default().iter().any(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
     });
-    let play_title = if merged { tr!("Sua jogatina no PC") } else { tr!("Sua jogatina") };
+    let play_title = if merged { tr!("Sua jogatina nativa") } else { tr!("Sua jogatina") };
     let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played title=play_title /> }.into_any());
     let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {

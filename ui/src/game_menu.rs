@@ -189,7 +189,7 @@ pub fn GameMenuLayer() -> impl IntoView {
             <div class="ctx-catch" on:click=move |_| menu.close() on:contextmenu=move |e| { e.prevent_default(); menu.close(); }></div>
             <div class="ctx" role="menu" style:left=format!("{x}px") style:top=format!("{y}px")
                 on:keydown=move |e| if e.key() == "Escape" { menu.close(); }>
-                <span class="ctx-h">{game.name.clone()}</span>
+                <span class="ctx-h">{crate::tiles::game_names(&game, library).0}</span>
                 {(!on_page).then(|| view! {
                     <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
                         <Svg icon=play_icon size=16 />{play_label}
@@ -213,18 +213,6 @@ pub fn GameMenuLayer() -> impl IntoView {
                         {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}
                     </button>
                 })}
-                <button type="button" role="menuitem" on:click=move |_| {
-                    menu.close();
-                    let id = hide_id.clone();
-                    leptos::task::spawn_local(async move {
-                        if library.report(api::set_hidden(&id, !hidden).await).is_some() {
-                            library.games.refetch();
-                            library.toast(if hidden { tr!("O jogo voltou para a biblioteca.") } else { tr!("Jogo oculto. Ele fica na aba Ocultos da biblioteca.") });
-                        }
-                    });
-                }>
-                    <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
-                </button>
                 <Shelves id=shelf_id in_shelves />
                 // The game's files: a group of their own, not under Coleções.
                 {has_folder.then(|| view! { <span class="ctx-sep" role="separator"></span> })}
@@ -253,6 +241,20 @@ pub fn GameMenuLayer() -> impl IntoView {
                         <Svg icon=Icon::Folder size=16 />{tr!("Abrir pasta do jogo")}
                     </button>
                 })}
+                // Taking it off the shelf last, apart from the rest.
+                <span class="ctx-sep" role="separator"></span>
+                <button type="button" role="menuitem" on:click=move |_| {
+                    menu.close();
+                    let id = hide_id.clone();
+                    leptos::task::spawn_local(async move {
+                        if library.report(api::set_hidden(&id, !hidden).await).is_some() {
+                            library.games.refetch();
+                            library.toast(if hidden { tr!("O jogo voltou para a biblioteca.") } else { tr!("Jogo oculto. Ele fica na aba Ocultos da biblioteca.") });
+                        }
+                    });
+                }>
+                    <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
+                </button>
             </div>
         })
     }

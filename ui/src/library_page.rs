@@ -34,7 +34,7 @@ impl Category {
             Category::Favorites => tr!("Favoritos"),
             Category::Collections => tr!("Coleções"),
             Category::Hidden => tr!("Ocultos"),
-            Category::Recomps => tr!("Recomps"),
+            Category::Recomps => tr!("Nativos"),
             Category::Pc => "PC",
             Category::Classics => tr!("Clássicos"),
         }
@@ -75,18 +75,6 @@ enum Filter {
 impl Filter {
     /// Where a game comes from.
     const STORES: [Filter; 6] = [Filter::All, Filter::Recomps, Filter::Steam, Filter::Epic, Filter::Added, Filter::Roms];
-
-    fn label(self) -> &'static str {
-        match self {
-            Filter::All => tr!("Todas as origens"),
-            Filter::Recomps => "Recomps",
-            Filter::Steam => tr!("Steam"),
-            Filter::Epic => tr!("Epic"),
-            Filter::Added => tr!("Adicionados"),
-            // The classics no installed recomp plays: the others count with their recomp.
-            Filter::Roms => tr!("Só ROM"),
-        }
-    }
 
     fn keeps(self, game: &Game) -> bool {
         match (self, &game.source) {
@@ -349,22 +337,6 @@ pub fn LibraryPage() -> impl IntoView {
             (stores, in_tab.len() - missing + roms, missing)
         })
     });
-    let chips = Filter::STORES.into_iter().enumerate().map(|(i, which)| {
-        let active = move || filter.get() == which;
-        // ROMs only where classics are listed (Todos), and only with some.
-        let shown = move || {
-            active()
-                || which == Filter::All
-                || (counts.get().0[i] > 0 && (which != Filter::Roms || category.get() == Category::All))
-        };
-        view! {
-            <button type="button" class="chip-btn" class:on=active class:hidden=move || !shown() aria-pressed=move || active().to_string()
-                title=(which == Filter::Roms).then(|| tr!("Clássicos que nenhum recomp instalado joga; os outros contam junto com o recomp."))
-                on:click=move |_| filter.set(which)>
-                {which.label()}<span class="chip-n">{move || counts.get().0[i]}</span>
-            </button>
-        }
-    }).collect_view();
     // Status chips: only the statuses some game in view has, with how many.
     let statuses = move || {
         let kind = category.get();
@@ -613,7 +585,7 @@ pub fn LibraryPage() -> impl IntoView {
 
     // Origin, install state and status fold under "Filtros"; the button counts the ones on.
     let filters_open = RwSignal::new(false);
-    let active_filters = move || (filter.get() != Filter::All) as usize + absent.get() as usize + status.get().is_some() as usize;
+    let active_filters = move || status.get().is_some() as usize;
     let mode = move |list, icon, label: &'static str| {
         let active = move || compact.get() == list;
         view! {
@@ -671,18 +643,18 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
                 <div class="lib-tabs">
                     <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
+                    // Always in sight: a search never hides the games that aren't installed without saying so.
+                    <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
+                        <div class="lib-presence">{presence}</div>
+                    </Show>
                     <Show when=move || category.get() == Category::Collections>
                         <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
                     </Show>
                 </div>
                 <div class="lib-filters" class:hidden=move || !filters_open.get()>
-                    <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
-                        <div class="chips" role="group" aria-label=tr!("Origem do jogo")>{chips.clone()}</div>
-                        {presence}
-                    </Show>
                     {statuses}
                     <Show when=move || { active_filters() > 0 }>
-                        <button type="button" class="link" on:click=move |_| { filter.set(Filter::All); absent.set(false); status.set(None); }>{tr!("Limpar filtros")}</button>
+                        <button type="button" class="link" on:click=move |_| status.set(None)>{tr!("Limpar filtros")}</button>
                     </Show>
                 </div>
             </section>
