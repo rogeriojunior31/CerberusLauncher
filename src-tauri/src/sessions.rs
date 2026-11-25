@@ -38,6 +38,10 @@ enum Observation {
     Started(Instant),
     /// The game's exit code, reported just before `Closed` when it is known.
     Exited(i32),
+    /// Its windows were gone well before the process ended: whatever went
+    /// wrong happened while closing, after the play was over.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    WindowsClosedFirst,
     Closed(Duration),
 }
 
@@ -214,15 +218,17 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let game = game.clone();
     std::thread::spawn(move || {
         let mut exit_code = None;
+        let mut closing = false;
         let result = child.observe(|event| match event {
             Observation::Started(started) => {
                 app.state::<Sessions>().lock().insert(game.id.clone(), Some(Round { started, credited: 0 }));
             }
             Observation::Exited(code) => exit_code = Some(code),
+            Observation::WindowsClosedFirst => closing = true,
             Observation::Closed(duration) => {
                 record(&app, &game, duration.as_secs());
                 if let Some(code) = exit_code.take() {
-                    report_crash(&app, &game, code, duration);
+                    report_crash(&app, &game, code, duration, std::mem::take(&mut closing));
                 }
             }
         });
@@ -422,7 +428,7 @@ fn progress_line(line: &str) -> Option<(Option<f32>, String)> {
 }
 
 /// A game that ended badly: why, in the history and as a notice, with its log.
-fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
+fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration, while_closing: bool) {
     // The developer's own words for this code, or "ok": the game's normal close.
     let own = recomp::entry_for(game).and_then(|e| e.manifest).and_then(|m| m.exit_message(code));
     let why = match own {
@@ -431,6 +437,12 @@ fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
         None => crate::crash::reason(code, played.as_secs()),
     };
     let Some(mut why) = why else { return };
+    // Fell over after its window had closed: the play itself went fine. Kept in
+    // the history, without the alarm (a notice, "Precisa de atenção").
+    if while_closing {
+        crate::trail::note(app, &game.id, tk!("Fechamento do jogo"), &Ok(tr!("O jogo deu erro ao fechar, depois que a janela já tinha fechado. A partida não foi afetada. ({})", why)));
+        return;
+    }
     // "A DLL is too old": find which one, when something stands out.
     if code as u32 == crate::crash::OLD_DLL {
         let program_dir = match &game.source {
@@ -632,6 +644,35 @@ mod tests {
         assert_eq!(progress_line("some log line"), None);
     }
 
+    /// A window shown for a moment, then the program's own exit code, from PowerShell.
+    #[cfg(windows)]
+    fn window_then_exit(close_first: bool) -> Vec<String> {
+        let script = if close_first {
+            "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object Windows.Forms.Form; $f.Show(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 900; $f.Close(); Start-Sleep -Milliseconds 1500; exit -1073741819"
+        } else {
+            "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object Windows.Forms.Form; $f.Show(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 1500; exit -1073741819"
+        };
+        let mut game = Command::new("powershell.exe");
+        game.args(["-NoProfile", "-NonInteractive", "-Command", script]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let process = spawn_game(game, None).unwrap();
+        let mut seen = Vec::new();
+        process
+            .observe(|event| match event {
+                Observation::WindowsClosedFirst => seen.push("closed first".to_string()),
+                Observation::Exited(code) => seen.push(format!("exit {code:#X}")),
+                _ => {}
+            })
+            .unwrap();
+        seen
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_crash_after_the_window_closed_is_told_apart() {
+        assert_eq!(window_then_exit(true), ["closed first", "exit 0xC0000005"]);
+        assert_eq!(window_then_exit(false), ["exit 0xC0000005"], "the window was there when it fell: a real crash");
+    }
+
     #[test]
     fn a_game_that_crashes_reports_its_windows_exit_code() {
         // cmd ends with the "missing DLL" status a broken game would.
@@ -643,7 +684,7 @@ mod tests {
             .observe(|event| match event {
                 Observation::Exited(code) => seen.push(format!("exit {code:#X}")),
                 Observation::Closed(_) => seen.push("closed".into()),
-                Observation::Started(_) => {}
+                Observation::Started(_) | Observation::WindowsClosedFirst => {}
             })
             .unwrap();
         assert_eq!(seen, ["exit 0xC0000135", "closed"]);

@@ -74,9 +74,12 @@ impl GameProcess {
     pub(super) fn observe(mut self, mut report: impl FnMut(Observation)) -> io::Result<()> {
         let mut buffer = vec![0usize; 32];
         let mut launcher_code = None;
+        let mut closed_first = false;
         if self.runtime.is_none() {
             report(Observation::Started(self.started));
+            let watch = WindowWatch::start(self.job.as_raw_handle() as usize);
             launcher_code = self.launcher.wait()?.code();
+            closed_first = watch.closed_first();
         }
         let launcher_pid = self.launcher.id();
         loop {
@@ -89,7 +92,11 @@ impl GameProcess {
             if let Some(runtime) = &self.runtime {
                 if let Some(game) = members.iter().find_map(|&pid| self.playable(pid as u32, runtime)) {
                     report(Observation::Started(Instant::now()));
+                    let watch = WindowWatch::start(self.job.as_raw_handle() as usize);
                     let (played, code) = runtime_duration(game)?;
+                    if watch.closed_first() {
+                        report(Observation::WindowsClosedFirst);
+                    }
                     report(Observation::Exited(code));
                     report(Observation::Closed(played));
                     continue;
@@ -99,6 +106,9 @@ impl GameProcess {
         }
         if self.runtime.is_none() {
             if let Some(code) = launcher_code {
+                if closed_first {
+                    report(Observation::WindowsClosedFirst);
+                }
                 report(Observation::Exited(code));
             }
             report(Observation::Closed(self.started.elapsed()));
@@ -107,28 +117,7 @@ impl GameProcess {
     }
 
     fn members<'a>(&self, buffer: &'a mut Vec<usize>) -> io::Result<&'a [usize]> {
-        loop {
-            // Win32 writes a fixed header and a variable array of pointer-sized process IDs.
-            let ok = unsafe {
-                QueryInformationJobObject(
-                    self.job.as_raw_handle(),
-                    JobObjectBasicProcessIdList,
-                    buffer.as_mut_ptr().cast(),
-                    size_of_val(buffer.as_slice()).try_into().map_err(io::Error::other)?,
-                    null_mut(),
-                )
-            };
-            if ok != 0 {
-                let header = unsafe { &*buffer.as_ptr().cast::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() };
-                let start = offset_of!(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) / size_of::<usize>();
-                return Ok(&buffer[start..start + header.NumberOfProcessIdsInList as usize]);
-            }
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() != Some(ERROR_MORE_DATA as i32) {
-                return Err(error);
-            }
-            buffer.resize(buffer.len() * 2, 0);
-        }
+        job_members(self.job.as_raw_handle() as usize, buffer)
     }
 
     fn playable(&self, pid: u32, target: &Path) -> Option<OwnedHandle> {
@@ -202,4 +191,96 @@ fn runtime_duration(process: OwnedHandle) -> io::Result<(Duration, i32)> {
     let mut code = 0u32;
     unsafe { GetExitCodeProcess(raw, &mut code) };
     Ok((Duration::from_secs(elapsed / 10_000_000) + Duration::from_nanos(elapsed % 10_000_000 * 100), code as i32))
+}
+
+
+/// The processes in the job (its raw handle, kept as a number to cross threads).
+fn job_members(job: usize, buffer: &mut Vec<usize>) -> io::Result<&[usize]> {
+    loop {
+        // Win32 writes a fixed header and a variable array of pointer-sized process IDs.
+        let ok = unsafe {
+            QueryInformationJobObject(
+                job as windows_sys::Win32::Foundation::HANDLE,
+                JobObjectBasicProcessIdList,
+                buffer.as_mut_ptr().cast(),
+                size_of_val(buffer.as_slice()).try_into().map_err(io::Error::other)?,
+                null_mut(),
+            )
+        };
+        if ok != 0 {
+            let header = unsafe { &*buffer.as_ptr().cast::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() };
+            let start = offset_of!(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) / size_of::<usize>();
+            return Ok(&buffer[start..start + header.NumberOfProcessIdsInList as usize]);
+        }
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() != Some(ERROR_MORE_DATA as i32) {
+            return Err(error);
+        }
+        buffer.resize(buffer.len() * 2, 0);
+    }
+}
+
+/// Whether one of these processes shows a window.
+fn shows_a_window(pids: &[u32]) -> bool {
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, IsWindowVisible};
+    struct Search<'a> {
+        pids: &'a [u32],
+        found: bool,
+    }
+    unsafe extern "system" fn each(window: HWND, data: LPARAM) -> i32 {
+        let search = unsafe { &mut *(data as *mut Search) };
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(window, &mut pid) };
+        if search.pids.contains(&pid) && unsafe { IsWindowVisible(window) } != 0 {
+            search.found = true;
+            return 0;
+        }
+        1
+    }
+    let mut search = Search { pids, found: false };
+    unsafe { EnumWindows(Some(each), &mut search as *mut Search as LPARAM) };
+    search.found
+}
+
+/// Watches, while the game runs, the last moment it showed a window. A game
+/// that crashes while playing still has its window when it goes (Windows keeps
+/// it, frozen, while it reports the error); one that crashes while shutting
+/// down closed its window first.
+struct WindowWatch {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    last_seen: std::sync::Arc<std::sync::Mutex<Option<Instant>>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl WindowWatch {
+    fn start(job: usize) -> Self {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let last_seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let (halt, seen) = (stop.clone(), last_seen.clone());
+        let thread = std::thread::spawn(move || {
+            let mut buffer = vec![0usize; 32];
+            while !halt.load(std::sync::atomic::Ordering::Relaxed) {
+                let pids: Vec<u32> = job_members(job, &mut buffer).map(|m| m.iter().map(|&p| p as u32).collect()).unwrap_or_default();
+                if !pids.is_empty() && shows_a_window(&pids) {
+                    if let Ok(mut at) = seen.lock() {
+                        *at = Some(Instant::now());
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        });
+        WindowWatch { stop, last_seen, thread: Some(thread) }
+    }
+
+    /// Called right after the game ended: its windows were gone well before.
+    fn closed_first(mut self) -> bool {
+        let ended = Instant::now();
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        let last = self.last_seen.lock().ok().and_then(|at| *at);
+        last.is_some_and(|at| ended.saturating_duration_since(at) >= Duration::from_millis(600))
+    }
 }

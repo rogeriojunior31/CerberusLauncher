@@ -739,6 +739,8 @@ pub fn launch_plan(game: &Game) -> LaunchPlan {
     }
     if let (Some(copy), Some(handoff)) = (&game.game_copy, entry.as_ref().and_then(|e| e.handoff.clone())) {
         match handoff {
+            // "--path=" takes the copy in the same argument; "--rom" before it.
+            CopyHandoff::Flag { flag } if flag.ends_with('=') => args.push(format!("{flag}{copy}")),
             CopyHandoff::Flag { flag } => args.extend([flag, copy.clone()]),
             CopyHandoff::Env { name } => env.push((name, copy.clone())),
             // Already in the game's folder, asked for by the game itself, or in the developer's arguments.

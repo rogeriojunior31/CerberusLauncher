@@ -235,7 +235,24 @@ fn rebuild() {
             }
         }
     }
+    known_handoffs(&mut list);
     *STORE.write().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(list));
+}
+
+/// Ports that need the original game's files but whose listing doesn't say
+/// how they take them: without this they show Jogar and then ask for a folder
+/// in their own window (or close). OpenRCT2 reads RollerCoaster Tycoon 2 from
+/// `--rct2-data-path`; the folder has its `Data`.
+fn known_handoffs(list: &mut [CatalogEntry]) {
+    for entry in list.iter_mut().filter(|e| e.handoff.is_none()) {
+        if entry.is("openrct2") || entry.repo.eq_ignore_ascii_case("OpenRCT2/OpenRCT2") {
+            entry.handoff = Some(CopyHandoff::Flag { flag: "--rct2-data-path=".into() });
+            entry.accepts_folder = true;
+            entry.copy_accepts = "folder".into();
+            entry.copy_contains = vec!["Data".into()];
+            entry.needs = tr!("A pasta do seu RollerCoaster Tycoon 2 (Steam, GOG ou CD), a que tem a pasta Data.").into();
+        }
+    }
 }
 
 /// Cerberus's own list, as published in its repository: updated there, it
@@ -765,6 +782,18 @@ pub fn bytes_of(size_text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openrct2_asks_for_the_rollercoaster_tycoon_2_folder() {
+        let mut list: Vec<CatalogEntry> = vec![serde_json::from_value(serde_json::json!({"id": "openrct2", "repo": "OpenRCT2/OpenRCT2", "name": "OpenRCT2"})).unwrap()];
+        known_handoffs(&mut list);
+        assert!(matches!(&list[0].handoff, Some(CopyHandoff::Flag { flag }) if flag == "--rct2-data-path="));
+        assert_eq!(list[0].copy_contains, ["Data"]);
+        // A listing that says how is left as it is.
+        list[0].handoff = Some(CopyHandoff::AsksItself);
+        known_handoffs(&mut list);
+        assert!(matches!(list[0].handoff, Some(CopyHandoff::AsksItself)));
+    }
 
     #[test]
     fn mhgu_takes_only_the_extracted_folders_even_without_the_site() {
