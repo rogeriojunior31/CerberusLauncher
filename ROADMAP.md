@@ -889,7 +889,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 ### Lote B — Nada se perde quando algo é interrompido ou o app fecha
 
 - [x] Reinstalação de emulador interrompida apaga os saves guardados em `.<nome>-old` [Fu F4] (regressão do commit 3d05150) — corrigido em 25/11/2026: os arquivos do jogador nunca passam pela pasta temporária; `recover_swap` termina a troca interrompida antes de qualquer coisa. Testado nos dois pontos de interrupção.
-- [ ] Fechar o app (janela, bandeja, atualização, fim do jogo) com download, instalação, backup ou jogo de loja aberto [J F4, RC F7, P F19, Fu F10]
+- [x] Fechar o app (janela, bandeja, atualização, fim do jogo) com download, instalação, backup ou jogo de loja aberto [J F4, RC F7, P F19, Fu F10] — feito em 25/11/2026: `background::busy` (jogo, clássico, jogo de loja, download/instalação); fechar a janela esconde e fecha sozinho quando acaba (com aviso se for só download); Sair na bandeja pergunta; atualizar espera. Não exercitado no app (fecharia o app em uso).
 - [ ] Cerberus fechado no meio da partida; próximo Jogar restaura saves sob o jogo aberto [P F6]
 - [ ] Cópia/extração pela metade conta como pronta; instalação nova parcial não é notada [RP F3, RC F11]
 - [ ] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6]

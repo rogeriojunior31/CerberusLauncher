@@ -1158,8 +1158,9 @@ async fn update_install(app: AppHandle, http: State<'_, reqwest::Client>) -> Res
         Some(u) => u,
         None => self_update::check(&http).await?.ok_or(tr!("Você já está na versão mais nova."))?,
     };
-    if running_games(app.state::<sessions::Sessions>()).len() > 0 {
-        return Err(tr!("Feche o jogo antes de atualizar o Cerberus.").into());
+    // A game, a store game being counted, or a download: the update waits for them.
+    if let Some(why) = background::busy(&app) {
+        return Err(tr!("Espere para atualizar o Cerberus. {}", why));
     }
     let data = app.state::<DataDir>().0.clone();
     self_update::install(&app, &http, &data, update).await

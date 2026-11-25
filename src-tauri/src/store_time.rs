@@ -25,6 +25,14 @@ fn file(data: &Path) -> PathBuf {
     data.join("store-playtime.json")
 }
 
+/// Store games (Steam, Epic, Xbox) seen running right now.
+static STORE_PLAYING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A store game is open now (Cerberus counts its time, so it must stay open too).
+pub fn store_playing() -> bool {
+    STORE_PLAYING.load(std::sync::atomic::Ordering::SeqCst) > 0
+}
+
 pub fn load(data: &Path) -> HashMap<String, Played> {
     crate::state_file::load_or_default(&file(data))
 }
@@ -192,6 +200,7 @@ pub fn watch(app: AppHandle) {
             // Downloads slow down while any game is open (store games or ones Cerberus started).
             let ours = !app.state::<crate::sessions::Sessions>().running().is_empty();
             crate::recomp::throttle::set_playing(ours || !playing.is_empty());
+            STORE_PLAYING.store(playing.len(), std::sync::atomic::Ordering::SeqCst);
             std::thread::sleep(Duration::from_secs(5));
         }
     });
