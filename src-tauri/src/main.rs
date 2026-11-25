@@ -2404,10 +2404,13 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
         let current = installed.0.get(&name).is_some_and(|(v, _)| *v == package.version);
         if !current {
             let bytes = mods::download(&http, &package.download_url).await?;
-            if let Some((_, old)) = installed.0.get(&name) {
-                mods::remove_files(&folder, old);
-            }
+            // The new version goes in first; only then do the old version's
+            // files it no longer has go (a broken download keeps the old mod).
             let files = mods::unpack(&bytes, &folder)?;
+            if let Some((_, old)) = installed.0.get(&name) {
+                let gone: Vec<String> = old.iter().filter(|f| !files.contains(f)).cloned().collect();
+                mods::remove_files(&folder, &gone);
+            }
             installed.0.insert(name.clone(), (package.version.clone(), files));
             mods::save_installed(&record, &installed)?;
         }

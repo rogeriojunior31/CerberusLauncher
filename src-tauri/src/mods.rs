@@ -206,16 +206,14 @@ pub async fn packages(client: &Client, cache: &Path, community: &str) -> Result<
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Installed(pub HashMap<String, (String, Vec<String>)>);
 
+/// The record of a game's mods; a damaged one falls back to its last good copy
+/// (and is kept aside), never silently to "no mods".
 pub fn load_installed(file: &Path) -> Installed {
-    let text = fs::read_to_string(file).unwrap_or_default();
-    serde_json::from_str(&text).unwrap_or_default()
+    crate::state_file::load_or_default(file)
 }
 
 pub fn save_installed(file: &Path, installed: &Installed) -> Result<(), String> {
-    if let Some(dir) = file.parent() {
-        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    fs::write(file, serde_json::to_string_pretty(installed).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::state_file::save(file, installed)
 }
 
 /// Files the game loads by itself: N64: Recompiled mods, texture packs, and the
