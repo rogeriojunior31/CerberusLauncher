@@ -888,7 +888,14 @@ pub fn still_fits(input: &Input, copy: &Path) -> bool {
 pub fn place(input: &Input, install: &Path, copy: &Path) -> Result<(), String> {
     let Some(target) = placed_at(input, install, Some(copy)) else { return Ok(()) };
     if copy.is_dir() {
-        return super::copy_tree(copy, &target).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e));
+        if target == install {
+            return super::copy_tree(copy, &target).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e));
+        }
+        // Copied whole or not at all: a half folder would count as present.
+        if let Some(dir) = target.parent() {
+            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        return super::fill_folder(&target, |part| super::copy_tree(copy, part).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e)));
     }
     if let Some(dir) = target.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;

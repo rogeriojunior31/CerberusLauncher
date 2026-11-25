@@ -922,6 +922,44 @@ fn holds(dir: &Path, name: &str) -> bool {
     fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
+/// A sibling of `dir` with `suffix` added to its name.
+fn beside(dir: &Path, suffix: &str) -> PathBuf {
+    let mut name = dir.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(suffix);
+    dir.with_file_name(name)
+}
+
+/// Fills a folder in one step: everything goes into a temporary folder beside it
+/// first, and takes the real name only when complete. An interruption (app
+/// closed, disk full, a file that fails) leaves no half folder that would count
+/// as ready, and a folder chosen before stays as it was.
+pub(crate) fn fill_folder(dir: &Path, fill: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
+    let part = beside(dir, ".cerberus-part");
+    let _ = fs::remove_dir_all(&part);
+    fs::create_dir_all(&part).map_err(|e| e.to_string())?;
+    if let Err(e) = fill(&part) {
+        let _ = fs::remove_dir_all(&part);
+        return Err(e);
+    }
+    let old = beside(dir, ".cerberus-old");
+    let _ = fs::remove_dir_all(&old);
+    if dir.exists() {
+        if let Err(e) = fs::rename(dir, &old) {
+            let _ = fs::remove_dir_all(&part);
+            return Err(e.to_string());
+        }
+    }
+    if let Err(e) = fs::rename(&part, dir) {
+        if old.exists() {
+            let _ = fs::rename(&old, dir);
+        }
+        let _ = fs::remove_dir_all(&part);
+        return Err(e.to_string());
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
+}
+
 fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, extract: bool, accepts_folder: bool, copy: &Path) -> Result<(), String> {
     // Folder and name come from the catalog: they must stay inside the game's
     // folder, so only plain names are taken (no "..", no drive, no root).
@@ -930,22 +968,33 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         return Err(tr!("O catálogo pede um caminho inesperado; nada foi copiado.").into());
     }
     let dir = Path::new(install_dir).join(folder);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // A folder of its own is filled in one step; the game's own folder (".") can't be swapped whole.
+    let own_folder = Path::new(folder).components().any(|c| matches!(c, std::path::Component::Normal(_)));
+    let fill = |work: &dyn Fn(&Path) -> Result<(), String>| -> Result<(), String> {
+        if own_folder {
+            if let Some(parent) = dir.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            fill_folder(&dir, |part| work(part))
+        } else {
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            work(&dir)
+        }
+    };
     if copy.is_dir() {
         if !accepts_folder {
             return Err(tr!("Esse jogo precisa de um arquivo, não de uma pasta.").into());
         }
-        return copy_tree(copy, &dir).map_err(|e| tr!("Não foi possível copiar os arquivos do jogo: {}", e));
+        return fill(&|into: &Path| copy_tree(copy, into).map_err(|e| tr!("Não foi possível copiar os arquivos do jogo: {}", e)));
     }
     // A disc image is unpacked, whichever of the two formats the recomps ask for it is.
     if extract && crate::xdvdfs::is_xbox_disc(copy) {
-        crate::xdvdfs::extract(copy, &dir)?;
-        return Ok(());
+        return fill(&|into: &Path| crate::xdvdfs::extract(copy, into).map(|_| ()));
     }
     if extract && crate::iso9660::is_iso9660(copy) {
-        crate::iso9660::extract(copy, &dir)?;
-        return Ok(());
+        return fill(&|into: &Path| crate::iso9660::extract(copy, into).map(|_| ()));
     }
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = file_name.unwrap_or_else(|| copy.file_name().unwrap_or_default().to_string_lossy().into_owned());
     let plain_name = Path::new(&name).components().count() == 1 && inside(&name);
     if !plain_name {
@@ -1548,6 +1597,30 @@ fn is_arm() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interrupted_folder_fill_is_not_ready_and_the_old_one_stays() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("game").join("dvd");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("old.bin"), b"chosen before").unwrap();
+        // Fails half-way: the folder chosen before is untouched, nothing half is left.
+        let failed = fill_folder(&dir, |part| {
+            fs::write(part.join("a.bin"), b"1").unwrap();
+            Err("disk full".into())
+        });
+        assert!(failed.is_err());
+        assert_eq!(fs::read(dir.join("old.bin")).unwrap(), b"chosen before");
+        assert!(!dir.join("a.bin").exists());
+        assert!(!root.path().join("game").join("dvd.cerberus-part").exists());
+        // Succeeds: the new content replaces the old one whole.
+        fill_folder(&dir, |part| fs::write(part.join("new.bin"), b"2").map_err(|e| e.to_string())).unwrap();
+        assert!(dir.join("new.bin").exists() && !dir.join("old.bin").exists());
+        // A first fill that fails leaves no folder at all (so it never counts as there).
+        let fresh = root.path().join("game").join("other");
+        assert!(fill_folder(&fresh, |_| Err("stopped".into())).is_err());
+        assert!(!fresh.exists());
+    }
 
     #[test]
     fn uninstalling_refuses_a_folder_cerberus_didnt_make_and_a_leftover_never_blocks() {
