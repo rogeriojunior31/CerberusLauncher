@@ -2156,3 +2156,17 @@ main.main { scrollbar-gutter: stable; }
 .mg-h.danger { color: var(--bad); margin-top: 26px; }
 /* The window buttons sit on their own dark strip: whatever scrolls under them, they stay legible and apart. */
 .win { background: rgba(8, 9, 14, 0.88); border-bottom-left-radius: 12px; backdrop-filter: blur(10px); }
+
+/* Two named ways to play (native and the player's original), side by side */
+.ways { display: inline-flex; gap: 10px; align-items: center; }
+.way-native { display: contents; }
+
+/* The player's status: one select, tinted by the choice */
+.st-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-row > span { font-size: 13px; font-weight: 700; color: var(--muted); }
+.st-select { margin: 0; min-width: 190px; }
+.st-select.st-playing, .st-select.st-plan, .st-select.st-beaten, .st-select.st-completed, .st-select.st-hold, .st-select.st-dropped {
+  border-color: color-mix(in srgb, var(--st) 60%, transparent); box-shadow: inset 3px 0 0 var(--st); }
+
+/* Play time, still reading: the card's own size */
+.sk-play { height: 120px; margin-top: 12px; }

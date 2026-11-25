@@ -48,7 +48,10 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
         async move { api::game_sessions(&id).await.unwrap_or_default() }
     });
     move || {
-        let list: Vec<PlaySession> = sessions.get().unwrap_or_default();
+        let Some(list) = sessions.get() else {
+            return view! { <section class="card play-card"><h3>{title}</h3><div class="sk sk-play"></div></section> }.into_any();
+        };
+        let list: Vec<PlaySession> = list;
         let now = js_sys::Date::now();
         let today = day_start(now);
         let mut days = [0u64; 14];

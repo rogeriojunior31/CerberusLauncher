@@ -306,7 +306,7 @@ pub fn DownloadsPage() -> impl IntoView {
                         }
                     })
                     .collect_view();
-                view! { <h4 class="dl-day">{day}</h4><div class="dl-hist-list">{rows}</div> }
+                view! { <h3 class="dl-day">{day}</h3><div class="dl-hist-list">{rows}</div> }
             })
             .collect_view();
         Some(view! {

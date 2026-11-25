@@ -186,7 +186,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     {
         tab.set(Tab::Overview);
     }
-    let action = primary_action(game.clone(), entry.clone(), siblings > 1);
+    let action = primary_action(game.clone(), entry.clone(), siblings > 1, tab);
     // The pill behind the chosen tab slides to it.
     Effect::new(move || {
         tab.track();
@@ -350,32 +350,9 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
 }
 
 /// Play, Playing, Install with its size, the install's progress, or Update.
-fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool) -> impl IntoView {
+fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool, tab: RwSignal<Tab>) -> impl IntoView {
     let library = expect_context::<Library>();
     let recomp_id = entry.as_ref().map(|e| e.id.clone());
-    let more_open = RwSignal::new(false);
-    // Opened, the menu takes the focus; Escape closes it from anywhere, as the "…" menu does.
-    Effect::new(move |_| {
-        if more_open.get() {
-            request_animation_frame(|| {
-                if let Some(first) = document().query_selector(".split-menu [role=menuitem]").ok().flatten() {
-                    let first: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(first);
-                    let _ = first.focus();
-                }
-            });
-        }
-    });
-    let escape = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
-        if e.key() == "Escape" && more_open.get_untracked() {
-            more_open.set(false);
-            // Back to the arrow that opened it.
-            if let Some(arrow) = document().query_selector(".split-more").ok().flatten() {
-                let arrow: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(arrow);
-                let _ = arrow.focus();
-            }
-        }
-    });
-    on_cleanup(move || escape.remove());
     move || {
         let step = recomp_id.as_ref().and_then(|rid| library.progress.with(|all| all.get(rid).cloned()));
         if let (Some(step), Some(rid)) = (step, recomp_id.clone()) {
@@ -404,46 +381,50 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool)
                 .filter(|_| matches!(game.source, Source::Recomp { .. }))
                 .and_then(|copy| crate::classics::emulated_console(&copy).map(|c| (copy, c.to_string())))
                 .map(|(copy, console)| (copy, console));
+            let game_id = game.id.clone();
+            let original_first = original.as_ref().is_some_and(|(_, console)| {
+                crate::classics::ready_player(&library.players.get_untracked().unwrap_or_default(), console).is_some()
+            }) && last_way(&game_id) == Some(Way::Original);
             let play = view! {
-                <button type="button" class="btn main big play" disabled=running on:click=move |_| play_game(library, game.clone())>
+                <button type="button" class=if original_first { "btn glass big" } else { "btn main big play" } disabled=running on:click=move |_| play_game(library, game.clone())>
                     <Svg icon size=20 />{label}
                 </button>
             };
-            // The original game in its emulator is another way to play: under the Play button's arrow.
+            // With the player's own copy, two named ways to play side by side. The one
+            // used last leads; the other stays one click away.
             let Some((copy, console)) = original else {
                 return view! { {update_button}{play} }.into_any();
             };
-            return view! {
-                {update_button}
-                <div class="split">
-                    {play}
-                    <button type="button" class="btn main big split-more" aria-label=tr!("Outras formas de jogar") aria-haspopup="menu"
-                        aria-expanded=move || more_open.get().to_string() on:click=move |_| more_open.update(|o| *o = !*o)>
-                        <Svg icon=Icon::Chevron size=18 />
-                    </button>
-                    {move || more_open.get().then(|| {
-                        let (copy, console) = (copy.clone(), console.clone());
-                        let players = library.players.get_untracked().unwrap_or_default();
-                        let how = match crate::classics::ready_player(&players, &console) {
-                            Some(emulator) => tr!("A sua cópia do jogo, no {}", emulator),
-                            None => tr!("A sua cópia do jogo, no emulador").to_string(),
-                        };
-                        view! {
-                            <div class="vm-scrim" on:click=move |_| more_open.set(false)></div>
-                            <div class="split-menu" role="menu" on:keydown=move |e| if e.key() == "Escape" { more_open.set(false) }>
-                                <button type="button" role="menuitem" autofocus=true on:click=move |_| {
-                                    more_open.set(false);
-                                    crate::classics::play_original(library, copy.clone(), console.clone());
-                                }>
-                                    <Svg icon=Icon::Gamepad size=18 />
-                                    <span><b>{tr!("Jogar o original")}</b><small>{how}</small></span>
-                                </button>
-                            </div>
+            let players = library.players.get_untracked().unwrap_or_default();
+            let emulator = crate::classics::ready_player(&players, &console);
+            let original_label = if original_first { tr!("Jogar o original") } else { tr!("Original") };
+            let original_title = match &emulator {
+                Some(name) => tr!("A sua cópia do jogo, no {}", name),
+                None => tr!("A sua cópia do jogo: veja o que falta para abrir").to_string(),
+            };
+            let (way_id, native_id) = (game_id.clone(), game_id.clone());
+            let ready = emulator.is_some();
+            let original_button = view! {
+                <button type="button" class=if original_first { "btn main big play" } else { "btn glass big" } title=original_title
+                    disabled=running on:click=move |_| {
+                        if ready {
+                            remember_way(&way_id, Way::Original);
+                            crate::classics::play_original(library, copy.clone(), console.clone());
+                        } else {
+                            tab.set(Tab::Original);
                         }
-                    })}
-                </div>
-            }
-            .into_any();
+                    }>
+                    <Svg icon=Icon::Disc size=20 />{original_label}
+                </button>
+            };
+            let native = view! {
+                <span class="way-native" on:click=move |_| remember_way(&native_id, Way::Native)>{play}</span>
+            };
+            return if original_first {
+                view! { {update_button}<div class="ways">{original_button}{native}</div> }.into_any()
+            } else {
+                view! { {update_button}<div class="ways">{native}{original_button}</div> }.into_any()
+            };
         }
         let Some(entry) = entry.clone() else {
             return ().into_any();
@@ -485,17 +466,19 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             }
         }
         facts.push((tr!("Console").to_string(), e.console.clone()));
-        if e.downloads > 0 {
-            facts.push((tr!("Downloads").to_string(), format::count(e.downloads)));
-        }
-        if e.stars > 0 {
-            facts.push((tr!("Estrelas").to_string(), format::count(e.stars)));
-        }
-        if e.players > 0 {
-            facts.push((tr!("Jogadores recentes").to_string(), format::count(e.players)));
-        }
-        if e.releases > 0 {
-            facts.push((tr!("Versões lançadas").to_string(), e.releases.to_string()));
+        if game.is_none() {
+            if e.downloads > 0 {
+                facts.push((tr!("Downloads").to_string(), format::count(e.downloads)));
+            }
+            if e.stars > 0 {
+                facts.push((tr!("Estrelas").to_string(), format::count(e.stars)));
+            }
+            if e.players > 0 {
+                facts.push((tr!("Jogadores recentes").to_string(), format::count(e.players)));
+            }
+            if e.releases > 0 {
+                facts.push((tr!("Versões lançadas").to_string(), e.releases.to_string()));
+            }
         }
         if !e.first_release.is_empty() {
             facts.push((tr!("Primeira versão").to_string(), day(&e.first_release)));
@@ -513,8 +496,6 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
     });
     let play_title = if merged { tr!("Sua jogatina no PC") } else { tr!("Sua jogatina") };
     let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played title=play_title /> }.into_any());
-    // Your numbers lead once there is a story to tell (an hour or more); before that they wait below.
-    let played_a_lot = game.as_ref().is_some_and(|g| g.playtime_secs >= 3600);
     let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {
         Source::Steam { app_id } => Some(*app_id),
@@ -602,11 +583,10 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         }
     });
 
-    let (play_top, play_bottom) = if played_a_lot { (play_card, None) } else { (None, play_card) };
     view! {
         <div class="ov">
             <div class="ov-main">
-                {play_top}
+                {play_card}
                 // The game first, then what this version brings, then what it needs.
                 {entry.clone().and_then(|e| e.original.clone().map(|o| view! { <OriginalGameCard original=o game=e.game.clone() /> }))}
                 {entry.clone().map(|e| view! {
@@ -634,7 +614,6 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
                     </section>
                 })}
                 {setup}
-                {play_bottom}
                 {entry.clone().map(|e| view! { <SimilarGames entry=e /> })}
             </div>
             <aside class="ov-rail">
@@ -1575,11 +1554,11 @@ pub fn History(id: String) -> impl IntoView {
     });
     move || {
         let list = entries.get().unwrap_or_default();
-        if list.is_empty() {
-            return None;
-        }
         // "No emulation for this console" is a known limit, logged before it stopped being one: not a failure.
         let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation");
+        if list.iter().all(limit) {
+            return None;
+        }
         let failure = list.iter().find(|e| !e.ok && !limit(e)).cloned();
         let latest_failed = list.iter().find(|e| !limit(e)).is_some_and(|e| !e.ok);
         let summary = match &failure {
@@ -1826,5 +1805,32 @@ fn SimilarGames(entry: RecompEntry) -> impl IntoView {
             let tiles = list.iter().map(crate::tiles::recomp_tile).collect::<Vec<_>>();
             view! { <crate::tiles::Shelf title=tr!("Jogos parecidos").to_string() tiles /> }
         })
+    }
+}
+
+
+#[derive(Clone, Copy, PartialEq)]
+enum Way {
+    Native,
+    Original,
+}
+
+fn way_key(id: &str) -> String {
+    format!("cerberus.way.{id}")
+}
+
+/// How this game was last played (native or the original), so that way leads next time.
+fn last_way(id: &str) -> Option<Way> {
+    let store = web_sys::window()?.local_storage().ok()??;
+    match store.get_item(&way_key(id)).ok()??.as_str() {
+        "original" => Some(Way::Original),
+        "native" => Some(Way::Native),
+        _ => None,
+    }
+}
+
+fn remember_way(id: &str, way: Way) {
+    if let Some(store) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = store.set_item(&way_key(id), if way == Way::Original { "original" } else { "native" });
     }
 }

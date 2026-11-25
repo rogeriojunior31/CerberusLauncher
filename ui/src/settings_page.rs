@@ -1119,6 +1119,31 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
     let progress = RwSignal::new((0u64, 0u64));
     // The console open: None shows them all (a game's page may ask for its console).
     let open = RwSignal::new(NEXT_CONSOLE.with(|n| n.borrow_mut().take()));
+    // Into a console: its page from the top, the keyboard on "Todos os consoles".
+    // Back: the keyboard on the card it came from.
+    Effect::new(move |was: Option<Option<String>>| {
+        let now = open.get();
+        let target = match (&now, was.flatten()) {
+            (Some(_), _) => Some(".cd-back".to_string()),
+            (None, Some(prev)) => Some(format!(".cc[data-console=\"{prev}\"]")),
+            (None, None) => None,
+        };
+        if let Some(sel) = target {
+            let into = now.is_some();
+            request_animation_frame(move || {
+                if into {
+                    if let Some(main) = document().query_selector("main.main").ok().flatten() {
+                        main.set_scroll_top(0);
+                    }
+                }
+                if let Some(el) = document().query_selector(&sel).ok().flatten() {
+                    let el: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(el);
+                    let _ = el.focus();
+                }
+            });
+        }
+        now
+    });
     // Consoles the player has no game of stay folded until asked for.
     let everything = RwSignal::new(false);
     // Removing an emulator takes a second click, as uninstalling a game does.
@@ -1439,7 +1464,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
             let title = name_of(console);
             let id = console.to_string();
             view! {
-                <button type="button" class=format!("cc {class}") class:idle=n == 0 on:click=move |_| open.set(Some(id.clone()))>
+                <button type="button" class=format!("cc {class}") class:idle=n == 0 data-console=console.to_string() on:click=move |_| open.set(Some(id.clone()))>
                     <span class="cc-art" aria-hidden="true">
                         {match console_art(console) {
                             Some(src) => view! { <img src=src alt="" /> }.into_any(),
@@ -1454,7 +1479,8 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                             None => view! { <span>{tr!("Escolha um emulador")}</span> }.into_any(),
                         }}
                     </span>
-                    <small class="cc-games">{games_words(n)}</small>
+                    // The dot already says "Sem jogos seus": the count only when there are some.
+                    {(n > 0).then(|| view! { <small class="cc-games">{games_words(n)}</small> })}
                 </button>
             }
         }).collect_view();
