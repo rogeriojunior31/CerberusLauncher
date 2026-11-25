@@ -794,8 +794,9 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 
 ### 8.0 Perde dados ou mexe em contas (fazer antes de qualquer feature nova)
 
-- [ ] Remover ou reinstalar um emulador gerenciado apaga os saves dele (DuckStation, PCSX2, Dolphin, PPSSPP, RPCS3,
+- [x] Remover ou reinstalar um emulador gerenciado apaga os saves dele (DuckStation, PCSX2, Dolphin, PPSSPP, RPCS3,
       Xenia) — [emulação L1](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+      Feito em 25/11/2026: troca que guarda os arquivos do jogador para os 8 emuladores; Remover guarda à parte e devolve ao reinstalar. Validado numa cópia do DuckStation (3 itens) e do PCSX2 (12 itens), idênticos depois.
 - [ ] Refresh tokens da Epic e do Xbox vão para o zip do backup e a restauração troca as contas — [lojas L6](docs/roadmap/lojas-e-contas.md);
       erro de rede com a URL inteira pode vazar token no log ([plano Steam, etapa 0](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md)). — P
 - [ ] `settings.json` gravado por várias tarefas ao mesmo tempo: Sair durante uma renovação devolve a conta — [lojas L1](docs/roadmap/lojas-e-contas.md). — M

@@ -879,10 +879,8 @@ async fn remove_standalone(app: AppHandle, id: String) -> Result<cerberus_shared
     let data = app.state::<DataDir>().0.clone();
     let mut chosen = settings::load(&data);
     if chosen.emulators.remove(&id).is_none() {
-        let dir = standalone::managed_dir(&data, emulator.id);
-        if dir.is_dir() {
-            fs::remove_dir_all(&dir).map_err(|e| tr!("Não foi possível remover o {}: {}", emulator.name, e))?;
-        }
+        // Saves, BIOS and settings stay aside, and come back if it's installed again.
+        standalone::remove_keeping(&data, emulator)?;
     }
     chosen.play_with.retain(|_, who| who != &id);
     settings::save(&data, &chosen)?;

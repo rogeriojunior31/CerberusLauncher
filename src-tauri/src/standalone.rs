@@ -537,6 +537,74 @@ fn newest_dolphin(tags: &[String]) -> Option<String> {
         .cloned()
 }
 
+/// What belongs to the player in each emulator's folder (next to its program):
+/// saves, memory cards, save states, BIOS and firmware the player brought,
+/// settings. Kept when the emulator is reinstalled or removed.
+pub fn player_files(id: &str) -> &'static [&'static str] {
+    match id {
+        "duckstation" => &["portable.txt", "memcards", "savestates", "bios", "settings.ini", "inputprofiles", "gamesettings", "cheats", "covers", "screenshots"],
+        "pcsx2" => &["portable.txt", "portable.ini", "memcards", "sstates", "bios", "inis", "gamesettings", "inputprofiles", "cheats", "patches", "covers", "snaps", "textures"],
+        "dolphin" => &["portable.txt", "User"],
+        "ppsspp" => &["memstick", "installed.txt"],
+        "rpcs3" => &["dev_hdd0", "dev_hdd1", "dev_flash", "dev_flash2", "dev_flash3", "dev_usb000", "config", "GuiConfigs", "savestates", "patches", "captures"],
+        "cemu" => &["portable", "mlc01", "settings.xml", "gameProfiles", "graphicPacks", "controllerProfiles", "keys.txt", "otp.bin", "seeprom.bin"],
+        "xenia" => &["portable.txt", "content", "xenia-canary.config.toml", "xenia.config.toml"],
+        "xemu" => &["xemu.toml", "*.qcow2", "*.bin"],
+        _ => &[],
+    }
+}
+
+/// Where the player's files of a removed emulator wait, to come back if it's installed again.
+pub fn kept_dir(data: &Path, id: &str) -> PathBuf {
+    data.join("emulators").join(format!(".{id}-kept"))
+}
+
+/// The folder with the emulator's program inside a copy (or the copy itself).
+fn program_dir(dir: &Path, emulator: &Emulator) -> PathBuf {
+    program_in(dir, emulator.exe, 2).and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_else(|| dir.to_path_buf())
+}
+
+/// Removes an emulator Cerberus installed, keeping the player's files aside
+/// (`kept_dir`): they come back if it's installed again.
+pub fn remove_keeping(data: &Path, emulator: &Emulator) -> Result<(), String> {
+    let dir = managed_dir(data, emulator.id);
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let base = program_dir(&dir, emulator);
+    let kept = kept_dir(data, emulator.id);
+    let names = crate::emulation::kept_names(&base, player_files(emulator.id));
+    fs::create_dir_all(&kept).map_err(|e| tr!("Não foi possível remover o {}: {}", emulator.name, e))?;
+    for name in &names {
+        let to = kept.join(name);
+        if to.is_dir() {
+            let _ = fs::remove_dir_all(&to);
+        } else if to.exists() {
+            let _ = fs::remove_file(&to);
+        }
+        fs::rename(base.join(name), &to).map_err(|_| tr!("Feche o {} antes de remover: ele está aberto ou com arquivos em uso.", emulator.name))?;
+    }
+    fs::remove_dir_all(&dir).map_err(|e| tr!("Não foi possível remover o {}: {}", emulator.name, e))
+}
+
+/// Brings back the files a removed emulator left aside, into a fresh copy.
+fn restore_kept(data: &Path, emulator: &Emulator, base: &Path) {
+    let kept = kept_dir(data, emulator.id);
+    if !kept.is_dir() {
+        return;
+    }
+    for name in crate::emulation::kept_names(&kept, player_files(emulator.id)) {
+        let to = base.join(&name);
+        if to.is_dir() {
+            let _ = fs::remove_dir_all(&to);
+        } else if to.exists() {
+            let _ = fs::remove_file(&to);
+        }
+        let _ = fs::rename(kept.join(&name), &to);
+    }
+    let _ = fs::remove_dir(&kept);
+}
+
 /// Downloads and unpacks an emulator into Cerberus's folder; returns its program.
 pub async fn install(http: &reqwest::Client, data: &Path, emulator: &Emulator, report: impl Fn(u64, u64) + Send) -> Result<PathBuf, String> {
     let asset = latest_asset(http, emulator).await?;
@@ -558,8 +626,14 @@ pub async fn install(http: &reqwest::Client, data: &Path, emulator: &Emulator, r
         return Err(tr!("O pacote do {} veio diferente do esperado.", emulator.name));
     }
     let target = managed_dir(data, emulator.id);
-    let _ = fs::remove_dir_all(&target);
-    fs::rename(&staging, &target).map_err(|e| tr!("Não foi possível instalar o {}: {}", emulator.name, e))?;
+    // A copy already there keeps the player's files (saves, BIOS, settings);
+    // one removed before gets back what it left aside.
+    let base = |dir: &Path| program_dir(dir, emulator);
+    if let Err(e) = crate::emulation::swap_keeping(&target, &staging, player_files(emulator.id), &base, emulator.name) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+    restore_kept(data, emulator, &program_dir(&target, emulator));
     // Portable mode keeps the emulator's settings and saves in its own folder.
     if matches!(emulator.id, "duckstation" | "pcsx2" | "dolphin") {
         if let Some(dir) = program_in(&target, emulator.exe, 2).and_then(|p| p.parent().map(Path::to_path_buf)) {
@@ -601,6 +675,55 @@ pub fn launch(exe: &Path, emulator: &Emulator, rom: &Path, extra: &[String]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removing_and_reinstalling_keeps_the_players_files() {
+        let data = tempfile::tempdir().unwrap();
+        let duck = find("duckstation").unwrap();
+        // An installed copy, its program one folder down, with a memory card and a BIOS.
+        let inner = managed_dir(data.path(), "duckstation").join("duckstation");
+        fs::create_dir_all(inner.join("memcards")).unwrap();
+        fs::create_dir_all(inner.join("bios")).unwrap();
+        fs::write(inner.join(duck.exe[0]), b"old").unwrap();
+        fs::write(inner.join("memcards/shared_card_1.mcd"), b"mine").unwrap();
+        fs::write(inner.join("bios/scph5501.bin"), b"bios").unwrap();
+
+        remove_keeping(data.path(), duck).unwrap();
+        assert!(!managed_dir(data.path(), "duckstation").exists());
+        assert_eq!(fs::read(kept_dir(data.path(), "duckstation").join("memcards/shared_card_1.mcd")).unwrap(), b"mine");
+
+        // A fresh copy (as `install` unpacks it) gets them back.
+        let fresh = data.path().join("emulators").join(".duckstation-new").join("duckstation");
+        fs::create_dir_all(&fresh).unwrap();
+        fs::write(fresh.join(duck.exe[0]), b"new").unwrap();
+        let staging = data.path().join("emulators").join(".duckstation-new");
+        let target = managed_dir(data.path(), "duckstation");
+        crate::emulation::swap_keeping(&target, &staging, player_files("duckstation"), &|d: &Path| program_dir(d, duck), duck.name).unwrap();
+        restore_kept(data.path(), duck, &program_dir(&target, duck));
+        let now = target.join("duckstation");
+        assert_eq!(fs::read(now.join(duck.exe[0])).unwrap(), b"new");
+        assert_eq!(fs::read(now.join("memcards/shared_card_1.mcd")).unwrap(), b"mine");
+        assert_eq!(fs::read(now.join("bios/scph5501.bin")).unwrap(), b"bios");
+        assert!(!kept_dir(data.path(), "duckstation").exists());
+    }
+
+    #[test]
+    fn a_reinstall_over_a_copy_keeps_each_emulators_saves() {
+        for (id, item) in [("pcsx2", "memcards"), ("dolphin", "User"), ("ppsspp", "memstick"), ("rpcs3", "dev_hdd0"), ("xenia", "content")] {
+            let data = tempfile::tempdir().unwrap();
+            let emu = find(id).unwrap();
+            let target = managed_dir(data.path(), id);
+            fs::create_dir_all(target.join(item)).unwrap();
+            fs::write(target.join(emu.exe[0]), b"old").unwrap();
+            fs::write(target.join(item).join("save.bin"), b"mine").unwrap();
+            let staging = data.path().join("new");
+            fs::create_dir_all(&staging).unwrap();
+            fs::write(staging.join(emu.exe[0]), b"new").unwrap();
+            crate::emulation::swap_keeping(&target, &staging, player_files(id), &|d: &Path| program_dir(d, emu), emu.name).unwrap();
+            assert_eq!(fs::read(target.join(item).join("save.bin")).unwrap(), b"mine", "{id}");
+            assert_eq!(fs::read(target.join(emu.exe[0])).unwrap(), b"new", "{id}");
+        }
+    }
 
     #[test]
     fn each_console_has_its_emulator_and_names_are_unique() {
@@ -723,3 +846,4 @@ mod documents_tests {
         assert!(dir.is_dir(), "{}", dir.display());
     }
 }
+

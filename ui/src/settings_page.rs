@@ -1419,6 +1419,12 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                                         }}</button>
                                     }
                                 }
+                                {
+                                    let armed_id = e.id.clone();
+                                    move || (managed && armed_remove.get().as_deref() == Some(armed_id.as_str())).then(|| view! {
+                                        <p class="muted small">{tr!("Seus saves, BIOS e configurações ficam guardados e voltam se instalar de novo.")}</p>
+                                    })
+                                }
                             </div>
                         </div>
                     }.into_any()

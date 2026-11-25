@@ -623,23 +623,45 @@ const KEPT_ON_REINSTALL: [&str; 10] =
     ["saves", "states", "system", "playlists", "config", "cores", "thumbnails", "screenshots", "retroarch.cfg", "retroarch-core-options.cfg"];
 
 /// Puts the new RetroArch (`fresh`) in place of the one at `target`, moving the
-/// player's files over. The old copy is set aside first, in one rename, so a
-/// RetroArch that is open stops this before anything changes; any later
-/// failure puts the old copy back.
+/// player's files over.
 fn swap_keeping_player_files(target: &Path, fresh: &Path) -> Result<(), String> {
-    if !target.exists() {
-        return fs::rename(fresh, target).map_err(|e| tr!("Não foi possível instalar o RetroArch: {}", e));
-    }
-    let old = target.with_file_name(".retroarch-old");
-    let _ = fs::remove_dir_all(&old);
-    fs::rename(target, &old).map_err(|_| tr!("Feche o RetroArch antes de reinstalar: ele está aberto ou com arquivos em uso."))?;
-    let moved = (|| -> std::io::Result<()> {
-        for name in KEPT_ON_REINSTALL {
-            let from = old.join(name);
-            if !from.exists() {
-                continue;
+    swap_keeping(target, fresh, &KEPT_ON_REINSTALL, &|dir: &Path| dir.to_path_buf(), "RetroArch")
+}
+
+/// The names in `base` that `keep` asks to keep: exact names, or "*.ext" for
+/// every file with that extension.
+pub fn kept_names(base: &Path, keep: &[&str]) -> Vec<String> {
+    let mut names: Vec<String> = keep.iter().filter(|k| !k.starts_with("*.")).filter(|k| base.join(k).exists()).map(|k| k.to_string()).collect();
+    let extensions: Vec<String> = keep.iter().filter_map(|k| k.strip_prefix("*.")).map(str::to_ascii_lowercase).collect();
+    if !extensions.is_empty() {
+        for entry in fs::read_dir(base).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let ext = Path::new(&name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if entry.path().is_file() && extensions.contains(&ext) && !names.contains(&name) {
+                names.push(name);
             }
-            let to = fresh.join(name);
+        }
+    }
+    names
+}
+
+/// Puts a new copy of a program (`fresh`) in place of the one at `target`,
+/// moving the player's files (`keep`, found in `base` of each copy: the folder
+/// with the program) over. The old copy is set aside first, in one rename, so a
+/// program that is open stops this before anything changes; any later failure
+/// puts the old copy back whole.
+pub fn swap_keeping(target: &Path, fresh: &Path, keep: &[&str], base: &dyn Fn(&Path) -> PathBuf, name: &str) -> Result<(), String> {
+    if !target.exists() {
+        return fs::rename(fresh, target).map_err(|e| tr!("Não foi possível instalar o {}: {}", name, e));
+    }
+    let old = target.with_file_name(format!(".{}-old", target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+    let _ = fs::remove_dir_all(&old);
+    fs::rename(target, &old).map_err(|_| tr!("Feche o {} antes de reinstalar: ele está aberto ou com arquivos em uso.", name))?;
+    let (old_base, fresh_base) = (base(&old), base(fresh));
+    let names = kept_names(&old_base, keep);
+    let moved = (|| -> std::io::Result<()> {
+        for item in &names {
+            let (from, to) = (old_base.join(item), fresh_base.join(item));
             if to.is_dir() {
                 fs::remove_dir_all(&to)?;
             } else if to.exists() {
@@ -656,15 +678,16 @@ fn swap_keeping_player_files(target: &Path, fresh: &Path) -> Result<(), String> 
         }
         Err(e) => {
             // Whatever moved goes back, then the old copy returns whole.
-            for name in KEPT_ON_REINSTALL {
-                let (from, to) = (fresh.join(name), old.join(name));
+            for item in &names {
+                let (from, to) = (fresh_base.join(item), old_base.join(item));
                 if from.exists() && !to.exists() {
                     let _ = fs::rename(&from, &to);
                 }
             }
-            let _ = fs::remove_dir_all(target);
-            let _ = fs::rename(&old, target);
-            Err(tr!("Não foi possível reinstalar o RetroArch: {}. A instalação anterior continua como estava.", e))
+            if !target.exists() || fs::remove_dir_all(target).is_ok() {
+                let _ = fs::rename(&old, target);
+            }
+            Err(tr!("Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.", name, e))
         }
     }
 }
@@ -694,5 +717,29 @@ mod reinstall_tests {
         assert_eq!(fs::read(target.join("system/scph5501.bin")).unwrap(), b"bios");
         assert_eq!(fs::read(target.join("retroarch.cfg")).unwrap(), b"video_fullscreen = \"true\"");
         assert!(!root.path().join(".retroarch-old").exists());
+    }
+
+    #[test]
+    fn a_failed_swap_puts_the_old_copy_back() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("emu");
+        fs::create_dir_all(target.join("memcards")).unwrap();
+        fs::write(target.join("memcards/card1.mcd"), b"mine").unwrap();
+        fs::write(target.join("emu.exe"), b"old").unwrap();
+        // The new copy can't be moved in: it doesn't exist.
+        let missing = root.path().join("not-there");
+        assert!(swap_keeping(&target, &missing, &["memcards"], &|d: &Path| d.to_path_buf(), "Emu").is_err());
+        assert_eq!(fs::read(target.join("memcards/card1.mcd")).unwrap(), b"mine");
+        assert_eq!(fs::read(target.join("emu.exe")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn extensions_keep_every_matching_file() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("hdd.qcow2"), b"x").unwrap();
+        fs::write(root.path().join("xemu.exe"), b"x").unwrap();
+        let mut names = kept_names(root.path(), &["xemu.toml", "*.qcow2"]);
+        names.sort();
+        assert_eq!(names, vec!["hdd.qcow2"]);
     }
 }
