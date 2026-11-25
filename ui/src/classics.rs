@@ -508,17 +508,29 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     && (g.name.to_lowercase().contains(&series) || game_of(g).to_lowercase().contains(&series)))
                 .map(|g| (g.clone(), { let n = game_of(g); if n.is_empty() { g.name.clone() } else { n } }))
                 .collect();
+            // Only a sibling that plays now is offered as the way forward; one that still needs its copy says so.
             let related_view = (!related.is_empty()).then(|| {
-                let names = related.iter().map(|(_, n)| n.clone()).collect::<Vec<_>>().join(", ");
-                let related: Vec<cerberus_shared::Game> = related.into_iter().map(|(g, _)| g).collect();
-                let buttons = related.into_iter().map(|g| {
+                related.into_iter().map(|(g, name)| {
                     let id = g.id.clone();
-                    view! { <button type="button" class="btn sm main" on:click=move |_| library.go(Route::Game(id.clone()))>{tr!("Abrir {}", g.name)}</button> }
-                }).collect_view();
-                view! {
-                    <p class="muted small">{tr!("Você tem {} instalado: é outro jogo da mesma série, já nativo no PC.", names)}</p>
-                    <div class="row">{buttons}</div>
-                }
+                    let ready = g.next_step == cerberus_shared::NextStep::Play;
+                    let console = match &g.source {
+                        cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).map(|e| e.console.clone()).unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    let text = if ready {
+                        tr!("Você tem {} instalado: é outro jogo da mesma série, já nativo no PC.", name)
+                    } else {
+                        tr!("Você tem {} instalado (outro jogo da série), mas ele precisa da sua cópia de {} para abrir.", name, console)
+                    };
+                    view! {
+                        <p class="muted small">{text}</p>
+                        <div class="row">
+                            <button type="button" class="btn sm" class:main=ready on:click=move |_| library.go(Route::Game(id.clone()))>
+                                {if ready { tr!("Abrir {}", g.name) } else { tr!("Ver o que falta em {}", g.name) }}
+                            </button>
+                        </div>
+                    }
+                }).collect_view()
             });
             // The series name finds its other games too ("Monster Hunter" for Generations).
             let search_for = title.split([':', '-']).next().unwrap_or(&title).split_whitespace().take(2).collect::<Vec<_>>().join(" ");
@@ -744,7 +756,7 @@ pub fn OriginalTab(rom: RomView) -> impl IntoView {
                         </div>
                     </div>
                 </section>
-                {has_played.then(|| view! { <crate::game_overview::PlayCard id=id.clone() total=rom.playtime_secs last=rom.last_played /> })}
+                {has_played.then(|| view! { <crate::game_overview::PlayCard id=id.clone() total=rom.playtime_secs last=rom.last_played title=tr!("Sua jogatina no original") /> })}
                 {file_card(library, &rom, emulator.clone())}
             </div>
             <aside class="ov-rail">

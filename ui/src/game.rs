@@ -479,7 +479,14 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         let rows = facts.into_iter().map(|(k, v)| view! { <div><dt>{k}</dt><dd>{v}</dd></div> }).collect_view();
         view! { <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{rows}</dl></section> }
     });
-    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played /> }.into_any());
+    // With the player's own copy merged in, this card is the PC version's time (the Original tab has the other).
+    let merged = game.as_ref().is_some_and(|g| {
+        let games = lib.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let recomps = lib.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        lib.roms.get_untracked().unwrap_or_default().iter().any(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
+    });
+    let play_title = if merged { tr!("Sua jogatina no PC") } else { tr!("Sua jogatina") };
+    let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played title=play_title /> }.into_any());
     // Your numbers lead once there is a story to tell (an hour or more); before that they wait below.
     let played_a_lot = game.as_ref().is_some_and(|g| g.playtime_secs >= 3600);
     let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
@@ -1034,7 +1041,7 @@ fn Mods(game_id: String) -> impl IntoView {
     };
 
     let rows = move || match list.get() {
-        None => view! { <p class="muted">{tr!("Carregando os mods...")}</p> }.into_any(),
+        None => view! { <crate::game_overview::Waiting text=tr!("Carregando os mods...") /> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(None)) => view! { <p class="muted">{tr!("Esse jogo não tem mods no Thunderstore nem no GameBanana.")}</p> }.into_any(),
         Some(Ok(Some(mods))) => {
@@ -1401,7 +1408,21 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
-    view! { <div class="manage">{outside}{link}{program}{options}{dlss}{history}{folder}{relocate}{hold}{shortcut}{steam}{customize}{edit}{project}{repair}{remove}</div> }
+    // Grouped by what they touch, the risky one last and apart.
+    let group = |title: &'static str, any: bool| any.then(|| view! { <h3 class="mg-h">{title}</h3> });
+    let files_h = group(tr!("Arquivos"), folder.is_some() || relocate.is_some() || repair.is_some() || hold.is_some());
+    let links_h = group(tr!("Integração"), shortcut.is_some() || steam.is_some() || project.is_some());
+    let look_h = group(tr!("Aparência"), customize.is_some() || edit.is_some());
+    let danger_h = remove.is_some().then(|| view! { <h3 class="mg-h danger">{tr!("Zona de perigo")}</h3> });
+    view! {
+        <div class="manage">
+            {outside}{link}{program}{options}{dlss}{history}
+            {files_h}{folder}{relocate}{repair}{hold}
+            {links_h}{shortcut}{steam}{project}
+            {look_h}{customize}{edit}
+            {danger_h}{remove}
+        </div>
+    }
 }
 
 #[component]
@@ -1486,7 +1507,7 @@ fn Photos(game_id: String) -> impl IntoView {
             </div>
             <p class="muted small">{tr!("Com o jogo aberto pelo Cerberus e na frente, aperte F12: a foto é só da janela do jogo e aparece aqui. Jogos em tela cheia exclusiva podem sair pretos; use janela sem bordas.")}</p>
             {move || match shots.get() {
-                None => view! { <p class="muted">{tr!("Carregando...")}</p> }.into_any(),
+                None => view! { <crate::game_overview::Waiting text=tr!("Carregando...") rows=1 /> }.into_any(),
                 Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
                 Some(Ok(list)) if list.is_empty() => view! {
                     <div class="empty small">

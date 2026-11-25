@@ -1121,6 +1121,8 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
     let open = RwSignal::new(NEXT_CONSOLE.with(|n| n.borrow_mut().take()));
     // Consoles the player has no game of stay folded until asked for.
     let everything = RwSignal::new(false);
+    // Removing an emulator takes a second click, as uninstalling a game does.
+    let armed_remove = RwSignal::new(None::<String>);
     let refresh = move || {
         spawn_local(async move {
             if let Some(v) = library.report(api::emulation_status().await) {
@@ -1350,14 +1352,28 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                             <span class="emu-status" title=e.exe.clone().unwrap_or_default()>{if managed { tr!("Instalado pelo Cerberus").to_string() } else { tr!("Encontrado em {}", e.exe.clone().unwrap_or_default()) }}</span>
                             <div class="row">
                                 <button type="button" class="btn sm" on:click=move |_| { let id = i2.clone(); spawn_local(async move { library.report(api::open_standalone(&id).await); }) }>{tr!("Abrir o {}", e.name)}</button>
-                                <button type="button" class="btn sm" disabled=disabled on:click=move |_| {
-                                    let id = i3.clone();
-                                    if managed {
-                                        act(&id.clone(), Box::pin(async move { api::remove_standalone(&id).await.map(|_| String::new()) }))
-                                    } else {
-                                        act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }))
+                                {
+                                    let armed_id = e.id.clone();
+                                    let is_armed = move || armed_remove.get().as_deref() == Some(armed_id.as_str());
+                                    let label_armed = is_armed.clone();
+                                    view! {
+                                        <button type="button" class="btn sm" class:warn=move || managed && is_armed() disabled=disabled on:click=move |_| {
+                                            let id = i3.clone();
+                                            if !managed {
+                                                act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }));
+                                            } else if armed_remove.get_untracked().as_deref() == Some(id.as_str()) {
+                                                armed_remove.set(None);
+                                                act(&id.clone(), Box::pin(async move { api::remove_standalone(&id).await.map(|_| String::new()) }));
+                                            } else {
+                                                armed_remove.set(Some(id));
+                                            }
+                                        }>{move || match (managed, label_armed()) {
+                                            (false, _) => tr!("Trocar"),
+                                            (true, true) => tr!("Confirmar: remover"),
+                                            (true, false) => tr!("Remover"),
+                                        }}</button>
                                     }
-                                }>{if managed { tr!("Remover") } else { tr!("Trocar") }}</button>
+                                }
                             </div>
                         </div>
                     }.into_any()

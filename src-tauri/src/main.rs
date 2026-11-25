@@ -583,6 +583,10 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
         return play_standalone(app, path, rom, emulator, &exe);
     }
     let exe = retroarch.ok_or(tr!("Instale o RetroArch, ou um emulador para esse console, em Configurações › Emulação para jogar os clássicos."))?;
+    // A console nothing here emulates is a known limit, not a failure: refused without a line in the history.
+    if emulation::core_for(&console).is_none() {
+        return Err(tr!("Esse console ainda não tem emulação no Cerberus.").into());
+    }
     let log = data.join("emulators").join("retroarch-session.log");
     connect_retroarch(&data, &exe);
     let mut session = cheevos::prepare(&data, "retroarch", &exe, None, Some(&log));

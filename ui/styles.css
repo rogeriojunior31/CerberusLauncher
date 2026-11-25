@@ -2144,3 +2144,13 @@ p { text-wrap: pretty; }
 /* Pages keep their width when the scrollbar comes and goes. */
 main.main { scrollbar-gutter: stable; }
 .disc-by { display: flex; align-items: center; gap: 10px; }
+
+.waiting { display: flex; flex-direction: column; gap: 10px; }
+/* Every tab of a game sits on the same width as its overview: no reflow between tabs. */
+.gp-page .tab-body { width: 100%; }
+.gp-page .tab-body > * { max-width: none; }
+
+/* Gerenciar, grouped: a quiet heading per group; the danger zone apart. */
+.mg-h { margin: 18px 4px 2px; font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: 0.02em; }
+.mg-h:first-child { margin-top: 0; }
+.mg-h.danger { color: var(--bad); margin-top: 26px; }

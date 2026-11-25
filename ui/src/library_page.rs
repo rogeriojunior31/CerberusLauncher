@@ -364,7 +364,9 @@ pub fn LibraryPage() -> impl IntoView {
         let kind = category.get();
         let away = absent.get();
         let counts: Vec<(GameStatus, usize)> = library.games.with(|all| {
-            let all: Vec<&Game> = all.as_ref().and_then(|r| r.as_ref().ok()).into_iter().flatten().filter(|g| kind.keeps(g, None) && is_absent(g) == away).collect();
+            let needle = search.get().trim().to_lowercase();
+            let all: Vec<&Game> = all.as_ref().and_then(|r| r.as_ref().ok()).into_iter().flatten()
+                .filter(|g| kind.keeps(g, None) && is_absent(g) == away && found(library, g, &needle)).collect();
             GameStatus::ALL.into_iter().map(|s| (s, all.iter().filter(|g| g.status == Some(s)).count())).filter(|(_, n)| *n > 0).collect()
         });
         (!counts.is_empty()).then(|| {

@@ -52,7 +52,7 @@ pub fn LooksCard(game_id: String, preview: Option<String>) -> impl IntoView {
 
     move || {
         let Some(s) = status.get() else {
-            return view! { <section class="card looks"><p class="muted small">{tr!("Carregando os filtros...")}</p></section> }.into_any();
+            return view! { <section class="card looks"><crate::game_overview::Waiting text=tr!("Carregando os filtros...") rows=2 /></section> }.into_any();
         };
         if let Some(why) = s.unsupported.clone() {
             return view! {

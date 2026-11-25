@@ -41,7 +41,8 @@ fn day_label(ms: f64) -> String {
 
 /// "Your play time": the last 14 days as bars, and the numbers beside them.
 #[component]
-pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
+pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] title: Option<&'static str>) -> impl IntoView {
+    let title = title.unwrap_or(tr!("Sua jogatina"));
     let sessions = LocalResource::new(move || {
         let id = id.clone();
         async move { api::game_sessions(&id).await.unwrap_or_default() }
@@ -110,7 +111,7 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
             return view! {
                 <section class="card pc compact">
                     <div class="pc-h">
-                        <h3>{tr!("Sua jogatina")}</h3>
+                        <h3>{title}</h3>
                         <small class="muted">{tr!("Não jogou nas últimas duas semanas.")}</small>
                     </div>
                     <ul class="pc-list row">{rows}</ul>
@@ -122,7 +123,7 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>) -> impl IntoView {
         view! {
             <section class="card pc">
                 <div class="pc-h">
-                    <h3>{tr!("Sua jogatina")}</h3>
+                    <h3>{title}</h3>
                     <small class="muted">{tr!("Últimas duas semanas")}</small>
                 </div>
                 <div class="pc-body">
@@ -563,5 +564,27 @@ pub fn StoreSkeleton() -> impl IntoView {
         <div class="sk sk-media" role="status" aria-label=tr!("Carregando a página da loja")></div>
         <div class="sk sk-strip"></div>
         <div class="sk sk-card"></div>
+    }
+}
+
+/// Something still loading, at its final size: placeholder rows, the words for
+/// screen readers, and after a while a note that it's still going.
+#[component]
+pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize) -> impl IntoView {
+    let slow = RwSignal::new(false);
+    let timer = set_timeout_with_handle(move || slow.set(true), std::time::Duration::from_secs(10)).ok();
+    on_cleanup(move || {
+        if let Some(t) = timer {
+            t.clear();
+        }
+    });
+    view! {
+        <div class="waiting" role="status">
+            <span class="vh">{text}</span>
+            {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
+            <Show when=move || slow.get()>
+                <p class="muted small">{tr!("Ainda lendo… na primeira vez pode levar alguns segundos.")}</p>
+            </Show>
+        </div>
     }
 }

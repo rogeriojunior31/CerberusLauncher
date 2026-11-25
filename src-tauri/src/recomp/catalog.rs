@@ -640,6 +640,7 @@ pub fn origin_name(origin: &str, listed: Option<&str>) -> String {
     match origin {
         "other" => tr!("Outros").to_string(),
         "ds" => "Nintendo DS".into(),
+        "genesis" => "Mega Drive".into(),
         "3ds" => "Nintendo 3DS".into(),
         "pc" => "PC".into(),
         _ => listed.map(str::to_string).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| origin.to_uppercase()),

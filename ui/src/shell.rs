@@ -10,10 +10,18 @@ use crate::{Library, Route, Toast, api};
 const SECTIONS: [Route; 7] = [Route::Home, Route::Library, Route::Discover, Route::Achievements, Route::Downloads, Route::Saves, Route::News];
 
 /// Keyboard shortcuts for the desktop window (Big Picture has its own controls):
-/// "/" or Ctrl+F or Ctrl+K to search the page, Ctrl+, for settings, Ctrl+1-7 for the sections.
+/// "/" or Ctrl+F or Ctrl+K to search the page, Ctrl+, for settings, Ctrl+1-7 for the sections, Alt+Left to go back.
 fn shortcuts(library: Library) {
     let handle = window_event_listener(leptos::ev::keydown, move |e: web_sys::KeyboardEvent| {
-        if library.route.get_untracked() == Route::BigPicture || e.alt_key() {
+        if library.route.get_untracked() == Route::BigPicture {
+            return;
+        }
+        // Alt+Left goes back, as in a browser.
+        if e.alt_key() {
+            if e.key() == "ArrowLeft" {
+                e.prevent_default();
+                library.back();
+            }
             return;
         }
         let typing = document().active_element().is_some_and(|el| matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT"));
@@ -22,10 +30,22 @@ fn shortcuts(library: Library) {
         let search = (key == "/" && !typing) || (ctrl && matches!(key.as_str(), "f" | "F" | "k" | "K"));
         if search {
             let found = document().query_selector(".page input[type=search], .set-find").ok().flatten();
-            if let Some(input) = found {
-                e.prevent_default();
-                let input: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(input);
-                let _ = input.focus();
+            e.prevent_default();
+            match found {
+                Some(input) => {
+                    let input: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(input);
+                    let _ = input.focus();
+                }
+                // A page with no search of its own (a game's): the library's.
+                None => {
+                    library.go(Route::Library);
+                    request_animation_frame(|| {
+                        if let Some(input) = document().query_selector(".page input[type=search]").ok().flatten() {
+                            let input: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(input);
+                            let _ = input.focus();
+                        }
+                    });
+                }
             }
             return;
         }
