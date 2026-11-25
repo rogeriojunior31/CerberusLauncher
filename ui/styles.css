@@ -2176,3 +2176,6 @@ main.main { scrollbar-gutter: stable; }
 /* Play time with nothing logged lately: the chart stays, and says why */
 .pc-chart.empty .pc-bars { opacity: 0.3; }
 .pc-empty { position: absolute; inset: 0 0 26px; display: grid; place-items: center; text-align: center; padding: 0 18px; margin: 0; }
+
+/* Conquistas: the heading above the sticky filters stays over the toolbar's background slab */
+.shelf-h:has(+ .ach-tools) { position: relative; z-index: 4; }

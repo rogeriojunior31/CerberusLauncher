@@ -1315,10 +1315,14 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             move || library.progress.with(|all| all.contains_key(&rid))
         };
         let version = e.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default();
+        // Repair installs the newest release: "de novo" only when that's the one already here.
+        let same = e.installed.as_deref() == Some(version.as_str());
         let detail = if version.is_empty() {
             tr!("Baixa o jogo de novo por cima; saves, configurações e mods ficam").to_string()
-        } else {
+        } else if same {
             tr!("Baixa a versão {} de novo por cima; saves, configurações e mods ficam", version)
+        } else {
+            tr!("Baixa a versão mais nova ({}) por cima; saves, configurações e mods ficam", version)
         };
         view! {
             <button type="button" class="row-btn" disabled=downloading on:click=move |_| crate::discover::start_install(library, rid.clone())>
