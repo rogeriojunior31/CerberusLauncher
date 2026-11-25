@@ -883,7 +883,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] favoritos, coleções, ocultos, notas, arte [Fu F2, B F1, B F2, B F5] — Feito em 25/11/2026 (`state_file.rs`): mudanças por `update` (uma por vez, nunca sobre um arquivo que não leu). Lista de mods também (25/11/2026).
 - [x] tempo de jogo das lojas e dos clássicos [P F1, C F1] — Feito em 25/11/2026 (`state_file.rs`): dois clássicos fechando juntos somam os dois; arquivo ilegível nunca é trocado por uma sessão só.
 - [x] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3] — corrigido em 25/11/2026: arquivo que não se lê (em uso, UTF-16) nunca é regravado; gravação em um passo; o que não voltou ao fim da partida fica registrado e volta na próxima (C F10).
-- [ ] arquivos do próprio jogo nos Ajustes e no HedgeModManager [RP F1, RP F2, RP F13]
+- [x] arquivos do próprio jogo nos Ajustes [RP F1] — feito em 25/11/2026: arquivo que existe e não se lê (UTF-16, JSON com comentário, em uso) nunca é regravado; JSON com BOM lido; cópia `.cerberus-orig` do original na primeira mudança. Testado.
+- [ ] HedgeModManager e valores de INI com `#`/`;` [RP F2, RP F13]
 - [ ] JSONL com linha cortada, gravações sem `sync_all`, caches com `fs::write` direto [P F10, P F11, Fu F11, Fu F12]
 
 ### Lote B — Nada se perde quando algo é interrompido ou o app fecha

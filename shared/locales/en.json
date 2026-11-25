@@ -1083,6 +1083,7 @@
   "Não foi possível ler a imagem de disco: {}": "Couldn't read the disc image: {}",
   "Não foi possível ler a lista da Steam: {}": "Couldn't read Steam's list: {}",
   "Não foi possível ler os envios pendentes de {}: {}": "Couldn't read the pending uploads of {}: {}",
+  "Não foi possível ler {0} ({1}); o arquivo ficou como estava. Mude essa opção pelo próprio jogo.": "Couldn't read {0} ({1}); the file was left as it was. Change this option in the game itself.",
   "Não foi possível ler {0}: {1}": "Couldn't read {0}: {1}",
   "Não foi possível ler {}: o arquivo ficou como estava. Feche outros programas que o usem e tente de novo.": "Couldn't read {}: the file was left as it was. Close other programs using it and try again.",
   "Não foi possível limpar a atualização anterior em {}.": "Couldn't clean the previous update at {}.",
