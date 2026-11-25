@@ -1305,6 +1305,7 @@
   "Os nomes e as descrições vêm do próprio recomp, em inglês.": "The names and descriptions come from the recomp itself, in English.",
   "Os saves dos recomps são copiados sozinhos: quando você fecha o jogo, antes de atualizar e antes de desinstalar.": "Recomp saves are copied automatically: when you close the game, before updating and before uninstalling.",
   "Os saves e os memory cards ficam na pasta do emulador; o Cerberus copia essa pasta sempre que você fecha o jogo (veja em Saves).": "Saves and memory cards stay in the emulator's folder; Cerberus copies that folder every time you close the game (see Saves).",
+  "Os saves mudaram neste PC e em outro desde a última sincronização. Nada foi trocado: os deste PC continuam, e os do outro PC ficaram em Backups, prontos para restaurar se forem os certos.": "Saves changed on this PC and on another one since they last synced. Nothing was replaced: this PC's saves stay, and the other PC's are in Backups, ready to restore if they're the right ones.",
   "Os saves que estiverem na pasta do jogo serão apagados junto.": "Saves inside the game's folder will be deleted with it.",
   "Os textos do Cerberus. No automático, segue o idioma do Windows.": "The language of Cerberus. Automatic follows the Windows language.",
   "Outro PC": "Another PC",

@@ -231,7 +231,9 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
     }
 
     fs::create_dir_all(backups).map_err(|e| e.to_string())?;
-    let created = now();
+    // Always after the newest one, even with the clock set back (a dead CMOS
+    // battery, a dual boot): a new copy is never taken for an old one.
+    let created = now().max(list(backups).first().map_or(0, |b| b.created + 1));
     // Two PCs can finish in the same millisecond. Keep both backups in the shared folder.
     let temp = tempfile::Builder::new().prefix(&format!("{}-", now_millis())).suffix(".part")
         .tempfile_in(backups).map_err(|e| e.to_string())?;
@@ -250,7 +252,7 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
     temp.as_file().sync_all().map_err(|e| e.to_string())?;
     let queued = cloud.map(|destination| super::cloud::queue(&target, destination)).transpose();
     temp.persist_noclobber(&target).map_err(|e| e.to_string())?;
-    prune(backups);
+    prune(backups, &name);
     queued.map_err(|e| tr!("Backup local guardado. Falha ao agendar o envio: {}", e))?;
     Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes }))
 }
@@ -340,13 +342,63 @@ pub(super) fn prune_cloud(folder: &Path) {
     }
 }
 
-fn prune(backups: &Path) {
-    for old in list(backups).into_iter().skip(KEEP) {
-        let archive = backups.join(old.name);
-        if fs::remove_file(&archive).is_ok() {
-            let _ = fs::remove_file(archive.with_extension("upload"));
+/// Safety copies (made before saves are replaced: from the cloud, a restore,
+/// an uninstall) kept per reason, apart from the regular ones.
+const KEEP_SAFETY: usize = 3;
+
+fn is_safety(reason: &str) -> bool {
+    reason.starts_with("Antes de")
+}
+
+/// The newest `KEEP` regular copies, and the newest `KEEP_SAFETY` of each
+/// safety reason; `just_made` always stays.
+fn prune(backups: &Path, just_made: &str) {
+    let mut regular = 0;
+    let mut safety: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for old in list(backups) {
+        let within = if is_safety(&old.reason) {
+            let n = safety.entry(old.reason.clone()).or_default();
+            *n += 1;
+            *n <= KEEP_SAFETY
+        } else {
+            regular += 1;
+            regular <= KEEP
+        };
+        let keep = within || old.name == just_made;
+        if !keep {
+            let archive = backups.join(old.name);
+            if fs::remove_file(&archive).is_ok() {
+                let _ = fs::remove_file(archive.with_extension("upload"));
+            }
         }
     }
+}
+
+/// The saves a backup holds, by their fingerprint.
+pub fn fingerprint_in(archive: &Path) -> Option<String> {
+    read_manifest(archive).ok().map(|m| m.fingerprint)
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct Anchor {
+    fingerprint: String,
+    /// The cloud folder it was agreed with: another folder starts over.
+    #[serde(default)]
+    cloud: String,
+}
+
+fn folder_key(cloud: &Path) -> String {
+    cloud.to_string_lossy().to_lowercase()
+}
+
+/// The saves this PC and that cloud folder last agreed on (pulled from it or sent to it).
+pub fn anchor_of(backups: &Path, cloud: &Path) -> Option<String> {
+    let anchor: Anchor = crate::state_file::load_or_default(&backups.join("sync.json"));
+    Some(anchor.fingerprint).filter(|f| !f.is_empty() && anchor.cloud == folder_key(cloud))
+}
+
+pub fn set_anchor(backups: &Path, cloud: &Path, fingerprint: &str) {
+    let _ = crate::state_file::save(&backups.join("sync.json"), &Anchor { fingerprint: fingerprint.to_string(), cloud: folder_key(cloud) });
 }
 
 /// Puts a copy's files back where they belong for the game as installed now.

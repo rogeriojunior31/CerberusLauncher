@@ -221,25 +221,55 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     };
     let entry = entry_at(recomp_id, install_dir).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let places = saves::places(&entry.saves);
-    if saves::current_fingerprint(&places, install_dir).as_deref() == Some(cloud_print.as_str()) {
-        return Ok(None);
-    }
     let local_dir = folders.backups_dir(recomp_id);
-    let local_newest = saves::newest_with_fingerprint(&local_dir);
-    // This PC played after the cloud copy was made: its saves are the newer ones.
-    // A local copy of that very cloud backup counts as "already here".
-    let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| (b.created, &b.name) >= (cloud_newest.created, &cloud_newest.name));
-    if local_is_newer {
+    let here = saves::current_fingerprint(&places, install_dir);
+    if here.as_deref() == Some(cloud_print.as_str()) {
+        saves::set_anchor(&local_dir, &cloud, &cloud_print);
         return Ok(None);
     }
-    let source = fs::File::open(cloud.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+    // Decided by what changed since this PC and the cloud last agreed, never by
+    // the clocks (a PC a day ahead would otherwise always win).
+    let anchor = saves::anchor_of(&local_dir, &cloud);
+    let Some(anchor) = anchor else {
+        // First sync on this PC (nothing agreed on yet): the newer copy wins, as
+        // before; from the next one on, the anchor decides.
+        let local_newest = saves::newest_with_fingerprint(&local_dir);
+        let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| (b.created, &b.name) >= (cloud_newest.created, &cloud_newest.name));
+        if local_is_newer {
+            return Ok(None);
+        }
+        return bring_down(folders, recomp_id, install_dir, &cloud, &cloud_newest.name, &cloud_print, &places);
+    };
+    let cloud_changed = anchor != cloud_print;
+    let here_changed = here.as_deref().is_some_and(|h| h != anchor);
+    if !cloud_changed {
+        // Only this PC changed: its saves go up after playing.
+        return Ok(None);
+    }
+    if here_changed {
+        // Changed on both sides: nothing is replaced. The other PC's copy is kept
+        // here, ready to restore; this PC's saves stay and go up after playing.
+        let source = fs::File::open(cloud.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+        let temp = cloud::stage(source, &local_dir).map_err(|e| e.to_string())?;
+        cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+        saves::set_anchor(&local_dir, &cloud, &cloud_print);
+        return Ok(Some(tr!("Os saves mudaram neste PC e em outro desde a última sincronização. Nada foi trocado: os deste PC continuam, e os do outro PC ficaram em Backups, prontos para restaurar se forem os certos.").into()));
+    }
+    bring_down(folders, recomp_id, install_dir, &cloud, &cloud_newest.name, &cloud_print, &places)
+}
+
+/// Puts the cloud's copy in place, after a safety copy of this PC's saves.
+fn bring_down(folders: &Folders, recomp_id: &str, install_dir: &Path, cloud: &Path, name: &str, cloud_print: &str, places: &[String]) -> Result<Option<String>, String> {
+    let local_dir = folders.backups_dir(recomp_id);
+    let source = fs::File::open(cloud.join(name)).map_err(|e| e.to_string())?;
     let temp = cloud::stage(source, &local_dir).map_err(|e| e.to_string())?;
     let zip = zip::ZipArchive::new(temp.reopen().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     backup_saves_to(folders, recomp_id, install_dir, saves::BEFORE_CLOUD, false)?;
-    if saves::restore_open(zip, install_dir, Some(&places))? == 0 {
+    if saves::restore_open(zip, install_dir, Some(places))? == 0 {
         return Err(tr!("O backup na nuvem não contém saves que este PC possa restaurar.").into());
     }
-    cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+    cloud::publish(temp, &local_dir.join(name)).map_err(|e| e.to_string())?;
+    saves::set_anchor(&local_dir, cloud, cloud_print);
     Ok(Some(tr!("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.").into()))
 }
 
@@ -1822,6 +1852,52 @@ mod tests {
     }
 
     #[test]
+    fn saves_changed_on_both_pcs_are_a_conflict_and_nothing_is_replaced() {
+        let root = temp("cloud-conflict");
+        let cloud = root.join("OneDrive");
+        let (desktop, desktop_game) = pc(&root.join("desktop"), &cloud, "level 1");
+        backup_saves(&desktop, "shipwright", &desktop_game, "Depois de jogar").unwrap();
+        let (laptop, laptop_game) = pc(&root.join("laptop"), &cloud, "nothing");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        // Both start from the same saves.
+        assert!(pull_from_cloud(&laptop, "shipwright", &laptop_game).unwrap().is_some());
+        // Each plays without syncing; the laptop sends first.
+        fs::write(desktop_game.join("Save/file1.sav"), "desktop level 7").unwrap();
+        fs::write(laptop_game.join("Save/file1.sav"), "laptop level 9").unwrap();
+        backup_saves(&laptop, "shipwright", &laptop_game, "Depois de jogar").unwrap();
+        // The desktop opens the game: changed here and there, so nothing is replaced...
+        let told = pull_from_cloud(&desktop, "shipwright", &desktop_game).unwrap();
+        assert!(told.is_some_and(|m| m.contains("Nada foi trocado")));
+        assert_eq!(fs::read_to_string(desktop_game.join("Save/file1.sav")).unwrap(), "desktop level 7");
+        // ...and the laptop's copy is here, ready to restore.
+        let laptops = list_backups(&desktop, "shipwright").into_iter().find(|b| {
+            let probe = root.join("probe");
+            fs::create_dir_all(probe.join("Save")).unwrap();
+            saves::restore(&desktop.backups_dir("shipwright"), &b.name, &probe).is_ok()
+                && fs::read_to_string(probe.join("Save/file1.sav")).is_ok_and(|t| t == "laptop level 9")
+        });
+        assert!(laptops.is_some(), "the other PC's saves can be restored here");
+    }
+
+    #[test]
+    fn a_safety_copy_outlives_twelve_sessions() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(&root.path().join("data"), None);
+        let install = root.path().join("game");
+        fs::create_dir_all(install.join("Save")).unwrap();
+        let slot = install.join("Save/file1.sav");
+        fs::write(&slot, "before the cloud").unwrap();
+        backup_saves_to(&folders, "shipwright", &install, saves::BEFORE_CLOUD, false).unwrap();
+        for round in 0..12 {
+            fs::write(&slot, format!("session {round}")).unwrap();
+            backup_saves(&folders, "shipwright", &install, "Depois de jogar").unwrap();
+        }
+        let kept = list_backups(&folders, "shipwright");
+        assert!(kept.iter().any(|b| b.reason == saves::BEFORE_CLOUD), "the safety copy is still there");
+        assert_eq!(kept.iter().filter(|b| b.reason == "Depois de jogar").count(), 10);
+    }
+
+    #[test]
     fn can_restore_the_oldest_backup_while_saving_current_progress() {
         let root = tempfile::tempdir().unwrap();
         let folders = Folders::new(&root.path().join("data"), None);
@@ -1839,7 +1915,7 @@ mod tests {
         restore_backup(&folders, "shipwright", &install, &backups.last().unwrap().name).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "0");
         let current = list_backups(&folders, "shipwright");
-        assert_eq!(current.len(), 10);
+        assert_eq!(current.len(), 11, "ten regular copies, plus the safety copy kept apart");
         let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
         saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");

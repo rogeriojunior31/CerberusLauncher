@@ -59,6 +59,10 @@ fn send(archive: &Path, root: &Path, destination: &Path, folders: &Folders) -> i
     if current.as_deref() == Some(root) {
         publish(temp, &destination.join(name))?;
         super::saves::prune_cloud(destination);
+        // Sent: this is now the version this PC and the cloud agree on.
+        if let (Some(print), Some(backups)) = (super::saves::fingerprint_in(archive), archive.parent()) {
+            super::saves::set_anchor(backups, destination, &print);
+        }
         match fs::remove_file(archive.with_extension("upload")) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             result => result?,
@@ -89,8 +93,10 @@ pub(super) fn retry_game(folders: &Folders, id: &str) -> Result<(), String> {
     let Some(root) = root else { return Ok(()) };
     let destination = root.join("Cerberus Saves").join(id);
     let mut result = Ok(());
-    let archives = pending(&folders.backups_dir(id), &destination)
+    let mut archives = pending(&folders.backups_dir(id), &destination)
         .map_err(|e| tr!("Não foi possível ler os envios pendentes de {}: {}", id, e))?;
+    // Oldest first: the last one sent (the newest) is the one agreed on.
+    archives.sort();
     for archive in archives {
         if let Err(e) = send(&archive, &root, &destination, folders) {
             result = Err(tr!("Backup local guardado. Falha ao enviar para {0}: {1}", destination.display(), e));

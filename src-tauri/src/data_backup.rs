@@ -250,6 +250,7 @@ fn prune_before(data: &Path, keep: usize) {
 /// Puts a copy back at once (staged, then applied); returns how many files came
 /// from it and where the previous data was saved. The app uses `stage` and
 /// applies it when it starts again.
+#[cfg(test)]
 pub fn restore(data: &Path, from: &Path) -> Result<(usize, std::path::PathBuf), String> {
     stage(data, from)?;
     apply_pending(data).unwrap_or_else(|| Err(tr!("Esse arquivo não é uma cópia do Cerberus.").into()))

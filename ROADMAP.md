@@ -900,8 +900,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 ### Lote C — Saves e nuvem sem confiar no relógio
 
-- [ ] Nuvem escolhe o "mais novo" pelo relógio; dois PCs se sobrescrevem [P F2] (desenho de âncora em `saves-de-jogos-de-pc.md`)
-- [ ] Rodízio apaga o backup errado e as cópias de segurança [P F3]
+- [x] Nuvem escolhe o "mais novo" pelo relógio; dois PCs se sobrescrevem [P F2] — feito em 25/11/2026: âncora por jogo e pasta de nuvem (`sync.json`), gravada só quando o envio termina ou ao trazer; só a nuvem mudou → traz; só aqui → envia depois; os dois → conflito, nada trocado, a cópia do outro PC fica em Backups. A primeira sincronização de um PC ainda usa a data (sem histórico). Falta o cartão de escolha na tela. (desenho de âncora em `saves-de-jogos-de-pc.md`)
+- [x] Rodízio apaga o backup errado e as cópias de segurança [P F3] — feito em 25/11/2026: datas sempre crescentes, 10 regulares + 3 por motivo de segurança, o recém-feito nunca sai. Testado.
 - [ ] Restaurar não é atômico; restaurar com o jogo aberto por fora [P F13, P F14, P F16]
 - [ ] Cada Jogar abre os 20 zips da nuvem (OneDrive sob demanda) [P F12]; UI que diz "na nuvem" sem saber [P F15]
 - [ ] Reinstalar um recomp zera o tempo de jogo [P F4]
