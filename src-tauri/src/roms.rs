@@ -192,7 +192,7 @@ fn identify_by_name(path: &Path) -> Option<RomFile> {
         "n64".to_string()
     } else if let Some(system) = cartridge_system(&ext) {
         system.to_string()
-    } else if ext == "m3u" || DISC.contains(&ext.as_str()) {
+    } else if ext == "m3u" || ext == "zip" || ext == "7z" || DISC.contains(&ext.as_str()) {
         crate::disc_console::console_by_folder(path).unwrap_or_default().to_string()
     } else {
         return None;
@@ -200,9 +200,30 @@ fn identify_by_name(path: &Path) -> Option<RomFile> {
     Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
 }
 
+/// The console of a zipped ROM, by the first ROM inside (only the zip's list
+/// of files is read, nothing is extracted). RetroArch opens zips as they are.
+fn zipped_system(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let zip = zip::ZipArchive::new(file).ok()?;
+    zip.file_names().find_map(|name| {
+        let ext = Path::new(name).extension()?.to_string_lossy().to_lowercase();
+        if N64.contains(&ext.as_str()) {
+            Some("n64".to_string())
+        } else {
+            cartridge_system(&ext).map(str::to_string)
+        }
+    })
+}
+
 fn identify(path: &Path) -> Option<RomFile> {
     let ext = path.extension()?.to_string_lossy().to_lowercase();
     let stem = path.file_stem()?.to_string_lossy().into_owned();
+    // Zipped (the usual way No-Intro sets come) or 7z (known by its folder, as nothing lists it here).
+    if ext == "zip" || ext == "7z" {
+        let system = if ext == "zip" { zipped_system(path) } else { None }
+            .or_else(|| crate::disc_console::console_by_folder(path).map(str::to_string))?;
+        return Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() });
+    }
     if N64.contains(&ext.as_str()) {
         let header = n64_header(path)?;
         let region = if header.region.is_empty() { region_from_name(&stem) } else { header.region };
@@ -537,6 +558,25 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_zipped_rom_is_known_by_the_rom_inside() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let zipped = dir.path().join("Mario (USA).zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&zipped).unwrap());
+        zip.start_file("Mario (USA).sfc", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"rom").unwrap();
+        zip.finish().unwrap();
+        let rom = identify(&zipped).unwrap();
+        assert_eq!((rom.system.as_str(), rom.title.as_str(), rom.region.as_str()), ("snes", "Mario (USA)", "US"));
+        // A zip with no ROM inside, in a folder that says nothing: not a classic.
+        let other = dir.path().join("photos.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&other).unwrap());
+        zip.start_file("a.jpg", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.finish().unwrap();
+        assert!(identify(&other).is_none());
+    }
 
     #[test]
     fn a_file_only_in_the_cloud_is_known_by_name_without_being_opened() {

@@ -974,7 +974,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 ### Lote G — Funciona como promete (por área)
 
 - Biblioteca: ~~B F3~~ (25/11/2026: `library.json` ilegível tira só os jogos dele; as lojas continuam e a Biblioteca explica), F7–F11, F13–F20.
-- Clássicos: C F5, F6, F9–F17, F19–F22, F24–F26.
+- Clássicos: ~~C F5~~ (25/11/2026: `.zip` pelo cartucho dentro, `.7z` pela pasta), F6, F9–F17, F19–F22, F24–F26.
 - Durante o jogo e app: ~~J F3~~ (25/11/2026: fechar a janela de vez encerra o app, com as janelas escondidas do menu e do aviso), F6–F9, F11–F13, F15–F24.
 - Big Picture: BP F2–F4, F6, F7, F9–F19.
 - Partidas: P F7–F9, F18, F20–F22, F24–F26.
