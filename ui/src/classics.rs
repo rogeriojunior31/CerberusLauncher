@@ -298,7 +298,8 @@ pub fn play_original(library: Library, path: String, console: String) {
 /// A console in a few letters, for the cover's corner.
 pub fn console_short(console: &str) -> String {
     match console {
-        "gamecube" => "GC".into(),
+        "gc" => "GC".into(),
+        "dc" => "DC".into(),
         "genesis" => "MD".into(),
         "x360" => "360".into(),
         "wiiu" => "Wii U".into(),

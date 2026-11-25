@@ -1051,8 +1051,9 @@ enum Ready {
     NoEmulator,
 }
 
-/// A console's picture: pixel art from Hydra, and Cerberus's own where Hydra
-/// has none (see ui/emulation/LICENSE.md).
+/// A console's picture: Hydra's (PlayStation, PSP, GameCube, Wii) and public
+/// domain photos by Evan Amos from Wikimedia Commons for the rest; Cerberus's
+/// own drawing where neither has one (see ui/emulation/LICENSE.md).
 pub fn console_art(id: &str) -> Option<&'static str> {
     Some(match id {
         "ps1" => "emulation/ps1.png",
@@ -1071,6 +1072,10 @@ pub fn console_art(id: &str) -> Option<&'static str> {
         "genesis" => "emulation/genesis.png",
         "sms" => "emulation/sms.png",
         "gg" => "emulation/gg.png",
+        "ds" => "emulation/ds.png",
+        "3ds" => "emulation/3ds.png",
+        "xbox" => "emulation/xbox.png",
+        "x360" => "emulation/x360.png",
         _ => return None,
     })
 }
