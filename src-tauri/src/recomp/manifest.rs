@@ -888,6 +888,7 @@ pub fn still_fits(input: &Input, copy: &Path) -> bool {
 pub fn place(input: &Input, install: &Path, copy: &Path) -> Result<(), String> {
     let Some(target) = placed_at(input, install, Some(copy)) else { return Ok(()) };
     if copy.is_dir() {
+        crate::disk::require(target.parent().unwrap_or(install), super::tree_size(copy))?;
         if target == install {
             return super::copy_tree(copy, &target).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e));
         }

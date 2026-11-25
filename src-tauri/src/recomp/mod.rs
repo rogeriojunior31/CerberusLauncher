@@ -1108,6 +1108,8 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         if !accepts_folder {
             return Err(tr!("Esse jogo precisa de um arquivo, não de uma pasta.").into());
         }
+        // Room for all of it first (a PS3 folder is tens of GB), not a full disk half-way.
+        crate::disk::require(&dir, tree_size(copy))?;
         return fill(&|into: &Path| copy_tree(copy, into).map_err(|e| tr!("Não foi possível copiar os arquivos do jogo: {}", e)));
     }
     // A disc image is unpacked, whichever of the two formats the recomps ask for it is.
@@ -1135,6 +1137,19 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
     // A disc sheet (.cue, .gdi, .m3u) brings its tracks, with their names.
     copy_sheet_files(copy, &dir)?;
     Ok(())
+}
+
+/// How many bytes a folder's files hold, all the way down (links not followed).
+pub(crate) fn tree_size(dir: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => tree_size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
 }
 
 /// Copies a folder's files and folders under `to`, keeping their layout.
@@ -2442,6 +2457,15 @@ Content-Length: {}
         assert_eq!((back.name.as_str(), back.saves.clone()), ("Left", vec!["{install}/saves".to_string()]));
         // Another recomp's folder can't answer for this one.
         assert!(kept_entry(dir.path(), "other").is_none());
+    }
+
+    #[test]
+    fn a_folder_copy_counts_every_file_below() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("a").join("b")).unwrap();
+        fs::write(dir.path().join("x.bin"), [0u8; 10]).unwrap();
+        fs::write(dir.path().join("a").join("b").join("y.bin"), [0u8; 5]).unwrap();
+        assert_eq!(tree_size(dir.path()), 15);
     }
 
     #[test]
