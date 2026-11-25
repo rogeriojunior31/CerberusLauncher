@@ -200,7 +200,20 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry], g
     art.extend(how.recomp.as_ref().map(crate::art::recomp_covers).unwrap_or_default());
     // The chip's reason, in the page's own words.
     let hint = (!how.playable()).then(|| how.problem.clone()).filter(|p| !p.is_empty());
-    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable(), hint)
+    // The emulator that opens it and its console; "Nativo" when a recomp plays it too.
+    use crate::tiles::{Mark, SourceMark};
+    let mut marks = Vec::new();
+    if let Some(emu) = &how.emulator {
+        let id: String = emu.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase();
+        if let Some(src) = crate::settings_page::emulator_icon(&id) {
+            marks.push(SourceMark { mark: Mark::Image(src), label: tr!("Abre no {}", emu) });
+        }
+    }
+    marks.push(SourceMark { mark: Mark::Text(console_short(console)), label: console_name(console).to_string() });
+    if how.recomp_game.is_some() {
+        marks.push(SourceMark { mark: Mark::Text("Recomp".to_string()), label: tr!("Recomp: versão nativa para PC").to_string() });
+    }
+    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable(), hint, marks)
 }
 
 /// The classic is a version of an installed recomp (the recomp was given this
@@ -280,6 +293,19 @@ pub fn play_original(library: Library, path: String, console: String) {
             library.toast(tr!("Abrindo o jogo..."));
         }
     });
+}
+
+/// A console in a few letters, for the cover's corner.
+pub fn console_short(console: &str) -> String {
+    match console {
+        "gamecube" => "GC".into(),
+        "genesis" => "MD".into(),
+        "x360" => "360".into(),
+        "wiiu" => "Wii U".into(),
+        "wii" => "Wii".into(),
+        "xbox" => "Xbox".into(),
+        other => other.to_uppercase(),
+    }
 }
 
 pub fn console_name(console: &str) -> &'static str {

@@ -32,6 +32,58 @@ pub struct TileInfo {
     pub absent: bool,
     /// Achievements unlocked and in all, for a bar on the cover.
     pub progress: Option<(u32, u32)>,
+    /// Where the game comes from and what runs it: the store's logo, "Nativo"
+    /// for a recomp, the emulator and console for a classic.
+    pub marks: Vec<SourceMark>,
+}
+
+/// One sign in the cover's corner.
+#[derive(Clone, PartialEq, Debug)]
+pub enum Mark {
+    /// A store's logo, drawn in one color (ui/brand/stores/<name>.svg).
+    Store(&'static str),
+    /// An emulator's icon.
+    Image(&'static str),
+    /// A few letters: "Nativo", "PS2".
+    Text(String),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct SourceMark {
+    pub mark: Mark,
+    /// What it means, on hover and for screen readers.
+    pub label: String,
+}
+
+/// The marks of a library game: its store, or "Nativo" for a recomp.
+pub fn source_marks(source: &Source) -> Vec<SourceMark> {
+    let one = |mark: Mark, label: &str| vec![SourceMark { mark, label: label.to_string() }];
+    match source {
+        Source::Steam { .. } => one(Mark::Store("steam"), "Steam"),
+        Source::Epic { .. } => one(Mark::Store("epic"), "Epic Games"),
+        Source::Xbox { game_pass: true, .. } => one(Mark::Store("xbox"), "Game Pass"),
+        Source::Xbox { .. } => one(Mark::Store("xbox"), "Xbox"),
+        Source::Recomp { .. } => one(Mark::Text("Recomp".to_string()), tr!("Recomp: versão nativa para PC")),
+        Source::Local { .. } => Vec::new(),
+    }
+}
+
+/// The corner signs, top left of the cover.
+fn marks_view(marks: &[SourceMark]) -> Option<impl IntoView + use<>> {
+    (!marks.is_empty()).then(|| {
+        let items = marks
+            .iter()
+            .map(|m| {
+                let body = match &m.mark {
+                    Mark::Store(name) => view! { <i class=format!("store-logo {name}")></i> }.into_any(),
+                    Mark::Image(src) => view! { <img src=*src alt="" /> }.into_any(),
+                    Mark::Text(text) => view! { <b>{text.clone()}</b> }.into_any(),
+                };
+                view! { <span class="src-mark" title=m.label.clone() aria-label=m.label.clone()>{body}</span> }
+            })
+            .collect_view();
+        view! { <span class="src-marks">{items}</span> }
+    })
 }
 
 pub fn source_name(source: &Source) -> &'static str {
@@ -143,14 +195,15 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         recomp_id: None,
         absent: game.next_step == cerberus_shared::NextStep::Install,
         progress: None,
+        marks: source_marks(&game.source),
     }
 }
 
 /// A classic from the ROM folders, as a tile: it opens its own page.
 /// `playable`: some emulator here opens it; the others are dimmed.
-pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool, hint: Option<String>) -> TileInfo {
+pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool, hint: Option<String>, marks: Vec<SourceMark>) -> TileInfo {
     let (badge, tone) = badge.map_or((None, Tone::Accent), |(text, tone)| (Some(text), tone));
-    TileInfo { tone, title, sub, covers, badge, hint, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None }
+    TileInfo { tone, title, sub, covers, badge, hint, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None, marks }
 }
 
 /// The meaning of a cover's corner chip.
@@ -203,6 +256,7 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         recomp_id: Some(entry.id.clone()),
         absent: false,
         progress: None,
+        marks: vec![SourceMark { mark: Mark::Text("Recomp".to_string()), label: tr!("Recomp: versão nativa para PC").to_string() }],
     }
 }
 
@@ -295,6 +349,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             <button type="button" class="tile-b" on:click=on_open on:contextmenu=on_menu title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
+                    {marks_view(&info.marks)}
                     {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
                     {info.progress.filter(|(_, total)| *total > 0).map(|(got, total)| {
                         let pct = got * 100 / total;

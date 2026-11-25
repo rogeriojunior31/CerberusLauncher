@@ -1076,7 +1076,7 @@ pub fn console_art(id: &str) -> Option<&'static str> {
 }
 
 /// An emulator's own icon.
-fn emulator_icon(id: &str) -> Option<&'static str> {
+pub fn emulator_icon(id: &str) -> Option<&'static str> {
     Some(match id {
         "retroarch" => "emulation/icons/retroarch.png",
         "duckstation" => "emulation/icons/duckstation.png",

@@ -2253,3 +2253,13 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .shelf-h .btn.ghost { margin-left: auto; }
 .ach-unlock.locked img { filter: grayscale(1); opacity: 0.75; }
 .shelf-sub { margin: 4px 0 0; }
+
+/* Where a game comes from, top left of its cover */
+.src-marks { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; pointer-events: none; }
+.src-mark { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 8px; background: rgb(0 0 0 / 0.62); color: #fff; backdrop-filter: blur(6px); box-shadow: 0 4px 12px -6px rgb(0 0 0 / 0.8); }
+.src-mark b { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; }
+.src-mark img { width: 16px; height: 16px; object-fit: contain; }
+.store-logo { display: block; width: 15px; height: 15px; background: currentColor; -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
+.store-logo.steam { --logo: url("brand/stores/steam.svg"); }
+.store-logo.epic { --logo: url("brand/stores/epic.svg"); }
+.store-logo.xbox { --logo: url("brand/stores/xbox.svg"); }
