@@ -198,7 +198,9 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry], g
     };
     let mut art = box_art(rom, console);
     art.extend(how.recomp.as_ref().map(crate::art::recomp_covers).unwrap_or_default());
-    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable())
+    // The chip's reason, in the page's own words.
+    let hint = (!how.playable()).then(|| how.problem.clone()).filter(|p| !p.is_empty());
+    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable(), hint)
 }
 
 /// The classic is a version of an installed recomp (the recomp was given this

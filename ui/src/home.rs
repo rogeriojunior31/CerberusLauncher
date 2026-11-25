@@ -130,11 +130,13 @@ pub fn Home() -> impl IntoView {
         let games: Vec<Game> = library_state.and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| g.next_step != cerberus_shared::NextStep::Install).collect();
         let recomps = library.recomps.get().and_then(Result::ok).unwrap_or_default();
         let features = features(&games, &recomps);
+        // The banner already shows the latest games played: the row under it goes on from there.
+        let in_banner: Vec<String> = features.iter().filter_map(|f| f.game.as_ref().map(|g| g.id.clone())).collect();
 
         // Every kind of game played, newest first: the classics too.
         let mut recent: Vec<(Option<u64>, TileInfo)> = games
             .iter()
-            .filter(|g| !g.hidden && g.part_ids.is_empty() && (g.last_played.is_some() || g.is_tracked()))
+            .filter(|g| !g.hidden && g.part_ids.is_empty() && (g.last_played.is_some() || g.is_tracked()) && !in_banner.contains(&g.id))
             .map(|g| (g.last_played, game_tile(g, library)))
             .collect();
         let players = library.players.get().unwrap_or_default();

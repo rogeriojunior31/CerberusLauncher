@@ -19,6 +19,8 @@ pub struct TileInfo {
     pub covers: Vec<String>,
     /// A corner chip: "Atualização", "Jogando"...
     pub badge: Option<String>,
+    /// What the chip means and what to do, on hover and for screen readers.
+    pub hint: Option<String>,
     /// The player's favorite: a heart on the cover.
     pub favorite: bool,
     /// The library game behind the tile, for its right-click menu.
@@ -114,6 +116,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         Some(v) => format!("{v} · {sub}"),
         None => sub,
     };
+    let hint = step_hint(game, library);
     let (badge, tone) = if running {
         (Some(tr!("Jogando").to_string()), Tone::Ok)
     } else if let Some(waiting) = waiting_for(game) {
@@ -129,6 +132,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         sub,
         covers: cover_sources(game),
         badge,
+        hint,
         favorite: game.favorite,
         game: Some(game.clone()),
         open: Route::Game(game.id.clone()),
@@ -140,9 +144,9 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
 
 /// A classic from the ROM folders, as a tile: it opens its own page.
 /// `playable`: some emulator here opens it; the others are dimmed.
-pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool) -> TileInfo {
+pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool, hint: Option<String>) -> TileInfo {
     let (badge, tone) = badge.map_or((None, Tone::Accent), |(text, tone)| (Some(text), tone));
-    TileInfo { tone, title, sub, covers, badge, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None }
+    TileInfo { tone, title, sub, covers, badge, hint, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None }
 }
 
 /// The meaning of a cover's corner chip.
@@ -188,6 +192,7 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         sub: version.map_or_else(|| entry.console.clone(), |v| format!("{v} · {}", entry.console)),
         covers: recomp_covers(entry),
         badge,
+        hint: None,
         favorite: false,
         game: None,
         open: Route::Game(format!("recomp:{}", entry.id)),
@@ -249,8 +254,10 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             Some(InstallStep::Paused { .. }) => (Some(tr!("Pausado")), Tone::Accent),
             _ => (info.badge.as_deref(), info.tone),
         };
+        // Only the game's own chip has an explanation (not "Baixando").
+        let hint = step.is_none().then(|| info.hint.clone()).flatten();
         let badge = text.map(|text| view! {
-            <span class=tone.class()>
+            <span class=tone.class() title=hint.clone() aria-label=hint.clone().map(|h| format!("{text}: {h}"))>
                 {(tone == Tone::Warn).then(|| view! { <Svg icon=Icon::Info size=12 /> })}
                 {text.to_owned()}
             </span>
@@ -366,6 +373,26 @@ pub fn Shelf(
             </div>
             <div class="track" node_ref=track on:scroll=move |_| measure()>{cards}</div>
         </section>
+    }
+}
+
+/// What a step before playing asks of the player, in a line.
+fn step_hint(game: &Game, library: Library) -> Option<String> {
+    match &game.next_step {
+        cerberus_shared::NextStep::ChooseCopy { found: Some(_) } => Some(tr!("Sua cópia do jogo foi achada nas suas pastas de ROMs: é só abrir o jogo e confirmar.").to_string()),
+        cerberus_shared::NextStep::ChooseCopy { found: None } => {
+            let Source::Recomp { recomp_id, .. } = &game.source else { return None };
+            let needs = library.recomps.with_untracked(|r| {
+                r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == *recomp_id).map(|e| e.needs.clone()))
+            });
+            Some(match needs.filter(|n| !n.is_empty()) {
+                Some(needs) => tr!("{} Abra o jogo para escolher onde ela está.", needs),
+                None => tr!("O recomp precisa do jogo original (a sua cópia). Abra o jogo para escolher onde ela está.").to_string(),
+            })
+        }
+        cerberus_shared::NextStep::RunInstaller => Some(tr!("O instalador do recomp ainda não rodou: abra o jogo para terminar.").to_string()),
+        cerberus_shared::NextStep::Locate { reason } => Some(reason.clone()),
+        _ => None,
     }
 }
 

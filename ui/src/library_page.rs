@@ -40,6 +40,16 @@ impl Category {
         }
     }
 
+    /// What the tab holds, in a sentence: the words the whole app uses.
+    fn meaning(self) -> Option<&'static str> {
+        match self {
+            Category::Recomps => Some(tr!("Versões nativas para PC de jogos de console (recomps, decomps e ports): rodam sem emulador, quase sempre com a sua cópia original do jogo.")),
+            Category::Pc => Some(tr!("Jogos de PC: da Steam, da Epic e os que você adicionou.")),
+            Category::Classics => Some(tr!("Seus jogos originais (ROMs e discos) das suas pastas, abertos num emulador. Os que têm versão nativa instalada ficam juntos dela.")),
+            _ => None,
+        }
+    }
+
     /// Hidden games are only under Ocultos.
     fn keeps(self, game: &Game, shelf: Option<&str>) -> bool {
         // A release carrying several games shows them, not itself.
@@ -342,7 +352,7 @@ pub fn LibraryPage() -> impl IntoView {
     let tabs = move || Category::ALL.into_iter().filter(|which| *which != Category::Hidden || any_hidden() || category.get() == Category::Hidden).map(|which| {
         let active = move || category.get() == which;
         view! {
-            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string()
+            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string() title=which.meaning()
                 on:click=move |_| { category.set(which); filter.set(Filter::All); }>{which.label()}</button>
         }
     }).collect_view();
