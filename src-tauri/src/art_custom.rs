@@ -85,7 +85,7 @@ fn from_data_url(data: &str) -> Result<(Vec<u8>, &'static str), String> {
 impl CustomArt {
     pub fn new(data_dir: &Path, covers: &Path) -> Self {
         let file = data_dir.join("art.json");
-        let map = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let map = crate::state_file::load_or_default(&file);
         Self { file, folder: covers.to_path_buf(), map: Mutex::new(map) }
     }
 
@@ -108,10 +108,7 @@ impl CustomArt {
     }
 
     fn save(&self, map: &BTreeMap<String, Custom>) -> Result<(), String> {
-        let text = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
-        let temp = self.file.with_extension("json.tmp");
-        fs::write(&temp, text).map_err(|e| e.to_string())?;
-        fs::rename(&temp, &self.file).map_err(|e| e.to_string())
+        crate::state_file::save(&self.file, map)
     }
 
     /// A picture made here (in the covers folder), deleted once nothing uses it.

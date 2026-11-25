@@ -3,7 +3,6 @@
 //! and a favorite must survive that.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 
 fn file(data: &Path) -> std::path::PathBuf {
@@ -11,21 +10,17 @@ fn file(data: &Path) -> std::path::PathBuf {
 }
 
 pub fn load(data: &Path) -> BTreeSet<String> {
-    fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&file(data))
 }
 
 pub fn set(data: &Path, id: &str, on: bool) -> Result<(), String> {
-    let mut all = load(data);
-    if on {
-        all.insert(id.to_string());
-    } else {
-        all.remove(id);
-    }
-    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    let target = file(data);
-    let temp = target.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &target).map_err(|e| e.to_string())
+    crate::state_file::update(&file(data), |all: &mut BTreeSet<String>| {
+        if on {
+            all.insert(id.to_string());
+        } else {
+            all.remove(id);
+        }
+    })
 }
 
 #[cfg(test)]

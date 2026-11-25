@@ -4,7 +4,6 @@
 
 use cerberus_shared::tr;
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use cerberus_shared::Game;
@@ -31,21 +30,19 @@ fn file(data: &Path) -> PathBuf {
 }
 
 pub fn load(data: &Path) -> Shelf {
-    fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&file(data))
 }
 
-fn save(data: &Path, shelf: &Shelf) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(shelf).map_err(|e| e.to_string())?;
-    let target = file(data);
-    let temp = target.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &target).map_err(|e| e.to_string())
-}
-
+/// A change refused by `f` leaves the file as it was.
 fn change(data: &Path, f: impl FnOnce(&mut Shelf) -> Result<(), String>) -> Result<(), String> {
-    let mut shelf = load(data);
+    let path = file(data);
+    let mut shelf: Shelf = match crate::state_file::read(&path) {
+        crate::state_file::Read::Found(shelf) => shelf,
+        crate::state_file::Read::Missing => Shelf::default(),
+        crate::state_file::Read::Unreadable(_) => return crate::state_file::update(&path, |_: &mut Shelf| ()),
+    };
     f(&mut shelf)?;
-    save(data, &shelf)
+    crate::state_file::update(&path, |kept: &mut Shelf| *kept = shelf)
 }
 
 /// A name the player typed, tidied; empty or too long is refused.

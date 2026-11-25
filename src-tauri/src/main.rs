@@ -3,6 +3,7 @@
 
 mod art_cache;
 mod emulator_saves;
+mod state_file;
 mod epic;
 mod epic_account;
 mod xbox_account;
@@ -1674,9 +1675,7 @@ fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
     tauri::async_runtime::spawn(async move {
         let result = async {
             let session = epic_account::token(&http, epic_account::Grant::Refresh(&refresh)).await?;
-            let mut chosen = settings::load(&data);
-            chosen.epic_refresh = Some(session.refresh.clone());
-            settings::save(&data, &chosen)?;
+            settings::renew_token(&data, settings::Account::Epic, &refresh, &session.refresh);
             epic_account::library(&http, &session.access).await
         }
         .await;
@@ -1751,12 +1750,13 @@ async fn finish_epic_login(app: AppHandle, code: String) {
         let http = app.state::<reqwest::Client>().inner().clone();
         let session = epic_account::token(&http, epic_account::Grant::Code(&code)).await?;
         let data = app.state::<DataDir>().0.clone();
-        let mut chosen = settings::load(&data);
-        chosen.epic_user = Some(if session.name.is_empty() { tr!("Conta Epic").to_string() } else { session.name.clone() });
-        chosen.epic_refresh = Some(session.refresh.clone());
-        settings::save(&data, &chosen)?;
+        let name = if session.name.is_empty() { tr!("Conta Epic").to_string() } else { session.name.clone() };
+        settings::update(&data, |s| {
+            s.epic_user = Some(name.clone());
+            s.epic_refresh = Some(session.refresh.clone());
+        })?;
+        achievements::forget_epic_session();
         // Connected: said at once; the account's games follow in the background.
-        let name = chosen.epic_user.unwrap_or_default();
         let (app2, http2, data2, access) = (app.clone(), http.clone(), data.clone(), session.access.clone());
         tauri::async_runtime::spawn(async move {
             match epic_account::library(&http2, &access).await {
@@ -1805,9 +1805,7 @@ fn xbox_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
     tauri::async_runtime::spawn(async move {
         let result = async {
             let session = xbox_account::sign_in(&http, xbox_account::Grant::Refresh(&refresh)).await?;
-            let mut chosen = settings::load(&data);
-            chosen.xbox_refresh = Some(session.refresh.clone());
-            settings::save(&data, &chosen)?;
+            settings::renew_token(&data, settings::Account::Xbox, &refresh, &session.refresh);
             let owned = xbox_account::library(&http, &session).await?;
             Ok::<_, String>(xbox_account::with_store_details(&http, owned).await)
         }
@@ -1866,10 +1864,12 @@ async fn finish_xbox_login(app: AppHandle, code: String) {
     let data = app.state::<DataDir>().0.clone();
     let result = async {
         let session = xbox_account::sign_in(&http, xbox_account::Grant::Code(&code)).await?;
-        let mut chosen = settings::load(&data);
-        chosen.xbox_user = Some(if session.gamertag.is_empty() { tr!("Conta Microsoft").to_string() } else { session.gamertag.clone() });
-        chosen.xbox_refresh = Some(session.refresh.clone());
-        settings::save(&data, &chosen)?;
+        let gamertag = if session.gamertag.is_empty() { tr!("Conta Microsoft").to_string() } else { session.gamertag.clone() };
+        settings::update(&data, |s| {
+            s.xbox_user = Some(gamertag.clone());
+            s.xbox_refresh = Some(session.refresh.clone());
+        })?;
+        achievements::xbox::forget_session();
         // Connected: said at once; the account's games (one catalog lookup each) follow in the background.
         let (app2, http2, data2) = (app.clone(), http.clone(), data.clone());
         tauri::async_runtime::spawn(async move {
@@ -1881,7 +1881,7 @@ async fn finish_xbox_login(app: AppHandle, code: String) {
                 Err(e) => trail::note(&app2, "xbox", tk!("Biblioteca do Xbox"), &Err(e)),
             }
         });
-        Ok::<String, String>(chosen.xbox_user.unwrap_or_default())
+        Ok::<String, String>(gamertag)
     }
     .await;
     match result {
@@ -1900,14 +1900,15 @@ async fn finish_xbox_login(app: AppHandle, code: String) {
 #[tauri::command]
 fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
+    let user = settings::update(&data, |s| {
+        s.xbox_refresh = None;
+        s.xbox_user.take()
+    })?;
+    achievements::xbox::forget_session();
     // Its achievements leave the hub with it.
-    if let (Some(user), Ok(db)) = (chosen.xbox_user.as_deref(), achievements::store::Store::open(&data)) {
+    if let (Some(user), Ok(db)) = (user.as_deref(), achievements::store::Store::open(&data)) {
         db.forget(&achievements::store::Scope::new(cerberus_shared::AchievementSource::Xbox, user));
     }
-    chosen.xbox_user = None;
-    chosen.xbox_refresh = None;
-    settings::save(&data, &chosen)?;
     xbox_account::forget(&data);
     let _ = app.emit("catalog-changed", ());
     Ok(settings_view(&app))
@@ -1917,14 +1918,15 @@ fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
 #[tauri::command]
 fn epic_logout(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
+    let user = settings::update(&data, |s| {
+        s.epic_refresh = None;
+        s.epic_user.take()
+    })?;
+    achievements::forget_epic_session();
     // Its achievements leave the hub with it.
-    if let (Some(user), Ok(db)) = (chosen.epic_user.as_deref(), achievements::store::Store::open(&data)) {
+    if let (Some(user), Ok(db)) = (user.as_deref(), achievements::store::Store::open(&data)) {
         db.forget(&achievements::store::Scope::new(cerberus_shared::AchievementSource::Epic, user));
     }
-    chosen.epic_user = None;
-    chosen.epic_refresh = None;
-    settings::save(&data, &chosen)?;
     epic_account::forget(&data);
     let _ = app.emit("catalog-changed", ());
     Ok(settings_view(&app))

@@ -19,6 +19,13 @@ use crate::xbox_account::{self, Session};
 static SESSION: Mutex<Option<(Instant, String, Session)>> = Mutex::new(None);
 const SESSION_FOR: Duration = Duration::from_secs(3600);
 
+/// Forgets the session kept in memory (signed out, or another account).
+pub fn forget_session() {
+    if let Ok(mut kept) = SESSION.lock() {
+        *kept = None;
+    }
+}
+
 /// Signs in with the kept refresh token, or reuses the last hour's session.
 /// The new refresh token, when there is one, is handed to `save`.
 pub async fn session(http: &reqwest::Client, refresh: &str, save: impl FnOnce(&str)) -> Result<Session, String> {

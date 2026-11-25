@@ -7,7 +7,6 @@
 use cerberus_shared::tk;
 use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -27,20 +26,17 @@ fn file(data: &Path) -> PathBuf {
 }
 
 pub fn load(data: &Path) -> HashMap<String, Played> {
-    fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&file(data))
 }
 
 fn add(data: &Path, id: &str, seconds: u64, now: u64) -> Result<(), String> {
-    let mut all = load(data);
-    let entry = all.entry(id.to_string()).or_default();
-    entry.seconds += seconds;
-    entry.last = now;
-    entry.last_session = seconds;
-    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    let target = file(data);
-    let temp = target.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &target).map_err(|e| e.to_string())
+    // A file that can't be read is left alone (the minute is lost, never the total).
+    crate::state_file::update(&file(data), |all: &mut HashMap<String, Played>| {
+        let entry = all.entry(id.to_string()).or_default();
+        entry.seconds += seconds;
+        entry.last = now;
+        entry.last_session = seconds;
+    })
 }
 
 /// Puts the kept time on Steam and Epic games as they are listed.

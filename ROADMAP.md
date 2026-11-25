@@ -802,7 +802,8 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [x] Refresh tokens da Epic e do Xbox vão para o zip do backup e a restauração troca as contas — [lojas L6](docs/roadmap/lojas-e-contas.md);
       erro de rede com a URL inteira pode vazar token no log ([plano Steam, etapa 0](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md)). — P
       Feito em 25/11/2026: tokens fora da cópia, contas deste PC intocadas na restauração, erros de rede sem o endereço. Conferido com o backup dos dados reais (11 arquivos, sem token).
-- [ ] `settings.json` gravado por várias tarefas ao mesmo tempo: Sair durante uma renovação devolve a conta — [lojas L1](docs/roadmap/lojas-e-contas.md). — M
+- [x] `settings.json` gravado por várias tarefas ao mesmo tempo: Sair durante uma renovação devolve a conta — [lojas L1](docs/roadmap/lojas-e-contas.md). — M
+      Feito em 25/11/2026: a renovação só grava se a conta ainda é a mesma; entrar e sair por `settings::update` e zerando as sessões guardadas da Epic e do Xbox. Testado.
 - [ ] Um dono só da sessão de cada conta; a sessão da Epic de 30 min não é zerada ao sair nem presa à conta — [lojas L2](docs/roadmap/lojas-e-contas.md), [conquistas L3](docs/roadmap/conquistas-e-tempo.md). — P/M
 - [ ] Um jogo que falha derruba a sincronização da conta inteira e volta primeiro sempre — [conquistas L1](docs/roadmap/conquistas-e-tempo.md). — M
 - [ ] Sincronização pulada conta como sucesso e apaga a espera depois de uma recusa — [conquistas L2](docs/roadmap/conquistas-e-tempo.md). — P
@@ -878,9 +879,9 @@ Causa única: arquivo ilegível (travado, corrompido, outra codificação) vira 
 Correção única: um módulo comum de estado (ler distinguindo "não existe" de "não consegui ler"; nunca gravar por cima
 do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por arquivo; `.bak` da última versão boa).
 
-- [ ] `settings.json` [Fu F1, J F1, J F14, Fu F6, lojas L1]
-- [ ] favoritos, coleções, ocultos, notas, arte, mods [Fu F2, B F1, B F2, B F5]
-- [ ] tempo de jogo das lojas e dos clássicos [P F1, C F1]
+- [x] `settings.json` [Fu F1, J F1, J F14, Fu F6, lojas L1] — Feito em 25/11/2026 (`state_file.rs`): lido com volta à última cópia boa (`.bak`), o arquivo ruim guardado à parte, gravação com trava; `settings::update` e `renew_token` para quem grava depois de uma espera. Falta migrar as outras ~35 gravações síncronas para `update`.
+- [x] favoritos, coleções, ocultos, notas, arte [Fu F2, B F1, B F2, B F5] — Feito em 25/11/2026 (`state_file.rs`): mudanças por `update` (uma por vez, nunca sobre um arquivo que não leu). Falta a lista de mods.
+- [x] tempo de jogo das lojas e dos clássicos [P F1, C F1] — Feito em 25/11/2026 (`state_file.rs`): dois clássicos fechando juntos somam os dois; arquivo ilegível nunca é trocado por uma sessão só.
 - [ ] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3]
 - [ ] arquivos do próprio jogo nos Ajustes e no HedgeModManager [RP F1, RP F2, RP F13]
 - [ ] JSONL com linha cortada, gravações sem `sync_all`, caches com `fs::write` direto [P F10, P F11, Fu F11, Fu F12]

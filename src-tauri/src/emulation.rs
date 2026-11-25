@@ -474,19 +474,17 @@ pub struct Played {
 }
 
 pub fn played(data: &Path) -> std::collections::HashMap<String, Played> {
-    fs::read_to_string(data.join("classics.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&data.join("classics.json"))
 }
 
+/// Adds a session; two classics closing at once both count, and a file that
+/// can't be read is never replaced by this one session.
 pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), String> {
-    let mut all = played(data);
-    let entry = all.entry(rom.to_string()).or_default();
-    entry.seconds += seconds;
-    entry.last = now;
-    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    let file = data.join("classics.json");
-    let temp = file.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &file).map_err(|e| e.to_string())
+    crate::state_file::update(&data.join("classics.json"), |all: &mut std::collections::HashMap<String, Played>| {
+        let entry = all.entry(rom.to_string()).or_default();
+        entry.seconds += seconds;
+        entry.last = now;
+    })
 }
 
 #[cfg(test)]

@@ -12,12 +12,18 @@ pub mod xbox;
 
 use store::{Scope, Store};
 
-/// The Xbox account's refresh token, renewed in the settings when Xbox Live hands a new one.
-fn save_xbox_refresh(data_dir: &Path, refresh: &str) {
-    let mut chosen = crate::settings::load(data_dir);
-    if chosen.xbox_refresh.as_deref() != Some(refresh) {
-        chosen.xbox_refresh = Some(refresh.to_string());
-        let _ = crate::settings::save(data_dir, &chosen);
+/// The Xbox account's refresh token, renewed in the settings when Xbox Live
+/// hands a new one (only while the account the renewal started from is still signed in).
+fn save_xbox_refresh(data_dir: &Path, started_with: &str, refresh: &str) {
+    if started_with != refresh {
+        crate::settings::renew_token(data_dir, crate::settings::Account::Xbox, started_with, refresh);
+    }
+}
+
+/// Forgets the Epic session kept in memory (signed out, or another account).
+pub fn forget_epic_session() {
+    if let Ok(mut kept) = EPIC_SESSION.lock() {
+        *kept = None;
     }
 }
 
@@ -357,7 +363,7 @@ async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
     if !db.due(scope) {
         return Ok(());
     }
-    let session = xbox::session(http, refresh, |r| save_xbox_refresh(data_dir, r)).await?;
+    let session = xbox::session(http, refresh, |r| save_xbox_refresh(data_dir, refresh, r)).await?;
     let (games, last_played) = xbox::games(http, &session).await?;
     // Minutes played too: a hundred titles per question.
     let titles: Vec<String> = last_played.iter().map(|(_, title, _)| title.clone()).collect();
@@ -414,11 +420,13 @@ async fn epic_session(http: &reqwest::Client, data_dir: &Path) -> Result<(String
             }
         }
     }
-    let mut chosen = crate::settings::load(data_dir);
-    let refresh = chosen.epic_refresh.clone().ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
+    let refresh = crate::settings::load(data_dir).epic_refresh.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
     let s = crate::epic_account::token(http, crate::epic_account::Grant::Refresh(&refresh)).await?;
-    chosen.epic_refresh = Some(s.refresh.clone());
-    let _ = crate::settings::save(data_dir, &chosen);
+    crate::settings::renew_token(data_dir, crate::settings::Account::Epic, &refresh, &s.refresh);
+    // Signed out while asking: the session isn't kept.
+    if crate::settings::load(data_dir).epic_refresh.as_deref() != Some(s.refresh.as_str()) {
+        return Err(tr!("Entre na Epic em Configurações › Epic Games primeiro.").into());
+    }
     if let Ok(mut kept) = EPIC_SESSION.lock() {
         *kept = Some((std::time::Instant::now(), s.access.clone(), s.account.clone()));
     }
@@ -812,7 +820,7 @@ pub async fn game(
                 Some((at, list)) if at >= played => list,
                 kept => {
                     let fresh = async {
-                        let session = xbox::session(http, &refresh, |r| save_xbox_refresh(data_dir, r)).await?;
+                        let session = xbox::session(http, &refresh, |r| save_xbox_refresh(data_dir, &refresh, r)).await?;
                         xbox::title_list(http, &session, key).await
                     }
                     .await;
