@@ -29,7 +29,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 8439
+    "stars": 8444
   },
   {
     "id": "s2arm",
@@ -46,8 +46,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.6.9",
-    "released": "2026-11-23",
+    "tag": "v0.6.10",
+    "released": "2026-11-24",
     "systems": [
       "windows"
     ],
@@ -57,11 +57,11 @@
     "files": {
       "windows": {
         "name": "S2Arm-windows-x64.zip",
-        "sha256": "6cecb830b3769cf5a6fdc9f859daa076636740bbff21cf4116b772a15f9d83a0"
+        "sha256": "b13dbec82e3ac23361e1a30bf3542e7f1ac150607516c2d90da85318765baa94"
       }
     },
-    "size_text": "223 MB",
-    "stars": 3868
+    "size_text": "225 MB",
+    "stars": 3898
   },
   {
     "id": "xbox2windows",
@@ -93,7 +93,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 1493
+    "stars": 1892
   },
   {
     "id": "ps3recomp",
@@ -131,7 +131,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 739
+    "stars": 742
   },
   {
     "id": "gb-recompiled",
@@ -201,7 +201,45 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 414
+    "stars": 418
+  },
+  {
+    "id": "fefw-recomp",
+    "title": "fefw-recomp",
+    "name": "fefw recomp",
+    "repo": "metrist38/fefw-recomp",
+    "about": "Native Windows PC port of Fire Emblem: Fortune's Weave by static recompilation. Bring your own dump; no game files included.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.2.13",
+    "released": "2026-11-23",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "fefw-recomp-*-win64.zip",
+      "linux": "fefw-recomp-*-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "fefw-recomp-0.2.13-win64.zip",
+        "sha256": "7bd71857afa61eafc3e2b9f833c69b6aca1ebb27be8c17758646bb75f04cc328"
+      },
+      "linux": {
+        "name": "fefw-recomp-0.2.13-linux-x64.tar.gz",
+        "sha256": "d8e2c177f33f1898756b7781741087b361026f7c38d63f2190a76afa0fd438fd"
+      }
+    },
+    "size_text": "158 MB",
+    "stars": 418
   },
   {
     "id": "nfsu2recomp",
@@ -233,7 +271,7 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 299
+    "stars": 301
   },
   {
     "id": "switchwakerhd",
@@ -277,39 +315,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 279
-  },
-  {
-    "id": "bo2-mac",
-    "title": "bo2-mac",
-    "name": "bo2 mac",
-    "repo": "adrbn/bo2-mac",
-    "about": "Call of Duty: Black Ops II statically recompiled from 32-bit x86 Windows to native ARM64 macOS: Remill → LLVM IR, a hand-written Win32 runtime, Direct3D 11 drawn by Metal. No Wine, no game files.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.3.1",
-    "released": "2026-11-23",
-    "systems": [
-      "macos"
-    ],
-    "assets": {
-      "macos": "bo2-mac.zip"
-    },
-    "files": {
-      "macos": {
-        "name": "bo2-mac.zip",
-        "sha256": "c2763ba54fb8622d8ad06811af12cd5e2672e79aafcb413193d384e87d187713"
-      }
-    },
-    "size_text": "107 MB",
-    "stars": 279
+    "stars": 281
   },
   {
     "id": "mk8-online",
@@ -347,7 +353,39 @@
       }
     },
     "size_text": "50 MB",
-    "stars": 270
+    "stars": 279
+  },
+  {
+    "id": "bo2-mac",
+    "title": "bo2-mac",
+    "name": "bo2 mac",
+    "repo": "adrbn/bo2-mac",
+    "about": "Call of Duty: Black Ops II statically recompiled from 32-bit x86 Windows to native ARM64 macOS: Remill → LLVM IR, a hand-written Win32 runtime, Direct3D 11 drawn by Metal. No Wine, no game files.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.3.1",
+    "released": "2026-11-23",
+    "systems": [
+      "macos"
+    ],
+    "assets": {
+      "macos": "bo2-mac.zip"
+    },
+    "files": {
+      "macos": {
+        "name": "bo2-mac.zip",
+        "sha256": "c2763ba54fb8622d8ad06811af12cd5e2672e79aafcb413193d384e87d187713"
+      }
+    },
+    "size_text": "107 MB",
+    "stars": 279
   },
   {
     "id": "ps2-native-recomp",
@@ -379,7 +417,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 231
+    "stars": 236
   },
   {
     "id": "decomp-buddy",
@@ -423,7 +461,45 @@
       }
     },
     "size_text": "119 MB",
-    "stars": 187
+    "stars": 193
+  },
+  {
+    "id": "super-mario-3d-land-recompiled",
+    "title": "super-mario-3d-land-recompiled",
+    "name": "super mario 3d land recompiled",
+    "repo": "Okxmir/super-mario-3d-land-recompiled",
+    "about": "Super Mario 3D Land recompiled. Native Windows x64 and Linux port built from a local European 3DS ROM.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v1.1.4",
+    "released": "2026-11-24",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "SM3DL.4K.1.2.0b.1080p.zip",
+      "linux": "Super-Mario-3D-Land-Linux-x64-*.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "SM3DL.4K.1.2.0b.1080p.zip",
+        "sha256": "3e395856dcc9df28406002ecec2a5112294087ae003a7494fa82c6109c03e631"
+      },
+      "linux": {
+        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.4.tar.gz",
+        "sha256": "61b3ce0d72665540abe1ab318959959a5a5cdde7de44b24ba56d85d8c4c51a39"
+      }
+    },
+    "size_text": "103 MB",
+    "stars": 140
   },
   {
     "id": "gta-stories-recompiled",
@@ -455,7 +531,7 @@
       }
     },
     "size_text": "97 MB",
-    "stars": 77
+    "stars": 80
   },
   {
     "id": "opentm2",
@@ -472,8 +548,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.0.13",
-    "released": "2026-11-23",
+    "tag": "v1.0.15",
+    "released": "2026-11-24",
     "systems": [
       "windows"
     ],
@@ -482,12 +558,12 @@
     },
     "files": {
       "windows": {
-        "name": "OpenTM2-v1.0.13-Windows-x64.zip",
-        "sha256": "89bacb5f620b069d995376d2121fd4542abfc8bfe64147a3e079948d201399f1"
+        "name": "OpenTM2-v1.0.15-Windows-x64.zip",
+        "sha256": "4e3f6edb97186e66c4c12f2ab5606ea3e6b64b8275ff8b9cc70fbba5ef546b56"
       }
     },
     "size_text": "18 MB",
-    "stars": 48
+    "stars": 51
   },
   {
     "id": "midtown-madness-3-recomp",
@@ -520,6 +596,38 @@
     },
     "size_text": "12 MB",
     "stars": 33
+  },
+  {
+    "id": "thpsource2",
+    "title": "thpsource2",
+    "name": "THPSource2",
+    "repo": "afcurtis/THPSource2",
+    "about": "Tony Hawk's Pro Skater 2 [PC|2000], fully decompiled and rebuilt as a native 64-bit game with quality-of-life fixes and major upgrades. Bring your own copy; no game files included.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.7",
+    "released": "2026-11-23",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "thpsource2-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "thpsource2-win64.zip",
+        "sha256": "fb84bd181c9635e0843ac21d4393768e936990ed493a9241a2fbafa9ea9b4a01"
+      }
+    },
+    "size_text": "8 MB",
+    "stars": 30
   },
   {
     "id": "akilauncher",
