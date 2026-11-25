@@ -1611,6 +1611,22 @@ async fn list_games(
             };
         }
     }
+    // The Xbox and Epic accounts count their games' time too: kept in the
+    // achievements store, brought up to date in the background when due.
+    achievements::account_times(&app.state::<DataDir>().0, &mut games);
+    {
+        static SYNCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !SYNCING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let (app, http, data) = (app.clone(), http.inner().clone(), app.state::<DataDir>().0.clone());
+            tauri::async_runtime::spawn(async move {
+                let asked = achievements::sync_accounts(&http, &data).await;
+                SYNCING.store(false, std::sync::atomic::Ordering::SeqCst);
+                if asked {
+                    let _ = app.emit("catalog-changed", ());
+                }
+            });
+        }
+    }
     let favorite = favorites::load(&app.state::<DataDir>().0);
     games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
     collections::apply(&app.state::<DataDir>().0, &mut games);

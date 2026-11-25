@@ -11,7 +11,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use cerberus_shared::{tr, Achievement, AchievementGame, AchievementSource};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::xbox_account::{self, Session};
 
@@ -73,11 +73,39 @@ pub(super) fn seconds(text: &str) -> Option<u64> {
     (total > 0 && y > 1971).then_some(total as u64)
 }
 
-/// The game list with progress, every title with achievements, in one question.
-pub async fn games(http: &reqwest::Client, s: &Session) -> Result<Vec<AchievementGame>, String> {
-    let url = format!("https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/achievement,image", s.xuid);
+/// The game list with progress, every title with achievements, in one question;
+/// with it, when each PC game (by package family) was last played.
+pub async fn games(http: &reqwest::Client, s: &Session) -> Result<(Vec<AchievementGame>, Vec<(String, String, u64)>), String> {
+    let url = format!("https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/achievement,image,detail", s.xuid);
     let v = get(http, s, &url, "2").await?;
-    Ok(read_games(&v))
+    let last = v
+        .get("titles")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|t| {
+            let pfn = t.get("pfn").and_then(Value::as_str).filter(|p| !p.is_empty())?;
+            Some((pfn.to_string(), t.get("titleId")?.as_str()?.to_string(), t.pointer("/titleHistory/lastTimePlayed").and_then(Value::as_str).and_then(seconds)?))
+        })
+        .collect();
+    Ok((read_games(&v), last))
+}
+
+/// Minutes played per title, many titles per question (Xbox Live's user stats).
+pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> HashMap<String, u64> {
+    let mut found = HashMap::new();
+    for chunk in titles.chunks(100) {
+        let stats: Vec<Value> = chunk.iter().map(|t| json!({ "name": "MinutesPlayed", "titleid": t })).collect();
+        let body = json!({ "arrangebyfield": "xuid", "xuids": [s.xuid], "stats": stats });
+        let Ok(response) = crate::net::send(http.post("https://userstats.xboxlive.com/batch").header("Authorization", &s.auth).header("x-xbl-contract-version", "2").json(&body)).await else { break };
+        let Ok(v) = response.json::<Value>().await else { break };
+        for stat in v.pointer("/statlistscollection/0/stats").and_then(Value::as_array).into_iter().flatten() {
+            let (Some(title), Some(value)) = (stat.get("titleid").and_then(Value::as_str), stat.get("value").and_then(Value::as_str).and_then(|m| m.parse::<u64>().ok())) else { continue };
+            found.insert(title.to_string(), value);
+        }
+        tokio::time::sleep(PAUSE).await;
+    }
+    found
 }
 
 fn read_games(v: &Value) -> Vec<AchievementGame> {

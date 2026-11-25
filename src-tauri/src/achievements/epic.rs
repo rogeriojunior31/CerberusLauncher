@@ -41,8 +41,8 @@ async fn ask(http: &reqwest::Client, access: &str, query: &str, variables: Value
     Ok(v)
 }
 
-/// Seconds played per game (by its app name), in one question.
-pub async fn playtimes(http: &reqwest::Client, access: &str, account: &str) -> Result<HashMap<String, u64>, String> {
+/// Seconds played per game (by its app name) and when, in one question.
+pub async fn playtimes(http: &reqwest::Client, access: &str, account: &str) -> Result<HashMap<String, (u64, u64)>, String> {
     let response = crate::net::send(http.get(format!("{PLAYTIME}/{account}/all")).bearer_auth(access)).await.map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(tr!("A Epic não entregou o tempo de jogo.").into());
@@ -51,7 +51,10 @@ pub async fn playtimes(http: &reqwest::Client, access: &str, account: &str) -> R
     Ok(v.as_array()
         .into_iter()
         .flatten()
-        .filter_map(|r| Some((r.get("artifactId")?.as_str()?.to_string(), r.get("totalTime")?.as_u64()?)))
+        .filter_map(|r| {
+            let last = r.get("lastModified").and_then(Value::as_str).and_then(seconds).unwrap_or(0);
+            Some((r.get("artifactId")?.as_str()?.to_string(), (r.get("totalTime")?.as_u64()?, last)))
+        })
         .collect())
 }
 

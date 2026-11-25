@@ -342,6 +342,9 @@ fn keep_retro(db: &mut Store, scope: &Scope, r: &RetroKept) {
     }
 }
 
+/// One account sync at a time.
+static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Games played since their list was read, asked again per sync (the rest wait for the next one).
 const XBOX_LISTS_PER_SYNC: usize = 8;
 
@@ -349,8 +352,20 @@ const XBOX_LISTS_PER_SYNC: usize = 8;
 /// first time, every list (a page per thousand achievements); after that, only
 /// the lists of games played since they were read.
 async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
+    // The hub and the library may both ask at once: one goes, the other finds it done.
+    let _one = SYNCING.lock().await;
+    if !db.due(scope) {
+        return Ok(());
+    }
     let session = xbox::session(http, refresh, |r| save_xbox_refresh(data_dir, r)).await?;
-    let games = xbox::games(http, &session).await?;
+    let (games, last_played) = xbox::games(http, &session).await?;
+    // Minutes played too: a hundred titles per question.
+    let titles: Vec<String> = last_played.iter().map(|(_, title, _)| title.clone()).collect();
+    let minutes = xbox::minutes(http, &session, &titles).await;
+    db.keep_played(
+        scope,
+        &last_played.into_iter().map(|(pfn, title, last)| (pfn.to_lowercase(), minutes.get(&title).copied().unwrap_or(0) * 60, last)).collect::<Vec<_>>(),
+    );
     if db.stamp(scope, "all_lists_v4").is_none() {
         let lists = xbox::all_lists(http, &session).await?;
         for g in &games {
@@ -410,6 +425,11 @@ const EPIC_GAMES_PER_SYNC: usize = 40;
 /// The Epic account into the store: play time of every game in one question;
 /// then each game new to the store, or played since its list was read.
 async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
+    // The hub and the library may both ask at once: one goes, the other finds it done.
+    let _one = SYNCING.lock().await;
+    if !db.due(scope) {
+        return Ok(());
+    }
     let (access, account) = epic_session(http, data_dir).await?;
     let owned = crate::epic_account::cached(data_dir);
     let played = epic::playtimes(http, &access, &account).await.unwrap_or_default();
@@ -417,9 +437,10 @@ async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
     let mut games = Vec::new();
     // Games played first: the others have nothing unlocked yet.
     let mut owned = owned;
-    owned.sort_by_key(|o| std::cmp::Reverse(played.get(&o.app_name).copied().unwrap_or(0)));
+    owned.sort_by_key(|o| std::cmp::Reverse(played.get(&o.app_name).map_or(0, |p| p.0)));
+    db.keep_played(scope, &played.iter().map(|(k, (s, l))| (k.clone(), *s, *l)).collect::<Vec<_>>());
     for o in &owned {
-        let secs = played.get(&o.app_name).copied().unwrap_or(0);
+        let secs = played.get(&o.app_name).map_or(0, |p| p.0);
         let kept = db.list(scope, &o.namespace);
         let fresh = kept.as_ref().is_some_and(|(at, _)| *at >= secs.max(1));
         let list = if fresh || asked >= EPIC_GAMES_PER_SYNC {
@@ -436,6 +457,57 @@ async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
     }
     db.keep_games(scope, &games);
     Ok(())
+}
+
+/// The Xbox and Epic accounts' play time on the library's games: the larger
+/// time and the latest day played win over what this PC saw.
+pub fn account_times(data_dir: &Path, games: &mut [cerberus_shared::Game]) {
+    let chosen = crate::settings::load(data_dir);
+    let Ok(db) = Store::open(data_dir) else { return };
+    let epic = chosen.epic_user.map(|u| db.played(&Scope::new(AchievementSource::Epic, &u))).unwrap_or_default();
+    let xbox = chosen.xbox_user.map(|u| db.played(&Scope::new(AchievementSource::Xbox, &u))).unwrap_or_default();
+    for game in games.iter_mut() {
+        let found = match &game.source {
+            cerberus_shared::Source::Epic { app_name, .. } => epic.get(app_name),
+            cerberus_shared::Source::Xbox { family, .. } => xbox.get(&family.to_lowercase()),
+            _ => None,
+        };
+        if let Some(&(seconds, last)) = found {
+            game.playtime_secs = game.playtime_secs.max(seconds);
+            if last > 0 {
+                game.last_played = Some(game.last_played.unwrap_or(0).max(last));
+            }
+        }
+    }
+}
+
+/// The Xbox and Epic accounts brought up to date, when due (the library calls
+/// this in the background). True when a store was asked.
+pub async fn sync_accounts(http: &reqwest::Client, data_dir: &Path) -> bool {
+    let chosen = crate::settings::load(data_dir);
+    let Ok(mut db) = Store::open(data_dir) else { return false };
+    let mut asked = false;
+    if let (Some(refresh), Some(user)) = (chosen.xbox_refresh, chosen.xbox_user) {
+        let scope = Scope::new(AchievementSource::Xbox, &user);
+        if db.due(&scope) {
+            asked = true;
+            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
+                Ok(()) => db.synced(&scope),
+                Err(_) => db.refused(&scope),
+            }
+        }
+    }
+    if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
+        let scope = Scope::new(AchievementSource::Epic, &user);
+        if db.due(&scope) {
+            asked = true;
+            match sync_epic(http, data_dir, &mut db, &scope).await {
+                Ok(()) => db.synced(&scope),
+                Err(_) => db.refused(&scope),
+            }
+        }
+    }
+    asked
 }
 
 pub async fn hub(

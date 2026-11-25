@@ -55,6 +55,8 @@ impl Store {
              CREATE TABLE IF NOT EXISTS unlocks(source TEXT NOT NULL, account TEXT NOT NULL, game TEXT NOT NULL, id TEXT NOT NULL,
                 unlocked_at INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(source, account, game, id));
              CREATE INDEX IF NOT EXISTS unlocks_when ON unlocks(unlocked_at DESC);
+             CREATE TABLE IF NOT EXISTS played(source TEXT NOT NULL, account TEXT NOT NULL, key TEXT NOT NULL,
+                seconds INTEGER NOT NULL, last INTEGER NOT NULL, PRIMARY KEY(source, account, key));
              CREATE TABLE IF NOT EXISTS stamps(source TEXT NOT NULL, account TEXT NOT NULL, name TEXT NOT NULL, value INTEGER NOT NULL,
                 PRIMARY KEY(source, account, name));",
         )
@@ -204,6 +206,28 @@ impl Store {
         (one_each(next), one_each(rarest))
     }
 
+    /// The account's play time per game (seconds, and when last played; 0 when unknown).
+    /// Only grows: a smaller answer never takes time away.
+    pub fn keep_played(&mut self, scope: &Scope, times: &[(String, u64, u64)]) {
+        let Ok(tx) = self.0.transaction() else { return };
+        for (key, seconds, last) in times {
+            let _ = tx.execute(
+                "INSERT INTO played(source, account, key, seconds, last) VALUES(?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(source, account, key) DO UPDATE SET seconds=MAX(seconds, excluded.seconds), last=MAX(last, excluded.last)",
+                params![scope.source.code(), scope.account, key, *seconds as i64, *last as i64],
+            );
+        }
+        let _ = tx.commit();
+    }
+
+    /// Play time per game key, for a store's account.
+    pub fn played(&self, scope: &Scope) -> std::collections::HashMap<String, (u64, u64)> {
+        let Ok(mut q) = self.0.prepare("SELECT key, seconds, last FROM played WHERE source=?1 AND account=?2") else { return Default::default() };
+        q.query_map(params![scope.source.code(), scope.account], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64))))
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
+    }
+
     pub fn stamp(&self, scope: &Scope, name: &str) -> Option<u64> {
         self.0
             .query_row("SELECT value FROM stamps WHERE source=?1 AND account=?2 AND name=?3", params![scope.source.code(), scope.account, name], |r| r.get::<_, i64>(0))
@@ -248,7 +272,7 @@ impl Store {
 
     /// Everything of an account (signed out).
     pub fn forget(&self, scope: &Scope) {
-        for table in ["games", "lists", "unlocks", "stamps"] {
+        for table in ["games", "lists", "unlocks", "stamps", "played"] {
             let _ = self.0.execute(&format!("DELETE FROM {table} WHERE source=?1 AND account=?2"), params![scope.source.code(), scope.account]);
         }
     }
