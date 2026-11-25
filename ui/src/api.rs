@@ -1269,3 +1269,12 @@ pub async fn epic_login() -> Result<(), String> {
 pub async fn epic_logout() -> Result<SettingsView, String> {
     call("epic_logout", &()).await
 }
+
+
+pub async fn xbox_login() -> Result<(), String> {
+    call("xbox_login", &()).await
+}
+
+pub async fn xbox_logout() -> Result<SettingsView, String> {
+    call("xbox_logout", &()).await
+}

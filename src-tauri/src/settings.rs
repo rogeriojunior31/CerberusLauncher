@@ -41,6 +41,11 @@ pub struct Settings {
     pub epic_user: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epic_refresh: Option<String>,
+    /// The Microsoft account behind the Xbox app: its gamertag and Live refresh token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xbox_user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xbox_refresh: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
     /// RetroAchievements' connect token, traded once for the password (which is

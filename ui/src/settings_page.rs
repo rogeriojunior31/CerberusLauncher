@@ -1792,6 +1792,36 @@ fn XboxCard() -> impl IntoView {
     let library = expect_context::<Library>();
     let settings = LocalResource::new(api::get_settings);
     let busy = RwSignal::new(false);
+    // The account: read again when the window comes back to the front (the sign-in window closed).
+    let focus = window_event_listener(leptos::ev::focus, move |_| {
+        settings.refetch();
+        library.games.refetch();
+    });
+    on_cleanup(move || focus.remove());
+    let account = move || match settings.get().and_then(Result::ok).and_then(|s| s.xbox_user) {
+        Some(name) => view! {
+            <div class="set-row">
+                <div><b>{tr!("Conta Xbox")}</b><p class="muted small">{tr!("Conectada como {}. Os jogos de PC da conta que não estão neste PC aparecem na Biblioteca como não instalados.", name)}</p></div>
+                <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| {
+                    busy.set(true);
+                    spawn_local(async move {
+                        let _ = library.report(api::xbox_logout().await);
+                        settings.refetch();
+                        library.games.refetch();
+                        busy.set(false);
+                    });
+                }>{tr!("Sair")}</button>
+            </div>
+        }
+        .into_any(),
+        None => view! {
+            <div class="set-row">
+                <div><b>{tr!("Conta Xbox")}</b><p class="muted small">{tr!("Entre com a conta Microsoft para ver os jogos de PC da conta, inclusive os comprados que não estão instalados. O login é na página da Microsoft: o Cerberus nunca vê a sua senha e só guarda o acesso.")}</p></div>
+                <button type="button" class="btn sm main" on:click=move |_| spawn_local(async move { library.report(api::xbox_login().await); })>{tr!("Entrar com a Microsoft")}</button>
+            </div>
+        }
+        .into_any(),
+    };
     let counts = move || {
         library.games.with(|g| {
             let all = g.as_ref().and_then(|r| r.as_ref().ok());
@@ -1840,6 +1870,7 @@ fn XboxCard() -> impl IntoView {
     view! {
         <section class="card set">
             <div class="card-h"><h3>"Xbox"</h3></div>
+            {account}
             {body}
         </section>
     }

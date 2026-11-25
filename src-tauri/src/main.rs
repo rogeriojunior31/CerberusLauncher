@@ -5,6 +5,7 @@ mod art_cache;
 mod emulator_saves;
 mod epic;
 mod epic_account;
+mod xbox_account;
 mod xbox;
 mod gamepass;
 mod disk;
@@ -151,6 +152,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         language: chosen.language.clone(),
         ra_user: chosen.ra_user.clone(),
         epic_user: chosen.epic_user.clone(),
+        xbox_user: chosen.xbox_user.clone(),
         ra_retroarch: chosen.ra_token.is_some(),
         roms: {
             let played = emulation::played(&data.0);
@@ -1585,6 +1587,7 @@ async fn list_games(
     games.extend(scan.await.unwrap_or_default());
     game_pass(&app, &http, &mut games);
     epic_library(&app, &http, &mut games);
+    xbox_library(&app, &http, &mut games);
     xbox_art(&app, &http, &mut games);
     owned_not_installed(&app, &http, &mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
@@ -1655,8 +1658,10 @@ fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
 /// Opens Epic's own sign-in page in a window of its own (private: nothing stays
 /// in it). When it reaches the page that hands the code, Cerberus asks for the
 /// code with that window's cookies, trades it for a token and closes it.
+// Async on purpose: on Windows, building a window from a synchronous command
+// (the main thread) deadlocks it, and the new window stays blank.
 #[tauri::command]
-fn epic_login(app: AppHandle) -> Result<(), String> {
+async fn epic_login(app: AppHandle) -> Result<(), String> {
     if let Some(open) = app.get_webview_window("epic-login") {
         let _ = open.set_focus();
         return Ok(());
@@ -1729,6 +1734,118 @@ async fn finish_epic_login(app: AppHandle) {
             let _ = app.emit("toast", tr!("Não foi possível entrar na Epic: {}", e));
         }
     }
+}
+
+/// The Xbox account's PC games (when signed in), like the Epic account's.
+fn xbox_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
+    let data = app.state::<DataDir>().0.clone();
+    let Some(refresh) = settings::load(&data).xbox_refresh else { return };
+    xbox_account::merge(games, &xbox_account::cached(&data));
+    if !xbox_account::stale(&data) {
+        return;
+    }
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (app, http) = (app.clone(), http.clone());
+    tauri::async_runtime::spawn(async move {
+        let result = async {
+            let session = xbox_account::sign_in(&http, xbox_account::Grant::Refresh(&refresh)).await?;
+            let mut chosen = settings::load(&data);
+            chosen.xbox_refresh = Some(session.refresh.clone());
+            settings::save(&data, &chosen)?;
+            let owned = xbox_account::library(&http, &session).await?;
+            Ok::<_, String>(xbox_account::with_store_details(&http, owned).await)
+        }
+        .await;
+        ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        match result {
+            Ok(owned) => {
+                xbox_account::keep(&data, owned);
+                let _ = app.emit("catalog-changed", ());
+            }
+            Err(e) => trail::note(&app, "xbox", tk!("Biblioteca do Xbox"), &Err(e)),
+        }
+    });
+}
+
+/// Opens Microsoft's own sign-in page in a private window; the code comes back
+/// in the return address, and is traded for the account's Xbox Live access.
+// Async on purpose: on Windows, building a window from a synchronous command
+// (the main thread) deadlocks it, and the new window stays blank.
+#[tauri::command]
+async fn xbox_login(app: AppHandle) -> Result<(), String> {
+    if let Some(open) = app.get_webview_window("xbox-login") {
+        let _ = open.set_focus();
+        return Ok(());
+    }
+    let url = tauri::Url::parse(&xbox_account::login_url()).map_err(|e| e.to_string())?;
+    let handle = app.clone();
+    tauri::WebviewWindowBuilder::new(&app, "xbox-login", tauri::WebviewUrl::External(url))
+        .title(tr!("Entrar com a conta Microsoft"))
+        .inner_size(520.0, 720.0)
+        .incognito(true)
+        .on_navigation(move |at| {
+            if let Some(code) = xbox_account::code_in(at) {
+                let app = handle.clone();
+                tauri::async_runtime::spawn(async move { finish_xbox_login(app, code).await });
+                return false;
+            }
+            if xbox_account::refused(at) {
+                if let Some(window) = handle.get_webview_window("xbox-login") {
+                    let _ = window.close();
+                }
+                return false;
+            }
+            at.scheme() == "https"
+        })
+        .build()
+        .map_err(|e| tr!("Não foi possível abrir o login da Microsoft: {}", e))?;
+    Ok(())
+}
+
+async fn finish_xbox_login(app: AppHandle, code: String) {
+    if let Some(window) = app.get_webview_window("xbox-login") {
+        let _ = window.close();
+    }
+    let http = app.state::<reqwest::Client>().inner().clone();
+    let data = app.state::<DataDir>().0.clone();
+    let result = async {
+        let session = xbox_account::sign_in(&http, xbox_account::Grant::Code(&code)).await?;
+        let mut chosen = settings::load(&data);
+        chosen.xbox_user = Some(if session.gamertag.is_empty() { tr!("Conta Microsoft").to_string() } else { session.gamertag.clone() });
+        chosen.xbox_refresh = Some(session.refresh.clone());
+        settings::save(&data, &chosen)?;
+        if let Ok(owned) = xbox_account::library(&http, &session).await {
+            xbox_account::keep(&data, xbox_account::with_store_details(&http, owned).await);
+        }
+        Ok::<String, String>(chosen.xbox_user.unwrap_or_default())
+    }
+    .await;
+    match result {
+        Ok(name) => {
+            trail::note(&app, "xbox", tk!("Conta Xbox"), &Ok(tr!("Conectada como {}", name)));
+            let _ = app.emit("toast", tr!("Xbox conectado como {}. Os jogos de PC da conta entram na Biblioteca.", name));
+            let _ = app.emit("catalog-changed", ());
+        }
+        Err(e) => {
+            let _ = app.emit("toast", tr!("Não foi possível entrar no Xbox: {}", e));
+        }
+    }
+}
+
+/// Forgets the Xbox account on this PC (its token and its library list).
+#[tauri::command]
+fn xbox_logout(app: AppHandle) -> Result<SettingsView, String> {
+    let data = app.state::<DataDir>().0.clone();
+    let mut chosen = settings::load(&data);
+    chosen.xbox_user = None;
+    chosen.xbox_refresh = None;
+    settings::save(&data, &chosen)?;
+    xbox_account::forget(&data);
+    let _ = app.emit("catalog-changed", ());
+    Ok(settings_view(&app))
 }
 
 /// Forgets the Epic account on this PC (its token and its library list).
@@ -3314,6 +3431,8 @@ fn main() {
             set_game_pass,
             epic_login,
             epic_logout,
+            xbox_login,
+            xbox_logout,
             xbox_open,
             emulator_backups,
             backup_emulator_saves,

@@ -478,6 +478,9 @@ pub struct SettingsView {
     /// The Epic Games account signed in (its name only).
     #[serde(default)]
     pub epic_user: Option<String>,
+    /// The Xbox profile signed in (its gamertag only).
+    #[serde(default)]
+    pub xbox_user: Option<String>,
     /// The RetroAchievements password was given once: RetroArch gets connected by itself.
     #[serde(default)]
     pub ra_retroarch: bool,
