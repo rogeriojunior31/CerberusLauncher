@@ -965,7 +965,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Sinais descartados lidos em timers e depois de `await` [BP F1, BP F8, J F5] — feito em 25/11/2026: `try_` no fundo da TV e depois de desinstalar; `on_event_here` desliga o ouvinte quando a tela sai (Fotos, progresso dos emuladores). Conferido no app: 4 visitas e evento depois de sair, sem erro.
 - [x] Comandos síncronos pesados na thread principal [Fu F7, B F12] — feito em 25/11/2026: 75 comandos que tocam disco, registro ou processos viraram `#[tauri::command(async)]`; ficam síncronos só os de memória, janela e bandeja. Conferido no app.
 - [ ] I/O bloqueante em async [Fu F16]; guardar em memória o tamanho da arte e as pendências da nuvem do `settings_view`
-- [ ] `list_games` refeito a cada clique e em rajadas [B F4]; arte pedida de novo [B F6]
+- [x] `list_games` refeito a cada clique e em rajadas [B F4, passos 1 e 3] — feito em 25/11/2026: favoritar, ocultar e coleção mudam só o jogo na tela (`Library::patch_game`); vários `catalog-changed` viram uma leitura 300 ms depois do último. Medido: `list_games` ~310 ms com 950 jogos, agora 0 chamadas ao favoritar.
+- [ ] Cache da montagem no backend, `settings::load` uma vez, arte da Steam por um `read_dir` [B F4, passos 2, 4 a 6]; arte pedida de novo [B F6]
 - [ ] Varredura de ROMs sem cache, que baixa arquivos só na nuvem e cobre pastas demais [C F4, C F7, C F8, C F18]
 - [ ] Biblioteca da TV desenha tudo [BP F5]; menu escondido lendo o controle a 30 Hz [J F10]
 

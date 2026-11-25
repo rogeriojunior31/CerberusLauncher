@@ -91,7 +91,12 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
         menu.close();
         leptos::task::spawn_local(async move {
             if library.report(api::set_in_collection(&name, &id, on).await).is_some() {
-                library.games.refetch();
+                library.patch_game(&id, |g| {
+                    g.collections.retain(|c| c != &name);
+                    if on {
+                        g.collections.push(name.clone());
+                    }
+                });
                 library.toast(if on { tr!("Adicionado à coleção {}.", name) } else { tr!("Tirado da coleção {}.", name) });
             }
         });
@@ -263,7 +268,7 @@ pub fn GameMenuLayer() -> impl IntoView {
                     let id = hide_id.clone();
                     leptos::task::spawn_local(async move {
                         if library.report(api::set_hidden(&id, !hidden).await).is_some() {
-                            library.games.refetch();
+                            library.patch_game(&id, |g| g.hidden = !hidden);
                             library.toast(if hidden { tr!("O jogo voltou para a biblioteca.") } else { tr!("Jogo oculto. Ele fica na aba Ocultos da biblioteca.") });
                         }
                     });

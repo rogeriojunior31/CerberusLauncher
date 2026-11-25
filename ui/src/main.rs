@@ -90,11 +90,11 @@ impl Route {
     }
 }
 
-/// Marks or unmarks a game as a favorite, and lists the library again.
+/// Marks or unmarks a game as a favorite (only that game changes on screen).
 pub fn toggle_favorite(library: Library, id: String, on: bool) {
     leptos::task::spawn_local(async move {
-        if library.report(api::set_favorite(id, on).await).is_some() {
-            library.games.refetch();
+        if library.report(api::set_favorite(id.clone(), on).await).is_some() {
+            library.patch_game(&id, |g| g.favorite = on);
             library.toast(if on { tr!("Adicionado aos favoritos.") } else { tr!("Tirado dos favoritos.") });
         }
     });
@@ -158,6 +158,18 @@ impl Library {
     }
 
     /// Shows an error as a toast that stays until closed; passes a success through.
+    /// Changes one game as listed, without listing the library again (a
+    /// listing reads every store: a heart shouldn't cost that).
+    pub fn patch_game(self, id: &str, change: impl FnOnce(&mut Game)) {
+        self.games.update(|listed| {
+            if let Some(Ok(games)) = listed {
+                if let Some(game) = games.iter_mut().find(|g| g.id == id) {
+                    change(game);
+                }
+            }
+        });
+    }
+
     pub fn report<T>(self, result: Result<T, String>) -> Option<T> {
         match result {
             Ok(value) => Some(value),
@@ -315,11 +327,23 @@ fn App() -> impl IntoView {
     // Steps arrive while `install_recomp` is still running; its own result reports
     // failures, so the events only move the progress bar.
     // A newer catalog arrived, or the ROM folders were looked through again.
+    // A burst of these (several stores finishing at once) is read once, 300 ms after the last.
+    let waiting = StoredValue::new(None::<leptos::prelude::TimeoutHandle>);
     api::on_catalog_changed(move || {
-        library.recomps.refetch();
-        library.games.refetch();
-        library.roms.refetch();
-        library.players.refetch();
+        if let Some(Some(old)) = waiting.try_get_value() {
+            old.clear();
+        }
+        let handle = leptos::prelude::set_timeout_with_handle(
+            move || {
+                library.recomps.refetch();
+                library.games.refetch();
+                library.roms.refetch();
+                library.players.refetch();
+            },
+            Duration::from_millis(300),
+        )
+        .ok();
+        let _ = waiting.try_set_value(handle);
     });
     api::on_toast(move |text| library.toast(text));
     tv::watch_for_tv(library);
