@@ -904,7 +904,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Rodízio apaga o backup errado e as cópias de segurança [P F3] — feito em 25/11/2026: datas sempre crescentes, 10 regulares + 3 por motivo de segurança, o recém-feito nunca sai. Testado.
 - [ ] Restaurar não é atômico; restaurar com o jogo aberto por fora [P F13, P F14, P F16]
 - [ ] Cada Jogar abre os 20 zips da nuvem (OneDrive sob demanda) [P F12]; UI que diz "na nuvem" sem saber [P F15]
-- [ ] Reinstalar um recomp zera o tempo de jogo [P F4]
+- [x] Reinstalar um recomp zera o tempo de jogo [P F4] — feito em 25/11/2026: a biblioteca guarda o tempo e o último dia de um jogo removido (`played-kept.json`) e devolve quando ele volta. Testado.
 
 ### Lote D — Instalar, atualizar e reparar recomps sem estragar a pasta do jogador
 

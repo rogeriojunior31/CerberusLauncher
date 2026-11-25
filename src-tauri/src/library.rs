@@ -78,15 +78,26 @@ impl LocalLibrary {
         Ok(all)
     }
 
-    pub fn add(&self, game: Game) -> Result<(), String> {
+    pub fn add(&self, mut game: Game) -> Result<(), String> {
         self.access(|games| {
             if games.iter().any(|known| known.id == game.id) {
                 return Ok(());
+            }
+            // Played before and removed: its time comes back.
+            let kept: std::collections::BTreeMap<String, (u64, Option<u64>)> = crate::state_file::load_or_default(&self.kept_time());
+            if let Some((seconds, last)) = kept.get(&game.id) {
+                game.playtime_secs = game.playtime_secs.max(*seconds);
+                game.last_played = game.last_played.max(*last);
             }
             let mut next = games.clone();
             next.push(game);
             self.commit(games, next)
         })
+    }
+
+    /// Where the time of removed games waits, for when they come back.
+    fn kept_time(&self) -> PathBuf {
+        self.file.with_file_name("played-kept.json")
     }
 
     pub fn update(&self, id: &str, change: impl FnOnce(&mut Game)) -> Result<Game, String> {
@@ -135,6 +146,15 @@ impl LocalLibrary {
             let Some(index) = index else { return Ok(None) };
             let mut next = games.clone();
             let removed = next.remove(index);
+            // The time played stays, for a reinstall (saves stay too).
+            if removed.playtime_secs > 0 || removed.last_played.is_some() {
+                let (id, seconds, last) = (removed.id.clone(), removed.playtime_secs, removed.last_played);
+                crate::state_file::update(&self.kept_time(), |kept: &mut std::collections::BTreeMap<String, (u64, Option<u64>)>| {
+                    let entry = kept.entry(id).or_insert((0, None));
+                    entry.0 = entry.0.max(seconds);
+                    entry.1 = entry.1.max(last);
+                })?;
+            }
             self.commit(games, next)?;
             Ok(Some(removed))
         })
@@ -286,6 +306,23 @@ fn save(file: &Path, games: &[Game]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_game_removed_and_added_again_keeps_its_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = LocalLibrary::load(dir.path());
+        let mut game = blank_game();
+        game.id = "recomp:zelda".into();
+        game.name = "Zelda".into();
+        game.playtime_secs = 36_000;
+        game.last_played = Some(1_700_000_000);
+        library.add(game.clone()).unwrap();
+        library.remove(&game.id).unwrap();
+        let fresh = Game { playtime_secs: 0, last_played: None, ..game.clone() };
+        library.add(fresh).unwrap();
+        let back = library.get(&game.id).unwrap().unwrap();
+        assert_eq!((back.playtime_secs, back.last_played), (36_000, Some(1_700_000_000)));
+    }
 
     fn empty_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cerberus-test-{name}-{}", std::process::id()));
