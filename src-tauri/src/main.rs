@@ -3460,6 +3460,12 @@ fn main() {
             for url in &chosen.sources {
                 remember_source(app.handle(), url, recomp::sources::load_copy(&data.cache(), url));
             }
+            // Installs from before an entry was kept beside them keep theirs now,
+            // while the catalog (and the lists) still have it.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || recomp::keep_entries(&handle.state::<LocalLibrary>()));
+            }
             publish_sources(app.handle());
             app.manage(data);
             if !chosen.rom_dirs.is_empty() {

@@ -302,13 +302,106 @@ pub fn library_id(recomp_id: &str) -> String {
 /// An installed recomp's catalog entry, with what its own `recomplauncher.json` says.
 pub fn entry_for(game: &Game) -> Option<CatalogEntry> {
     let Source::Recomp { recomp_id, exe, .. } = &game.source else { return None };
-    let entry = find(recomp_id)?;
+    let entry = find(recomp_id).or_else(|| kept_entry(Path::new(&game.install_dir), recomp_id))?;
     Some(catalog::with_manifest(entry, manifest::read(Path::new(&game.install_dir), Some(Path::new(exe)))))
 }
 
 /// The same, by the recomp and the folder it's installed in.
 pub fn entry_at(recomp_id: &str, install_dir: &Path) -> Option<CatalogEntry> {
-    Some(catalog::with_manifest(find(recomp_id)?, manifest::read(install_dir, None)))
+    let entry = find(recomp_id).or_else(|| kept_entry(install_dir, recomp_id))?;
+    Some(catalog::with_manifest(entry, manifest::read(install_dir, None)))
+}
+
+/// What an install keeps of its catalog entry, so a recomp that later leaves
+/// the catalog (a list removed, the site's catalog off) still backs up its
+/// saves, uninstalls and shows its name.
+const KEPT_ENTRY: &str = ".cerberus-entry.json";
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+struct KeptEntry {
+    id: String,
+    title: String,
+    name: String,
+    game: String,
+    console: String,
+    origin: String,
+    repo: String,
+    host: String,
+    saves: Vec<String>,
+    systems: Vec<String>,
+    kind: String,
+    start: Option<String>,
+    tag: Option<String>,
+    cover: Option<String>,
+    icon: Option<String>,
+    aliases: Vec<String>,
+}
+
+fn keep_entry(install_dir: &Path, entry: &CatalogEntry) {
+    let kept = KeptEntry {
+        id: entry.id.clone(),
+        title: entry.title.clone(),
+        name: entry.name.clone(),
+        game: entry.game.clone(),
+        console: entry.console.clone(),
+        origin: entry.origin.clone(),
+        repo: entry.repo.clone(),
+        host: entry.host.clone(),
+        saves: entry.saves.clone(),
+        systems: entry.systems.clone(),
+        kind: entry.kind.clone(),
+        start: entry.start.clone(),
+        tag: entry.tag.clone(),
+        cover: entry.cover.clone(),
+        icon: entry.icon.clone(),
+        aliases: entry.aliases.clone(),
+    };
+    if let Ok(text) = serde_json::to_string_pretty(&kept) {
+        let _ = fs::write(install_dir.join(KEPT_ENTRY), text);
+    }
+}
+
+/// Keeps the catalog entry beside every installed recomp that has none yet.
+pub fn keep_entries(library: &LocalLibrary) {
+    let Ok(games) = library.games() else { return };
+    for game in games {
+        let Source::Recomp { recomp_id, .. } = &game.source else { continue };
+        let dir = Path::new(&game.install_dir);
+        if dir.join(KEPT_ENTRY).exists() || !fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id) {
+            continue;
+        }
+        if let Some(entry) = find(recomp_id) {
+            keep_entry(dir, &entry);
+        }
+    }
+}
+
+/// The entry kept at install, for a recomp the catalog no longer has (only
+/// when it names this recomp: a copied folder can't pose as another).
+fn kept_entry(install_dir: &Path, recomp_id: &str) -> Option<CatalogEntry> {
+    let kept: KeptEntry = serde_json::from_str(&fs::read_to_string(install_dir.join(KEPT_ENTRY)).ok()?).ok()?;
+    let ours = kept.id == recomp_id || kept.aliases.iter().any(|a| a == recomp_id);
+    let marked = fs::read_to_string(install_dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
+    (ours && marked).then(|| CatalogEntry {
+        id: kept.id,
+        title: kept.title,
+        name: kept.name,
+        game: kept.game,
+        console: kept.console,
+        origin: kept.origin,
+        repo: kept.repo,
+        host: kept.host,
+        saves: kept.saves,
+        systems: kept.systems,
+        kind: kept.kind,
+        start: kept.start,
+        tag: kept.tag,
+        cover: kept.cover,
+        icon: kept.icon,
+        aliases: kept.aliases,
+        ..Default::default()
+    })
 }
 
 /// The games a release carries: the developer's list, with the site's art
@@ -1302,6 +1395,7 @@ async fn install_now(
     }).await.map_err(|e| e.to_string())?;
     let (program, transaction) = prepared?;
     fetch_repo_manifest(client, entry, &target).await;
+    keep_entry(&target, entry);
     let result = register(library, entry, installed.as_ref(), &version, &program, &target, effective.kind == "installer");
     let game = match transaction {
         Some(tx) => tx.finish(result)?,
@@ -2336,6 +2430,18 @@ Content-Length: {}
         assert!(Path::new(&again.install_dir).join("Game.exe").is_file());
         assert!(Path::new(&again.install_dir).join(MARKER).is_file());
         assert_eq!(library.games().unwrap().iter().filter(|g| g.id == again.id).count(), 1);
+    }
+
+    #[test]
+    fn a_recomp_that_left_the_catalog_keeps_its_entry_in_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = CatalogEntry { id: "left".into(), name: "Left".into(), saves: vec!["{install}/saves".into()], ..Default::default() };
+        fs::write(dir.path().join(MARKER), "left").unwrap();
+        keep_entry(dir.path(), &entry);
+        let back = entry_at("left", dir.path()).expect("found from the folder");
+        assert_eq!((back.name.as_str(), back.saves.clone()), ("Left", vec!["{install}/saves".to_string()]));
+        // Another recomp's folder can't answer for this one.
+        assert!(kept_entry(dir.path(), "other").is_none());
     }
 
     #[test]
