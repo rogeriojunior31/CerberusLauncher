@@ -24,7 +24,9 @@ levantamento de 25/11 (um agente por launcher: Heroic, Hydra, Playnite e RecompL
 
 **Próximos, nesta ordem:**
 
-0. **Deixar completo o que já foi entregue** (Onda 8): primeiro o que perde dados ou mexe em contas — saves dos
+0. **Corrigir as falhas da auditoria completa** (Onda 9, 178 falhas, 17 críticas), lote A primeiro: nenhum arquivo do
+   jogador apagado por uma leitura que falhou. Junto, os itens 8.0 que restam.
+   **Deixar completo o que já foi entregue** (Onda 8): primeiro o que perde dados ou mexe em contas — saves dos
    emuladores apagados ao remover/reinstalar, tokens indo no backup, conta que volta depois de Sair, uma falha
    derrubando a sincronização inteira. Revisões: [lojas e contas](docs/roadmap/lojas-e-contas.md),
    [conquistas e tempo](docs/roadmap/conquistas-e-tempo.md), [emulação](docs/roadmap/emulacao-e-saves-dos-emuladores.md).
@@ -850,6 +852,130 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [ ] Imagens que faltam (Wii U, 32X, Dreamcast, Saturn, Switch, Sega CD, PC Engine, PS4 têm foto em domínio público)
       e licença das existentes (L12). — P
 - [ ] Estados da UI e testes (L13). — M
+
+## Onda 9: auditoria completa do app (25/11/2026)
+
+Oito agentes mapearam cada área do app (como funciona, como os outros launchers fazem) e procuraram falhas lendo o
+código. **178 falhas: 17 críticas.** Cada uma tem arquivo:linha, reprodução, correção e teste no documento da área.
+Aqui elas estão agrupadas **pela causa**, para corrigir um lote inteiro de uma vez em vez de uma por uma.
+Códigos: [B] biblioteca, [BP] big-picture, [C] clássicos-e-retroarch, [J] durante-o-jogo-e-app, [Fu]
+fundações-do-backend, [P] partidas-tempo-e-saves, [RC] recomps-catálogo-e-instalação, [RP] recomps-preparação-e-ajustes.
+
+| Área | Documento | Críticas | Altas | Médias | Baixas |
+| --- | --- | --- | --- | --- | --- |
+| Biblioteca | [auditoria-biblioteca.md](docs/roadmap/auditoria-biblioteca.md) | 2 | 2 | 9 | 7 |
+| Big Picture | [auditoria-big-picture.md](docs/roadmap/auditoria-big-picture.md) | 0 | 4 | 6 | 9 |
+| Clássicos e RetroArch | [auditoria-classicos-e-retroarch.md](docs/roadmap/auditoria-classicos-e-retroarch.md) | 1 | 4 | 13 | 8 |
+| Durante o jogo e app | [auditoria-durante-o-jogo-e-app.md](docs/roadmap/auditoria-durante-o-jogo-e-app.md) | 2 | 3 | 9 | 11 |
+| Fundações do backend | [auditoria-fundacoes-do-backend.md](docs/roadmap/auditoria-fundacoes-do-backend.md) | 4 | 3 | 4 | 6 |
+| Partidas, tempo e saves | [auditoria-partidas-tempo-e-saves.md](docs/roadmap/auditoria-partidas-tempo-e-saves.md) | 4 | 2 | 12 | 8 |
+| Recomps: catálogo e instalação | [auditoria-recomps-catalogo-e-instalacao.md](docs/roadmap/auditoria-recomps-catalogo-e-instalacao.md) | 3 | 4 | 9 | 7 |
+| Recomps: preparação e ajustes | [auditoria-recomps-preparacao-e-ajustes.md](docs/roadmap/auditoria-recomps-preparacao-e-ajustes.md) | 1 | 4 | 11 | 6 |
+
+### Lote A — Nenhum arquivo do jogador apagado por uma leitura que falhou (primeiro)
+
+Causa única: arquivo ilegível (travado, corrompido, outra codificação) vira "vazio" e a próxima gravação apaga tudo.
+Correção única: um módulo comum de estado (ler distinguindo "não existe" de "não consegui ler"; nunca gravar por cima
+do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por arquivo; `.bak` da última versão boa).
+
+- [ ] `settings.json` [Fu F1, J F1, J F14, Fu F6, lojas L1]
+- [ ] favoritos, coleções, ocultos, notas, arte, mods [Fu F2, B F1, B F2, B F5]
+- [ ] tempo de jogo das lojas e dos clássicos [P F1, C F1]
+- [ ] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3]
+- [ ] arquivos do próprio jogo nos Ajustes e no HedgeModManager [RP F1, RP F2, RP F13]
+- [ ] JSONL com linha cortada, gravações sem `sync_all`, caches com `fs::write` direto [P F10, P F11, Fu F11, Fu F12]
+
+### Lote B — Nada se perde quando algo é interrompido ou o app fecha
+
+- [ ] Reinstalação de emulador interrompida apaga os saves guardados em `.<nome>-old` [Fu F4] (regressão do commit 3d05150)
+- [ ] Fechar o app (janela, bandeja, atualização, fim do jogo) com download, instalação, backup ou jogo de loja aberto [J F4, RC F7, P F19, Fu F10]
+- [ ] Cerberus fechado no meio da partida; próximo Jogar restaura saves sob o jogo aberto [P F6]
+- [ ] Cópia/extração pela metade conta como pronta; instalação nova parcial não é notada [RP F3, RC F11]
+- [ ] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6]
+- [ ] Backup do DLSS interrompido vira o "original"; mod atualizado apaga o antigo antes do novo [RP F9, RP F10]
+- [ ] Preparação órfã, duas em paralelo [RP F12]; restos `.part`/`.tmp` [P F23]
+- [ ] Importar dados desfeito pelo cache na memória [Fu F5, P F5, P F17]
+
+### Lote C — Saves e nuvem sem confiar no relógio
+
+- [ ] Nuvem escolhe o "mais novo" pelo relógio; dois PCs se sobrescrevem [P F2] (desenho de âncora em `saves-de-jogos-de-pc.md`)
+- [ ] Rodízio apaga o backup errado e as cópias de segurança [P F3]
+- [ ] Restaurar não é atômico; restaurar com o jogo aberto por fora [P F13, P F14, P F16]
+- [ ] Cada Jogar abre os 20 zips da nuvem (OneDrive sob demanda) [P F12]; UI que diz "na nuvem" sem saber [P F15]
+- [ ] Reinstalar um recomp zera o tempo de jogo [P F4]
+
+### Lote D — Instalar, atualizar e reparar recomps sem estragar a pasta do jogador
+
+- [ ] **Desinstalar um recomp tem que funcionar sempre, e fácil** (relatado pelo jogador em 25/11/2026: não
+      conseguiu desinstalar; **o botão nem aparece para ele**).
+      **Por que o botão não aparece** (`ui/src/game.rs`, `Manage`):
+      a. Ele só existe no fim da aba Gerenciar, em "Zona de perigo" (`{danger_h}{remove}`), abaixo de tudo.
+      b. O menu do botão direito na capa (`ui/src/game_menu.rs`) não tem Desinstalar; o Big Picture tem (`tv/sheets.rs`).
+      c. Só aparece quando a página tem o jogo da Biblioteca (`editable` exige `game`). Aberta pelo Descobrir ou numa
+         versão diferente da instalada (id antigo, outra versão do mesmo jogo [RC F8]), `game` é `None` e não há botão.
+      **Correção da tela:** Desinstalar no menu do botão direito e no menu "…" ao lado de Jogar; na página de qualquer
+      versão, achar a instalação pelo jogo (todas as versões e ids antigos) e oferecer Desinstalar.
+      **Por que, quando aparece, pode falhar** — `remove_game` (`src-tauri/src/main.rs`) para tudo no primeiro obstáculo:
+      1. `recomp::backup_saves(...)?` falha → nada é removido. Falha quando o recomp saiu do catálogo ou o catálogo do
+         site foi desligado (`entry_at` → "Esse recomp não está no catálogo.") [RC F4], ou quando a cópia dos saves dá
+         erro. **Correção:** backup com a entrada guardada na instalação (`.cerberus-entry.json`); se ainda assim falhar,
+         perguntar "Desinstalar sem backup dos saves?" em vez de travar.
+      2. `check_install_folder` recusa pasta sem o marcador (copiada, adotada, marcador apagado). **Correção:** oferecer
+         "Tirar da Biblioteca e manter a pasta" ou "Apagar a pasta" com o caminho à vista e confirmação.
+      3. Arquivo em uso (Explorer, antivírus, o jogo) trava a renomeação. **Correção:** dizer qual programa/arquivo e
+         "Tentar de novo"; nunca deixar meio apagado.
+      4. Sobra `.cerberus-removing-<id>` de uma tentativa anterior faz as próximas falharem até reiniciar [RC F20].
+         **Correção:** nome único por tentativa e limpeza das sobras.
+      5. Sessão marcada como aberta por engano ("Feche o jogo antes de removê-lo."). **Correção:** conferir se o
+         processo existe de verdade antes de recusar.
+      **Aceite:** com cada um dos 5 casos reproduzido em pasta temporária, Desinstalar termina (ou pergunta e termina),
+      o jogo sai da Biblioteca e a mensagem diz o que aconteceu. Conferir no app com um recomp real de teste.
+
+- [ ] Instalação nova adota pasta alheia com o mesmo nome e depois a apaga inteira [RC F1]
+- [ ] Reparar/Atualizar sobrescrevem configurações e mods [RC F2]; arquivos removidos pela versão nova ficam [RC F12]
+- [ ] Recomp que saiu do catálogo não desinstala [RC F4]; Reparar falha quando a pasta sumiu [RC F5]
+- [ ] Versão comparada como texto; ids antigos; checksum velho em loop [RC F8, RC F9, RC F10]
+- [ ] `.cue`/`.gdi`/`.m3u` sem as faixas [RP F4]; CHD de PS1 Mode 2 Form 2 [RP F15]
+- [ ] Instalador que pede administrador (erro 740) [RP F5]; programa de outro jogo adotado [RP F6]
+- [ ] Mods mexem em arquivos que não são deles [RP F11]; filtro aplicado no programa errado [RP F7]
+- [ ] Cópias grandes sem espaço conferido, progresso ou cancelamento [RP F14]; fila e disco cheio [RC F13, RC F14]
+
+### Lote E — Segurança
+
+- [ ] Catálogo de terceiros manda no repositório e no checksum do catálogo próprio [RC F3]
+- [ ] Autoatualização sem assinatura e às vezes sem hash; instalador no nome final [J F2, RC F15, Fu F15]
+- [ ] Fontes no formato RecompLauncher baixam de qualquer servidor [RC F16]; executáveis de terceiros sem hash [RP F8, C F23]
+- [ ] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3]
+- [ ] Respostas sem limite e redirecionamento para http [Fu F8]; `..` nos lugares de saves do manifesto [Fu F9]
+- [ ] Nomes reservados do Windows vindos do disco [RP F17]; 7z/tar sem teste de path traversal [Fu F17]
+- [ ] Janelas com todas as permissões e sem CSP [J F25, Fu F13]
+
+### Lote F — Panics e travamentos da interface
+
+- [ ] Sinais descartados lidos em timers e depois de `await` [BP F1, BP F8, J F5]
+- [ ] Comandos síncronos pesados na thread principal [Fu F7, B F12]; I/O bloqueante em async [Fu F16]
+- [ ] `list_games` refeito a cada clique e em rajadas [B F4]; arte pedida de novo [B F6]
+- [ ] Varredura de ROMs sem cache, que baixa arquivos só na nuvem e cobre pastas demais [C F4, C F7, C F8, C F18]
+- [ ] Biblioteca da TV desenha tudo [BP F5]; menu escondido lendo o controle a 30 Hz [J F10]
+
+### Lote G — Funciona como promete (por área)
+
+- Biblioteca: B F3, F7–F11, F13–F20.
+- Clássicos: C F5, F6, F9–F17, F19–F22, F24–F26.
+- Durante o jogo e app: J F3, F6–F9, F11–F13, F15–F24.
+- Big Picture: BP F2–F4, F6, F7, F9–F19.
+- Partidas: P F7–F9, F18, F20–F22, F24–F26.
+- Recomps: RC F17–F23; RP F16, F18–F22.
+
+### Divergências do próprio roadmap (corrigir o texto)
+
+- 5.2 marca como feitos `version.json`, versão mínima e arquivo ruim marcado: não existem em `self_update.rs` [RC F15, J F2].
+- 6.1 diz que o aviso de conquista tem 6 posições, versão secreta, agrupamento e volume [J F11]: conferir e desmarcar o que falta.
+
+### Ordem
+
+A (dados do jogador) → B (interrupções) → C (saves) → E (segurança) → D (recomps) → F (travamentos) → G.
+Cada lote fecha com testes novos para cada item e conferência no app sem clicar em nada destrutivo.
 
 ## Planos detalhados (25/11/2026)
 
