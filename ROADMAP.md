@@ -955,7 +955,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Autoatualização às vezes sem hash; instalador no nome final [J F2, RC F15, Fu F15] — feito em 25/11/2026: checksum obrigatório (sem ele, não instala), download em `.part` renomeado só depois de conferido. Conferido com a release real do GitHub.
 - [ ] Autoatualização: exigir assinatura (Authenticode ou minisign) quando as releases forem assinadas [J F2]
 - [ ] Fontes no formato RecompLauncher baixam de qualquer servidor [RC F16]; executáveis de terceiros sem hash [RP F8, C F23]
-- [ ] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3]
+- [x] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3] — feito em 25/11/2026: trocar de conta apaga o token anterior; desconectar e trocar tiram o token do Cerberus do RetroArch, PCSX2, Dolphin e DuckStation (o do jogador fica). Testado.
 - [ ] Respostas sem limite e redirecionamento para http [Fu F8]; `..` nos lugares de saves do manifesto [Fu F9]
 - [ ] Nomes reservados do Windows vindos do disco [RP F17]; 7z/tar sem teste de path traversal [Fu F17]
 - [ ] Janelas com todas as permissões e sem CSP [J F25, Fu F13]

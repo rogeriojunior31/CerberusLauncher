@@ -1375,6 +1375,13 @@ async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: Stri
     };
     let (data, picked) = retroarch_choice(&app);
     let mut chosen = settings::load(&data);
+    // Another account than the one before: the old one's token goes, here and in the emulators.
+    let switched = chosen.ra_user.as_deref().is_some_and(|before| !before.eq_ignore_ascii_case(&profile.user));
+    if switched {
+        if let Some(old) = chosen.ra_token.take() {
+            forget_ra_everywhere(&data, &chosen, &old);
+        }
+    }
     chosen.ra_user = Some(profile.user.clone());
     chosen.ra_key = Some(key);
     if let Some((name, token)) = &token {
@@ -1382,8 +1389,6 @@ async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: Stri
         if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
             let _ = emulation::write_token(&exe, name, token);
         }
-    } else if chosen.ra_user.as_deref() != Some(profile.user.as_str()) {
-        chosen.ra_token = None;
     }
     settings::save(&data, &chosen)?;
     Ok(profile)
@@ -1402,17 +1407,30 @@ async fn ra_profile(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
 fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
     let mut chosen = settings::load(&data.0);
-    // "Forget the account on this PC" includes RetroArch, where it was written.
-    if let Some(token) = &chosen.ra_token {
-        if let Some(exe) = emulation::retroarch(&data.0, chosen.retroarch.as_deref()) {
-            emulation::forget_token(&exe, token);
-        }
+    // "Forget the account on this PC" includes every emulator it was written into.
+    if let Some(token) = chosen.ra_token.clone() {
+        forget_ra_everywhere(&data.0, &chosen, &token);
     }
     chosen.ra_user = None;
     chosen.ra_key = None;
     chosen.ra_token = None;
     settings::save(&data.0, &chosen)?;
     Ok(settings_view(&app))
+}
+
+/// Takes a RetroAchievements token Cerberus wrote out of RetroArch and the
+/// standalone emulators found here (a token the player set there stays).
+fn forget_ra_everywhere(data: &Path, chosen: &settings::Settings, token: &str) {
+    if let Some(exe) = emulation::retroarch(data, chosen.retroarch.as_deref()) {
+        emulation::forget_token(&exe, token);
+    }
+    for id in ["pcsx2", "dolphin", "duckstation"] {
+        if let Some(emulator) = standalone::find(id) {
+            if let Some((exe, _)) = standalone::locate(data, chosen.emulators.get(id).map(PathBuf::as_path), emulator) {
+                cheevos::forget(id, &exe, token);
+            }
+        }
+    }
 }
 
 /// Opens RetroAchievements: the player's profile, or the page with their API key.

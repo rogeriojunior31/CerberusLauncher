@@ -268,6 +268,45 @@ fn portable(exe: &Path) -> bool {
     exe.parent().is_some_and(|d| d.join("portable.txt").is_file() || d.join("portable.ini").is_file())
 }
 
+/// Takes the account Cerberus wrote into a standalone emulator back out, when
+/// the token there is still that one (a token the player set there themselves
+/// stays). Returns whether anything was taken out.
+pub fn forget(emulator: &str, exe: &Path, token: &str) -> bool {
+    let dir = exe.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let places: Vec<(PathBuf, &str, &[&str])> = match emulator {
+        "pcsx2" => {
+            let Some(root) = (if portable(exe) { Some(dir) } else { documents().map(|d| d.join("PCSX2")) }) else { return false };
+            vec![(root.join("inis").join("secrets.ini"), "Achievements", &["Token"])]
+        }
+        "dolphin" => {
+            let user = if portable(exe) {
+                Some(dir.join("User"))
+            } else {
+                let roaming = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Dolphin Emulator"));
+                roaming.filter(|r| r.is_dir()).or_else(|| documents().map(|d| d.join("Dolphin Emulator")))
+            };
+            let Some(user) = user else { return false };
+            vec![(user.join("Config").join("RetroAchievements.ini"), "Achievements", &["ApiToken"])]
+        }
+        "duckstation" => {
+            let Some(root) = (if portable(exe) { Some(dir) } else { documents().map(|d| d.join("DuckStation")) }) else { return false };
+            vec![(root.join("settings.ini"), "Cheevos", &["Token"])]
+        }
+        _ => return false,
+    };
+    let mut forgot = false;
+    for (file, section, keys) in places {
+        let Some(text) = settings_text(&file) else { continue };
+        for key in keys {
+            if ini_value(&text, section, key).as_deref() == Some(token) {
+                keep(&file, Some(section), &[(key, "")]);
+                forgot = true;
+            }
+        }
+    }
+    forgot
+}
+
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default()
 }
@@ -499,6 +538,24 @@ pub fn read_new(log: &Path, from: u64) -> (Vec<String>, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forgetting_the_account_takes_our_token_out_of_each_emulator_and_leaves_the_players() {
+        let dir = tempfile::tempdir().unwrap();
+        // A portable PCSX2 with our token, and a portable Dolphin with the player's own.
+        let pcsx2 = dir.path().join("pcsx2");
+        fs::create_dir_all(pcsx2.join("inis")).unwrap();
+        fs::write(pcsx2.join("portable.ini"), "").unwrap();
+        fs::write(pcsx2.join("inis").join("secrets.ini"), "[Achievements]\nToken = OURS\n").unwrap();
+        let dolphin = dir.path().join("dolphin");
+        fs::create_dir_all(dolphin.join("User").join("Config")).unwrap();
+        fs::write(dolphin.join("portable.txt"), "").unwrap();
+        fs::write(dolphin.join("User").join("Config").join("RetroAchievements.ini"), "[Achievements]\nApiToken = THEIRS\n").unwrap();
+        assert!(forget("pcsx2", &pcsx2.join("pcsx2-qt.exe"), "OURS"));
+        assert!(!forget("dolphin", &dolphin.join("Dolphin.exe"), "OURS"));
+        assert!(!fs::read_to_string(pcsx2.join("inis").join("secrets.ini")).unwrap().contains("OURS"));
+        assert!(fs::read_to_string(dolphin.join("User").join("Config").join("RetroAchievements.ini")).unwrap().contains("THEIRS"));
+    }
 
     #[test]
     fn a_settings_file_that_cant_be_read_is_never_replaced() {
