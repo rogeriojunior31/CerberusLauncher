@@ -907,7 +907,12 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 ### Lote D — Instalar, atualizar e reparar recomps sem estragar a pasta do jogador
 
-- [ ] **Desinstalar um recomp tem que funcionar sempre, e fácil** (relatado pelo jogador em 25/11/2026: não
+- [x] **Desinstalar um recomp tem que funcionar sempre, e fácil** — feito em 25/11/2026 (commit desta data):
+      Desinstalar… no botão direito da capa (abre Gerenciar já na Zona de perigo), página de outra versão aponta para
+      a instalada, backup que falha pergunta "Desinstalar sem backup dos saves", pasta que o Cerberus não fez oferece
+      "Tirar da biblioteca e manter a pasta", nome temporário único por tentativa e sobras limpas. Falta: entrada do
+      catálogo guardada na instalação [RC F4] e conferir se a sessão "aberta" ainda existe (item 5).
+      Texto original do item: (relatado pelo jogador em 25/11/2026: não
       conseguiu desinstalar; **o botão nem aparece para ele**).
       **Por que o botão não aparece** (`ui/src/game.rs`, `Manage`):
       a. Ele só existe no fim da aba Gerenciar, em "Zona de perigo" (`{danger_h}{remove}`), abaixo de tudo.

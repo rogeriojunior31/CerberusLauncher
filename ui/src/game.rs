@@ -35,6 +35,18 @@ thread_local! {
     static NEXT_TAB: std::cell::Cell<Option<Tab>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// Opened to remove the game (from the cover's menu): the danger zone comes into view.
+    static SHOW_REMOVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Opens a game's Gerenciar tab at its "Desinstalar" / "Remover da biblioteca".
+pub fn open_to_remove(library: Library, id: String) {
+    NEXT_TAB.with(|n| n.set(Some(Tab::Manage)));
+    SHOW_REMOVE.with(|s| s.set(true));
+    library.go(crate::Route::Game(id));
+}
+
 /// A recomp's page, where a merged classic lives: on its Original tab when an
 /// emulator here opens the copy, on the overview (Play is the recomp) when not.
 pub fn open_original(library: Library, id: String, playable: bool) {
@@ -1405,24 +1417,57 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    // What stopped the last try, when the player can decide: (code, why).
+    let stopped = RwSignal::new(None::<(&'static str, String)>);
     let remove = game.clone().filter(|_| editable).map(|g| {
-        let id = g.id.clone();
+        let id = StoredValue::new(g.id.clone());
+        let run = move |without_backup: bool, keep_folder: bool| {
+            busy.set(true);
+            spawn_local(async move {
+                let result = api::remove_game_with(&id.get_value(), without_backup, keep_folder).await;
+                let _ = busy.try_set(false);
+                match result {
+                    Ok(()) => {
+                        library.games.refetch();
+                        library.recomps.refetch();
+                        library.toast(if keep_folder { tr!("Tirado da biblioteca. A pasta continua no PC.") } else { tr!("Desinstalado.") });
+                        library.go(crate::Route::Library);
+                    }
+                    Err(e) => match cerberus_shared::uninstall::split(&e) {
+                        (Some(code), why) => {
+                            let _ = stopped.try_set(Some((code, why.to_string())));
+                        }
+                        (None, _) => {
+                            library.report::<()>(Err(e));
+                        }
+                    },
+                }
+            });
+        };
         let on_remove = move |_| {
             if !armed.get_untracked() {
                 armed.set(true);
                 return;
             }
-            busy.set(true);
-            let id = id.clone();
-            spawn_local(async move {
-                let removed = library.report(api::remove_game(&id).await);
-                busy.set(false);
-                if removed.is_some() {
-                    library.games.refetch();
-                    library.recomps.refetch();
-                    library.go(crate::Route::Library);
+            run(false, false);
+        };
+        // The way on after a stop: without the backup, or keeping the folder.
+        let follow_up = move || {
+            stopped.get().map(|(code, why)| {
+                let no_backup = code == cerberus_shared::uninstall::NO_BACKUP;
+                let (title, detail) = if no_backup {
+                    (tr!("Desinstalar sem backup dos saves"), tr!("Os saves que estiverem na pasta do jogo serão apagados junto."))
+                } else {
+                    (tr!("Tirar da biblioteca e manter a pasta"), tr!("A pasta não foi instalada pelo Cerberus: ela fica no PC, só o jogo sai da lista."))
+                };
+                view! {
+                    <p class="problem small" role="alert">{why}</p>
+                    <button type="button" class="row-btn danger" disabled=move || busy.get() on:click=move |_| run(no_backup, !no_backup)>
+                        <Svg icon=Icon::Trash />
+                        <span><b>{title}</b><small>{detail}</small></span>
+                    </button>
                 }
-            });
+            })
         };
         let external = g.external;
         let (title, detail) = if external {
@@ -1438,8 +1483,41 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
                 <Svg icon=Icon::Trash />
                 <span><b>{label}</b><small>{detail}</small></span>
             </button>
+            {follow_up}
         }
     });
+    // This version isn't the one installed: point to the installed one's removal.
+    let other_version = game.is_none().then(|| entry.clone()).flatten().and_then(|e| {
+        let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let ids: Vec<String> = recomps.iter().filter(|r| r.title == e.title).map(|r| format!("recomp:{}", r.id)).collect();
+        let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        games.into_iter().find(|g| ids.contains(&g.id))
+    });
+    let remove = remove.map(|v| v.into_any()).or_else(|| {
+        other_version.map(|g| {
+            let id = g.id.clone();
+            let name = g.name.clone();
+            view! {
+                <button type="button" class="row-btn danger" on:click=move |_| open_to_remove(library, id.clone())>
+                    <Svg icon=Icon::Trash />
+                    <span><b>{tr!("Desinstalar a versão instalada")}</b><small>{tr!("{} está instalado: abre o Gerenciar dele.", name)}</small></span>
+                </button>
+            }
+            .into_any()
+        })
+    });
+    // Opened to remove it: the danger zone comes into view.
+    if SHOW_REMOVE.with(|s| s.take()) {
+        // After the tab has laid out (pictures and cards above take a moment).
+        set_timeout(
+            || {
+                if let Some(el) = document().query_selector(".mg-h.danger").ok().flatten() {
+                    el.scroll_into_view();
+                }
+            },
+            std::time::Duration::from_millis(400),
+        );
+    }
 
     let options = game.clone().filter(|g| g.is_tracked()).map(|g| view! { <LaunchOptions game=g /> });
 

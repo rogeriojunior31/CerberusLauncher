@@ -176,6 +176,10 @@ pub fn GameMenuLayer() -> impl IntoView {
         let running = library.running.with(|all| all.contains(&game.id));
         let (play_label, play_icon) = if running { (tr!("Jogando"), Icon::Play) } else { crate::launch_action(&game) };
         let has_folder = !game.install_dir.is_empty();
+        // Recomps and games added by hand are the launcher's to remove.
+        let removable = matches!(game.source, cerberus_shared::Source::Recomp { .. } | cerberus_shared::Source::Local { .. });
+        let remove_label = if matches!(game.source, cerberus_shared::Source::Recomp { .. }) && !game.external { tr!("Desinstalar…") } else { tr!("Remover da biblioteca…") };
+        let remove_id = game.id.clone();
         let (id, on) = (game.id.clone(), game.favorite);
         let page_id = game.id.clone();
         let folder_id = game.id.clone();
@@ -266,6 +270,14 @@ pub fn GameMenuLayer() -> impl IntoView {
                 }>
                     <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
                 </button>
+                {removable.then(|| view! {
+                    <button type="button" role="menuitem" class="danger" on:click=move |_| {
+                        menu.close();
+                        crate::game::open_to_remove(library, remove_id.clone());
+                    }>
+                        <Svg icon=Icon::Trash size=16 />{remove_label}
+                    </button>
+                })}
             </div>
         })
     }

@@ -251,7 +251,20 @@ pub async fn pick_cover(id: &str) -> Result<Option<Game>, String> {
 }
 
 pub async fn remove_game(id: &str) -> Result<(), String> {
-    call("remove_game", &Id { id }).await
+    remove_game_with(id, false, false).await
+}
+
+/// Uninstalls with the player's answer to what stopped it before: without the
+/// saves backup, or keeping a folder Cerberus didn't make (only the entry goes).
+pub async fn remove_game_with(id: &str, without_backup: bool, keep_folder: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg<'a> {
+        id: &'a str,
+        without_backup: bool,
+        keep_folder: bool,
+    }
+    call("remove_game", &Arg { id, without_backup, keep_folder }).await
 }
 
 pub async fn list_recomps() -> Result<Vec<RecompEntry>, String> {

@@ -162,7 +162,8 @@ impl Library {
         match result {
             Ok(value) => Some(value),
             Err(error) => {
-                self.push_toast(error, true);
+                let (_, message) = cerberus_shared::uninstall::split(&error);
+                self.push_toast(message.to_string(), true);
                 None
             }
         }

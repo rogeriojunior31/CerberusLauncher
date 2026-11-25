@@ -655,6 +655,25 @@ pub struct UnlockNotice {
 }
 
 /// Where a game's achievements come from.
+/// Uninstalling a recomp stopped on something the player can decide: the
+/// error starts with one of these, and the screen offers the way on.
+pub mod uninstall {
+    /// The saves couldn't be copied first: uninstall anyway, without a backup?
+    pub const NO_BACKUP: &str = "cerberus:uninstall:no-backup:";
+    /// The folder isn't one Cerberus made: take the game off the library and keep the folder?
+    pub const NOT_OURS: &str = "cerberus:uninstall:not-ours:";
+
+    /// The code and the message, when the error has one.
+    pub fn split(error: &str) -> (Option<&'static str>, &str) {
+        for code in [NO_BACKUP, NOT_OURS] {
+            if let Some(rest) = error.strip_prefix(code) {
+                return (Some(code), rest);
+            }
+        }
+        (None, error)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AchievementSource {

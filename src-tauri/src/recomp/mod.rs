@@ -1451,18 +1451,26 @@ pub fn delete_files(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<()
     // preview, the antivirus) stops it here with nothing deleted, instead of
     // half-way through with the folder's marker already gone.
     let aside = removing_name(dir, recomp_id);
-    let _ = fs::remove_dir_all(&aside);
     if let Err(e) = throttle::rename_patiently(dir, &aside, 6) {
         return Err(tr!("Não foi possível apagar {0}: {1}. Feche o jogo e o que estiver usando a pasta (o Explorador de Arquivos, por exemplo) e tente de novo; nada foi apagado.", dir.display(), e));
     }
-    // What can't go now goes the next time Cerberus starts.
+    // What can't go now goes the next time Cerberus starts; earlier leftovers beside it go too.
     let _ = fs::remove_dir_all(&aside);
+    if let Some(parent) = dir.parent() {
+        for entry in fs::read_dir(parent).into_iter().flatten().flatten() {
+            if entry.file_name().to_string_lossy().starts_with(REMOVING) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
     Ok(())
 }
 
-/// The name a folder being removed gets beside its old place.
+/// The name a folder being removed gets beside its old place: new for each try,
+/// so a leftover of an earlier one (still locked) never blocks this one.
 fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
-    dir.with_file_name(format!("{REMOVING}{recomp_id}"))
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    dir.with_file_name(format!("{REMOVING}{recomp_id}-{stamp}"))
 }
 
 const REMOVING: &str = ".cerberus-removing-";
@@ -1515,6 +1523,14 @@ pub fn sweep_removed(folders: &Folders) {
     }
 }
 
+/// Whether `dir` is a folder Cerberus installed this recomp in (see `check_install_folder`).
+pub fn check_install_folder_pub(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    check_install_folder(folders, recomp_id, dir)
+}
+
 fn check_install_folder(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
     let marked = fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
     let safe_id = recomp_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
@@ -1532,6 +1548,29 @@ fn is_arm() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uninstalling_refuses_a_folder_cerberus_didnt_make_and_a_leftover_never_blocks() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(root.path(), None);
+        // A folder the player made: refused (the screen then offers to keep it).
+        let theirs = root.path().join("MyGame");
+        fs::create_dir_all(&theirs).unwrap();
+        fs::write(theirs.join("save.dat"), b"mine").unwrap();
+        assert!(check_install_folder_pub(&folders, "x", &theirs).is_err());
+        assert!(delete_files(&folders, "x", &theirs).is_err());
+        assert!(theirs.join("save.dat").exists());
+        // Ours, with a leftover from an earlier try beside it: removed, leftover too.
+        let ours = root.path().join("ours");
+        fs::create_dir_all(&ours).unwrap();
+        fs::write(ours.join(MARKER), "x").unwrap();
+        let leftover = root.path().join(format!("{REMOVING}x"));
+        fs::create_dir_all(&leftover).unwrap();
+        delete_files(&folders, "x", &ours).unwrap();
+        assert!(!ours.exists() && !leftover.exists());
+        // A folder already gone is fine.
+        assert!(check_install_folder_pub(&folders, "x", &ours).is_ok());
+    }
 
     fn recomp_at(dir: &Path, copy: Option<&Path>) -> Game {
         let exe = dir.join("Game.exe");

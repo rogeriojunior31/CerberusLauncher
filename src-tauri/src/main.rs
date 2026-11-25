@@ -2110,7 +2110,11 @@ fn remove_game(
     sessions: State<'_, sessions::Sessions>,
     installing: State<'_, recomp::Installing>,
     id: String,
+    without_backup: Option<bool>,
+    keep_folder: Option<bool>,
 ) -> Result<(), String> {
+    use cerberus_shared::uninstall::{NOT_OURS, NO_BACKUP};
+    let (without_backup, keep_folder) = (without_backup.unwrap_or(false), keep_folder.unwrap_or(false));
     let Some(game) = library.get(&id)? else {
         return Ok(());
     };
@@ -2124,10 +2128,20 @@ fn remove_game(
             if sessions.is_running_any(&id) {
                 return Err(tr!("Feche o jogo antes de removê-lo.").into());
             }
-            recomp::backup_saves(&recomps, recomp_id, Path::new(&game.install_dir), tk!("Antes de desinstalar"))?;
+            let dir = Path::new(&game.install_dir);
             // A folder the player installed on their own stays theirs: only the link goes.
-            if !game.external {
-                recomp::delete_files(&recomps, recomp_id, Path::new(&game.install_dir))?;
+            let delete = !game.external && !keep_folder;
+            if delete {
+                // Not a folder Cerberus made: the player chooses (keep it, only the entry goes).
+                recomp::check_install_folder_pub(&recomps, recomp_id, dir).map_err(|e| format!("{NOT_OURS}{e}"))?;
+                // The saves are copied before anything is deleted; if that fails, the player chooses.
+                if !without_backup {
+                    recomp::backup_saves(&recomps, recomp_id, dir, tk!("Antes de desinstalar")).map_err(|e| format!("{NO_BACKUP}{e}"))?;
+                }
+                recomp::delete_files(&recomps, recomp_id, dir)?;
+            } else if !without_backup {
+                // The folder stays: a backup is a bonus, never a reason to refuse.
+                let _ = recomp::backup_saves(&recomps, recomp_id, dir, tk!("Antes de desinstalar"));
             }
             library.remove(&id)
         })?;
