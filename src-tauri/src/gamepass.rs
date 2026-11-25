@@ -182,6 +182,15 @@ pub async fn refresh(client: &reqwest::Client, data: &Path) -> Result<Vec<Produc
 
 /// Official art on the installed Xbox games, and the rest of Game Pass as
 /// games not installed yet (installed through the Xbox app).
+/// A Game Pass game not installed whose name the player already has from
+/// another store (owned on Epic, Steam...): only the owned copy shows.
+pub fn drop_owned_elsewhere(games: &mut Vec<Game>) {
+    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+    let catalog_only = |g: &Game| matches!(g.source, Source::Xbox { game_pass: true, .. }) && g.install_dir.is_empty();
+    let elsewhere: std::collections::HashSet<String> = games.iter().filter(|g| !catalog_only(g)).map(|g| plain(&g.name)).collect();
+    games.retain(|g| !catalog_only(g) || !elsewhere.contains(&plain(&g.name)));
+}
+
 pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
     let by_family: HashMap<&str, &Product> = catalog.iter().filter(|p| !p.family.is_empty()).map(|p| (p.family.as_str(), p)).collect();
     let mut here = std::collections::HashSet::new();
@@ -227,6 +236,20 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_game_owned_elsewhere_hides_its_game_pass_entry() {
+        let game = |name: &str, source: Source, dir: &str| Game { name: name.into(), source, install_dir: dir.into(), ..crate::library::blank_game() };
+        let pass = |name: &str| game(name, Source::Xbox { family: "f".into(), app: "Game".into(), product: "p".into(), game_pass: true }, "");
+        let mut games = vec![
+            pass("Rocket League®"),
+            game("Rocket League", Source::Epic { app_name: "a".into(), namespace: "n".into(), item_id: "i".into() }, ""),
+            pass("Halo Infinite"),
+        ];
+        drop_owned_elsewhere(&mut games);
+        let names: Vec<_> = games.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, vec!["Rocket League", "Halo Infinite"]);
+    }
 
     const PAGE: &str = r#"{"Products":[{"ProductId":"9NNM7PKZN3JF","LocalizedProperties":[{"ProductTitle":"9 Kings ","Images":[
         {"ImagePurpose":"Poster","Uri":"//store-images.s-microsoft.com/image/apps.1","Width":1440},

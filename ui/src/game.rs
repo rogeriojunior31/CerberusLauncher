@@ -184,12 +184,18 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             async move { photos && api::list_screenshots(&id).await.is_ok_and(|l| !l.is_empty()) }
         })
     };
-    // Steam games: their achievements, as the hub reads them.
-    let steam_app = game.as_ref().and_then(|g| g.id.strip_prefix("steam:")).map(str::to_string);
-    let has_achievements = steam_app.is_some();
+    // Store games: their achievements, as the hub reads them (Steam always has
+    // the tab; Epic and Xbox when the account's list has the game).
+    let store_key: Option<(&'static str, String)> = game.as_ref().and_then(|g| match &g.source {
+        Source::Steam { app_id } => Some(("steam", app_id.to_string())),
+        Source::Epic { namespace, .. } if !namespace.is_empty() => Some(("epic", namespace.clone())),
+        Source::Xbox { family, .. } if !family.is_empty() => Some(("xbox", format!("pfn:{family}"))),
+        _ => None,
+    });
+    let steam_app = store_key.as_ref().filter(|(s, _)| *s == "steam").map(|(_, k)| k.clone());
     // The player's original (RetroAchievements) has its own list: a Conquistas
     // tab too, as a Steam game has, not only a card inside the Original tab.
-    let original_achievements = original.clone().filter(|_| steam_app.is_none()).map(|rom| {
+    let original_achievements = original.clone().filter(|_| store_key.is_none()).map(|rom| {
         let (path, console) = (rom.path.clone(), crate::classics::console_of(&rom).to_string());
         LocalResource::new(move || {
             let (path, console) = (path.clone(), console.clone());
@@ -198,18 +204,22 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     });
     let retro = move || original_achievements.and_then(|r| r.get()).flatten();
     // Read once for the tab's count, the rail card and the tab itself.
-    let achievements = steam_app.clone().map(|app| {
+    let achievements = store_key.clone().map(|(source, key)| {
         LocalResource::new(move || {
-            let app = app.clone();
-            async move { api::game_achievements("steam", &app).await }
+            let key = key.clone();
+            async move { api::game_achievements(source, &key).await }
         })
     });
+    let has_achievements = move || {
+        steam_app.is_some() || achievements.and_then(|r| r.get()).and_then(Result::ok).is_some_and(|d| d.game.total > 0)
+    };
+    let tab_key = store_key.clone();
     provide_context(GameAchievementsData(achievements));
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
         || tab.get_untracked() == Tab::Settings && !has_settings
         || tab.get_untracked() == Tab::Manage && !manageable
-        || tab.get_untracked() == Tab::Achievements && !has_achievements && original_achievements.is_none()
+        || tab.get_untracked() == Tab::Achievements && store_key.is_none() && original_achievements.is_none()
     {
         tab.set(Tab::Overview);
     }
@@ -291,7 +301,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             {has_saves.then(|| tab_button(Tab::Saves, tr!("Saves")))}
             {has_settings.then(|| tab_button(Tab::Settings, tr!("Ajustes")))}
             {move || (mods_here.get() == Some(true) || tab.get() == Tab::Mods).then(|| tab_button(Tab::Mods, "Mods"))}
-            {move || (has_achievements || retro().is_some()).then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
+            {move || (has_achievements() || retro().is_some()).then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
             {move || (photos_here.get() == Some(true) || tab.get() == Tab::Photos).then(|| tab_button(Tab::Photos, tr!("Fotos")))}
             {original.is_some().then(|| tab_button(Tab::Original, tr!("Original")))}
             {manageable.then(|| tab_button(Tab::Manage, tr!("Gerenciar")))}
@@ -303,8 +313,8 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let body_original = original.clone();
     let tab_body = move |which: Tab| match which {
         Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() tab /> }.into_any(),
-        Tab::Achievements => match (&steam_app, retro()) {
-            (Some(app), _) => view! { <crate::achievements::AchievementsTab source="steam".to_string() key=app.clone() /> }.into_any(),
+        Tab::Achievements => match (&tab_key, retro()) {
+            (Some((source, key)), _) => view! { <crate::achievements::AchievementsTab source=source.to_string() key=key.clone() /> }.into_any(),
             (None, Some(d)) => view! { <crate::achievements::AchievementsTab source="retro".to_string() key=d.game.key.clone() /> }.into_any(),
             _ => ().into_any(),
         },
@@ -533,7 +543,21 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         _ => None,
     });
     if let Some(app) = steam_app {
-        return view! { <SteamOverview app play_card note_card tab /> }.into_any();
+        let details = LocalResource::new(move || async move { api::steam_details(app).await });
+        return view! { <StoreOverview details links=Some(app) play_card note_card tab /> }.into_any();
+    }
+    // Epic and Xbox games: their store page from Steam or the Microsoft Store.
+    if let Some(g) = game.as_ref().filter(|g| matches!(g.source, Source::Epic { .. } | Source::Xbox { .. })) {
+        let name = g.name.clone();
+        let product = match &g.source {
+            Source::Xbox { product, .. } => product.clone(),
+            _ => String::new(),
+        };
+        let details = LocalResource::new(move || {
+            let (name, product) = (name.clone(), product.clone());
+            async move { api::store_page(&name, &product).await }
+        });
+        return view! { <StoreOverview details links=None play_card note_card tab /> }.into_any();
     }
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
@@ -665,12 +689,18 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
 pub struct GameAchievementsData(pub Option<LocalResource<Result<cerberus_shared::GameAchievements, String>>>);
 
 #[component]
-fn SteamOverview(app: u32, play_card: Option<AnyView>, note_card: Option<AnyView>, tab: RwSignal<Tab>) -> impl IntoView {
-    let details = LocalResource::new(move || async move { api::steam_details(app).await });
+fn StoreOverview(
+    details: LocalResource<Result<cerberus_shared::StoreDetails, String>>,
+    /// The Steam app whose links (store, community) the rail offers: only for Steam games.
+    links: Option<u32>,
+    play_card: Option<AnyView>,
+    note_card: Option<AnyView>,
+    tab: RwSignal<Tab>,
+) -> impl IntoView {
     let on_all = Callback::new(move |_| tab.set(Tab::Achievements));
     let store = move || match details.get() {
         None => view! { <crate::game_overview::StoreSkeleton /> }.into_any(),
-        Some(Err(e)) => view! { <p class="muted small">{e}</p> }.into_any(),
+        Some(Err(e)) => (!e.is_empty()).then(|| view! { <p class="muted small">{e}</p> }).into_any(),
         Some(Ok(d)) => view! {
             <crate::game_overview::Gallery details=d.clone() />
             <crate::game_overview::About details=d />
@@ -685,12 +715,12 @@ fn SteamOverview(app: u32, play_card: Option<AnyView>, note_card: Option<AnyView
                 <crate::game_overview::Controller details=d.clone() />
                 <crate::game_overview::Requirements details=d.clone() />
                 <crate::game_overview::Languages details=d />
-                <crate::game_overview::Links app has_site=site />
+                {links.map(|app| view! { <crate::game_overview::Links app has_site=site /> })}
             }
             .into_any()
         }
         None => view! { <div class="sk sk-card"></div> }.into_any(),
-        Some(Err(_)) => view! { <crate::game_overview::Links app has_site=false /> }.into_any(),
+        Some(Err(_)) => links.map(|app| view! { <crate::game_overview::Links app has_site=false /> }).into_any(),
     };
     view! {
         <div class="ov">

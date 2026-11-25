@@ -6,6 +6,7 @@ mod emulator_saves;
 mod epic;
 mod epic_account;
 mod xbox_account;
+mod ms_store;
 mod xbox;
 mod gamepass;
 mod disk;
@@ -1205,6 +1206,27 @@ async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id:
     steam_details::details(&http, &data, app_id).await
 }
 
+/// The store page of a game sold elsewhere (Epic, Xbox): the same game on the
+/// Steam store when it's sold there (the fullest page), otherwise its Microsoft
+/// Store page (by the Xbox product, or found by name).
+#[tauri::command]
+async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: String, product: Option<String>) -> Result<Option<cerberus_shared::StoreDetails>, String> {
+    let data = app.state::<DataDir>().0.clone();
+    if let Some(steam) = steam_store::app_for(&http, &data, &name).await {
+        if let Ok(page) = steam_details::details(&http, &data, steam).await {
+            return Ok(Some(page));
+        }
+    }
+    let product = match product.filter(|p| !p.is_empty()) {
+        Some(p) => Some(p),
+        None => ms_store::find(&http, &data, &name).await,
+    };
+    Ok(match product {
+        Some(p) => ms_store::details(&http, &data, &p).await,
+        None => None,
+    })
+}
+
 /// What the developers of these Steam games (app id, name) posted lately.
 #[tauri::command]
 async fn steam_news(app: AppHandle, http: State<'_, reqwest::Client>, games: Vec<(u32, String)>) -> Result<Vec<cerberus_shared::NewsItem>, String> {
@@ -1590,6 +1612,7 @@ async fn list_games(
     xbox_library(&app, &http, &mut games);
     xbox_art(&app, &http, &mut games);
     owned_not_installed(&app, &http, &mut games);
+    gamepass::drop_owned_elsewhere(&mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
@@ -3516,6 +3539,7 @@ fn main() {
             set_language,
             achievements_hub,
             steam_details,
+            store_page,
             steam_news,
             standalone_status,
             install_standalone,

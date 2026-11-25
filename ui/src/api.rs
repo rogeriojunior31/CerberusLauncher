@@ -730,6 +730,27 @@ pub async fn open_store_link(app_id: u32, kind: &str) -> Result<(), String> {
 }
 
 /// A Steam game's store page: description, pictures, trailers, requirements, languages.
+/// An Epic or Xbox game's store page (Steam's when sold there, else the Microsoft Store's).
+pub async fn store_page(name: &str, product: &str) -> Result<cerberus_shared::StoreDetails, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        name: &'a str,
+        product: &'a str,
+    }
+    call::<_, Option<cerberus_shared::StoreDetails>>("store_page", &Arg { name, product }).await?.ok_or_default()
+}
+
+trait OkOrDefault<T> {
+    fn ok_or_default(self) -> Result<T, String>;
+}
+
+impl<T> OkOrDefault<T> for Option<T> {
+    /// No page: an empty error (the page shows nothing in its place).
+    fn ok_or_default(self) -> Result<T, String> {
+        self.ok_or_else(String::new)
+    }
+}
+
 pub async fn steam_details(app_id: u32) -> Result<cerberus_shared::StoreDetails, String> {
     #[derive(serde::Serialize)]
     #[serde(rename_all = "camelCase")]

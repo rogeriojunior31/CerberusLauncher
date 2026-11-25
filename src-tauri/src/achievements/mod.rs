@@ -362,6 +362,12 @@ async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
     // Minutes played too: a hundred titles per question.
     let titles: Vec<String> = last_played.iter().map(|(_, title, _)| title.clone()).collect();
     let minutes = xbox::minutes(http, &session, &titles).await;
+    // The library knows a game by its package; achievements are by title.
+    for (pfn, title, _) in &last_played {
+        if let Ok(title) = title.parse::<u64>() {
+            db.set_stamp(scope, &format!("pfn:{}", pfn.to_lowercase()), title);
+        }
+    }
     db.keep_played(
         scope,
         &last_played.into_iter().map(|(pfn, title, last)| (pfn.to_lowercase(), minutes.get(&title).copied().unwrap_or(0) * 60, last)).collect::<Vec<_>>(),
@@ -794,6 +800,12 @@ pub async fn game(
             };
             let scope = Scope::new(AchievementSource::Xbox, &user);
             let mut db = Store::open(data_dir)?;
+            // From the library: "pfn:<package family>".
+            let title = match key.strip_prefix("pfn:") {
+                Some(pfn) => db.stamp(&scope, &format!("pfn:{}", pfn.to_lowercase())).map(|t| t.to_string()).ok_or(tr!("Esse jogo não está nas conquistas do Xbox."))?,
+                None => key.to_string(),
+            };
+            let key = title.as_str();
             let game = db.game(&scope, key).ok_or(tr!("Esse jogo não está nas conquistas do Xbox."))?;
             let played = game.last_played.unwrap_or(0);
             let list = match db.list(&scope, key) {
