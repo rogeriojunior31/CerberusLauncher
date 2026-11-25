@@ -29,7 +29,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 8444
+    "stars": 8450
   },
   {
     "id": "s2arm",
@@ -61,7 +61,7 @@
       }
     },
     "size_text": "225 MB",
-    "stars": 3898
+    "stars": 3927
   },
   {
     "id": "xbox2windows",
@@ -93,7 +93,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 1892
+    "stars": 1949
   },
   {
     "id": "ps3recomp",
@@ -131,7 +131,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 742
+    "stars": 744
   },
   {
     "id": "gb-recompiled",
@@ -169,7 +169,45 @@
       }
     },
     "size_text": "3 MB",
-    "stars": 465
+    "stars": 467
+  },
+  {
+    "id": "fefw-recomp",
+    "title": "fefw-recomp",
+    "name": "fefw recomp",
+    "repo": "metrist38/fefw-recomp",
+    "about": "Native Windows PC port of Fire Emblem: Fortune's Weave by static recompilation. Bring your own dump; no game files included.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.3.0",
+    "released": "2026-11-25",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "fefw-recomp-*-win64.zip",
+      "linux": "fefw-recomp-*-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "fefw-recomp-0.3.0-win64.zip",
+        "sha256": "1d51d5bd8bb64c27480c4795f09a4f27f37aeb7785e7e066cd41d10f9336a722"
+      },
+      "linux": {
+        "name": "fefw-recomp-0.3.0-linux-x64.tar.gz",
+        "sha256": "79034aad205b58f7518ee7525daeabd702a330ca464f180a0bbaca0d9088edfb"
+      }
+    },
+    "size_text": "158 MB",
+    "stars": 434
   },
   {
     "id": "recompstore",
@@ -201,45 +239,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 418
-  },
-  {
-    "id": "fefw-recomp",
-    "title": "fefw-recomp",
-    "name": "fefw recomp",
-    "repo": "metrist38/fefw-recomp",
-    "about": "Native Windows PC port of Fire Emblem: Fortune's Weave by static recompilation. Bring your own dump; no game files included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.2.13",
-    "released": "2026-11-23",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "fefw-recomp-*-win64.zip",
-      "linux": "fefw-recomp-*-linux-x64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "fefw-recomp-0.2.13-win64.zip",
-        "sha256": "7bd71857afa61eafc3e2b9f833c69b6aca1ebb27be8c17758646bb75f04cc328"
-      },
-      "linux": {
-        "name": "fefw-recomp-0.2.13-linux-x64.tar.gz",
-        "sha256": "d8e2c177f33f1898756b7781741087b361026f7c38d63f2190a76afa0fd438fd"
-      }
-    },
-    "size_text": "158 MB",
-    "stars": 418
+    "stars": 417
   },
   {
     "id": "nfsu2recomp",
@@ -271,7 +271,45 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 301
+    "stars": 302
+  },
+  {
+    "id": "mk8-online",
+    "title": "mk8-online",
+    "name": "MK8 online",
+    "repo": "Vnnc1/MK8-online",
+    "about": "Experimental static recompilation of Mario Kart 8 Deluxe 4.0.1 for Windows x64 and Linux amd64. Native Vulkan runtime, Mii creator, online play via Nextendo and Steam rooms. Bring your own game files and keys: no ROMs, assets or keys included.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.6.3",
+    "released": "2026-11-23",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "MK8-online-*-portable.zip",
+      "linux": "MK8-online-*-linux-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "MK8-online-0.6.3-portable.zip",
+        "sha256": "04e0a6bd887c092977cd8ee7570b0dd6b72aaa36c42be47a134eb3e727bf40ba"
+      },
+      "linux": {
+        "name": "MK8-online-0.6.3-linux-x86_64.AppImage",
+        "sha256": "b05865c21927700df0bc153dc1652d032203240de30ddb1c4cbbc6ff743d3059"
+      }
+    },
+    "size_text": "50 MB",
+    "stars": 289
   },
   {
     "id": "switchwakerhd",
@@ -315,45 +353,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 281
-  },
-  {
-    "id": "mk8-online",
-    "title": "mk8-online",
-    "name": "MK8 online",
-    "repo": "Vnnc1/MK8-online",
-    "about": "Experimental static recompilation of Mario Kart 8 Deluxe 4.0.1 for Windows x64 and Linux amd64. Native Vulkan runtime, Mii creator, online play via Nextendo and Steam rooms. Bring your own game files and keys: no ROMs, assets or keys included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.6.3",
-    "released": "2026-11-23",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "MK8-online-*-portable.zip",
-      "linux": "MK8-online-*-linux-x86_64.AppImage"
-    },
-    "files": {
-      "windows": {
-        "name": "MK8-online-0.6.3-portable.zip",
-        "sha256": "04e0a6bd887c092977cd8ee7570b0dd6b72aaa36c42be47a134eb3e727bf40ba"
-      },
-      "linux": {
-        "name": "MK8-online-0.6.3-linux-x86_64.AppImage",
-        "sha256": "b05865c21927700df0bc153dc1652d032203240de30ddb1c4cbbc6ff743d3059"
-      }
-    },
-    "size_text": "50 MB",
-    "stars": 279
+    "stars": 283
   },
   {
     "id": "bo2-mac",
@@ -385,7 +385,7 @@
       }
     },
     "size_text": "107 MB",
-    "stars": 279
+    "stars": 280
   },
   {
     "id": "ps2-native-recomp",
@@ -417,7 +417,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 236
+    "stars": 239
   },
   {
     "id": "decomp-buddy",
@@ -461,7 +461,7 @@
       }
     },
     "size_text": "119 MB",
-    "stars": 193
+    "stars": 196
   },
   {
     "id": "super-mario-3d-land-recompiled",
@@ -478,28 +478,86 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.1.4",
-    "released": "2026-11-24",
+    "tag": "v1.1.7",
+    "released": "2026-11-25",
     "systems": [
-      "windows",
       "linux"
     ],
     "assets": {
-      "windows": "SM3DL.4K.1.2.0b.1080p.zip",
       "linux": "Super-Mario-3D-Land-Linux-x64-*.tar.gz"
     },
     "files": {
-      "windows": {
-        "name": "SM3DL.4K.1.2.0b.1080p.zip",
-        "sha256": "3e395856dcc9df28406002ecec2a5112294087ae003a7494fa82c6109c03e631"
-      },
       "linux": {
-        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.4.tar.gz",
-        "sha256": "61b3ce0d72665540abe1ab318959959a5a5cdde7de44b24ba56d85d8c4c51a39"
+        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.7.tar.gz",
+        "sha256": "84a7b55d68afd1f593a7d51563370e5a82bf7c741b2734987a7f0882b7cc0e2d"
       }
     },
-    "size_text": "103 MB",
-    "stars": 140
+    "size_text": "1 MB",
+    "stars": 153
+  },
+  {
+    "id": "gow-pc-port-classic-recompiled",
+    "title": "gow-pc-port-classic-recompiled",
+    "name": "gow pc port classic recompiled",
+    "repo": "martina1713/gow-pc-port-classic-recompiled",
+    "about": "God of War Classic Greek Saga PC Port & Static Recompilation v3.7.9: Native Windows 10/11 (x64) studio environment with pre-configured.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v3.7.9",
+    "released": "2026-11-25",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "gow-pc-port-classic-recompiled-*-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "gow-pc-port-classic-recompiled-v3.7.9-win64.zip",
+        "sha256": "6ce9acc3f7fc522d31b02123db348447407769a5ca40a81524ab8ef1083103b1"
+      }
+    },
+    "size_text": "5 MB",
+    "stars": 151
+  },
+  {
+    "id": "gow-pc-port-classic-recompiled",
+    "title": "gow-pc-port-classic-recompiled",
+    "name": "gow pc port classic recompiled",
+    "repo": "mywilliam211/gow-pc-port-classic-recompiled",
+    "about": "God of War Classic Greek Saga PC Port & Static Recompilation (v4.1.3) — Portable 64-bit Windows workstation build with CUDA/DirectML.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v4.1.3",
+    "released": "2026-11-25",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "gow-pc-port-classic-recompiled-*-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "gow-pc-port-classic-recompiled-v4.1.3-win64.zip",
+        "sha256": "72c2cdb053bcb9f3527b10d86a313e811d77a24c8ded865d5b1aeb0dc5050413"
+      }
+    },
+    "size_text": "5 MB",
+    "stars": 103
   },
   {
     "id": "gta-stories-recompiled",
@@ -531,7 +589,7 @@
       }
     },
     "size_text": "97 MB",
-    "stars": 80
+    "stars": 82
   },
   {
     "id": "opentm2",
@@ -548,8 +606,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.0.15",
-    "released": "2026-11-24",
+    "tag": "v1.0.16",
+    "released": "2026-11-25",
     "systems": [
       "windows"
     ],
@@ -558,12 +616,82 @@
     },
     "files": {
       "windows": {
-        "name": "OpenTM2-v1.0.15-Windows-x64.zip",
-        "sha256": "4e3f6edb97186e66c4c12f2ab5606ea3e6b64b8275ff8b9cc70fbba5ef546b56"
+        "name": "OpenTM2-v1.0.16-Windows-x64.zip",
+        "sha256": "ba15531f3678f0e8948605b6b3ec3dea01ddd5f8eaa12c3456df0c2eed0e787b"
       }
     },
     "size_text": "18 MB",
-    "stars": 51
+    "stars": 55
+  },
+  {
+    "id": "yakuza-kenzan-recomp",
+    "title": "yakuza-kenzan-recomp",
+    "name": "Yakuza Kenzan Recomp",
+    "repo": "IvanBarbosaFilho/Yakuza-Kenzan-Recomp",
+    "about": "Unofficial native PC port of Ryu ga Gotoku Kenzan! (PS3, BLJM60064) for Linux and Windows. Statically recompiled with ps3recomp and rendered with Vulkan, with the English fan translation, 30/60/120 FPS options and a launcher that installs from your own copy of the game. No game files included.",
+    "license": "",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "V1.0.0",
+    "released": "2026-11-24",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "Kenzan-Windows.zip",
+      "linux": "Kenzan-x86_64.AppImage"
+    },
+    "files": {
+      "windows": {
+        "name": "Kenzan-Windows.zip",
+        "sha256": "79e238e9b06ec8c14826e22de178abd79369bcfab94783b3b86e270c72272958"
+      },
+      "linux": {
+        "name": "Kenzan-x86_64.AppImage",
+        "sha256": "7e606ae5f249d0da38a6955c53a3e09cd2a470e039a034a110abce658cca1612"
+      }
+    },
+    "size_text": "344 MB",
+    "stars": 44
+  },
+  {
+    "id": "thpsource2",
+    "title": "thpsource2",
+    "name": "THPSource2",
+    "repo": "afcurtis/THPSource2",
+    "about": "Tony Hawk's Pro Skater 2 [PC|2000], fully decompiled and rebuilt as a native 64-bit game with quality-of-life fixes and major upgrades. Bring your own copy; no game files included.",
+    "license": "MIT",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.7.1",
+    "released": "2026-11-24",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "thpsource2-win64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "thpsource2-win64.zip",
+        "sha256": "af185029ad85a31a44fb499bc5dfd44844466d41cb1bcd6494776f60063760a8"
+      }
+    },
+    "size_text": "8 MB",
+    "stars": 39
   },
   {
     "id": "midtown-madness-3-recomp",
@@ -598,38 +726,6 @@
     "stars": 33
   },
   {
-    "id": "thpsource2",
-    "title": "thpsource2",
-    "name": "THPSource2",
-    "repo": "afcurtis/THPSource2",
-    "about": "Tony Hawk's Pro Skater 2 [PC|2000], fully decompiled and rebuilt as a native 64-bit game with quality-of-life fixes and major upgrades. Bring your own copy; no game files included.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.7",
-    "released": "2026-11-23",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "thpsource2-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "thpsource2-win64.zip",
-        "sha256": "fb84bd181c9635e0843ac21d4393768e936990ed493a9241a2fbafa9ea9b4a01"
-      }
-    },
-    "size_text": "8 MB",
-    "stars": 30
-  },
-  {
     "id": "akilauncher",
     "title": "akilauncher",
     "name": "AkiLauncher",
@@ -659,6 +755,6 @@
       }
     },
     "size_text": "12 MB",
-    "stars": 27
+    "stars": 28
   }
 ]
