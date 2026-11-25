@@ -1086,6 +1086,7 @@
   "Não foi possível resolver o link do PixelDrain.": "Couldn't resolve the PixelDrain link.",
   "Não foi possível restaurar {}: {}": "Couldn't restore {}: {}",
   "Não foi possível salvar a foto: {}": "Couldn't save the screenshot: {}",
+  "Não foi possível terminar de reinstalar o {}: {}. Seus arquivos estão guardados e o Cerberus termina na próxima vez.": "Couldn't finish reinstalling {}: {}. Your files are kept and Cerberus finishes next time.",
   "Não foi possível tirar a foto": "Couldn't take the screenshot",
   "Não foi possível trocar o arquivo: {}": "Couldn't swap the file: {}",
   "Não foi possível usar {0}: {1}": "Couldn't use {0}: {1}",

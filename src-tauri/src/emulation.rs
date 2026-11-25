@@ -643,50 +643,65 @@ pub fn kept_names(base: &Path, keep: &[&str]) -> Vec<String> {
     names
 }
 
+fn old_copy_of(target: &Path) -> PathBuf {
+    target.with_file_name(format!(".{}-old", target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))
+}
+
+/// Moves the player's files from `from_base` into `to_base`, replacing what the new copy brought.
+fn move_kept(from_base: &Path, to_base: &Path, keep: &[&str]) -> std::io::Result<()> {
+    for item in kept_names(from_base, keep) {
+        let (from, to) = (from_base.join(&item), to_base.join(&item));
+        if to.is_dir() {
+            fs::remove_dir_all(&to)?;
+        } else if to.exists() {
+            fs::remove_file(&to)?;
+        }
+        fs::rename(&from, &to)?;
+    }
+    Ok(())
+}
+
+/// Finishes a swap that was interrupted (app closed, power cut): the old copy
+/// set aside is never deleted while it may still hold the player's files.
+/// - No program at `target`: the old copy goes back whole.
+/// - The new copy in place: the player's files still in the old one move over.
+pub fn recover_swap(target: &Path, keep: &[&str], base: &dyn Fn(&Path) -> PathBuf) -> Result<(), String> {
+    let old = old_copy_of(target);
+    if !old.exists() {
+        return Ok(());
+    }
+    if !target.exists() {
+        return fs::rename(&old, target).map_err(|e| e.to_string());
+    }
+    move_kept(&base(&old), &base(target), keep).map_err(|e| e.to_string())?;
+    fs::remove_dir_all(&old).map_err(|e| e.to_string())
+}
+
 /// Puts a new copy of a program (`fresh`) in place of the one at `target`,
-/// moving the player's files (`keep`, found in `base` of each copy: the folder
-/// with the program) over. The old copy is set aside first, in one rename, so a
-/// program that is open stops this before anything changes; any later failure
-/// puts the old copy back whole.
+/// keeping the player's files (`keep`, found in `base` of each copy: the folder
+/// with the program). The player's files never pass through `fresh` (a temporary
+/// folder, wiped on the next try): the old copy is set aside in one rename (a
+/// program that is open stops it there), the new one takes its place, and only
+/// then do the player's files move across. An interruption at any point is
+/// finished by `recover_swap` on the next install, with nothing lost.
 pub fn swap_keeping(target: &Path, fresh: &Path, keep: &[&str], base: &dyn Fn(&Path) -> PathBuf, name: &str) -> Result<(), String> {
+    recover_swap(target, keep, base).map_err(|e| tr!("Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.", name, e))?;
     if !target.exists() {
         return fs::rename(fresh, target).map_err(|e| tr!("Não foi possível instalar o {}: {}", name, e));
     }
-    let old = target.with_file_name(format!(".{}-old", target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
-    let _ = fs::remove_dir_all(&old);
+    let old = old_copy_of(target);
     fs::rename(target, &old).map_err(|_| tr!("Feche o {} antes de reinstalar: ele está aberto ou com arquivos em uso.", name))?;
-    let (old_base, fresh_base) = (base(&old), base(fresh));
-    let names = kept_names(&old_base, keep);
-    let moved = (|| -> std::io::Result<()> {
-        for item in &names {
-            let (from, to) = (old_base.join(item), fresh_base.join(item));
-            if to.is_dir() {
-                fs::remove_dir_all(&to)?;
-            } else if to.exists() {
-                fs::remove_file(&to)?;
-            }
-            fs::rename(&from, &to)?;
-        }
-        fs::rename(fresh, target)
-    })();
-    match moved {
+    if let Err(e) = fs::rename(fresh, target) {
+        let _ = fs::rename(&old, target);
+        return Err(tr!("Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.", name, e));
+    }
+    match move_kept(&base(&old), &base(target), keep) {
         Ok(()) => {
             let _ = fs::remove_dir_all(&old);
             Ok(())
         }
-        Err(e) => {
-            // Whatever moved goes back, then the old copy returns whole.
-            for item in &names {
-                let (from, to) = (fresh_base.join(item), old_base.join(item));
-                if from.exists() && !to.exists() {
-                    let _ = fs::rename(&from, &to);
-                }
-            }
-            if !target.exists() || fs::remove_dir_all(target).is_ok() {
-                let _ = fs::rename(&old, target);
-            }
-            Err(tr!("Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.", name, e))
-        }
+        // Whatever didn't move is still in the old copy, which stays: the next try finishes it.
+        Err(e) => Err(tr!("Não foi possível terminar de reinstalar o {}: {}. Seus arquivos estão guardados e o Cerberus termina na próxima vez.", name, e)),
     }
 }
 
@@ -729,6 +744,37 @@ mod reinstall_tests {
         assert!(swap_keeping(&target, &missing, &["memcards"], &|d: &Path| d.to_path_buf(), "Emu").is_err());
         assert_eq!(fs::read(target.join("memcards/card1.mcd")).unwrap(), b"mine");
         assert_eq!(fs::read(target.join("emu.exe")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn an_interrupted_reinstall_loses_nothing_and_is_finished_next_time() {
+        let id = |d: &Path| d.to_path_buf();
+        // 1. Stopped right after setting the old copy aside: it comes back whole.
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("emu");
+        let old = root.path().join(".emu-old");
+        fs::create_dir_all(old.join("memcards")).unwrap();
+        fs::write(old.join("memcards/card.mcd"), b"mine").unwrap();
+        recover_swap(&target, &["memcards"], &id).unwrap();
+        assert_eq!(fs::read(target.join("memcards/card.mcd")).unwrap(), b"mine");
+        assert!(!old.exists());
+
+        // 2. Stopped after the new copy took its place, before the files moved:
+        //    a new reinstall (with yet another fresh copy) finishes the move first.
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("emu");
+        let old = root.path().join(".emu-old");
+        fs::create_dir_all(old.join("memcards")).unwrap();
+        fs::write(old.join("memcards/card.mcd"), b"mine").unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("emu.exe"), b"new").unwrap();
+        let fresh = root.path().join("fresher");
+        fs::create_dir_all(&fresh).unwrap();
+        fs::write(fresh.join("emu.exe"), b"newer").unwrap();
+        swap_keeping(&target, &fresh, &["memcards"], &id, "Emu").unwrap();
+        assert_eq!(fs::read(target.join("memcards/card.mcd")).unwrap(), b"mine");
+        assert_eq!(fs::read(target.join("emu.exe")).unwrap(), b"newer");
+        assert!(!old.exists());
     }
 
     #[test]
