@@ -328,7 +328,23 @@ fn file_name(rom: &RomView) -> String {
 pub fn display_name(rom: &RomView) -> String {
     let name = file_name(rom);
     let cut = name.find(" (").unwrap_or(name.len());
-    name[..cut].trim().to_string()
+    title_of(name[..cut].trim())
+}
+
+/// A ROM set's name as the game is titled: file names can't hold ":", so sets
+/// write " - " ("Dragon Ball Z - Budokai Tenkaichi 3"), and an article goes to
+/// the end ("Legend of Zelda, The").
+fn title_of(name: &str) -> String {
+    let mut parts = name.splitn(2, " - ");
+    let head = parts.next().unwrap_or_default();
+    let head = match head.strip_suffix(", The") {
+        Some(rest) => format!("The {rest}"),
+        None => head.to_string(),
+    };
+    match parts.next() {
+        Some(rest) => format!("{head}: {rest}"),
+        None => head,
+    }
 }
 
 pub fn box_art(rom: &RomView, console: &str) -> Vec<String> {
@@ -404,6 +420,8 @@ mod tests {
         assert_eq!(console_of(&rom("D:\\ROMS\\Xbox 360\\FIFA Street.iso", "")), "x360");
         assert_eq!(console_of(&rom("D:\\ROMS\\Playstation\\Crash\\Crash Bandicoot (USA).cue", "")), "ps1");
         assert_eq!(display_name(&rom("D:/x/Monster Hunter Generations (USA).3ds", "3ds")), "Monster Hunter Generations");
+        assert_eq!(display_name(&rom("D:/x/Dragon Ball Z - Budokai Tenkaichi 3 (USA).iso", "ps2")), "Dragon Ball Z: Budokai Tenkaichi 3");
+        assert_eq!(display_name(&rom("D:/x/Legend of Zelda, The - Ocarina of Time (USA).z64", "n64")), "The Legend of Zelda: Ocarina of Time");
     }
 }
 

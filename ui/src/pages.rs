@@ -58,9 +58,9 @@ pub fn DownloadsPage() -> impl IntoView {
         let rid = id.strip_prefix("recomp:").unwrap_or(id);
         // The game's name first, as everywhere else; the recomp's follows it.
         entry_of(rid)
-            .map(|e| match crate::tiles::entry_names(&e) { (game, Some(recomp)) => format!("{game} · {recomp}"), (game, None) => game })
-            .or_else(|| library.games.with_untracked(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| x.name.clone()))))
-            .unwrap_or_else(|| rid.to_string())
+            .map(|e| crate::tiles::entry_names(&e))
+            .or_else(|| library.games.with_untracked(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| (x.name.clone(), None)))))
+            .unwrap_or_else(|| (rid.to_string(), None))
     };
 
     // Installing now: the first one big, with speed and time left; the rest quiet.
@@ -251,7 +251,7 @@ pub fn DownloadsPage() -> impl IntoView {
             let rows = all
                 .into_iter()
                 .map(|(id, why)| {
-                    let name = name_of(&id);
+                    let name = name_of(&id).0;
                     let (again, dismiss) = (id.clone(), id.clone());
                     view! {
                         <div class="dl-row card dl-failed">
@@ -299,7 +299,7 @@ pub fn DownloadsPage() -> impl IntoView {
                         view! {
                             <button type="button" class="dl-hist" class:bad=!e.ok on:click=move |_| library.go(page.clone())>
                                 <Svg icon=if e.ok { Icon::Check } else { Icon::Info } size=16 />
-                                <b>{name_of(&e.game_id)}</b>
+                                {let (game, recomp) = name_of(&e.game_id); view! { <b>{game}{recomp.map(|v| view! { <small class="sv-ver">{v}</small> })}</b> }}
                                 <span>{cerberus_shared::i18n::translate(&e.message)}</span>
                                 <small>{time}</small>
                             </button>

@@ -1461,7 +1461,7 @@ button.emu-chip:hover:not(:disabled) { border-color: var(--accent); }
 .award.full { background: rgba(214, 222, 238, 0.2); }
 .award.hard { background: linear-gradient(135deg, #ffe08a, #ffb23f 55%, #ff8a3d); color: #2b1500; border-color: rgba(255, 224, 138, 0.9);
   box-shadow: 0 0 14px rgba(255, 186, 70, 0.5); }
-.award.hard.full { box-shadow: 0 0 18px rgba(255, 196, 80, 0.75), 0 0 2px rgba(255, 240, 200, 0.9) inset; }
+.award.hard.full { box-shadow: 0 0 0 2px rgba(255, 196, 80, 0.85), 0 0 2px rgba(255, 240, 200, 0.9) inset; }
 .award.hard::after, .ach-icon.hard::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.65) 50%, transparent 70%);
@@ -1861,7 +1861,7 @@ body:has(.tv) .toast { font-size: 1.3vw; padding: 1vw 1.4vw; border-radius: 1vw;
 .plat-n { margin-left: 10px; font-size: 14px; font-weight: 700; color: #1a1205; background: linear-gradient(135deg, #ffe08a, #f5b62a); padding: 2px 9px; border-radius: 999px; vertical-align: middle; }
 .plat-row { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: thin; }
 .plat-c { position: relative; flex: none; width: 132px; display: flex; flex-direction: column; gap: 4px; text-align: left; color: var(--ink); }
-.plat-art { display: block; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 2px #f5c542, 0 10px 26px -12px rgba(245, 197, 66, 0.7); transition: transform 0.2s var(--ease); }
+.plat-art { display: block; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 2px #f5c542, 0 12px 24px -14px rgba(0, 0, 0, 0.8); transition: transform 0.2s var(--ease); }
 .plat-art img { width: 100%; height: 100%; object-fit: cover; }
 .plat-c:hover .plat-art { transform: translateY(-4px); }
 .plat-medal { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #1a1205;
@@ -2179,3 +2179,14 @@ main.main { scrollbar-gutter: stable; }
 
 /* Conquistas: the heading above the sticky filters stays over the toolbar's background slab */
 .shelf-h:has(+ .ach-tools) { position: relative; z-index: 4; }
+
+/* An update waits beside Play, quieter than it */
+.gp-act .upd-btn { height: 38px; border-radius: 12px; gap: 7px; color: var(--muted); }
+.gp-act .upd-btn:hover { color: var(--ink); }
+.gp-act .upd-btn svg { color: var(--accent); }
+.ctx-sep { display: block; height: 1px; margin: 6px 8px; background: var(--line); }
+
+/* Store text reads at a comfortable measure */
+.about-body p, .about-body li { max-width: 72ch; }
+.looks-off { margin: 4px 2px 0; }
+.looks-off b { color: var(--muted); font-weight: 700; }

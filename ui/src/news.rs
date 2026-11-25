@@ -382,7 +382,7 @@ pub fn NewsPage() -> impl IntoView {
                     <div class="dl-row card">
                         <div class="thumb"><Poster sources=cover_sources(&u.game) title=u.game.name.clone() /></div>
                         <div class="dl-info">
-                            <b>{u.game.name.clone()}</b>
+                            {let (game, recomp) = crate::tiles::game_names(&u.game, library); view! { <b>{game}{recomp.map(|v| view! { <small class="sv-ver">{v}</small> })}</b> }}
                             <span class="muted">{format!("{} → {}", u.from, u.to)}</span>
                         </div>
                         <div class="row">

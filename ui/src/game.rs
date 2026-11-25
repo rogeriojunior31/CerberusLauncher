@@ -293,9 +293,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                 let catalog = body_entry.as_ref().is_some_and(|e| e.settings_count > 0);
                 view! {
                     <div class="settings-tab">
-                        <crate::looks::LooksCard game_id=g.id.clone() preview />
+                        // What works first: the game's own settings, its actions, then the filters.
                         {catalog.then(|| view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> })}
                         <GameActions game_id=g.id.clone() />
+                        <crate::looks::LooksCard game_id=g.id.clone() preview />
                     </div>
                 }
                 .into_any()
@@ -367,8 +368,9 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             });
             let update_button = update.zip(recomp_id.clone()).map(|(version, rid)| {
                 view! {
-                    <button type="button" class="btn big" on:click=move |_| start_install(library, rid.clone())>
-                        {tr!("Atualizar para {}", version)}
+                    // Secondary to Play: a small note after it, not a second big button before it.
+                    <button type="button" class="btn sm glass upd-btn" title=tr!("Baixa a versão nova; saves, configurações e mods ficam") on:click=move |_| start_install(library, rid.clone())>
+                        <Svg icon=Icon::Download size=15 />{tr!("Atualizar para {}", version)}
                     </button>
                 }
             });
@@ -393,7 +395,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             // With the player's own copy, two named ways to play side by side. The one
             // used last leads; the other stays one click away.
             let Some((copy, console)) = original else {
-                return view! { {update_button}{play} }.into_any();
+                return view! { {play}{update_button} }.into_any();
             };
             let players = library.players.get_untracked().unwrap_or_default();
             let emulator = crate::classics::ready_player(&players, &console);
@@ -417,9 +419,9 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             };
             let native = play;
             return if original_first {
-                view! { {update_button}<div class="ways">{original_button}{native}</div> }.into_any()
+                view! { <div class="ways">{original_button}{native}</div>{update_button} }.into_any()
             } else {
-                view! { {update_button}<div class="ways">{native}{original_button}</div> }.into_any()
+                view! { <div class="ways">{native}{original_button}</div>{update_button} }.into_any()
             };
         }
         let Some(entry) = entry.clone() else {

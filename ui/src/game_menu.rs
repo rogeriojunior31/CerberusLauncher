@@ -206,10 +206,13 @@ pub fn GameMenuLayer() -> impl IntoView {
                         <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
                     </button>
                 })}
-                <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
-                    <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
-                    {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}
-                </button>
+                // On the game's page the heart sits beside this menu: not twice.
+                {(!on_page).then(|| view! {
+                    <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
+                        <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
+                        {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}
+                    </button>
+                })}
                 <button type="button" role="menuitem" on:click=move |_| {
                     menu.close();
                     let id = hide_id.clone();
@@ -223,6 +226,8 @@ pub fn GameMenuLayer() -> impl IntoView {
                     <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
                 </button>
                 <Shelves id=shelf_id in_shelves />
+                // The game's files: a group of their own, not under Coleções.
+                {has_folder.then(|| view! { <span class="ctx-sep" role="separator"></span> })}
                 {has_folder.then(|| {
                     let id = game.id.clone();
                     view! {

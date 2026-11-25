@@ -59,10 +59,8 @@ pub fn LooksCard(game_id: String, preview: Option<String>) -> impl IntoView {
         };
         if let Some(why) = s.unsupported.clone() {
             return view! {
-                <section class="card looks">
-                    <h3>{tr!("Filtros visuais")}</h3>
-                    <p class="muted small">{why}</p>
-                </section>
+                // Not for this game: one quiet line at the end, not a card that leads the tab.
+                <p class="muted small looks-off"><b>{tr!("Filtros visuais")}</b>{" · "}{why}</p>
             }
             .into_any();
         }
