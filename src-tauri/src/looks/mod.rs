@@ -270,8 +270,20 @@ pub fn take_back(data: &Path, game_id: &str) {
     let Ok(text) = fs::read_to_string(&note) else { return };
     let Some(path) = text.lines().next().map(PathBuf::from) else { return };
     if placed_by_us(&note, &path) {
-        // Still loaded by a game that hasn't quite closed: the next look start or app start retries.
-        if fs::remove_file(&path).is_err() {
+        // A game closing lets go of it a moment later: a few tries over some
+        // seconds; still held, the next start (with or without a filter) or
+        // the next app start tries again.
+        let mut removed = false;
+        for attempt in 0..10 {
+            if fs::remove_file(&path).is_ok() || !path.exists() {
+                removed = true;
+                break;
+            }
+            if attempt < 9 {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+        }
+        if !removed {
             return;
         }
     }
@@ -296,6 +308,31 @@ pub fn take_back_all(data: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn a_filter_held_for_a_moment_is_still_taken_back() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let data = tempfile::tempdir().unwrap();
+        let game = tempfile::tempdir().unwrap();
+        let dll = game.path().join(PROXY);
+        fs::write(&dll, b"reshade").unwrap();
+        let note = note_file(data.path(), "g");
+        fs::create_dir_all(note.parent().unwrap()).unwrap();
+        fs::write(&note, format!("{}
+{}
+", dll.display(), sha256(b"reshade"))).unwrap();
+        // A game still closing: readable, not deletable, for 600 ms.
+        let held = fs::OpenOptions::new().read(true).share_mode(1).open(&dll).unwrap();
+        let letting_go = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            drop(held);
+        });
+        take_back(data.path(), "g");
+        letting_go.join().unwrap();
+        assert!(!dll.exists(), "taken back once the game let go");
+        assert!(!note.exists());
+    }
 
     /// A tiny 64-bit program that names Direct3D 11.
     fn program(dir: &Path, names: &[u8]) -> PathBuf {

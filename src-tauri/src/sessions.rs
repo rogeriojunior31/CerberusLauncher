@@ -207,9 +207,18 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         }
         _ => game.look.as_ref(),
     };
+    // The filter goes beside the program that draws the picture, the same one
+    // the Ajustes tab checked (the watched one, when a launcher starts the game).
+    let drawing = game.tracking_exe.as_deref().map(Path::new).unwrap_or(exe);
+    if look.is_none() {
+        // A filter left from a game that hadn't quite closed last time goes now.
+        if let Ok(data) = app.path().app_data_dir() {
+            crate::looks::take_back(&data, &game.id);
+        }
+    }
     if let Some(look) = look {
         let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        match crate::looks::prepare(&data, &game.id, exe, look, recomp::look_lines(game)) {
+        match crate::looks::prepare(&data, &game.id, drawing, look, recomp::look_lines(game)) {
             Ok(prepared) => {
                 command.envs(prepared.env);
             }
