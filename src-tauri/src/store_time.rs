@@ -77,6 +77,25 @@ fn folder_key(path: &str) -> String {
     key
 }
 
+/// The programs that can say a store game is being played: not a crash
+/// reporter or updater left behind, and not one inside a folder Cerberus's own
+/// session already follows (a store game also added by hand, opened from it).
+fn counted(programs: &[String], tracked: &[String]) -> Vec<String> {
+    let tracked: Vec<String> = tracked.iter().map(|d| folder_key(d)).collect();
+    programs
+        .iter()
+        .filter(|p| {
+            let name = p.rsplit(['\\', '/']).next().unwrap_or(p);
+            !crate::sessions::is_helper_program(&name.to_lowercase())
+        })
+        .filter(|p| {
+            let p = p.replace('/', "\\").to_lowercase();
+            !tracked.iter().any(|t| p.starts_with(t))
+        })
+        .cloned()
+        .collect()
+}
+
 /// The games (by id) that have a running program inside their folder.
 fn running(programs: &[String], games: &[(String, String)]) -> HashSet<String> {
     let programs: Vec<String> = programs.iter().map(|p| p.replace('/', "\\").to_lowercase()).collect();
@@ -99,12 +118,19 @@ pub fn running_programs() -> Vec<String> {
     use windows_sys::Win32::System::ProcessStatus::EnumProcesses;
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
 
+    // Asked again with room to spare when the list came back full.
     let mut pids = vec![0u32; 4096];
-    let mut used = 0u32;
-    if unsafe { EnumProcesses(pids.as_mut_ptr(), (pids.len() * 4) as u32, &mut used) } == 0 {
-        return Vec::new();
+    loop {
+        let mut used = 0u32;
+        if unsafe { EnumProcesses(pids.as_mut_ptr(), (pids.len() * 4) as u32, &mut used) } == 0 {
+            return Vec::new();
+        }
+        if (used as usize) < pids.len() * 4 || pids.len() >= 1 << 16 {
+            pids.truncate(used as usize / 4);
+            break;
+        }
+        pids = vec![0u32; pids.len() * 2];
     }
-    pids.truncate(used as usize / 4);
     let mut found = Vec::new();
     let mut buffer = vec![0u16; 32768];
     for pid in pids.into_iter().filter(|&p| p != 0) {
@@ -153,7 +179,7 @@ pub fn watch(app: AppHandle) {
                 scanned = Instant::now();
             }
             let dirs: Vec<(String, String)> = games.iter().map(|(id, dir, _)| (id.clone(), dir.clone())).collect();
-            let now_running = if dirs.is_empty() { HashSet::new() } else { running(&running_programs(), &dirs) };
+            let now_running = if dirs.is_empty() { HashSet::new() } else { running(&counted(&running_programs(), &crate::sessions::tracked_folders(&app)), &dirs) };
             for id in &now_running {
                 if !playing.contains_key(id) {
                     playing.insert(id.clone(), Instant::now());
@@ -215,6 +241,17 @@ pub fn watch(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn helpers_and_games_cerberus_follows_dont_count_for_the_store() {
+        let games = [("steam:1".to_string(), r"D:\Steam\common\Game".to_string())];
+        let crash = vec![r"D:\Steam\common\Game\CrashReporter.exe".to_string()];
+        assert!(running(&counted(&crash, &[]), &games).is_empty(), "a crash handler left running");
+        let game = vec![r"D:\Steam\common\Game\Game.exe".to_string()];
+        assert_eq!(running(&counted(&game, &[]), &games).len(), 1);
+        // Opened from its hand-added copy: Cerberus's own session counts it.
+        assert!(running(&counted(&game, &[r"D:\Steam\common\Game".into()]), &games).is_empty());
+    }
 
     #[test]
     fn a_game_runs_when_a_program_inside_its_folder_does() {

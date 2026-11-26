@@ -119,6 +119,34 @@ impl Sessions {
     }
 }
 
+/// A crash reporter, updater or uninstaller that comes with a game but isn't it.
+pub fn is_helper_program(file_name: &str) -> bool {
+    #[cfg(windows)]
+    {
+        windows::is_helper(file_name)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = file_name;
+        false
+    }
+}
+
+/// The folders of the games Cerberus itself is following now (their own
+/// session counts them; the stores' folder watch must not count them again).
+pub fn tracked_folders(app: &AppHandle) -> Vec<String> {
+    let library = app.state::<LocalLibrary>();
+    app.state::<Sessions>()
+        .running()
+        .iter()
+        .filter_map(|id| library.get(id).ok().flatten())
+        .filter_map(|g| match &g.source {
+            Source::Recomp { exe, .. } | Source::Local { exe } => Path::new(exe).parent().map(|d| d.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect()
+}
+
 pub fn checkpoint(app: &AppHandle) {
     app.state::<Sessions>().checkpoint(&app.state::<LocalLibrary>(), Instant::now());
 }
