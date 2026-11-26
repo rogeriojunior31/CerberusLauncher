@@ -317,13 +317,26 @@ fn SideGames() -> impl IntoView {
 
 #[component]
 pub fn TitleBar() -> impl IntoView {
+    // Maximized, a frameless window fills the screen's work area exactly: the
+    // button then says what it does, "Restore".
+    let filled = || {
+        web_sys::window().and_then(|w| {
+            let screen = w.screen().ok()?;
+            let (width, height) = (w.outer_width().ok()?.as_f64()?, w.outer_height().ok()?.as_f64()?);
+            Some(width >= f64::from(screen.avail_width().ok()?) - 1.0 && height >= f64::from(screen.avail_height().ok()?) - 1.0)
+        }).unwrap_or(false)
+    };
+    let maximized = RwSignal::new(filled());
+    let resized = window_event_listener(leptos::ev::resize, move |_| maximized.set(filled()));
+    on_cleanup(move || resized.remove());
+    let size_label = move || if maximized.get() { tr!("Restaurar") } else { tr!("Maximizar") };
     view! {
         <div class="topbar" data-tauri-drag-region>
             <div class="win">
                 <button type="button" aria-label=tr!("Minimizar") on:click=|_| api::window_action("minimize")>
                     <Svg icon=Icon::Minimize size=14 />
                 </button>
-                <button type="button" aria-label=tr!("Maximizar") on:click=|_| api::window_action("toggleMaximize")>
+                <button type="button" aria-label=size_label title=size_label on:click=|_| api::window_action("toggleMaximize")>
                     <Svg icon=Icon::Maximize size=14 />
                 </button>
                 <button type="button" class="close" aria-label=tr!("Fechar") on:click=|_| api::window_action("close")>
