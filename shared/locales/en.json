@@ -71,6 +71,7 @@
   "A loja da Steam não tem a página desse jogo.": "The Steam store has no page for this game.",
   "A loja da Steam respondeu algo inesperado.": "The Steam store replied with something unexpected.",
   "A medição escolhida vale a partir da próxima abertura.": "The chosen tracking applies from the next launch.",
+  "A pasta da nuvem não respondeu em 10 segundos, então o jogo abriu com os saves deste PC. Se jogou em outro PC, confira os backups antes de jogar muito.": "The cloud folder didn't answer within 10 seconds, so the game opened with this PC's saves. If you played on another PC, check the backups before playing much.",
   "A pasta das chaves não está pronta.": "The keys folder isn't ready.",
   "A pasta de configuração desse jogo não existe neste sistema.": "This game's settings folder doesn't exist on this system.",
   "A pasta do jogo já tem um {0} (talvez um ReShade seu ou outro mod), então o filtro ficou desligado para não mexer nele.": "The game folder already has a {0} (maybe your own ReShade or another mod), so the filter stays off to leave it alone.",

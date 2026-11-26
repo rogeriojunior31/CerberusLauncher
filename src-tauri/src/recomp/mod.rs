@@ -219,6 +219,28 @@ fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reaso
 /// Before playing: when another PC left newer saves in the cloud folder, they
 /// are put in place. The safety copy of the current saves stays on this PC.
 /// Returns what happened, for a message, or `None` when nothing changed.
+/// Whether the game's cloud folder answers within `wait`: a OneDrive that is
+/// signed out or a network drive that is away can keep a folder listing
+/// hanging for minutes, and Play shouldn't wait on it. The listing that hangs
+/// does only that, in a thread of its own, and writes nothing.
+pub fn cloud_answers(folders: &Folders, recomp_id: &str, wait: std::time::Duration) -> bool {
+    let Some(cloud) = folders.cloud_dir(recomp_id) else { return true };
+    let (tell, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let answered = match fs::read_dir(&cloud) {
+            Ok(entries) => {
+                // Reading a few names is what hangs on a folder that's away.
+                let _ = entries.take(64).count();
+                true
+            }
+            // Not made yet (nothing synced): it answered.
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound || cloud.parent().is_some_and(|p| p.is_dir()),
+        };
+        let _ = tell.send(answered);
+    });
+    heard.recv_timeout(wait).unwrap_or(false)
+}
+
 pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -> Result<Option<String>, String> {
     let Some(cloud) = folders.cloud_dir(recomp_id) else {
         return Ok(None);
@@ -2276,6 +2298,16 @@ mod tests {
         let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
         saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");
+    }
+
+    #[test]
+    fn a_cloud_folder_that_answers_is_checked_and_none_set_is_fine() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let (pc, _game) = pc(&root.path().join("desktop"), &sync, "x");
+        assert!(cloud_answers(&pc, "shipwright", std::time::Duration::from_secs(5)));
+        pc.set_cloud(None);
+        assert!(cloud_answers(&pc, "shipwright", std::time::Duration::from_secs(5)));
     }
 
     #[test]

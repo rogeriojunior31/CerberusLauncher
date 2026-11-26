@@ -164,7 +164,14 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     // Newer saves from another PC go in place before the game reads them.
     if let Source::Recomp { recomp_id, .. } = &game.source {
         let folders = app.state::<recomp::Folders>();
-        match recomp::pull_from_cloud(&folders, recomp_id, Path::new(&game.install_dir)) {
+        // A cloud folder that doesn't answer (OneDrive signed out, a drive away) isn't waited on.
+        let answered = recomp::cloud_answers(&folders, recomp_id, Duration::from_secs(10));
+        if !answered {
+            let message = tr!("A pasta da nuvem não respondeu em 10 segundos, então o jogo abriu com os saves deste PC. Se jogou em outro PC, confira os backups antes de jogar muito.");
+            crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Err(message.to_string()));
+            let _ = app.emit("toast", message.to_string());
+        }
+        match answered.then(|| recomp::pull_from_cloud(&folders, recomp_id, Path::new(&game.install_dir))).unwrap_or(Ok(None)) {
             Ok(Some(message)) => {
                 crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Ok(message.clone()));
                 let _ = app.emit("toast", message);
