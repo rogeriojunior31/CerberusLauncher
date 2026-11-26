@@ -22,7 +22,7 @@ pub fn list<R: Runtime>(window: &WebviewWindow<R>) -> Vec<MonitorView> {
             let size = m.size();
             let mut label = tr!("Monitor {} · {}×{}", i + 1, size.width, size.height);
             if is_primary {
-                label.push_str(" (principal)");
+                label.push_str(cerberus_shared::tr!(" (principal)"));
             }
             MonitorView { name, label, primary: is_primary }
         })

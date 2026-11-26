@@ -479,25 +479,31 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 fn MonitorRow(chosen: Option<String>) -> impl IntoView {
     let library = expect_context::<Library>();
     let monitors = LocalResource::new(api::list_monitors);
+    // The choice as saved now, not as first read: the list shows the new one at once.
+    let picked = RwSignal::new(chosen);
     move || {
         let list = monitors.get().and_then(Result::ok).unwrap_or_default();
+        let chosen = picked.get();
         let unplugged = chosen.as_ref().is_some_and(|c| !list.iter().any(|m| &m.name == c));
         if list.len() < 2 && !unplugged {
             return None;
         }
-        let chosen = chosen.clone();
         let options = list.into_iter().map(|m| {
             let on = chosen.as_deref() == Some(m.name.as_str());
             view! { <option value=m.name.clone() selected=on>{m.label}</option> }
         }).collect_view();
         let gone = unplugged.then(|| view! { <option value=chosen.clone().unwrap_or_default() selected=true>{tr!("O escolhido (desligado agora)")}</option> });
-        Some(row("Monitor", tr!("Onde a janela do Cerberus e o Big Picture Mode abrem."),
+        Some(row(tr!("Monitor"), tr!("Onde a janela do Cerberus e o Big Picture Mode abrem."),
             view! {
                 <select class="select" aria-label=tr!("Monitor")
                     on:change=move |e| {
                         let name = event_target_value(&e);
+                        let choice = (!name.is_empty()).then_some(name);
                         leptos::task::spawn_local(async move {
-                            library.report(api::set_monitor((!name.is_empty()).then_some(name)).await);
+                            if library.report(api::set_monitor(choice.clone()).await).is_some() {
+                                picked.set(choice);
+                                library.toast(tr!("A janela foi para o monitor escolhido; o Big Picture abre nele também."));
+                            }
                         });
                     }>
                     <option value="" selected=chosen.is_none()>{tr!("Onde o Windows abrir")}</option>

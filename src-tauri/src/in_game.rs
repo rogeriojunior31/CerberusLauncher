@@ -24,15 +24,31 @@ pub fn get() -> InGame {
     NOW.read().unwrap_or_else(|p| p.into_inner()).clone().unwrap_or_default()
 }
 
-/// A game started or stopped: minimize the window for it, or bring it back.
-pub fn session(app: &AppHandle, running: bool) {
+/// The games open now (Cerberus's own sessions and the stores'), by id.
+static OPEN: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Notes a game opening or closing; whether none is left open.
+fn note(open: &mut std::collections::BTreeSet<String>, id: &str, running: bool) -> bool {
+    if running {
+        open.insert(id.to_string());
+    } else {
+        open.remove(id);
+    }
+    open.is_empty()
+}
+
+/// A game started or stopped: minimize the window for it, or bring it back
+/// once no game is left open (two games: the first to close doesn't pull the
+/// window over the other).
+pub fn session(app: &AppHandle, id: &str, running: bool) {
+    let none_left = note(&mut OPEN.lock().unwrap_or_else(|p| p.into_inner()), id, running);
     let Some(window) = app.get_webview_window("main") else { return };
     if running {
         if get().minimize && window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false) {
             STEPPED_ASIDE.store(true, Ordering::Relaxed);
             let _ = window.minimize();
         }
-    } else if STEPPED_ASIDE.swap(false, Ordering::Relaxed) {
+    } else if none_left && STEPPED_ASIDE.swap(false, Ordering::Relaxed) {
         let _ = window.unminimize();
     }
 }
@@ -40,6 +56,17 @@ pub fn session(app: &AppHandle, running: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_comes_back_when_the_last_game_closes() {
+        let mut open = std::collections::BTreeSet::new();
+        assert!(!note(&mut open, "recomp:a", true));
+        assert!(!note(&mut open, "steam:1", true));
+        assert!(!note(&mut open, "recomp:a", false), "the Steam game is still open");
+        assert!(!note(&mut open, "steam:1", true), "told twice: still one");
+        assert!(note(&mut open, "steam:1", false));
+        assert!(note(&mut open, "steam:1", false), "an extra close is harmless");
+    }
 
     #[test]
     fn everything_starts_on_except_minimizing() {

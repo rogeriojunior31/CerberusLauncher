@@ -183,7 +183,7 @@ pub fn watch(app: AppHandle) {
             for id in &now_running {
                 if !playing.contains_key(id) {
                     playing.insert(id.clone(), Instant::now());
-                    crate::in_game::session(&app, true);
+                    crate::in_game::session(&app, id, true);
                     let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: true });
                     if let Some(n) = steam_app(id) {
                         live.start(&app, n);
@@ -213,7 +213,7 @@ pub fn watch(app: AppHandle) {
                 }
                 let seconds = started.elapsed().as_secs();
                 let already = credited.remove(&id).map_or(0, |(done, _)| done);
-                crate::in_game::session(&app, false);
+                crate::in_game::session(&app, &id, false);
                 let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: false });
                 // A blink (a launcher checking for updates) isn't a session.
                 if seconds < 30 {

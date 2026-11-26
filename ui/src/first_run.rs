@@ -232,7 +232,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
         }
         3 => {
             let s = state.get();
-            let free = s.install_free_bytes.map(|b| view! { <p class="fr-note">{format!("{} livres neste disco", disk_size(b))}</p> });
+            let free = s.install_free_bytes.map(|b| view! { <p class="fr-note">{tr!("{} livres neste disco", disk_size(b))}</p> });
             view! {
                 <h1>{tr!("Onde instalar os recomps?")}</h1>
                 <p class="fr-lead">{tr!("Cada recomp fica numa pasta própria aqui dentro. Dá para trocar depois em Configurações.")}</p>

@@ -34,8 +34,19 @@ pub fn version(text: &str) -> Option<(u64, u64, u64)> {
     Some((parts.next()??, parts.next().flatten().unwrap_or(0), parts.next().flatten().unwrap_or(0)))
 }
 
+/// Whether `candidate` (a release, never a pre-release) is newer than `than`,
+/// which may be a test build: "0.12.0" is newer than "0.12.0-beta.1".
 pub fn is_newer(candidate: &str, than: &str) -> bool {
-    matches!((version(candidate), version(than)), (Some(a), Some(b)) if a > b)
+    let Some(new) = version(candidate) else { return false };
+    let than = than.trim();
+    let (numbers, test_build) = match than.split_once('-') {
+        Some((n, _)) => (n, true),
+        None => (than, false),
+    };
+    match version(numbers) {
+        Some(have) => new > have || (new == have && test_build),
+        None => false,
+    }
 }
 
 /// A release as Cerberus needs it.
@@ -225,6 +236,10 @@ mod tests {
         assert!(!is_newer("0.10.0", "0.10.0"));
         assert!(!is_newer("v0.9.9", "0.10.0"));
         assert!(!is_newer("0.11.0-beta.1", "0.10.0"));
+        // A test build installed gets the release it was testing, and later ones.
+        assert!(is_newer("0.12.0", "0.12.0-beta.1"));
+        assert!(is_newer("0.12.1", "v0.12.0-rc.2"));
+        assert!(!is_newer("0.11.9", "0.12.0-beta.1"));
     }
 
     #[test]

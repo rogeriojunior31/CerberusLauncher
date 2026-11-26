@@ -634,8 +634,8 @@ fn duration_text(seconds: u64) -> String {
 /// A backup's result as the history shows it.
 pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shared::Backup>, E>) -> Result<String, String> {
     match result {
-        Ok(Some(backup)) if backup.files == 1 => Ok("1 arquivo copiado".into()),
-        Ok(Some(backup)) => Ok(format!("{} arquivos copiados", backup.files)),
+        Ok(Some(backup)) if backup.files == 1 => Ok(tr!("1 arquivo copiado").into()),
+        Ok(Some(backup)) => Ok(tr!("{} arquivos copiados", backup.files)),
         Ok(None) => Ok(tr!("Nada novo para copiar").into()),
         Err(e) => Err(e.to_string()),
     }
@@ -652,7 +652,7 @@ pub fn release(app: &AppHandle, id: &str) {
 }
 
 fn notify(app: &AppHandle, game_id: &str, running: bool) {
-    crate::in_game::session(app, running);
+    crate::in_game::session(app, game_id, running);
     let event = SessionEvent { game_id: game_id.to_string(), running };
     let _ = app.emit(EVENT, event);
 }
