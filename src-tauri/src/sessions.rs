@@ -31,6 +31,10 @@ pub const EVENT: &str = "game-session";
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<String, Option<Round>>>);
 
+/// Held while a round's time is written to the library (checkpoint or close),
+/// apart from the sessions' own lock that "is it running?" takes.
+static WRITING: Mutex<()> = Mutex::new(());
+
 struct Round {
     started: Instant,
     credited: u64,
@@ -80,16 +84,34 @@ impl Sessions {
 
     // An open installer or launcher menu has no measured round.
     fn checkpoint(&self, library: &LocalLibrary, now: Instant) {
-        for (id, round) in self.lock().iter_mut() {
-            let Some(round) = round else { continue };
-            let elapsed = now.saturating_duration_since(round.started).as_secs();
-            if elapsed > round.credited && library.record_session(id, round.credited, elapsed, None).is_ok() {
-                round.credited = elapsed;
+        // Written with the lock let go: a slow disk doesn't hold up "is it running?"
+        // (the in-game menu, the game list) while the library saves.
+        let due: Vec<(String, Instant, u64, u64)> = self
+            .lock()
+            .iter()
+            .filter_map(|(id, round)| {
+                let round = round.as_ref()?;
+                let elapsed = now.saturating_duration_since(round.started).as_secs();
+                (elapsed > round.credited).then(|| (id.clone(), round.started, round.credited, elapsed))
+            })
+            .collect();
+        // One writer at a time with `close_round`, so a span is never counted twice.
+        let _writing = WRITING.lock().unwrap_or_else(|p| p.into_inner());
+        for (id, started, credited, elapsed) in due {
+            if library.record_session(&id, credited, elapsed, None).is_err() {
+                continue;
+            }
+            // Still the same round (not closed or started again meanwhile).
+            if let Some(Some(round)) = self.lock().get_mut(&id) {
+                if round.started == started && round.credited == credited {
+                    round.credited = elapsed;
+                }
             }
         }
     }
 
     fn close_round(&self, library: &LocalLibrary, id: &str, seconds: u64, closed_at: u64) -> Result<Game, String> {
+        let _writing = WRITING.lock().unwrap_or_else(|p| p.into_inner());
         let mut active = self.lock();
         let slot = active.get_mut(id).ok_or(tr!("A sessão já foi encerrada."))?;
         let credited = slot.take().map_or(0, |round| round.credited);
@@ -605,6 +627,23 @@ fn notify(app: &AppHandle, game_id: &str, running: bool) {
     crate::in_game::session(app, running);
     let event = SessionEvent { game_id: game_id.to_string(), running };
     let _ = app.emit(EVENT, event);
+}
+
+#[cfg(test)]
+#[test]
+fn a_slow_write_doesnt_hold_up_is_it_running() {
+    let sessions = Sessions::default();
+    sessions.lock().insert("g".into(), Some(Round { started: Instant::now(), credited: 0 }));
+    // A checkpoint stuck on a slow disk for 2 s.
+    let writing = std::thread::spawn(|| {
+        let _held = WRITING.lock().unwrap();
+        std::thread::sleep(Duration::from_secs(2));
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    let asked = std::time::Instant::now();
+    assert!(sessions.is_running("g"));
+    assert!(asked.elapsed() < Duration::from_millis(50));
+    writing.join().unwrap();
 }
 
 #[cfg(test)]
