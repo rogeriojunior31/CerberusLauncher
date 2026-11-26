@@ -919,6 +919,19 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn a_7z_with_a_climbing_path_is_refused() {
+        let dir = empty_dir("sevenz-escape");
+        let archive = dir.join("evil.7z");
+        let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
+        writer.push_archive_entry(sevenz_rust2::ArchiveEntry::new_file("../escape.txt"), Some(&b"x"[..])).unwrap();
+        writer.finish().unwrap();
+        let installed = dir.join("installed");
+        let error = unpack_over(&archive, &dir.join("staging"), &installed, &portable("Game.exe")).unwrap_err();
+        assert!(error.contains("inseguro"), "{error}");
+        assert!(!dir.join("escape.txt").exists() && !dir.join("staging").join("..").join("escape.txt").exists());
+    }
+
+    #[test]
     fn refuses_paths_that_escape_the_folder() {
         let dir = empty_dir("escape");
         let zip = dir.join("evil.zip");
