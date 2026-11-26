@@ -92,6 +92,11 @@ impl DataDir {
     fn rom_index(&self) -> PathBuf {
         self.cache().join("roms.json")
     }
+
+    /// What each file held at the last scan (see `roms::ScanCache`).
+    fn rom_cache(&self) -> PathBuf {
+        self.cache().join("rom-cache.json")
+    }
 }
 
 /// The game files found at the last look through the player's ROM folders.
@@ -335,11 +340,30 @@ fn classic_folders(data: &Path) -> Vec<PathBuf> {
 
 /// Looks through the ROM folders again, off the UI's thread, and tells the window.
 async fn rescan_roms(app: &AppHandle) {
-    let dirs = classic_folders(&app.state::<DataDir>().0);
+    // Only the scan that started last says what's there: an older, slower one
+    // (the one at start) finishing later doesn't put back a list without a new folder.
+    static LATEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static CACHE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let mine = LATEST.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let data = app.state::<DataDir>().0.clone();
+    let cache_file = app.state::<DataDir>().rom_cache();
+    // The folders (settings, and paths that may be on a drive that's away) and
+    // the scan itself touch the disk: both off the async runtime.
+    let scan = tauri::async_runtime::spawn_blocking(move || {
+        let dirs = classic_folders(&data);
+        let _one_at_a_time = CACHE.lock().unwrap_or_else(|p| p.into_inner());
+        let mut cache = roms::load_cache(&cache_file);
+        let found = roms::scan_cached(&dirs, &mut cache);
+        roms::save_cache(&cache_file, &cache);
+        found
+    });
     // A scan that fell over keeps the list from before, instead of an empty one.
-    let Ok(found) = tauri::async_runtime::spawn_blocking(move || roms::scan(&dirs)).await else {
+    let Ok(found) = scan.await else {
         return;
     };
+    if LATEST.load(std::sync::atomic::Ordering::SeqCst) != mine {
+        return;
+    }
     roms::save_index(&app.state::<DataDir>().rom_index(), &found);
     app.state::<RomIndex>().set(found);
     let _ = app.emit("catalog-changed", ());

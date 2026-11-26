@@ -355,13 +355,72 @@ const SKIPPED_DIRS: [&str; 6] = ["windows", "node_modules", "$recycle.bin", "sys
 /// emulator's settings (the last folder browsed can be a whole drive): a drive's
 /// root or the user's own folder.
 pub fn too_wide(dir: &Path) -> bool {
+    too_wide_under(dir, std::env::var_os("USERPROFILE").map(PathBuf::from).as_deref())
+}
+
+/// A drive's root, the user's folder, or one of Windows' everyday folders
+/// (Downloads, Documents, Desktop, OneDrive's root and its own copies of them):
+/// an emulator's "last folder browsed" there isn't a ROM folder.
+fn too_wide_under(dir: &Path, home: Option<&Path>) -> bool {
     let parts = dir.components().filter(|c| matches!(c, std::path::Component::Normal(_))).count();
-    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
-    parts == 0 || home.is_some_and(|h| dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()) == dunce::canonicalize(&h).unwrap_or(h))
+    if parts == 0 {
+        return true;
+    }
+    let Some(home) = home else { return false };
+    let plain = |p: &Path| p.to_string_lossy().to_lowercase().trim_end_matches(['\\', '/']).replace('/', "\\");
+    let here = plain(&dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()));
+    let home = dunce::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let everyday = ["Downloads", "Documents", "Documentos", "Desktop", "Área de Trabalho", "Pictures", "Imagens", "Videos", "Vídeos", "Music", "Músicas"];
+    let mut wide = vec![home.clone()];
+    for base in [home.clone(), home.join("OneDrive")] {
+        if base != home {
+            wide.push(base.clone());
+        }
+        wide.extend(everyday.iter().map(|d| base.join(d)));
+    }
+    wide.iter().any(|w| plain(w) == here)
+}
+
+/// What the last scan found in each file, with the size and date it had: a
+/// file that hasn't changed isn't opened again (a disc's console is read from
+/// inside it, which for a few thousand discs takes a while).
+pub type ScanCache = HashMap<PathBuf, Seen>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Seen {
+    size: u64,
+    modified: u64,
+    found: Option<RomFile>,
+}
+
+fn stamp(meta: &fs::Metadata) -> (u64, u64) {
+    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    (meta.len(), modified)
+}
+
+pub fn load_cache(file: &Path) -> ScanCache {
+    fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Vec<(PathBuf, Seen)>>(&t).ok()).map(|v| v.into_iter().collect()).unwrap_or_default()
+}
+
+pub fn save_cache(file: &Path, cache: &ScanCache) {
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let list: Vec<(&PathBuf, &Seen)> = cache.iter().collect();
+    if let Ok(json) = serde_json::to_string(&list) {
+        let _ = fs::write(file, json);
+    }
 }
 
 /// Every game file under `dirs`, folders included.
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
+    scan_cached(dirs, &mut ScanCache::new())
+}
+
+/// The same, reusing what `cache` knows of files that haven't changed; the
+/// cache is left holding only the files seen this time.
+pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
+    let before = std::mem::take(cache);
     let mut found = Vec::new();
     let mut seen_dirs = HashSet::new();
     let mut looked = 0usize;
@@ -391,8 +450,17 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
             }
             // A file kept only in the cloud (OneDrive "online only") is known by its
             // name and folder: opening it would make the sync app download it.
-            let cloud_only = entry.metadata().is_ok_and(|m| only_in_cloud(attributes(&m)));
-            let rom = if cloud_only { identify_by_name(&path) } else { identify(&path) };
+            let meta = entry.metadata().ok();
+            let cloud_only = meta.as_ref().is_some_and(|m| only_in_cloud(attributes(m)));
+            let (size, modified) = meta.as_ref().map(stamp).unwrap_or_default();
+            let rom = match before.get(&path) {
+                Some(seen) if seen.size == size && seen.modified == modified && !cloud_only => seen.found.clone(),
+                _ if cloud_only => identify_by_name(&path),
+                _ => identify(&path),
+            };
+            if !cloud_only {
+                cache.insert(path.clone(), Seen { size, modified, found: rom.clone() });
+            }
             if let Some(rom) = rom {
                 found.push(rom);
             }
@@ -558,6 +626,43 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_scan_reuses_what_it_knew_of_unchanged_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let ps2 = dir.path().join("PS2");
+        fs::create_dir_all(&ps2).unwrap();
+        fs::write(ps2.join("Game (USA).iso"), b"not really a disc").unwrap();
+        let mut cache = ScanCache::new();
+        let first = scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert_eq!(first.len(), 1);
+        // What the cache says wins for an unchanged file: it isn't read again.
+        let key = ps2.join("Game (USA).iso");
+        cache.get_mut(&key).unwrap().found.as_mut().unwrap().title = "from the cache".into();
+        let again = scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert_eq!(again[0].title, "from the cache");
+        // A changed file is read again.
+        fs::write(&key, b"a different size now").unwrap();
+        let changed = scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert_eq!(changed[0].title, "Game (USA)");
+        // A file gone leaves the cache.
+        fs::remove_file(&key).unwrap();
+        scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn everyday_windows_folders_are_too_wide_for_a_last_browsed_folder() {
+        let home = tempfile::tempdir().unwrap();
+        for d in ["Downloads", "OneDrive/Documentos", "Games/ROMs"] {
+            fs::create_dir_all(home.path().join(d)).unwrap();
+        }
+        assert!(too_wide_under(&home.path().join("Downloads"), Some(home.path())));
+        assert!(too_wide_under(&home.path().join("OneDrive").join("Documentos"), Some(home.path())));
+        assert!(too_wide_under(home.path(), Some(home.path())));
+        assert!(!too_wide_under(&home.path().join("Games").join("ROMs"), Some(home.path())));
+        assert!(too_wide_under(Path::new(r"C:\"), None));
+    }
 
     #[test]
     fn a_zipped_rom_is_known_by_the_rom_inside() {
