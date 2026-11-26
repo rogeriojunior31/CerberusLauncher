@@ -438,7 +438,13 @@ pub async fn connect_token(http: &reqwest::Client, user: &str, password: &str) -
 /// (backed up first). Nothing is written when it's already there.
 pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
     let cfg = config_file(exe);
-    let text = fs::read_to_string(&cfg).unwrap_or_default();
+    // A settings file that's there but can't be read is left alone: writing
+    // ours in its place would wipe the player's RetroArch settings.
+    let text = match fs::read_to_string(&cfg) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(tr!("Não foi possível ler as configurações do RetroArch ({}); nada foi mudado.", e)),
+    };
     let same = config_value(&text, "cheevos_enable").as_deref() == Some("true")
         && config_value(&text, "cheevos_username").as_deref() == Some(name)
         && config_value(&text, "cheevos_token").as_deref() == Some(token);
@@ -451,7 +457,7 @@ pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
         let _ = fs::copy(&cfg, &backup);
     }
     let updated = with_values(&text, &[("cheevos_enable", "true"), ("cheevos_username", name), ("cheevos_token", token), ("cheevos_password", "")]);
-    fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
+    crate::state_file::write_bytes(&cfg, updated.as_bytes()).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
 }
 
 /// Takes the account Cerberus put in RetroArch's settings back out (when it is
@@ -463,7 +469,7 @@ pub fn forget_token(exe: &Path, token: &str) {
         return;
     }
     let updated = with_values(&text, &[("cheevos_token", ""), ("cheevos_username", "")]);
-    let _ = fs::write(&cfg, updated);
+    let _ = crate::state_file::write_bytes(&cfg, updated.as_bytes());
 }
 
 /// Time played and when, per classic (by its file), kept in `classics.json`.

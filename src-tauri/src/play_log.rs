@@ -5,8 +5,7 @@
 //! The first time it's read, it is filled from the sessions the history
 //! (`trail.jsonl`) already described in words, so the chart isn't empty.
 
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -26,9 +25,9 @@ pub fn record(data_dir: &Path, game_id: &str, seconds: u64, ended: u64) {
     let _guard = WRITE.lock().unwrap_or_else(|p| p.into_inner());
     fill_from_trail(data_dir);
     let line = PlaySession { game_id: game_id.to_string(), ended, seconds };
-    let _ = fs::create_dir_all(data_dir);
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(file(data_dir)) {
-        let _ = writeln!(f, "{}", serde_json::to_string(&line).unwrap_or_default());
+    let Ok(text) = serde_json::to_string(&line) else { return };
+    if let Err(e) = crate::state_file::append_line(&file(data_dir), &text) {
+        eprintln!("partidas: {e}");
     }
 }
 
@@ -36,13 +35,7 @@ pub fn record(data_dir: &Path, game_id: &str, seconds: u64, ended: u64) {
 pub fn of_game(data_dir: &Path, game_id: &str) -> Vec<PlaySession> {
     let _guard = WRITE.lock().unwrap_or_else(|p| p.into_inner());
     fill_from_trail(data_dir);
-    let Ok(f) = fs::File::open(file(data_dir)) else { return Vec::new() };
-    BufReader::new(f)
-        .lines()
-        .map_while(Result::ok)
-        .filter_map(|l| serde_json::from_str::<PlaySession>(&l).ok())
-        .filter(|s| s.game_id == game_id)
-        .collect()
+    crate::state_file::json_lines::<PlaySession>(&file(data_dir)).into_iter().filter(|s| s.game_id == game_id).collect()
 }
 
 /// "2 min jogados", "1 h 5 min jogados", "45 s jogados" as seconds.
@@ -75,8 +68,8 @@ fn fill_from_trail(data_dir: &Path) {
         return;
     }
     let mut text = String::new();
-    if let Ok(f) = fs::File::open(data_dir.join("trail.jsonl")) {
-        for entry in BufReader::new(f).lines().map_while(Result::ok).filter_map(|l| serde_json::from_str::<TrailEntry>(&l).ok()) {
+    {
+        for entry in crate::state_file::json_lines::<TrailEntry>(&data_dir.join("trail.jsonl")) {
             if entry.step != "Partida" || !entry.ok {
                 continue;
             }
@@ -86,8 +79,7 @@ fn fill_from_trail(data_dir: &Path) {
             text.push('\n');
         }
     }
-    let _ = fs::create_dir_all(data_dir);
-    let _ = fs::write(target, text);
+    let _ = crate::state_file::write_bytes(&target, text.as_bytes());
 }
 
 #[cfg(test)]

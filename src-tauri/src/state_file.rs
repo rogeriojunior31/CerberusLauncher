@@ -168,6 +168,71 @@ fn write_locked<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(), Str
     renamed.map_err(|e| e.to_string())
 }
 
+/// Writes bytes whole or not at all: a temporary file of its own, flushed to
+/// the disk, renamed over the old one. A crash or a power cut leaves the old
+/// file or the new one, never half of one.
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let temp = with_suffix(path, &format!(".{}-{}.tmp", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)));
+    write_bytes_through(path, &temp, bytes)
+}
+
+/// The same through a temporary file the caller names (one writer only, which
+/// holds its own lock).
+pub fn write_bytes_through(path: &Path, temp: &Path, bytes: &[u8]) -> Result<(), String> {
+    let lock = lock_for(path);
+    let _held = lock.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let written = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = fs::remove_file(temp);
+        return Err(e.to_string());
+    }
+    let renamed = rename_retrying(temp, path);
+    if renamed.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    renamed.map_err(|e| e.to_string())
+}
+
+/// The entries of a JSON-lines file. Each line stands alone: one cut short by
+/// a crash, or with bytes that aren't text, is skipped and the rest still read.
+pub fn json_lines<T: DeserializeOwned>(path: &Path) -> Vec<T> {
+    let Ok(bytes) = fs::read(path) else { return Vec::new() };
+    bytes.split(|b| *b == b'\n').filter_map(|line| serde_json::from_slice(line.strip_suffix(b"\r").unwrap_or(line)).ok()).collect()
+}
+
+/// Adds one line to a JSON-lines file. A last line a crash left without its
+/// end is ended first, so the new line isn't glued to it (and lost with it).
+pub fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let lock = lock_for(path);
+    let _held = lock.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut file = fs::OpenOptions::new().create(true).read(true).append(true).open(path)?;
+    let len = file.metadata()?.len();
+    let mut text = String::new();
+    if len > 0 {
+        let mut last = [0u8];
+        file.seek(SeekFrom::Start(len - 1))?;
+        file.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            text.push('\n');
+        }
+    }
+    text.push_str(line);
+    text.push('\n');
+    file.write_all(text.as_bytes())
+}
+
 /// A rename over a file another program holds for an instant is tried again.
 fn rename_retrying(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut last = None;
@@ -207,6 +272,25 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_cut_short_or_with_bad_bytes_loses_only_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.jsonl");
+        // A crash cut the last line, with no end.
+        fs::write(&file, b"{\"n\":1}\n{\"n\":2").unwrap();
+        append_line(&file, "{\"n\":3}").unwrap();
+        let read: Vec<serde_json::Value> = json_lines(&file);
+        assert_eq!(read, vec![serde_json::json!({"n": 1}), serde_json::json!({"n": 3})]);
+        // Bytes that aren't text in the middle don't stop the reading.
+        let mut bytes = fs::read(&file).unwrap();
+        bytes.extend_from_slice(b"\xff\xfe\n{\"n\":4}\n");
+        fs::write(&file, bytes).unwrap();
+        assert_eq!(json_lines::<serde_json::Value>(&file).len(), 3);
+        write_bytes(&file, b"whole").unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"whole");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "no temporary file left");
+    }
     use std::collections::BTreeMap;
 
     type Map = BTreeMap<String, u32>;

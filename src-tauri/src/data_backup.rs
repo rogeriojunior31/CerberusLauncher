@@ -138,7 +138,7 @@ pub fn stage(data: &Path, from: &Path) -> Result<usize, String> {
                 // Checked now, so a broken copy is refused before the restart.
                 merged_settings(data, &String::from_utf8_lossy(&bytes))?;
             }
-            fs::write(&target, &bytes).map_err(|e| e.to_string())?;
+            crate::state_file::write_bytes(&target, &bytes)?;
             count += 1;
         }
         Ok(())
@@ -147,7 +147,7 @@ pub fn stage(data: &Path, from: &Path) -> Result<usize, String> {
         let _ = fs::remove_dir_all(&stage);
         return Err(e);
     }
-    fs::write(pending_mark(data), now().to_string()).map_err(|e| e.to_string())?;
+    crate::state_file::write_bytes(&pending_mark(data), now().to_string().as_bytes())?;
     Ok(count)
 }
 
@@ -234,7 +234,7 @@ fn merge_time(here: &Path, incoming: &Path) -> Result<(), String> {
             }
         }
     }
-    fs::write(incoming, serde_json::to_string_pretty(&theirs).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::state_file::write_bytes(incoming, serde_json::to_string_pretty(&theirs).map_err(|e| e.to_string())?.as_bytes())
 }
 
 /// Keeps only the newest `keep` `before-restore-*` folders.

@@ -298,9 +298,8 @@ fn save(file: &Path, games: &[Game]) -> Result<(), String> {
     let json = serde_json::to_string_pretty(games).map_err(|e| e.to_string())?;
     // Write a temp file and rename it over the old one, so a crash mid-write
     // cannot leave a half-written library behind.
-    let temp = file.with_extension("json.tmp");
-    fs::write(&temp, json).map_err(|e| e.to_string())?;
-    fs::rename(&temp, file).map_err(|e| e.to_string())
+    // Flushed to the disk before the rename: a power cut can't leave an empty library.
+    crate::state_file::write_bytes_through(file, &file.with_extension("json.tmp"), json.as_bytes())
 }
 
 #[cfg(test)]
