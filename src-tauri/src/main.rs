@@ -2356,13 +2356,16 @@ async fn install_recomp(
     // is set up with it right away. Failing that only means setting it by hand.
     let found = owned_games(&app).remove(&id);
     if let (Some(copy), None) = (found, &game.game_copy) {
-        if let Ok(ready) = recomp::use_game_copy(&library, &game.id, Path::new(&copy)) {
-            return Ok(ready);
+        match recomp::use_game_copy(&library, &game.id, Path::new(&copy)) {
+            Ok(ready) => return Ok(ready),
+            Err(e) => trail::note(&app, &game.id, tk!("Cópia do jogo"), &Err(tr!("A cópia encontrada nas suas pastas não pôde ser usada; escolha-a na página do jogo. {}", e))),
         }
     }
     // An update replaced the folder: the copy chosen before goes back in.
-    if let Some(ready) = recomp::restore_copy(&library, &game) {
-        return Ok(ready);
+    match recomp::restore_copy(&library, &game) {
+        Some(Ok(ready)) => return Ok(ready),
+        Some(Err(e)) => trail::note(&app, &game.id, tk!("Cópia do jogo"), &Err(tr!("A cópia escolhida não pôde voltar para a pasta do jogo: {}", e))),
+        None => {}
     }
     Ok(game)
 }
@@ -3569,7 +3572,7 @@ fn main() {
             // Copies lost by an update made before this fix (or a folder cleaned by hand) go back now.
             {
                 let handle = app.handle().clone();
-                std::thread::spawn(move || recomp::restore_copies(&handle.state::<LocalLibrary>()));
+                std::thread::spawn(move || recomp::restore_copies(&handle, &handle.state::<LocalLibrary>()));
             }
             // Filters left beside a game by a crash or a forced close go now.
             looks::take_back_all(&data_dir);

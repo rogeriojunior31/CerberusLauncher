@@ -560,7 +560,7 @@ pub fn prepare_start(game: &Game) -> Result<(), String> {
     let picked = picked_inputs(game, manifest);
     let copy = manifest.main_input().and_then(|m| picked.get(&m.id)).map(String::as_str);
     let install = Path::new(&game.install_dir);
-    let _ = fs::create_dir_all(manifest::data_dir(install));
+    fs::create_dir_all(manifest::data_dir(install)).map_err(|e| tr!("A pasta de dados do jogo não pôde ser criada: {}", e))?;
     configs.before_start(install, copy)
 }
 
@@ -984,8 +984,10 @@ pub fn split_args(text: &str) -> Vec<String> {
 /// image's files) put there.
 /// A copy the player already chose, put back where the game reads it when it
 /// went missing: an update replaces the game's folder, and with it the copy
-/// that was placed inside. `None` when nothing needed (or could be) done.
-pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
+/// that was placed inside. `None` when nothing needed doing; an error when it
+/// couldn't be put back (said in the game's history, so a request for the copy
+/// again has its reason).
+pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Result<Game, String>> {
     let copy = game.game_copy.as_deref().filter(|c| Path::new(c).exists())?;
     let entry = entry_for(game)?;
     // Only the file an update can take away: a copy put in the game's folder
@@ -999,14 +1001,16 @@ pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
     if Path::new(&game.install_dir).join(folder).join(name).is_file() {
         return None;
     }
-    use_game_copy(library, &game.id, Path::new(copy)).ok()
+    Some(use_game_copy(library, &game.id, Path::new(copy)))
 }
 
-/// The same for every installed recomp, when Cerberus starts.
-pub fn restore_copies(library: &LocalLibrary) {
+/// The same for every installed recomp, when Cerberus starts; what failed goes to the history.
+pub fn restore_copies(app: &tauri::AppHandle, library: &LocalLibrary) {
     for game in library.games().unwrap_or_default() {
         if matches!(game.source, Source::Recomp { .. }) {
-            let _ = restore_copy(library, &game);
+            if let Some(Err(e)) = restore_copy(library, &game) {
+                crate::trail::note(app, &game.id, tk!("Cópia do jogo"), &Err(tr!("A cópia escolhida não pôde voltar para a pasta do jogo: {}", e)));
+            }
         }
     }
 }
