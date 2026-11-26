@@ -94,6 +94,8 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
             match &item {
                 Item::Game(g) if g.next_step != cerberus_shared::NextStep::Play => Some(tr!("Configurar")),
                 Item::Entry(e) if e.installed.is_some() => Some(tr!("Instalado")),
+                // Without an emulator ready here: shown, and A says what's missing.
+                Item::Classic(_, console) if library.players.with(|p| crate::classics::ready_player(p.as_deref().unwrap_or_default(), console).is_none()) => Some(tr!("Falta o emulador")),
                 Item::Classic(..) => Some(tr!("Clássico")),
                 Item::Entry(e) if e.owned_copy.is_some() => Some(tr!("Você tem")),
                 _ => None,
@@ -131,16 +133,10 @@ fn library_games(library: Library) -> Vec<Game> {
     library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.next_step != cerberus_shared::NextStep::Install).collect()
 }
 
-/// The player's classics an emulator here opens (as Play decides it), the
-/// ones played lately first.
-fn classics(roms: &[cerberus_shared::RomView], players: &[cerberus_shared::ClassicPlayer]) -> Vec<Item> {
-    let mut list: Vec<Item> = roms
-        .iter()
-        .filter_map(|r| {
-            let console = crate::classics::console_of(r);
-            crate::classics::ready_player(players, console).map(|_| Item::Classic(r.clone(), console))
-        })
-        .collect();
+/// The player's classics, the ones played lately first. Those no emulator here
+/// opens yet show too, marked (A then says what's missing), as on the desktop.
+fn classics(roms: &[cerberus_shared::RomView], _players: &[cerberus_shared::ClassicPlayer]) -> Vec<Item> {
+    let mut list: Vec<Item> = roms.iter().map(|r| Item::Classic(r.clone(), crate::classics::console_of(r))).collect();
     list.sort_by_key(|i| match i {
         Item::Classic(r, _) => (std::cmp::Reverse(r.last_played), crate::classics::display_name(r)),
         _ => (std::cmp::Reverse(None), String::new()),
@@ -151,6 +147,14 @@ fn classics(roms: &[cerberus_shared::RomView], players: &[cerberus_shared::Class
 /// Starts the classic itself, in the emulator that opens it here. Its recomp,
 /// if any, has a tile of its own once installed.
 fn open_classic(library: Library, _tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
+    let players = library.players.get_untracked().unwrap_or_default();
+    if crate::classics::ready_player(&players, console).is_none() {
+        play(Sound::Back);
+        let why = crate::classics::player_for(&players, console).and_then(|p| p.problem.clone());
+        // The reason already says where to set it up.
+        library.toast(why.unwrap_or_else(|| tr!("Nenhum emulador abre esse console ainda.").to_string()));
+        return;
+    }
     play(Sound::Select);
     crate::classics::play_original(library, rom.path.clone(), console.to_string());
 }
