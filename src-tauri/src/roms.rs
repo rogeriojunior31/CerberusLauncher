@@ -286,18 +286,23 @@ fn disc_tag(stem: &str) -> Option<(u32, String)> {
     // here cut `stem` at the same places ("İ" would not, and could panic).
     let lower = stem.to_ascii_lowercase();
     for word in ["(disc", "(disk", "(cd"] {
-        let Some(start) = lower.find(word) else { continue };
-        let rest = &lower[start + word.len()..];
-        let end = rest.find(')')?;
-        let inside = rest[..end].trim();
-        let number: String = inside.chars().take_while(char::is_ascii_digit).collect();
-        let tail = inside[number.len()..].trim();
-        if number.is_empty() || !(tail.is_empty() || tail.starts_with("of ")) {
-            continue;
+        // Every occurrence: "Game (Disc Edition) (Disc 2)" has its number in the second.
+        let mut from = 0;
+        while let Some(found) = lower[from..].find(word) {
+            let start = from + found;
+            from = start + word.len();
+            let rest = &lower[start + word.len()..];
+            let Some(end) = rest.find(')') else { break };
+            let inside = rest[..end].trim();
+            let number: String = inside.chars().take_while(char::is_ascii_digit).collect();
+            let tail = inside[number.len()..].trim();
+            if number.is_empty() || !(tail.is_empty() || tail.starts_with("of ")) {
+                continue;
+            }
+            let cut = start + word.len() + end + 1;
+            let base = format!("{}{}", &stem[..start], &stem[cut..]).split_whitespace().collect::<Vec<_>>().join(" ");
+            return Some((number.parse().ok()?, base));
         }
-        let cut = start + word.len() + end + 1;
-        let base = format!("{}{}", &stem[..start], &stem[cut..]).split_whitespace().collect::<Vec<_>>().join(" ");
-        return Some((number.parse().ok()?, base));
     }
     None
 }
@@ -347,12 +352,16 @@ pub fn join_discs(found: Vec<RomFile>) -> Vec<RomFile> {
     }
     rest.retain(|rom| !lists.iter().any(|l| l.discs.iter().any(|d| same_file(d, &rom.path))));
     // Discs of one game: same folder, same name without the tag, same file type.
+    // Each disc in its own folder named like it ("FF7 (Disc 1)\FF7 (Disc 1).cue"):
+    // the folder above counts as theirs.
     let key = |rom: &RomFile| {
         let stem = rom.path.file_stem()?.to_string_lossy().into_owned();
         let (number, base) = disc_tag(&stem)?;
         let ext = rom.path.extension()?.to_string_lossy().to_lowercase();
-        let dir = rom.path.parent()?.to_string_lossy().to_lowercase();
-        Some(((dir, base.to_lowercase(), ext), number))
+        let parent = rom.path.parent()?;
+        let own_folder = parent.file_name().map(|n| n.to_string_lossy().into_owned()).and_then(|n| disc_tag(&n)).is_some_and(|(n, b)| n == number && b.eq_ignore_ascii_case(&base));
+        let dir = if own_folder { parent.parent().unwrap_or(parent) } else { parent };
+        Some(((dir.to_string_lossy().to_lowercase(), base.to_lowercase(), ext), number))
     };
     let mut groups: HashMap<(String, String, String), Vec<(u32, PathBuf)>> = HashMap::new();
     for rom in &rest {
@@ -840,6 +849,8 @@ mod tests {
         assert_eq!(disc_tag("Game (CD3)"), Some((3, "Game".into())));
         assert_eq!(disc_tag("Discworld (USA)"), None);
         assert_eq!(disc_tag("Game (Disc Edition)"), None);
+        assert_eq!(disc_tag("Game (Disc Edition) (Disc 2)"), Some((2, "Game (Disc Edition)".into())), "the tag after a look-alike");
+        assert_eq!(disc_tag("Game (Disc"), None);
         assert_eq!(disc_tag("İstanbul (Disc 2)"), Some((2, "İstanbul".into())), "letters that change size in lowercase");
     }
 
@@ -867,6 +878,25 @@ mod tests {
             ["Final Fantasy VII (USA) (Disc 1).chd", "Final Fantasy VII (USA) (Disc 2).chd", "Final Fantasy VII (USA) (Disc 3).chd"]);
         assert_eq!(found[0].discs.len(), 2);
         assert!(found[1].discs.is_empty() && found[3].discs.is_empty());
+    }
+
+    #[test]
+    fn discs_each_in_a_folder_named_like_it_join() {
+        let dir = tempfile::tempdir().unwrap();
+        for n in [1, 2] {
+            let folder = dir.path().join(format!("FF7 (Disc {n})"));
+            fs::create_dir_all(&folder).unwrap();
+            fs::write(folder.join(format!("FF7 (Disc {n}).chd")), b"disc").unwrap();
+        }
+        // Another game's disc in a folder of its own stays apart.
+        let other = dir.path().join("Other (Disc 1)");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("Other (Disc 1).chd"), b"disc").unwrap();
+        let mut found = scan(&[dir.path().to_path_buf()]);
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].discs.len(), 2);
+        assert!(found[1].discs.is_empty());
     }
 
     fn temp(name: &str) -> PathBuf {
