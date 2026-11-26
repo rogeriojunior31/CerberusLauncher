@@ -23,7 +23,13 @@ fn sources(values: &[&Option<String>]) -> Vec<String> {
 }
 
 pub fn cover_sources(game: &Game) -> Vec<String> {
-    sources(&[&game.cover_path, &game.cover_url])
+    let mut list = sources(&[&game.cover_path, &game.cover_url]);
+    // Older and smaller Steam games have no tall cover, only the wide header:
+    // drawn whole on its blurred copy, never the name on a blank card.
+    if let cerberus_shared::Source::Steam { app_id } = &game.source {
+        list.push(format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg"));
+    }
+    list
 }
 
 pub fn hero_sources(game: &Game) -> Vec<String> {
