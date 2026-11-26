@@ -134,6 +134,7 @@ pub fn DownloadsPage() -> impl IntoView {
                         InstallStep::Downloading { .. } => tr!("Iniciando download…").to_string(),
                         InstallStep::Paused { done, total } => tr!("Pausado · {} de {}", megabytes(done), megabytes(total)),
                         InstallStep::Unpacking => tr!("Preparando arquivos…").to_string(),
+                        InstallStep::Queued => tr!("Na fila: começa quando o download de agora terminar").to_string(),
                         _ => String::new(),
                     }
                 };
@@ -258,7 +259,11 @@ pub fn DownloadsPage() -> impl IntoView {
                             <Svg icon=Icon::Info size=22 />
                             <div class="dl-info"><b>{name}</b><span class="problem">{cerberus_shared::i18n::translate(&why)}</span></div>
                             <button type="button" class="btn sm main" on:click=move |_| crate::discover::start_install(library, again.clone())>{tr!("Tentar de novo")}</button>
-                            <button type="button" class="btn sm icon-btn" aria-label=tr!("Dispensar") on:click=move |_| library.failed.update(|m| { m.remove(&dismiss); })>
+                            <button type="button" class="btn sm icon-btn" aria-label=tr!("Dispensar") on:click=move |_| {
+                                library.failed.update(|m| { m.remove(&dismiss); });
+                                let id = dismiss.clone();
+                                leptos::task::spawn_local(async move { let _ = api::forget_download(id).await; });
+                            }>
                                 <Svg icon=Icon::Close size=16 />
                             </button>
                         </div>

@@ -808,6 +808,7 @@ pub fn Downloads() -> impl IntoView {
                             Some(InstallStep::Unpacking) => tr!("Preparando arquivos").to_string(),
                             Some(InstallStep::Paused { done, total }) => tr!("Pausado · {} de {}", format::megabytes(done), format::megabytes(total)),
                             Some(InstallStep::Failed { message }) => tr!("Falhou · {}", message),
+                            Some(InstallStep::Queued) => tr!("Na fila").to_string(),
                             _ => tr!("Começando").to_string(),
                         }
                     } else {

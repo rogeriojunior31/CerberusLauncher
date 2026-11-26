@@ -307,6 +307,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             Some(InstallStep::Downloading { .. }) => (Some(tr!("Baixando")), Tone::Accent),
             Some(InstallStep::Unpacking) => (Some(tr!("Preparando")), Tone::Accent),
             Some(InstallStep::Paused { .. }) => (Some(tr!("Pausado")), Tone::Accent),
+            Some(InstallStep::Queued) => (Some(tr!("Na fila")), Tone::Accent),
             _ => (info.badge.as_deref(), info.tone),
         };
         // Only the game's own chip has an explanation (not "Baixando").

@@ -569,6 +569,15 @@ struct RestoreArgs<'a> {
 }
 
 /// How many files were put back.
+/// The paused and unfinished downloads kept from the last run.
+pub async fn download_queue() -> Result<Vec<cerberus_shared::InstallProgress>, String> {
+    call("download_queue", &()).await
+}
+
+pub async fn forget_download(id: String) -> Result<(), String> {
+    call("forget_download", &Id { id: &id }).await
+}
+
 pub async fn restore_backup(id: &str, name: &str) -> Result<u32, String> {
     call("restore_backup", &RestoreArgs { id, name }).await
 }

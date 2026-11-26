@@ -29,6 +29,7 @@ mod game_notes;
 mod achievements;
 mod language;
 mod dlss;
+mod downloads;
 mod elevated;
 mod overlay;
 mod in_game;
@@ -2292,16 +2293,46 @@ async fn install_recomp(
     installing: State<'_, recomp::Installing>,
     id: String,
 ) -> Result<Game, String> {
-    let report = |step| {
+    let data = app.state::<DataDir>().0.clone();
+    let report = |step: cerberus_shared::InstallStep| {
+        // Kept on disk too, so a pause or a failure is still listed after a restart.
+        downloads::note(&data, &id, &step);
         let progress = InstallProgress { recomp_id: id.clone(), step };
         let _ = app.emit("recomp-progress", progress);
     };
+    // One download at a time: the others say they're waiting their turn.
+    downloads::queue(&id);
+    let permit = match downloads::ONE.try_acquire() {
+        Ok(permit) => permit,
+        Err(_) => {
+            report(cerberus_shared::InstallStep::Queued);
+            downloads::ONE.acquire().await.map_err(|e| e.to_string())?
+        }
+    };
+    // Paused or cancelled while it waited: it doesn't start.
+    match downloads::turn(&id) {
+        Some(true) => {
+            downloads::forget(&data, &id);
+            return Err(cerberus_shared::CANCELLED_INSTALL.into());
+        }
+        Some(false) => {
+            report(cerberus_shared::InstallStep::Paused { done: 0, total: 0 });
+            return Err(cerberus_shared::PAUSED.into());
+        }
+        None => {}
+    }
     let sessions = app.state::<sessions::Sessions>();
     let result = recomp::install(&http, &folders, &library, &installing, &sessions, &id, &report).await;
+    drop(permit);
     let game = match result {
         Ok(game) => game,
         // Paused: the bytes wait for the next install, nothing went wrong.
         Err(message) if message == cerberus_shared::PAUSED => return Err(message),
+        // Cancelled: it leaves the list, it didn't fail.
+        Err(message) if message == cerberus_shared::CANCELLED_INSTALL || message == cerberus_shared::i18n::t(cerberus_shared::CANCELLED_INSTALL) => {
+            downloads::forget(&data, &id);
+            return Err(message);
+        }
         Err(message) => {
             report(cerberus_shared::InstallStep::Failed { message: message.clone() });
             // Keyed by the library id a successful install would have had.
@@ -2655,8 +2686,22 @@ fn running_games(sessions: State<'_, sessions::Sessions>) -> Vec<String> {
 }
 
 #[tauri::command(async)]
-fn cancel_install(installing: State<'_, recomp::Installing>, id: String) {
+fn cancel_install(app: AppHandle, installing: State<'_, recomp::Installing>, id: String) {
+    downloads::withdraw(&id, true);
     installing.cancel(&id);
+    downloads::forget(&app.state::<DataDir>().0, &id);
+}
+
+/// The paused and unfinished downloads from the last run, for the Downloads page.
+#[tauri::command(async)]
+fn download_queue(app: AppHandle) -> Vec<InstallProgress> {
+    downloads::waiting(&app.state::<DataDir>().0)
+}
+
+/// A download the player dismissed from "Didn't finish".
+#[tauri::command(async)]
+fn forget_download(app: AppHandle, id: String) {
+    downloads::forget(&app.state::<DataDir>().0, &id);
 }
 
 /// Moves an installed recomp to a folder the player picks (another drive, say).
@@ -2697,6 +2742,7 @@ async fn move_game(app: AppHandle, id: String) -> Result<Option<Game>, String> {
 
 #[tauri::command(async)]
 fn pause_install(installing: State<'_, recomp::Installing>, id: String) {
+    downloads::withdraw(&id, false);
     installing.pause(&id);
 }
 
@@ -3619,6 +3665,8 @@ fn main() {
             open_recomp_request,
             cancel_install,
             pause_install,
+            download_queue,
+            forget_download,
             move_game,
             running_games,
             list_backups,

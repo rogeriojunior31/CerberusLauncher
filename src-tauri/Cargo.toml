@@ -26,7 +26,7 @@ sha2 = "0.10"
 md-5 = "0.10"
 aes = "0.9"
 cipher = "0.5"
-tokio = { version = "1", features = ["fs", "io-util", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "time", "sync"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sevenz-rust2 = "0.25.0"
 flate2 = "1.1.11"

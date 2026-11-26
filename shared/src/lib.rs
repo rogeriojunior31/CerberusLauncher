@@ -1183,6 +1183,8 @@ pub struct InstallProgress {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InstallStep {
+    /// Waiting its turn: one download runs at a time.
+    Queued,
     Downloading { done: u64, total: u64 },
     /// Stopped by the player with its bytes kept; installing again carries on.
     Paused { done: u64, total: u64 },

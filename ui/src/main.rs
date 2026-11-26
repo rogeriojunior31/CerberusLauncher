@@ -378,6 +378,21 @@ fn App() -> impl IntoView {
     api::on_needs_location(move |id| locating.set(Some(id)));
     // Speed from how many bytes arrived since the last sample, at most twice a second.
     let last_sample = StoredValue::new(HashMap::<String, (f64, u64)>::new());
+    // What was paused or didn't finish last time comes back to Downloads.
+    leptos::task::spawn_local(async move {
+        if let Ok(kept) = api::download_queue().await {
+            for p in kept {
+                match p.step {
+                    InstallStep::Failed { message } => library.failed.update(|all| {
+                        all.entry(p.recomp_id).or_insert(message);
+                    }),
+                    step => library.progress.update(|all| {
+                        all.entry(p.recomp_id).or_insert(step);
+                    }),
+                }
+            }
+        }
+    });
     api::on_install_progress(move |progress| {
         if let InstallStep::Downloading { done, .. } = progress.step {
             let now = js_sys::Date::now();
