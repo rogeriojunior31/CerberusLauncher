@@ -100,7 +100,17 @@ pub fn game_in_front(app: &AppHandle) -> Option<(win::Window, Game)> {
 
 /// A picture of the game's window, saved and announced.
 pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), String> {
-    let (width, height, pixels) = win::grab(window).ok_or(tr!("O jogo está minimizado ou em tela cheia exclusiva; a foto não saiu."))?;
+    // Cerberus's own achievement notice isn't part of the game's picture: left
+    // out of this capture only (a stream or recording still shows it).
+    let notice = app.get_webview_window(crate::unlock_toast::LABEL).and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
+    if let Some(n) = notice {
+        win::leave_out_of_capture(n, true);
+    }
+    let grabbed = win::grab(window);
+    if let Some(n) = notice {
+        win::leave_out_of_capture(n, false);
+    }
+    let (width, height, pixels) = grabbed.ok_or(tr!("A foto não saiu: o jogo está minimizado, numa tela toda preta (carregando) ou em tela cheia exclusiva."))?;
     let data = &app.state::<crate::DataDir>().0;
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or_default();
     let file = dir_of(data, &game.id).join(format!("{now}.png"));
@@ -112,10 +122,13 @@ pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), St
 /// F12 pressed: the picture of the game in front, if it's one Cerberus opened.
 fn take(app: &AppHandle) {
     let Some((window, game)) = game_in_front(app) else { return };
-    match shoot(app, window, &game) {
-        Ok(()) => crate::notify::tell(app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
-        Err(e) => crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível tirar a foto"), &e),
-    }
+    // Off the controller's loop: a 4K picture takes a while to write, and the
+    // next press (or Ctrl+F12) mustn't wait on it.
+    let (app, window) = (app.clone(), window as isize);
+    std::thread::spawn(move || match shoot(&app, window as win::Window, &game) {
+        Ok(()) => crate::notify::tell(&app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
+        Err(e) => crate::notify::tell(&app, crate::notify::Kind::Reply, tr!("Não foi possível tirar a foto"), &e),
+    });
 }
 
 /// XInput's buttons, as `wButtons` has them.
@@ -397,6 +410,13 @@ pub(crate) mod win {
         }
     }
 
+    /// Leaves one of Cerberus's windows out of screen captures (WDA_EXCLUDEFROMCAPTURE), or puts it back.
+    pub fn leave_out_of_capture(window: isize, out: bool) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity;
+        // SAFETY: a window of this process; a stale handle only fails.
+        unsafe { SetWindowDisplayAffinity(window as HWND, if out { 0x11 } else { 0 }) };
+    }
+
     /// The window is still there.
     pub fn still_open(window: isize) -> bool {
         // SAFETY: IsWindow only checks the handle.
@@ -438,6 +458,8 @@ pub(crate) mod win {
     pub fn still_open(_: isize) -> bool {
         false
     }
+
+    pub fn leave_out_of_capture(_: isize, _: bool) {}
     pub fn foreground() -> Option<((), u32)> {
         None
     }
