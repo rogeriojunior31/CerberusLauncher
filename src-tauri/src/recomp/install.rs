@@ -410,16 +410,36 @@ pub(super) fn unzip(file: &Path, to: &Path) -> Result<(), String> {
 /// Entries naming `..`, a root or a drive are refused by the library itself.
 pub(super) fn un7z(file: &Path, to: &Path) -> Result<(), String> {
     let archive = sevenz_rust2::Archive::open(file).map_err(|e| e.to_string())?;
+    // Every name checked here first, whatever the library itself refuses.
+    if let Some(bad) = archive.files.iter().map(|f| f.name()).find(|n| !crate::disk::safe_path(n)) {
+        return Err(tr!("O arquivo baixado tem um caminho inseguro ({}); nada foi extraído.", bad));
+    }
     let size = archive.files.iter().fold(0u64, |sum, item| sum.saturating_add(item.size()));
     crate::disk::require(to, size)?;
     sevenz_rust2::decompress_file(file, to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))
 }
 
-/// `tar` refuses entries that would land outside `to`, and keeps Unix permissions.
+/// Entry by entry, each checked here: files, folders and links with safe names
+/// (a link only to a path beside it), Unix permissions kept.
 fn untar_gz(file: &Path, to: &Path) -> Result<(), String> {
     let reader = fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(reader));
-    archive.unpack(to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))
+    fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    let entries = archive.entries().map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))?;
+    for entry in entries {
+        let mut entry = entry.map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))?;
+        let name = entry.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let kind = entry.header().entry_type();
+        // A link (a Linux build's libfoo.so -> libfoo.so.1) only to a plain path
+        // beside it: never "..", a root or a drive, so nothing is written out of `to`.
+        let link_ok = || entry.link_name().ok().flatten().is_some_and(|t| crate::disk::safe_path(&t.to_string_lossy()));
+        let allowed = kind.is_file() || kind.is_dir() || ((kind.is_symlink() || kind.is_hard_link()) && link_ok());
+        if !allowed || !crate::disk::safe_path(&name) {
+            return Err(tr!("O arquivo baixado tem um caminho inseguro ({}); a extração parou.", name));
+        }
+        entry.unpack_in(to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))?;
+    }
+    Ok(())
 }
 
 /// Many archives hold everything inside one `Game-v1.2/` folder; the game's files
@@ -539,6 +559,36 @@ fn name_words(name: &str) -> Vec<String> {
 pub(super) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_tar_with_a_link_or_a_climbing_path_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let make = |name: &str, link: bool| {
+            let file = dir.path().join(format!("{}.tar.gz", if link { "link" } else { "climb" }));
+            let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(fs::File::create(&file).unwrap(), flate2::Compression::fast()));
+            let mut header = tar::Header::new_gnu();
+            if link {
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_size(0);
+                header.set_cksum();
+                builder.append_link(&mut header, name, "..").unwrap();
+            } else {
+                header.set_size(1);
+                header.set_cksum();
+                // Written raw: the builder itself refuses "..".
+                let bytes = name.as_bytes();
+                header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
+                header.set_cksum();
+                builder.append(&header, &b"x"[..]).unwrap();
+            }
+            builder.into_inner().unwrap().finish().unwrap();
+            file
+        };
+        let out = dir.path().join("out");
+        assert!(untar_gz(&make("up", true), &out).unwrap_err().contains("inseguro"), "a link to '..' is refused");
+        assert!(untar_gz(&make("../escaped.txt", false), &out).unwrap_err().contains("inseguro"));
+        assert!(!dir.path().join("escaped.txt").exists());
+    }
 
     #[test]
     fn a_download_that_misses_its_checksum_is_kept_aside_not_installed() {

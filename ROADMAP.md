@@ -966,7 +966,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [ ] Fontes no formato RecompLauncher baixam de qualquer servidor [RC F16]; executáveis de terceiros sem hash [RP F8, C F23]
 - [x] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3] — feito em 25/11/2026: trocar de conta apaga o token anterior; desconectar e trocar tiram o token do Cerberus do RetroArch, PCSX2, Dolphin e DuckStation (o do jogador fica). Testado.
 - [x] Respostas sem limite e redirecionamento para http [Fu F8]; `..` nos lugares de saves do manifesto [Fu F9] — feito em 25/11/2026: `net::read_limited` lê em streaming até o limite (mods do Thunderstore e arte); o `Client` segue redirecionamentos mas nunca de https para http; um lugar de saves com `..`, raiz ou unidade é recusado, e `{home}`/`{documents}`/`{appdata}`/`{local}`/`{config}` sem subpasta também. Testado; conferido que nenhum lugar do catálogo e dos 3 manifestos instalados é recusado. Falta aplicar o limite nos núcleos e na lista do Thunderstore.
-- [ ] Nomes reservados do Windows vindos do disco [RP F17]; 7z/tar sem teste de path traversal [Fu F17]
+- [x] Nomes reservados do Windows vindos do disco [RP F17]; 7z/tar sem teste de path traversal [Fu F17] — feito em 25/11/2026: `disk::plain_name`/`safe_path` recusam `CON`/`NUL`/`COM1`…, `:`, ponto ou espaço no fim, `..`, raiz e unidade; usados no ISO9660, XDVDFS, 7z (todos os nomes conferidos antes de extrair) e tar (entrada por entrada; links só para um caminho seguro). Testado.
 - [ ] Janelas com todas as permissões e sem CSP [J F25, Fu F13]
 
 ### Lote F — Panics e travamentos da interface

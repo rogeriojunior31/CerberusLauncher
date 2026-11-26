@@ -144,7 +144,7 @@ fn walk(file: &mut dyn Disc, start: u64, sector: u64, size: u64, to: &Path, dept
         let name = String::from_utf8_lossy(name_bytes).into_owned();
         // A name is one plain part: nothing that climbs out of the folder.
         let plain = Path::new(&name).components().count() == 1 && matches!(Path::new(&name).components().next(), Some(Component::Normal(_)));
-        if !plain {
+        if !plain || !crate::disk::plain_name(&name) {
             return Err(bad(tr!("nome de arquivo inseguro")));
         }
         let target = to.join(&name);

@@ -1186,6 +1186,8 @@
   "O arquivo baixado não bate com o checksum do servidor do projeto, então foi descartado. Tente de novo.": "The downloaded file doesn't match the checksum from the project's server, so it was discarded. Try again.",
   "O arquivo baixado não bate com o checksum informado, então foi descartado. Tente de novo.": "The downloaded file doesn't match its checksum, so it was discarded. Try again.",
   "O arquivo baixado não confere com o publicado no GitHub. Nada foi instalado.": "The downloaded file doesn't match the one published on GitHub. Nothing was installed.",
+  "O arquivo baixado tem um caminho inseguro ({}); a extração parou.": "The downloaded file has an unsafe path ({}); extraction stopped.",
+  "O arquivo baixado tem um caminho inseguro ({}); nada foi extraído.": "The downloaded file has an unsafe path ({}); nothing was extracted.",
   "O arquivo de configuração dessa opção não está no catálogo.": "This option's settings file isn't in the catalog.",
   "O arquivo de firmware do seu PS3 (PS3UPDAT.PUP)": "Your PS3 firmware file (PS3UPDAT.PUP)",
   "O arquivo do MEGA veio incompleto.": "The MEGA file arrived incomplete.",

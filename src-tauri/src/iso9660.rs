@@ -80,7 +80,7 @@ fn walk(file: &mut dyn Disc, sector: u64, size: u64, to: &Path, depth: usize, se
         // "SLUS_206.51;1" -> "SLUS_206.51"; a name with no extension keeps no trailing dot.
         let name = name.split(';').next().unwrap_or_default().trim_end_matches('.').to_string();
         let plain = Path::new(&name).components().count() == 1 && matches!(Path::new(&name).components().next(), Some(Component::Normal(_)));
-        if !plain {
+        if !plain || !crate::disk::plain_name(&name) {
             return Err(bad(tr!("nome de arquivo inseguro")));
         }
         let target = to.join(&name);
