@@ -87,8 +87,38 @@ fn quit_asked(app: &AppHandle) {
         });
 }
 
+/// The tray icon is there (it can fail at sign-in, before the Explorer is ready).
+static TRAY_READY: AtomicBool = AtomicBool::new(false);
+
+/// Kept in the tray only when there is a tray to come back from.
 fn keep_in_tray(app: &AppHandle) -> bool {
-    app.path().app_data_dir().is_ok_and(|data| crate::settings::load(&data).close_to_tray)
+    TRAY_READY.load(Ordering::SeqCst) && app.path().app_data_dir().is_ok_and(|data| crate::settings::load(&data).close_to_tray)
+}
+
+/// The tray, without keeping the app from opening when it fails: tried again
+/// every 5 s a few times (opened with Windows, the taskbar may not be up yet).
+pub fn tray_or_later(app: &AppHandle) {
+    match tray(app) {
+        Ok(()) => TRAY_READY.store(true, Ordering::SeqCst),
+        Err(e) => {
+            eprintln!("tray: {e}");
+            let app = app.clone();
+            std::thread::spawn(move || {
+                for _ in 0..6 {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    let again = app.clone();
+                    let (tell, heard) = std::sync::mpsc::channel();
+                    let _ = app.run_on_main_thread(move || {
+                        let _ = tell.send(tray(&again).is_ok());
+                    });
+                    if heard.recv().unwrap_or(false) {
+                        TRAY_READY.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                }
+            });
+        }
+    }
 }
 
 /// What closing the main window does: true when it was hidden instead.

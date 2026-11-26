@@ -3659,7 +3659,8 @@ fn main() {
             app.manage(sessions::Sessions::default());
             let asked: Vec<String> = std::env::args().collect();
             app.manage(PlayRequest(std::sync::Mutex::new(shortcut::play_request(&asked))));
-            background::tray(app.handle())?;
+            // A tray that fails (the taskbar not up yet) doesn't keep the app from opening.
+            background::tray_or_later(app.handle());
             {
                 let chosen = settings::load(&data_dir);
                 recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
