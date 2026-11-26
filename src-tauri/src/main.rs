@@ -3679,9 +3679,11 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 monitors::place(&window, chosen.monitor.as_deref());
             }
-            if chosen.start_hidden && std::env::args().any(|a| a == "--autostart") {
+            // Made hidden (tauri.conf.json): shown only now, on its monitor, and not
+            // at all when it starts hidden with Windows (no flash of it first).
+            if !(chosen.start_hidden && std::env::args().any(|a| a == "--autostart")) {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
+                    let _ = window.show();
                 }
             }
             // An installer that finished while Cerberus was closed.
