@@ -164,8 +164,10 @@ pub fn retroarch(data: &Path, picked: Option<&Path>) -> Option<PathBuf> {
     places.into_iter().find(|p| p.is_file())
 }
 
+/// Where RetroArch loads a core from: the cores folder its settings name
+/// (`libretro_directory`), else `cores` beside it.
 fn core_file(exe: &Path, core: &str) -> PathBuf {
-    exe.parent().unwrap_or(Path::new(".")).join("cores").join(format!("{core}_libretro.dll"))
+    retroarch_dir(exe, "libretro_directory", "cores").join(format!("{core}_libretro.dll"))
 }
 
 fn config_file(exe: &Path) -> PathBuf {
@@ -339,7 +341,8 @@ async fn install_system_files(http: &reqwest::Client, exe: &Path, pack: &str) ->
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
-    let system = exe.parent().unwrap_or(Path::new(".")).join("system");
+    // Where RetroArch reads them, the same folder as the BIOS.
+    let system = system_dir(exe);
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| tr!("Os arquivos do núcleo vieram corrompidos.").to_string())?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
@@ -585,6 +588,15 @@ mod tests {
         assert_eq!(system_dir(&exe), PathBuf::from(r"D:\BIOS"));
         fs::write(config_file(&exe), "system_directory = \"default\"\n").unwrap();
         assert_eq!(system_dir(&exe), dir.path().join("system"));
+    }
+
+    #[test]
+    fn cores_go_where_retroarch_loads_them_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        assert_eq!(core_file(&exe, "snes9x"), dir.path().join("cores").join("snes9x_libretro.dll"));
+        fs::write(config_file(&exe), "libretro_directory = \"D:\\RA\\cores\"\n").unwrap();
+        assert_eq!(core_file(&exe, "snes9x"), PathBuf::from(r"D:\RA\cores").join("snes9x_libretro.dll"));
     }
 
     #[test]
