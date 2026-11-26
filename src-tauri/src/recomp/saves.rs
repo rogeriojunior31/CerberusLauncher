@@ -265,7 +265,7 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
     temp.persist_noclobber(&target).map_err(|e| e.to_string())?;
     prune(backups, &name);
     queued.map_err(|e| tr!("Backup local guardado. Falha ao agendar o envio: {}", e))?;
-    Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes, in_cloud: None, waiting: false }))
+    Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes, in_cloud: None, waiting: false, damaged: false }))
 }
 
 fn write_zip(file: &fs::File, found: &[Found], manifest: &Manifest) -> io::Result<()> {
@@ -308,10 +308,28 @@ pub fn list(backups: &Path) -> Vec<Backup> {
     found
 }
 
+/// The same, with the copies that can't be read listed too (by the file's own
+/// date), marked damaged: for the player's list only, never to restore or sync from.
+pub fn list_with_damaged(backups: &Path) -> Vec<Backup> {
+    let mut found = list(backups);
+    let Ok(entries) = fs::read_dir(backups) else { return found };
+    for path in entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "zip")) {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if found.iter().any(|b| b.name == name) {
+            continue;
+        }
+        let meta = fs::metadata(&path).ok();
+        let created = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+        found.push(Backup { name, created, reason: String::new(), files: 0, bytes: meta.map(|m| m.len()).unwrap_or(0), in_cloud: None, waiting: false, damaged: true });
+    }
+    found.sort_by(|a, b| (b.created, &b.name).cmp(&(a.created, &a.name)));
+    found
+}
+
 fn describe(path: &Path) -> Option<Backup> {
     let manifest = read_manifest(path).ok()?;
     let name = path.file_name()?.to_string_lossy().into_owned();
-    Some(Backup { name, created: manifest.created, reason: manifest.reason, files: manifest.files, bytes: manifest.bytes, in_cloud: None, waiting: false })
+    Some(Backup { name, created: manifest.created, reason: manifest.reason, files: manifest.files, bytes: manifest.bytes, in_cloud: None, waiting: false, damaged: false })
 }
 
 /// The fingerprint a backup made now would have; `None` when there are no saves yet.
@@ -616,6 +634,21 @@ fn now_millis() -> u128 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_damaged_copy_is_listed_for_the_player_but_never_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        let backups = dir.path().join("backups");
+        std::fs::create_dir_all(install.join("Save")).unwrap();
+        std::fs::write(install.join("Save/slot.sav"), "progress").unwrap();
+        super::backup(&backups, &["{install}/Save".to_string()], &install, "Manual", None).unwrap().unwrap();
+        std::fs::write(backups.join("1-broken.zip"), b"not a zip").unwrap();
+        assert_eq!(super::list(&backups).len(), 1, "the sync and restore logic never sees it");
+        let shown = super::list_with_damaged(&backups);
+        assert_eq!(shown.len(), 2);
+        assert!(shown.iter().any(|b| b.damaged && b.name == "1-broken.zip"));
+    }
 
     #[test]
     fn a_save_place_never_climbs_out_nor_takes_a_whole_user_folder() {

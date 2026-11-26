@@ -370,6 +370,10 @@ pub struct Backup {
     /// Made to go to the cloud folder and not there yet.
     #[serde(default)]
     pub waiting: bool,
+    /// The file is there but can't be read (cut short, damaged): listed so the
+    /// player sees it, never offered to restore.
+    #[serde(default)]
+    pub damaged: bool,
 }
 
 /// One step the launcher took for a game (a session, a backup, an install), kept

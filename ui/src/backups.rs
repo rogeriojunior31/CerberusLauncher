@@ -124,7 +124,12 @@ fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<
 
     let when = format::date_time(backup.created);
     let files = if backup.files == 1 { tr!("1 arquivo").to_string() } else { tr!("{} arquivos", backup.files) };
-    let detail = format!("{} · {} · {}", cerberus_shared::i18n::translate(&backup.reason), files, format::megabytes(backup.bytes));
+    let damaged = backup.damaged;
+    let detail = if damaged {
+        tr!("Danificado ({}): o arquivo não pode ser lido, então não dá para restaurar.", format::megabytes(backup.bytes))
+    } else {
+        format!("{} · {} · {}", cerberus_shared::i18n::translate(&backup.reason), files, format::megabytes(backup.bytes))
+    };
     let label = move || if armed.get() { tr!("Confirmar: substituir os saves atuais") } else { tr!("Restaurar") };
 
     view! {
@@ -134,9 +139,11 @@ fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<
                 <b>{when}</b>
                 <span class="muted small">{detail}</span>
             </div>
-            <button type="button" class="btn sm" class:warn=move || armed.get() on:click=on_restore disabled=move || busy.get()>
-                {label}
-            </button>
+            {(!damaged).then(|| view! {
+                <button type="button" class="btn sm" class:warn=move || armed.get() on:click=on_restore disabled=move || busy.get()>
+                    {label}
+                </button>
+            })}
         </li>
     }
 }

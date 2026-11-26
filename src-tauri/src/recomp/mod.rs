@@ -284,7 +284,7 @@ fn bring_down(folders: &Folders, recomp_id: &str, install_dir: &Path, cloud: &Pa
 /// waiting to go there (read from the folder itself, not assumed).
 pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
     let local = folders.backups_dir(recomp_id);
-    let mut list = saves::list(&local);
+    let mut list = saves::list_with_damaged(&local);
     if let Some(cloud) = folders.cloud_dir(recomp_id) {
         for backup in &mut list {
             backup.in_cloud = Some(cloud.join(&backup.name).is_file());
