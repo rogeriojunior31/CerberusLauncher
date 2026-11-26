@@ -150,6 +150,8 @@ pub fn Achievements() -> impl IntoView {
     let focus = Focus::new("ach", false);
     tv.keep_position(focus);
     let hub = LocalResource::new(|| api::achievements_hub(false));
+    // "All games" can hold hundreds: drawn a stretch at a time, growing as the focus moves along it.
+    let shown = RwSignal::new(30usize);
 
     let shelves = Memo::new(move |_| {
         let Some(Ok(hub)) = hub.get() else { return Vec::new() };
@@ -159,10 +161,14 @@ pub fn Achievements() -> impl IntoView {
         plats.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
         let mut lately: Vec<AchievementGame> = hub.games.iter().filter(|g| g.last_unlock.is_some()).cloned().collect();
         lately.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
+        // Every game reachable: the shelves above only show some.
+        let mut all: Vec<AchievementGame> = hub.games.clone();
+        all.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock).then_with(|| super::pages::fold(&a.name).cmp(&super::pages::fold(&b.name))));
         vec![
             (tr!("Perto dos 100%"), near.into_iter().take(14).collect::<Vec<_>>()),
             (tr!("Platinados"), plats.into_iter().take(14).collect()),
             (tr!("Conquistas recentes"), lately.into_iter().take(14).collect()),
+            (tr!("Todos os jogos"), all.into_iter().take(shown.get()).collect()),
         ]
         .into_iter()
         .filter(|(_, list)| !list.is_empty())
@@ -170,6 +176,13 @@ pub fn Achievements() -> impl IntoView {
     });
     let rows = move || shelves.with(|s| s.iter().map(|(_, l)| l.len()).collect::<Vec<_>>());
     Effect::new(move |_| focus.clamp(&rows()));
+    Effect::new(move |_| {
+        let (r, c) = (focus.row.get(), focus.col.get());
+        let last = shelves.with_untracked(|s| s.len().saturating_sub(1));
+        if r == last && c + 10 >= shown.get_untracked() {
+            shown.set(c + 40);
+        }
+    });
     let focused = move || shelves.with(|s| s.get(focus.row.get()).and_then(|(_, l)| l.get(focus.col.get()).cloned()));
     Effect::new(move |_| {
         if let Some(g) = focused() {
@@ -220,7 +233,7 @@ pub fn Achievements() -> impl IntoView {
         }
         let list = shelves.get();
         if list.is_empty() {
-            return view! { <p class="tv-empty">{tr!("Nenhuma conquista ainda. Jogue um jogo da Steam ou conecte o RetroAchievements em Configurações.")}</p> }.into_any();
+            return view! { <p class="tv-empty">{tr!("Nenhum jogo com conquistas ainda. Jogue um jogo da Steam, do Xbox ou da Epic, ou conecte o RetroAchievements em Configurações.")}</p> }.into_any();
         }
         list.into_iter()
             .enumerate()
