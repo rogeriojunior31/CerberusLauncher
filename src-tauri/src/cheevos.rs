@@ -423,6 +423,9 @@ pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>
                     ("cheevos_visibility_lboard_cancel", "false"),
                     ("cheevos_visibility_lboard_trackers", "false"),
                     ("cheevos_unlock_sound_enable", "false"),
+                    // "Close Content" quits RetroArch instead of going back to its
+                    // menu, so the session (and its play time) ends with the game.
+                    ("quit_on_close_content", "1"),
                 ],
             );
             session.log = retroarch_log.map(Path::to_path_buf);
@@ -789,6 +792,7 @@ mod tests {
             let session = prepare(data.path(), id, &dir.join(exe), None, None);
             let during = fs::read_to_string(dir.join(file)).unwrap();
             assert!(during.contains(off), "{id}: pop-ups not turned off");
+            assert!(id != "retroarch" || during.contains("quit_on_close_content = \"1\""), "closing the game quits RetroArch");
             finish(data.path(), &session);
             let after = fs::read_to_string(dir.join(file)).unwrap();
             assert_eq!(after.replace("
