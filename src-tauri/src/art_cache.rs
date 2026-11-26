@@ -22,11 +22,38 @@ pub struct ArtCache {
     dir: PathBuf,
     /// Addresses being fetched now, so two listings don't fetch the same one twice.
     busy: Mutex<HashSet<String>>,
+    /// Sites whose pictures failed, already said this run (one line per site, not per picture).
+    told: Mutex<HashSet<String>>,
+    /// Where a failure is said (the history), set once the app is up.
+    on_failure: std::sync::OnceLock<Box<dyn Fn(&str, usize, &str) + Send + Sync>>,
+}
+
+/// The sites, among `failed` (address, reason), not said yet: each with how
+/// many of its pictures failed and the first reason.
+fn sites_to_tell(failed: &[(String, String)], told: &mut HashSet<String>) -> Vec<(String, usize, String)> {
+    let mut out: Vec<(String, usize, String)> = Vec::new();
+    for (url, why) in failed {
+        let site = url.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(url).to_lowercase();
+        match out.iter_mut().find(|(s, _, _)| *s == site) {
+            Some(entry) => entry.1 += 1,
+            None if !told.contains(&site) => out.push((site, 1, why.clone())),
+            None => {}
+        }
+    }
+    for (site, _, _) in &out {
+        told.insert(site.clone());
+    }
+    out
 }
 
 impl ArtCache {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, busy: Mutex::new(HashSet::new()) }
+        Self { dir, busy: Mutex::new(HashSet::new()), told: Mutex::new(HashSet::new()), on_failure: std::sync::OnceLock::new() }
+    }
+
+    /// Says pictures that wouldn't come (`site`, how many, why), once per site.
+    pub fn report_failures_with(&self, say: impl Fn(&str, usize, &str) + Send + Sync + 'static) {
+        let _ = self.on_failure.set(Box::new(say));
     }
 
     pub fn dir(&self) -> &Path {
@@ -99,10 +126,19 @@ impl ArtCache {
         }
         let cache = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
+            let mut failed = Vec::new();
             for url in fresh {
                 // A picture that won't come now is tried again on the next listing.
-                let _ = cache.fetch(&client, &url).await;
+                if let Err(why) = cache.fetch(&client, &url).await {
+                    failed.push((url.clone(), why));
+                }
                 cache.busy.lock().unwrap_or_else(|p| p.into_inner()).remove(&url);
+            }
+            let tell = sites_to_tell(&failed, &mut cache.told.lock().unwrap_or_else(|p| p.into_inner()));
+            if let Some(say) = cache.on_failure.get() {
+                for (site, count, why) in tell {
+                    say(&site, count, &why);
+                }
             }
         });
     }
@@ -110,11 +146,11 @@ impl ArtCache {
     async fn fetch(&self, client: &Client, url: &str) -> Result<(), String> {
         let reply = crate::net::send(client.get(url)).await.map_err(|e| e.to_string())?;
         if !reply.status().is_success() {
-            return Err(format!("{} answered {}", url, reply.status()));
+            return Err(cerberus_shared::tr!("o site respondeu {}", reply.status().as_u16()));
         }
         let bytes = crate::net::read_limited(reply, MAX_BYTES as u64).await?;
         if !is_image(&bytes) {
-            return Err(format!("{} is not a picture", url));
+            return Err(cerberus_shared::tr!("não veio uma imagem").into());
         }
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let file = self.file_for(url);
@@ -149,6 +185,19 @@ fn is_image(bytes: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failing_site_is_said_once_not_per_picture() {
+        let mut told = HashSet::new();
+        let failed = vec![
+            ("https://cdn.example.com/a.jpg".to_string(), "timeout".to_string()),
+            ("https://cdn.example.com/b.jpg".to_string(), "timeout".to_string()),
+            ("https://other.org/c.png".to_string(), "404".to_string()),
+        ];
+        let said = sites_to_tell(&failed, &mut told);
+        assert_eq!(said, vec![("cdn.example.com".to_string(), 2, "timeout".to_string()), ("other.org".to_string(), 1, "404".to_string())]);
+        assert!(sites_to_tell(&failed, &mut told).is_empty(), "said already this run");
+    }
 
     #[test]
     fn knows_pictures_from_text() {

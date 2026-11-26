@@ -151,6 +151,9 @@ fn whose(id: &str, games: &[Game], recomps: &[RecompEntry]) -> String {
     if id == "emulation" {
         return "RetroArch".into();
     }
+    if id == "art" {
+        return tr!("Capas e imagens").into();
+    }
     if let Some(path) = id.strip_prefix("classic:") {
         let file = path.rsplit(['\\', '/']).next().unwrap_or(path);
         let stem = file.rsplit_once('.').map_or(file, |(s, _)| s);
@@ -569,5 +572,6 @@ mod tests {
         assert_eq!((list[0].recomp_id.as_str(), list[0].from.as_str(), list[0].to.as_str()), ("a", "1.0", "1.1"));
         assert_eq!(whose("classic:D:/ROMS/N64/Mario Kart 64 (USA).z64", &games, &recomps), "Mario Kart 64");
         assert_eq!(whose("emulation", &games, &recomps), "RetroArch");
+        assert_eq!(whose("art", &games, &recomps), "Capas e imagens");
     }
 }

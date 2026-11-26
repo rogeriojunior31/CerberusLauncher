@@ -3752,7 +3752,18 @@ fn main() {
             let art = data_dir.join("cache").join("art");
             fs::create_dir_all(&art)?;
             app.asset_protocol_scope().allow_directory(&art, true)?;
-            app.manage(Arc::new(ArtCache::new(art)));
+            let art_cache = Arc::new(ArtCache::new(art));
+            // Pictures that wouldn't come: one line per site in the history.
+            let handle = app.handle().clone();
+            art_cache.report_failures_with(move |site, count, why| {
+                let said = if count == 1 {
+                    tr!("Uma imagem de {0} não baixou ({1}); é tentada de novo na próxima vez.", site, why)
+                } else {
+                    tr!("{0} imagens de {1} não baixaram ({2}); são tentadas de novo na próxima vez.", count, site, why)
+                };
+                trail::note(&handle, "art", tk!("Arte"), &Err(said));
+            });
+            app.manage(art_cache);
 
             let shots = screenshots::root(&data_dir);
             fs::create_dir_all(&shots)?;
