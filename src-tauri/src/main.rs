@@ -623,7 +623,9 @@ async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, 
 
 /// Starts a classic from the ROM folders in RetroArch.
 #[tauri::command(async)]
-fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
+/// `disc`: one disc of a game on several, for emulators that don't swap discs
+/// from a list (PCSX2, for one): the player opens the one the game asks for.
+fn play_classic(app: AppHandle, path: String, console: String, disc: Option<usize>) -> Result<(), String> {
     // Two at once would each change and put back the same emulator settings.
     if background::classic_running() {
         return Err(tr!("Um clássico já está aberto. Feche-o antes de abrir outro.").into());
@@ -634,6 +636,10 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     let Some(known) = app.state::<RomIndex>().get().into_iter().find(|r| r.path == rom) else {
         return Err(tr!("Esse arquivo não está nas suas pastas de ROMs.").into());
     };
+    let (rom, discs) = match disc.and_then(|n| known.discs.get(n)) {
+        Some(one) => (one.clone(), Vec::new()),
+        None => (rom, known.discs.clone()),
+    };
     // What the scan read from the file itself (cartridge type, the disc's own
     // header) wins over what the page guessed from folder names.
     let console = if known.system.is_empty() { console } else { known.system.clone() };
@@ -642,7 +648,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     if let Some((emulator, exe)) = standalone_for(&data, &chosen, &console, retroarch.is_some()) {
         // DuckStation and Dolphin swap discs from a list too: all of them, not disc 1 alone.
         let rom = match emulator.id {
-            "duckstation" | "dolphin" => emulation::disc_list(&data, &rom, &known.discs, &console)?,
+            "duckstation" | "dolphin" => emulation::disc_list(&data, &rom, &discs, &console)?,
             _ => rom,
         };
         return play_standalone(app, path, rom, emulator, &exe);
@@ -657,9 +663,9 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     let mut session = cheevos::prepare(&data, "retroarch", &exe, None, Some(&log));
     session.from = 0;
     let id = format!("classic:{path}");
-    let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| {
+    let result = emulation::disc_list(&data, &rom, &discs, &console).and_then(|opened| {
         // A save made from disc 1 on its own comes along to the disc list's name.
-        if let Some(first) = known.discs.first().filter(|_| opened != rom) {
+        if let Some(first) = discs.first().filter(|_| opened != rom) {
             for copy in emulation::carry_disc_saves(&exe, first, &opened) {
                 trail::note(&app, &id, tk!("Saves"), &Ok(tr!("Save do disco 1 copiado para {}", copy.display())));
             }

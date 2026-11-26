@@ -289,10 +289,46 @@ pub fn play_original(library: Library, path: String, console: String) {
         remember_way(&id, Way::Original);
     }
     leptos::task::spawn_local(async move {
-        if library.report(crate::api::play_classic(path, console).await).is_some() {
+        if library.report(crate::api::play_classic(path, console, None).await).is_some() {
             library.toast(tr!("Abrindo o jogo..."));
         }
     });
+}
+
+/// Whether the emulator swaps a game's discs itself (from a disc list).
+fn swaps_discs(emulator: Option<&str>, console: &str) -> bool {
+    match emulator {
+        Some("RetroArch") => matches!(console, "ps1" | "gc"),
+        Some("DuckStation" | "Dolphin") => true,
+        _ => false,
+    }
+}
+
+/// The game's discs, one per line; where the emulator can't swap them, each
+/// with its own Play (the player opens the one the game asks for).
+fn disc_rows(library: Library, rom: &cerberus_shared::RomView, console: &str, swaps: bool) -> impl IntoView {
+    let rows = rom
+        .discs
+        .iter()
+        .enumerate()
+        .map(|(n, d)| {
+            let (path, console) = (rom.path.clone(), console.to_string());
+            let play = (!swaps).then(|| {
+                view! {
+                    <button type="button" class="btn sm" on:click=move |_| {
+                        let (path, console) = (path.clone(), console.clone());
+                        leptos::task::spawn_local(async move {
+                            if library.report(crate::api::play_classic(path, console, Some(n)).await).is_some() {
+                                library.toast(tr!("Abrindo o disco {}...", n + 1));
+                            }
+                        });
+                    }>{tr!("Jogar o disco {}", n + 1)}</button>
+                }
+            });
+            view! { <li><span class="path">{d.clone()}</span>{play}</li> }
+        })
+        .collect_view();
+    view! { <ol class="disc-list">{rows}</ol> }
 }
 
 /// A console in a few letters, for the cover's corner.
@@ -684,7 +720,8 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         let file_note = if rom.discs.len() > 1 {
             match emulator.as_deref() {
                 Some("RetroArch") if matches!(console, "ps1" | "gc") => tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.").to_string(),
-                Some(name) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
+                Some(name) if swaps_discs(Some(name), console) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
+                Some(name) => tr!("O {} não troca de disco sozinho: quando o jogo pedir outro, feche-o e jogue o disco seguinte abaixo. O Cerberus nunca altera esses arquivos.", name),
                 None => tr!("O Cerberus nunca altera esses arquivos.").to_string(),
             }
         } else {
@@ -694,7 +731,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
             }
         };
         let files = if rom.discs.len() > 1 {
-            view! { <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol> }.into_any()
+            disc_rows(library, &rom, console, swaps_discs(emulator.as_deref(), console)).into_any()
         } else {
             view! { <span class="path">{rom.path.clone()}</span> }.into_any()
         };
@@ -873,7 +910,8 @@ fn file_card(library: Library, rom: &RomView, emulator: Option<String>) -> AnyVi
     let note = if rom.discs.len() > 1 {
         match emulator.as_deref() {
             Some("RetroArch") if matches!(console, "ps1" | "gc") => tr!("O RetroArch abre o disco 1. Quando o jogo pedir outro, troque no menu do RetroArch (F1) › Controle de disco. O Cerberus nunca altera esses arquivos.").to_string(),
-            Some(name) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
+            Some(name) if swaps_discs(Some(name), console) => tr!("O {} abre o disco 1; quando o jogo pedir outro, troque pelo menu dele. O Cerberus nunca altera esses arquivos.", name),
+            Some(name) => tr!("O {} não troca de disco sozinho: quando o jogo pedir outro, feche-o e jogue o disco seguinte abaixo. O Cerberus nunca altera esses arquivos.", name),
             None => tr!("O Cerberus nunca altera esses arquivos.").to_string(),
         }
     } else {
@@ -883,7 +921,7 @@ fn file_card(library: Library, rom: &RomView, emulator: Option<String>) -> AnyVi
         }
     };
     let files = if rom.discs.len() > 1 {
-        view! { <ol class="disc-list">{rom.discs.iter().map(|d| view! { <li class="path">{d.clone()}</li> }).collect_view()}</ol> }.into_any()
+        disc_rows(library, &rom, console, swaps_discs(emulator.as_deref(), console)).into_any()
     } else {
         view! { <span class="path">{rom.path.clone()}</span> }.into_any()
     };

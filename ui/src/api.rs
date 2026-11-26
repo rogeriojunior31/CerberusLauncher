@@ -929,6 +929,7 @@ pub async fn install_core(core: String) -> Result<cerberus_shared::EmulationView
 struct ClassicArgs {
     path: String,
     console: String,
+    disc: Option<usize>,
 }
 
 /// Copies the player's BIOS files from a folder they pick; what was added, said for the player.
@@ -937,8 +938,8 @@ pub async fn import_bios() -> Result<(cerberus_shared::EmulationView, String), S
 }
 
 /// Starts a classic from the ROM folders in RetroArch.
-pub async fn play_classic(path: String, console: String) -> Result<(), String> {
-    call("play_classic", &ClassicArgs { path, console }).await
+pub async fn play_classic(path: String, console: String, disc: Option<usize>) -> Result<(), String> {
+    call("play_classic", &ClassicArgs { path, console, disc }).await
 }
 
 #[derive(Serialize)]
