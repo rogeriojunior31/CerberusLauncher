@@ -77,9 +77,30 @@ fn is_bin(path: &Path) -> bool {
 
 /// Which BIOS files RetroArch has: (PlayStation, PlayStation 2).
 pub fn bios_status(exe: &Path) -> (bool, bool) {
-    let ps1 = has_file(&system_dir(exe), |p, size| is_bin(p) && size == PS1_BIOS);
-    let ps2 = has_file(&ps2_bios_dir(exe), |p, size| is_bin(p) && size == PS2_BIOS);
+    let ps1 = has_file(&system_dir(exe), |p, size| is_bin(p) && size == PS1_BIOS && is_bios(p, Bios::Ps1));
+    let ps2 = has_file(&ps2_bios_dir(exe), |p, size| is_bin(p) && size == PS2_BIOS && is_bios(p, Bios::Ps2));
     (ps1, ps2)
+}
+
+#[derive(Clone, Copy)]
+enum Bios {
+    Ps1,
+    Ps2,
+}
+
+/// The size alone takes any 512 KB file (a Mega Drive cartridge) for a PS1
+/// BIOS. Sony's BIOS carry its name, and the PS2's its table of parts
+/// (ROMDIR, starting with RESET): checked in the file, nothing downloaded.
+fn is_bios(path: &Path, kind: Bios) -> bool {
+    fs::read(path).is_ok_and(|bytes| bios_marks(&bytes, kind))
+}
+
+fn bios_marks(bytes: &[u8], kind: Bios) -> bool {
+    let has = |mark: &[u8]| bytes.windows(mark.len()).any(|w| w == mark);
+    match kind {
+        Bios::Ps1 => bytes.len() as u64 == PS1_BIOS && has(b"Sony Computer Entertainment"),
+        Bios::Ps2 => bytes.len() as u64 == PS2_BIOS && has(b"ROMDIR") && has(b"RESET"),
+    }
 }
 
 /// Copies the player's BIOS files (from their own consoles) where the cores
@@ -97,11 +118,13 @@ pub fn import_bios(exe: &Path, from: &Path) -> Result<(usize, usize), String> {
         let name = entry.file_name();
         let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
         let lower = name.to_string_lossy().to_lowercase();
-        let target = if ext == "bin" && meta.len() == PS1_BIOS {
+        let ps1_bios = ext == "bin" && meta.len() == PS1_BIOS && is_bios(&path, Bios::Ps1);
+        let ps2_bios = ext == "bin" && meta.len() == PS2_BIOS && is_bios(&path, Bios::Ps2);
+        let target = if ps1_bios {
             ps1 += 1;
             system_dir(exe)
-        } else if (ext == "bin" && meta.len() == PS2_BIOS) || matches!(ext.as_str(), "mec" | "nvm") || lower == "erom.bin" || lower.starts_with("rom1") || lower.starts_with("rom2") {
-            if ext == "bin" && meta.len() == PS2_BIOS {
+        } else if ps2_bios || matches!(ext.as_str(), "mec" | "nvm") || lower == "erom.bin" || lower.starts_with("rom1") || lower.starts_with("rom2") {
+            if ps2_bios {
                 ps2 += 1;
             }
             ps2_bios_dir(exe)
@@ -555,6 +578,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_bios_is_known_by_what_it_holds_not_its_size() {
+        let size = PS1_BIOS as usize;
+        assert!(!bios_marks(&vec![0u8; size], Bios::Ps1), "512 KB of zeros");
+        let mut cartridge = vec![0u8; size];
+        cartridge[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        assert!(!bios_marks(&cartridge, Bios::Ps1), "a Mega Drive game of the same size");
+        let mut ps1 = vec![0u8; size];
+        ps1[0x108..0x108 + 27].copy_from_slice(b"Sony Computer Entertainment");
+        assert!(bios_marks(&ps1, Bios::Ps1));
+        let mut ps2 = vec![0u8; PS2_BIOS as usize];
+        ps2[0x2700..0x2705].copy_from_slice(b"RESET");
+        ps2[0x2710..0x2716].copy_from_slice(b"ROMDIR");
+        assert!(bios_marks(&ps2, Bios::Ps2) && !bios_marks(&ps2[..size], Bios::Ps2));
+    }
+
+    #[test]
     fn several_discs_open_from_a_list_in_cerberus_folder() {
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("data");
@@ -577,8 +616,15 @@ mod tests {
         fs::write(&exe, b"MZ").unwrap();
         let from = dir.path().join("bios");
         fs::create_dir_all(&from).unwrap();
-        fs::write(from.join("scph5501.bin"), vec![0u8; PS1_BIOS as usize]).unwrap();
-        fs::write(from.join("SCPH-70012.bin"), vec![0u8; PS2_BIOS as usize]).unwrap();
+        let mut ps1 = vec![0u8; PS1_BIOS as usize];
+        ps1[0x108..0x108 + 27].copy_from_slice(b"Sony Computer Entertainment");
+        fs::write(from.join("scph5501.bin"), ps1).unwrap();
+        let mut ps2 = vec![0u8; PS2_BIOS as usize];
+        ps2[0x2700..0x2705].copy_from_slice(b"RESET");
+        ps2[0x2710..0x2716].copy_from_slice(b"ROMDIR");
+        fs::write(from.join("SCPH-70012.bin"), ps2).unwrap();
+        // A game of the PS1 BIOS's size isn't taken for one.
+        fs::write(from.join("Sonic (USA).bin"), vec![0u8; PS1_BIOS as usize]).unwrap();
         fs::write(from.join("SCPH-70012.nvm"), b"x").unwrap();
         fs::write(from.join("notes.txt"), b"x").unwrap();
         assert_eq!(bios_status(&exe), (false, false));
@@ -587,6 +633,7 @@ mod tests {
         assert!(ps2_bios_dir(&exe).join("SCPH-70012.bin").is_file());
         assert!(ps2_bios_dir(&exe).join("SCPH-70012.nvm").is_file());
         assert!(!system_dir(&exe).join("notes.txt").exists());
+        assert!(!system_dir(&exe).join("Sonic (USA).bin").exists());
         assert_eq!(bios_status(&exe), (true, true));
         let empty = dir.path().join("empty");
         fs::create_dir_all(&empty).unwrap();
