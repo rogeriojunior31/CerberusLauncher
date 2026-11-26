@@ -412,7 +412,8 @@ pub fn save_cache(file: &Path, cache: &ScanCache) {
     }
 }
 
-/// Every game file under `dirs`, folders included.
+/// Every game file under `dirs`, folders included (with no cache: the tests).
+#[cfg(test)]
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
     scan_cached(dirs, &mut ScanCache::new())
 }

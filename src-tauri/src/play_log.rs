@@ -5,6 +5,7 @@
 //! The first time it's read, it is filled from the sessions the history
 //! (`trail.jsonl`) already described in words, so the chart isn't empty.
 
+#[cfg(test)]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

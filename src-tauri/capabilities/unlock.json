@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "unlock",
+  "description": "The achievement notice: only the next notice to show.",
+  "windows": ["unlock"],
+  "permissions": [
+    "core:default",
+    "allow-unlock-next"
+  ]
+}

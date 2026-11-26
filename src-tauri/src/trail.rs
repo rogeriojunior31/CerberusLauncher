@@ -5,7 +5,9 @@
 //! One JSON object per line in `trail.jsonl`. The file is cut back to the newest
 //! `KEEP` lines once it passes `KEEP + SLACK`, so it never grows without limit.
 
+#[cfg(test)]
 use std::fs::{self, OpenOptions};
+#[cfg(test)]
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
