@@ -233,7 +233,15 @@ fn value_span(line: &str, format: &str) -> Option<(String, usize, usize)> {
     let start = eq + 1 + (after.len() - after.trim_start().len());
     let rest = &line[start..];
     let end = if format == "ini" {
-        rest.find([';', '#']).unwrap_or(rest.len())
+        // A comment is a `;` or `#` standing alone (spaces around it, as in
+        // `60 ; the cap`): `D:\Jogos #2\zelda.iso` and `C:\a#b.iso` are values
+        // whole. The value ends before the spaces.
+        let bytes = rest.as_bytes();
+        let spaced = |i: usize| bytes.get(i).is_none_or(|b| b.is_ascii_whitespace());
+        let cut = (0..bytes.len())
+            .find(|&i| matches!(bytes[i], b';' | b'#') && (i == 0 || bytes[i - 1].is_ascii_whitespace()) && spaced(i + 1))
+            .unwrap_or(rest.len());
+        rest[..cut].trim_end().len()
     } else {
         // TOML: a `#` inside a quoted string isn't a comment.
         let mut quoted = None;
@@ -595,6 +603,16 @@ impl Offer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_path_with_a_hash_survives_the_ini() {
+        let span = |line: &str| value_span(line, "ini").map(|(_, a, b)| line[a..b].to_string());
+        assert_eq!(span(r"iso=D:\Jogos #2\zelda.iso").as_deref(), Some(r"D:\Jogos #2\zelda.iso"));
+        assert_eq!(span(r"iso=C:\a#b.iso").as_deref(), Some(r"C:\a#b.iso"));
+        assert_eq!(span("fps = 60 ; the cap").as_deref(), Some("60"));
+        assert_eq!(span("fps=60;cap").as_deref(), Some("60;cap"));
+        assert_eq!(span("fps =").as_deref(), Some(""));
+    }
 
     #[test]
     fn a_settings_file_that_cant_be_read_is_never_written() {
