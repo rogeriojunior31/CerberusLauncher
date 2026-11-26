@@ -1415,7 +1415,8 @@ async fn install_now(
     let on_bytes = |done: u64, total: u64| {
         got.store(done, Ordering::Relaxed);
         of.store(total, Ordering::Relaxed);
-        let percent = if total == 0 { 0 } else { done * 100 / total };
+        // Without a size from the server, every 4 MB (else it would never move).
+        let percent = if total == 0 { 1000 + (done >> 22) } else { done * 100 / total };
         if percent != last_percent.swap(percent, Ordering::Relaxed) {
             report(InstallStep::Downloading { done, total });
         }

@@ -2270,9 +2270,10 @@ async fn list_recomps(
         let client = http.inner().clone();
         tauri::async_runtime::spawn(async move {
             let cache = handle.state::<DataDir>().cache();
-            let before = recomp::catalog::all().len();
+            // Replaced at all (new versions with the same games count too), not just grown.
+            let before = recomp::catalog::all();
             let updated = recomp::catalog::refresh(&client, &cache, false).await;
-            if updated.is_ok() && recomp::catalog::all().len() != before {
+            if updated.is_ok() && !std::sync::Arc::ptr_eq(&before, &recomp::catalog::all()) {
                 let _ = handle.emit("catalog-changed", ());
             }
         });

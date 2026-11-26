@@ -100,12 +100,26 @@ pub fn keep_shared_key(kind: &str, file: &Path) -> Result<PathBuf, String> {
     if !key_shape(kind, &bytes) {
         return Err(tr!("Esse arquivo não parece ser um {}.", key_name(kind)));
     }
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Written beside the old one and swapped: a failed write keeps the key every game uses.
     let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "key".into());
-    let target = dir.join(name);
-    fs::write(&target, bytes).map_err(|e| e.to_string())?;
-    Ok(target)
+    let fresh = dir.with_file_name(format!("{kind}.new"));
+    let old = dir.with_file_name(format!("{kind}.old"));
+    let _ = fs::remove_dir_all(&fresh);
+    fs::create_dir_all(&fresh).map_err(|e| e.to_string())?;
+    if let Err(e) = crate::state_file::write_bytes(&fresh.join(&name), &bytes) {
+        let _ = fs::remove_dir_all(&fresh);
+        return Err(e.to_string());
+    }
+    let _ = fs::remove_dir_all(&old);
+    if dir.exists() {
+        fs::rename(&dir, &old).map_err(|e| e.to_string())?;
+    }
+    if let Err(e) = fs::rename(&fresh, &dir) {
+        let _ = fs::rename(&old, &dir);
+        return Err(e.to_string());
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(dir.join(name))
 }
 
 /// Takes a shared key away, for every game.
@@ -1107,6 +1121,15 @@ mod tests {
         fs::write(&good, b"header_key = 00112233445566778899aabbccddeeff\n").unwrap();
         keep_shared_key("switch.prod-keys", &good).unwrap();
         assert!(missing(&m, game.path(), &picked).is_empty(), "kept once, for every game");
+        // Replacing it: only the new one stays, and nothing is left beside it.
+        let other = game.path().join("other.keys");
+        fs::write(&other, b"header_key = ffeeddccbbaa99887766554433221100
+").unwrap();
+        keep_shared_key("switch.prod-keys", &other).unwrap();
+        assert!(shared_key("switch.prod-keys").unwrap().ends_with("other.keys"));
+        let names: Vec<_> = fs::read_dir(store.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, vec!["switch.prod-keys".to_string()]);
+        assert_eq!(fs::read_dir(store.path().join("switch.prod-keys")).unwrap().count(), 1);
         assert!(shared_key("bios.ps2").is_none(), "only the SDK's key kinds");
         forget_shared_key("switch.prod-keys");
         assert!(shared_key("switch.prod-keys").is_none());
