@@ -304,7 +304,8 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             "F11" => Btn::MenuHold,
             k if k.chars().count() == 1 => {
                 let c = k.chars().next().unwrap_or(' ');
-                if c.is_ascii_alphanumeric() { Btn::Type(c) } else { return }
+                // Letters with accents and the keyboard's symbols type too ("Pokémon", "Zelda: ...").
+                if c.is_alphanumeric() || "-:'&.!".contains(c) { Btn::Type(c) } else { return }
             }
             _ => return,
         };

@@ -209,7 +209,7 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
     }
 }
 
-const KEYS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const KEYS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-:'&.!";
 const KEY_COLUMNS: usize = 6;
 const EXTRA: [&str; 4] = [tk!("Espaço"), tk!("Apagar"), tk!("Limpar"), tk!("Pronto")];
 
@@ -231,7 +231,31 @@ fn Keyboard() -> impl IntoView {
         s.pop();
     });
     tv.sheet_hints.set(vec![(Btn::A, tr!("Digitar")), (Btn::Y, tr!("Espaço")), (Btn::X, tr!("Apagar")), (Btn::B, tr!("Pronto"))]);
-    let key_list = keys.clone();
+    let key_list = StoredValue::new(keys.clone());
+    // A key, by the controller's A or a click.
+    let press = move |r: usize, c: usize| {
+        play(Sound::Move);
+        if r < key_rows {
+            if let Some(k) = key_list.with_value(|l| l.get(r * KEY_COLUMNS + c).copied()) {
+                typed(k);
+            }
+        } else {
+            match c {
+                0 => typed(' '),
+                1 => erase(),
+                2 => target().set(String::new()),
+                _ => {
+                    play(Sound::Select);
+                    close();
+                }
+            }
+        }
+    };
+    let click = move |r: usize, c: usize| {
+        focus.row.set(r);
+        focus.col.set(c);
+        press(r, c);
+    };
     tv.handle_sheet(move |btn| {
         match btn {
             Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
@@ -239,25 +263,7 @@ fn Keyboard() -> impl IntoView {
                     play(Sound::Move);
                 }
             }
-            Btn::A => {
-                let (r, c) = (focus.row.get_untracked(), focus.col.get_untracked());
-                play(Sound::Move);
-                if r < key_rows {
-                    if let Some(k) = key_list.get(r * KEY_COLUMNS + c) {
-                        typed(*k);
-                    }
-                } else {
-                    match c {
-                        0 => typed(' '),
-                        1 => erase(),
-                        2 => target().set(String::new()),
-                        _ => {
-                            play(Sound::Select);
-                            close();
-                        }
-                    }
-                }
-            }
+            Btn::A => press(focus.row.get_untracked(), focus.col.get_untracked()),
             Btn::Y => typed(' '),
             Btn::X | Btn::Erase => erase(),
             Btn::Type(c) => typed(c),
@@ -274,13 +280,13 @@ fn Keyboard() -> impl IntoView {
         .enumerate()
         .map(|(i, k)| {
             let (r, c) = (i / KEY_COLUMNS, i % KEY_COLUMNS);
-            view! { <span class="tv-key" class:on=move || focus.is(r, c) data-tvf=focus.key(r, c)>{k.to_string()}</span> }
+            view! { <span class="tv-key" class:on=move || focus.is(r, c) data-tvf=focus.key(r, c) on:click=move |_| click(r, c)>{k.to_string()}</span> }
         })
         .collect_view();
     let extra = EXTRA
         .iter()
         .enumerate()
-        .map(|(c, label)| view! { <span class="tv-key wide" class:done=c == 3 class:on=move || focus.is(key_rows, c) data-tvf=focus.key(key_rows, c)>{cerberus_shared::i18n::t(label)}</span> })
+        .map(|(c, label)| view! { <span class="tv-key wide" class:done=c == 3 class:on=move || focus.is(key_rows, c) data-tvf=focus.key(key_rows, c) on:click=move |_| click(key_rows, c)>{cerberus_shared::i18n::t(label)}</span> })
         .collect_view();
     view! {
         <div class="tv-scrim">
