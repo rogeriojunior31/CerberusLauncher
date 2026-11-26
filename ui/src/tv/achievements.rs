@@ -59,7 +59,7 @@ pub fn GameList(source: String, key: String) -> impl IntoView {
     let concealed = move |a: &cerberus_shared::Achievement| a.hidden && a.unlocked_at.is_none() && !revealed.with(|r| r.contains(&a.id));
     Effect::new(move |_| {
         let secret = list.with(|l| l.get(focus.row.get()).is_some_and(|a| concealed(a)));
-        tv.hints.set(if secret { vec![(Btn::A, tr!("Mostrar"))] } else { Vec::new() });
+        tv.hints.set(if secret { vec![(Btn::A, tr!("Mostrar")), (Btn::B, tr!("Voltar"))] } else { vec![(Btn::B, tr!("Voltar"))] });
     });
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down => {

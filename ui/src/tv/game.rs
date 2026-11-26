@@ -200,7 +200,10 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             crate::api::window_action("minimize");
         }
-        Act::Unavailable => {}
+        Act::Unavailable => {
+            play(Sound::Back);
+            library.toast(tr!("Ainda não há uma versão deste jogo para baixar."));
+        }
     };
     tv.handle_page(move |btn| {
         // The full-screen picture: left and right step, B or A closes.

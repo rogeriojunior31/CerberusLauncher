@@ -378,8 +378,14 @@ pub fn TvMode() -> impl IntoView {
         let sections = (tv.sheet.get().is_none() && matches!(tv.view.get(), View::Tab(_))).then(|| {
             view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>{tr!("Seções")}</b></span> }
         });
+        // On a section, what B does: back to Home, or (from Home) the leave question.
+        let back = (tv.sheet.get().is_none() && !list.iter().any(|(b, _)| *b == Btn::B)).then(|| match tv.view.get() {
+            View::Tab(Tab::Home) => Some(tr!("Sair")),
+            View::Tab(_) => Some(tr!("Início")),
+            _ => None,
+        }).flatten().map(|label| view! { <span class="tv-hint">{glyph(Btn::B, kind)}<b>{label}</b></span> });
         let items = list.into_iter().map(|(btn, label)| view! { <span class="tv-hint">{glyph(btn, kind)}<b>{label}</b></span> }).collect_view();
-        view! { {items}{sections} }
+        view! { {items}{back}{sections} }
     };
 
     let sheet = move || tv.sheet.get().map(|s| view! { <sheets::SheetView sheet=s /> });

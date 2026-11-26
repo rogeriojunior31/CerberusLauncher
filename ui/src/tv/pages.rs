@@ -81,7 +81,7 @@ pub fn progress_of(library: Library, recomp_id: &str) -> Option<u64> {
 }
 
 /// A cover on a shelf or grid, with its name and what's going on with it.
-pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync + 'static) -> impl IntoView {
+pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync + 'static, hover: impl Fn() + Copy + Send + Sync + 'static) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = item.id();
     let rid = item.recomp_id();
@@ -115,7 +115,7 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
         }
     };
     view! {
-        <div class="tv-tile" class:on=on data-tvf=key on:click=on_click>
+        <div class="tv-tile" class:on=on data-tvf=key on:mouseenter=move |_| hover() on:click=on_click>
             <div class="tv-cover">
                 <Poster sources=item.covers() title=item.name() />
                 {move || badge().map(|b| view! { <span class="tv-tag">{b}</span> })}
@@ -307,7 +307,7 @@ pub fn Home() -> impl IntoView {
                 let tiles = items
                     .into_iter()
                     .enumerate()
-                    .map(|(c, item)| tile(item, focus.key(r, c), move || focus.is(r, c)))
+                    .map(|(c, item)| tile(item, focus.key(r, c), move || focus.is(r, c), move || focus.set(r, c)))
                     .collect_view();
                 view! {
                     <section class="tv-shelf" class:dock=r == 0 class:current=move || focus.row.get() == r>
@@ -537,7 +537,7 @@ pub fn LibraryGrid() -> impl IntoView {
             .enumerate()
             .map(|(i, item)| {
                 let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
-                tile(item, focus.key(r, c), move || focus.is(r, c))
+                tile(item, focus.key(r, c), move || focus.is(r, c), move || focus.set(r, c))
             })
             .collect_view()
             .into_any()
@@ -673,7 +673,7 @@ pub fn Discover() -> impl IntoView {
             }),
         }
     };
-    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Buscar"))]);
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::X, tr!("Opções")), (Btn::Y, tr!("Buscar"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
             if focus.step(btn, &rows()) {
@@ -717,7 +717,7 @@ pub fn Discover() -> impl IntoView {
                 .enumerate()
                 .map(|(i, e)| {
                     let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
-                    tile(Item::Entry(e), focus.key(r, c), move || focus.is(r, c))
+                    tile(Item::Entry(e), focus.key(r, c), move || focus.is(r, c), move || focus.set(r, c))
                 })
                 .collect_view()
         })
