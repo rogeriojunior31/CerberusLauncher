@@ -90,16 +90,33 @@ pub fn UpdateDialog() -> impl IntoView {
             library.report(result);
         });
     };
+    // Esc closes it (not while installing), and the main button takes the focus as it opens.
+    let main_button = NodeRef::<leptos::html::Button>::new();
+    let keys = window_event_listener(leptos::ev::keydown, move |e| {
+        if e.key() == "Escape" && updates.open.get_untracked() && !busy.get_untracked() {
+            updates.open.set(false);
+        }
+    });
+    on_cleanup(move || keys.remove());
+    Effect::new(move |_| {
+        if updates.open.get() {
+            request_animation_frame(move || {
+                if let Some(b) = main_button.get_untracked() {
+                    let _ = b.focus();
+                }
+            });
+        }
+    });
     move || {
         let (true, Some(u)) = (updates.open.get(), updates.found.get()) else { return ().into_any() };
         let date = u.published.split('T').next().unwrap_or_default().to_string();
         view! {
             <div class="backdrop-dim" on:click=move |_| if !busy.get_untracked() { updates.open.set(false) }>
-                <div class="dialog update-dialog" role="dialog" aria-modal="true" on:click=|e| e.stop_propagation()>
+                <div class="dialog update-dialog" role="dialog" aria-modal="true" aria-labelledby="upd-title" on:click=|e| e.stop_propagation()>
                     <div class="upd-h">
                         <img src="brand/cerberus-pixel-icone.svg" alt="" />
                         <div>
-                            <h2>{tr!("Cerberus {} está disponível", u.version)}</h2>
+                            <h2 id="upd-title">{tr!("Cerberus {} está disponível", u.version)}</h2>
                             <small class="muted">{tr!("Você tem a {} · {} · {}", api::app_version(), date, format::megabytes(u.size))}</small>
                         </div>
                     </div>
@@ -116,7 +133,7 @@ pub fn UpdateDialog() -> impl IntoView {
                     <p class="muted small">{tr!("O instalador vem do GitHub do Cerberus e é conferido antes de instalar. Seus jogos, saves e configurações ficam como estão.")}</p>
                     <div class="dialog-footer">
                         <button type="button" class="btn" disabled=move || busy.get() on:click=move |_| updates.open.set(false)>{tr!("Depois")}</button>
-                        <button type="button" class="btn main" disabled=move || busy.get() on:click=install>
+                        <button type="button" class="btn main" node_ref=main_button disabled=move || busy.get() on:click=install>
                             <Svg icon=Icon::Download size=18 />{move || if busy.get() { tr!("Atualizando…") } else { tr!("Atualizar agora") }}
                         </button>
                     </div>
@@ -137,21 +154,37 @@ pub fn WhatsNewDialog() -> impl IntoView {
             let _ = api::whats_new_seen().await;
         });
     };
+    let main_button = NodeRef::<leptos::html::Button>::new();
+    let keys = window_event_listener(leptos::ev::keydown, move |e| {
+        if e.key() == "Escape" && updates.whats_new.with_untracked(Option::is_some) {
+            close();
+        }
+    });
+    on_cleanup(move || keys.remove());
+    Effect::new(move |_| {
+        if updates.whats_new.with(Option::is_some) {
+            request_animation_frame(move || {
+                if let Some(b) = main_button.get_untracked() {
+                    let _ = b.focus();
+                }
+            });
+        }
+    });
     move || {
         updates.whats_new.get().map(|u| {
             view! {
                 <div class="backdrop-dim" on:click=move |_| close()>
-                    <div class="dialog update-dialog" role="dialog" aria-modal="true" on:click=|e| e.stop_propagation()>
+                    <div class="dialog update-dialog" role="dialog" aria-modal="true" aria-labelledby="new-title" on:click=|e| e.stop_propagation()>
                         <div class="upd-h">
                             <img src="brand/cerberus-pixel-icone.svg" alt="" />
                             <div>
-                                <h2>{tr!("O que há de novo na {}", u.version)}</h2>
+                                <h2 id="new-title">{tr!("O que há de novo na {}", u.version)}</h2>
                                 <small class="muted">{tr!("O Cerberus foi atualizado.")}</small>
                             </div>
                         </div>
                         <div class="upd-notes">{notes_view(&u.notes)}</div>
                         <div class="dialog-footer">
-                            <button type="button" class="btn main" on:click=move |_| close()>{tr!("Entendi")}</button>
+                            <button type="button" class="btn main" node_ref=main_button on:click=move |_| close()>{tr!("Entendi")}</button>
                         </div>
                     </div>
                 </div>
