@@ -885,7 +885,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3] — corrigido em 25/11/2026: arquivo que não se lê (em uso, UTF-16) nunca é regravado; gravação em um passo; o que não voltou ao fim da partida fica registrado e volta na próxima (C F10).
 - [x] arquivos do próprio jogo nos Ajustes [RP F1] — feito em 25/11/2026: arquivo que existe e não se lê (UTF-16, JSON com comentário, em uso) nunca é regravado; JSON com BOM lido; cópia `.cerberus-orig` do original na primeira mudança. Testado.
 - [x] HedgeModManager [RP F2] — feito em 25/11/2026: `ModsDB.ini`/`cpkredir.ini` ilegível ou travado é recusado sem mudança; os dois ganham cópia antes da primeira mudança; gravação inteira ou nada; mod atualizado: o novo entra antes de sair o velho. Testado.
-- [x] Valores de INI com `#`/`;` [RP F13] — feito em 25/11/2026: comentário só quando `;`/`#` está sozinho entre espaços (`60 ; nota`); `D:\Jogos #2\zelda.iso` e `C:#b.iso` ficam inteiros na leitura e na gravação. Testado.
+- [x] Valores de INI com `#`/`;` [RP F13] — feito em 25/11/2026: comentário só quando `;`/`#` está sozinho entre espaços (`60 ; nota`); `D:\Jogos #2\zelda.iso` e `C:\a#b.iso` ficam inteiros na leitura e na gravação. Testado.
 - [ ] JSONL com linha cortada, gravações sem `sync_all`, caches com `fs::write` direto [P F10, P F11, Fu F11, Fu F12]
 
 ### Lote B — Nada se perde quando algo é interrompido ou o app fecha
