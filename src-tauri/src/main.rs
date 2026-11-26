@@ -1346,17 +1346,38 @@ fn set_monitor(app: AppHandle, name: Option<String>) -> Result<SettingsView, Str
     let monitor = name.filter(|n| !n.is_empty());
     settings::update(&data.0, |s| s.monitor = monitor.clone())?;
     if let Some(window) = app.get_webview_window("main") {
-        monitors::place(&window, monitor.as_deref());
+        let _ = monitors::place(&window, monitor.as_deref());
     }
     Ok(settings_view(&app))
 }
 
-/// Before Big Picture fills the screen: the chosen monitor's.
+/// Where the window was before Big Picture moved it to the chosen monitor.
+static BEFORE_TV: std::sync::Mutex<Option<monitors::Placed>> = std::sync::Mutex::new(None);
+
+/// Before Big Picture fills the screen: the chosen monitor's. Says so when that
+/// monitor isn't connected (Big Picture then opens on this one).
 #[tauri::command]
-fn to_chosen_monitor(app: AppHandle) {
+fn to_chosen_monitor(app: AppHandle) -> Option<String> {
     let chosen = settings::load(&app.state::<DataDir>().0);
+    let window = app.get_webview_window("main")?;
+    let placed = monitors::place(&window, chosen.monitor.as_deref());
+    if matches!(placed, monitors::Placed::Moved { .. }) {
+        *BEFORE_TV.lock().unwrap_or_else(|p| p.into_inner()) = Some(placed);
+    }
+    (placed == monitors::Placed::Missing).then(|| tr!("O monitor escolhido para o Big Picture não está ligado: ele abriu neste.").to_string())
+}
+
+/// Leaving Big Picture: the window goes back where it was before it.
+#[tauri::command]
+fn back_from_tv(app: AppHandle) {
+    let Some(monitors::Placed::Moved { from, maximized }) = BEFORE_TV.lock().unwrap_or_else(|p| p.into_inner()).take() else { return };
     if let Some(window) = app.get_webview_window("main") {
-        monitors::place(&window, chosen.monitor.as_deref());
+        let _ = window.set_fullscreen(false);
+        let _ = window.unmaximize();
+        let _ = window.set_position(tauri::PhysicalPosition::new(from.0, from.1));
+        if maximized {
+            let _ = window.maximize();
+        }
     }
 }
 
@@ -3677,7 +3698,7 @@ fn main() {
             app.manage(overlay::Overlay::default());
             screenshots::watch(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
-                monitors::place(&window, chosen.monitor.as_deref());
+                let _ = monitors::place(&window, chosen.monitor.as_deref());
             }
             // Made hidden (tauri.conf.json): shown only now, on its monitor, and not
             // at all when it starts hidden with Windows (no flash of it first).
@@ -3917,6 +3938,7 @@ fn main() {
             steam_open,
             game_achievements,
             to_chosen_monitor,
+            back_from_tv,
             set_autostart,
             set_start_hidden,
             recent_activity,

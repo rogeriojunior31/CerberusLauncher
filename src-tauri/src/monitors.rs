@@ -36,15 +36,27 @@ fn centered(origin: (i32, i32), area: (u32, u32), size: (u32, u32)) -> (i32, i32
     (origin.0 + gap(area.0, size.0), origin.1 + gap(area.1, size.1))
 }
 
+/// What `place` did.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Placed {
+    /// No monitor chosen, or the window is on it already.
+    Stayed,
+    /// The chosen monitor isn't connected now.
+    Missing,
+    /// Moved from here (and maximized there or not), for going back.
+    Moved { from: (i32, i32), maximized: bool },
+}
+
 /// Moves the window to the chosen monitor, keeping it maximized or full
 /// screen if it was. Nothing happens when it's there already.
-pub fn place<R: Runtime>(window: &WebviewWindow<R>, chosen: Option<&str>) {
-    let Some(chosen) = chosen.filter(|c| !c.is_empty()) else { return };
+pub fn place<R: Runtime>(window: &WebviewWindow<R>, chosen: Option<&str>) -> Placed {
+    let Some(chosen) = chosen.filter(|c| !c.is_empty()) else { return Placed::Stayed };
     let all = window.available_monitors().unwrap_or_default();
-    let Some(target) = all.iter().find(|m| name_of(m) == chosen) else { return };
+    let Some(target) = all.iter().find(|m| name_of(m) == chosen) else { return Placed::Missing };
     if window.current_monitor().ok().flatten().is_some_and(|m| name_of(&m) == chosen) {
-        return;
+        return Placed::Stayed;
     }
+    let from = window.outer_position().map(|p| (p.x, p.y)).unwrap_or_default();
     let full = window.is_fullscreen().unwrap_or(false);
     let max = window.is_maximized().unwrap_or(false);
     if full {
@@ -64,6 +76,7 @@ pub fn place<R: Runtime>(window: &WebviewWindow<R>, chosen: Option<&str>) {
     if full {
         let _ = window.set_fullscreen(true);
     }
+    Placed::Moved { from, maximized: max }
 }
 
 #[cfg(test)]

@@ -657,8 +657,12 @@ pub async fn set_monitor(name: Option<String>) -> Result<SettingsView, String> {
     call("set_monitor", &Arg { name }).await
 }
 
-pub async fn to_chosen_monitor() -> Result<(), String> {
+pub async fn to_chosen_monitor() -> Result<Option<String>, String> {
     call("to_chosen_monitor", &()).await
+}
+
+pub async fn back_from_tv() -> Result<(), String> {
+    call("back_from_tv", &()).await
 }
 
 pub async fn set_close_to_tray(on: bool) -> Result<SettingsView, String> {

@@ -1288,6 +1288,7 @@
   "O menu não está aberto sobre um jogo.": "The menu isn't open over a game.",
   "O mod está corrompido: {}": "The mod is corrupted: {}",
   "O mod.ini sumiu ao mover o mod.": "The mod.ini disappeared while moving the mod.",
+  "O monitor escolhido para o Big Picture não está ligado: ele abriu neste.": "The monitor chosen for Big Picture isn't connected: it opened on this one.",
   "O nome não pode ficar vazio.": "The name can't be empty.",
   "O núcleo baixado veio corrompido.": "The downloaded core is corrupted.",
   "O núcleo baixado veio diferente do esperado.": "The downloaded core isn't what was expected.",

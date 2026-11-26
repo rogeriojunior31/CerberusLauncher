@@ -246,7 +246,9 @@ pub fn TvMode() -> impl IntoView {
     // On the monitor the player picked, then full screen; leaving before that is done stays windowed.
     let here = StoredValue::new(true);
     leptos::task::spawn_local(async move {
-        let _ = api::to_chosen_monitor().await;
+        if let Ok(Some(note)) = api::to_chosen_monitor().await {
+            library.toast(note);
+        }
         if here.try_get_value().unwrap_or(false) {
             api::window_toggle("setFullscreen", true);
         }
@@ -254,6 +256,10 @@ pub fn TvMode() -> impl IntoView {
     on_cleanup(move || {
         here.try_set_value(false);
         api::window_toggle("setFullscreen", false);
+        // Back to the monitor (and place) it was on before Big Picture.
+        leptos::task::spawn_local(async move {
+            let _ = api::back_from_tv().await;
+        });
     });
 
     let leave = move || library.go(Route::Home);
