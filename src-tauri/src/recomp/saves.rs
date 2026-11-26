@@ -443,10 +443,91 @@ pub(crate) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, a
     }
     // Finish reading and checking every ZIP entry before replacing the first live save.
     let written = staged.len() as u32;
-    for (temp, target) in staged {
-        temp.persist(&target).map_err(|e| tr!("Não foi possível restaurar {}: {}", target.display(), e))?;
-    }
+    swap_all(staged)?;
     Ok(written)
+}
+
+/// Puts every staged file in place, or none: each live save is set aside
+/// first, and when one can't be replaced (another program holds it) the ones
+/// already replaced go back. Saves are never left half from the backup and
+/// half from before.
+fn swap_all(staged: Vec<(tempfile::TempPath, PathBuf)>) -> Result<(), String> {
+    let mut done: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
+    let undo = |done: &[(PathBuf, Option<PathBuf>)]| {
+        for (target, old) in done.iter().rev() {
+            match old {
+                Some(old) => {
+                    let _ = fs::rename(old, target);
+                }
+                None => {
+                    let _ = fs::remove_file(target);
+                }
+            }
+        }
+    };
+    let nothing_changed = |target: &Path, e: &dyn std::fmt::Display| tr!("Não foi possível restaurar {0}: {1}. Nada foi mudado: os saves continuam como estavam. Feche o jogo e o que estiver usando os saves e tente de novo.", target.display(), e);
+    for (index, (temp, target)) in staged.into_iter().enumerate() {
+        let old = if target.exists() {
+            let old = target.with_file_name(format!(".{}.cerberus-before-{index}", target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+            let _ = fs::remove_file(&old);
+            if let Err(e) = rename_patiently(&target, &old) {
+                undo(&done);
+                return Err(nothing_changed(&target, &e));
+            }
+            Some(old)
+        } else {
+            None
+        };
+        // A file held for a moment (the antivirus, a sync app) gets a few tries.
+        let mut temp = temp;
+        let mut placed = Err(String::new());
+        for attempt in 0..3 {
+            match temp.persist(&target) {
+                Ok(()) => {
+                    placed = Ok(());
+                    break;
+                }
+                Err(e) => {
+                    placed = Err(e.error.to_string());
+                    temp = e.path;
+                    if attempt < 2 {
+                        std::thread::sleep(std::time::Duration::from_millis(700));
+                    }
+                }
+            }
+        }
+        if let Err(e) = placed {
+            if let Some(old) = &old {
+                let _ = fs::rename(old, &target);
+            }
+            undo(&done);
+            return Err(nothing_changed(&target, &e));
+        }
+        done.push((target, old));
+    }
+    for (_, old) in done {
+        if let Some(old) = old {
+            let _ = fs::remove_file(old);
+        }
+    }
+    Ok(())
+}
+
+/// A rename tried a few times: a save held for a moment by another program.
+fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut last = None;
+    for attempt in 0..3 {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last = Some(e);
+                if attempt < 2 {
+                    std::thread::sleep(std::time::Duration::from_millis(700));
+                }
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("rename")))
 }
 
 /// `"0/slot1.bin"` -> the file in the first place. Anything climbing out of its place is refused.
@@ -522,6 +603,36 @@ mod tests {
         write(&install.join("Save/file1.sav"), "lost");
         restore(&backups, &made.name, &install).unwrap();
         assert_eq!(fs::read_to_string(install.join("Save/file1.sav")).unwrap(), "progress");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_save_held_by_another_program_leaves_every_save_as_it_was() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        let backups = dir.path().join("backups");
+        let slots = ["a.sav", "b.sav", "c.sav"].map(|n| install.join("Save").join(n));
+        for slot in &slots {
+            write(slot, "from the backup");
+        }
+        let made = backup(&backups, &install_saves(), &install, "Manual", None).unwrap().unwrap();
+        for slot in &slots {
+            write(slot, "played since");
+        }
+        // The second slot open in another program, sharing nothing.
+        let held = fs::OpenOptions::new().read(true).share_mode(0).open(&slots[1]).unwrap();
+        let error = restore(&backups, &made.name, &install).unwrap_err();
+        drop(held);
+        assert!(error.contains("Nada foi mudado"), "{error}");
+        for slot in &slots {
+            assert_eq!(fs::read_to_string(slot).unwrap(), "played since", "{}", slot.display());
+        }
+        let left: Vec<_> = fs::read_dir(install.join("Save")).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left.len(), 3, "nothing set aside is left behind: {left:?}");
+        // Closed, it goes through.
+        restore(&backups, &made.name, &install).unwrap();
+        assert_eq!(fs::read_to_string(&slots[1]).unwrap(), "from the backup");
     }
 
     #[test]

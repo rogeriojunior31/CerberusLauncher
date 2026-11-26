@@ -279,7 +279,9 @@ pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
 
 /// Puts a backup back, after keeping a copy of the saves as they are now, so
 /// restoring the wrong one can be undone.
-pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<u32, String> {
+/// Restores a backup; with it, a warning when the restored saves couldn't be
+/// copied as the newest (to the cloud too): the other PC would keep its older ones.
+pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<(u32, Option<String>), String> {
     // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
     let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
     // The saves about to be replaced stay on this PC only: sent to the cloud
@@ -288,8 +290,10 @@ pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, na
     let restored = saves::restore_open(selected, install_dir, None)?;
     // The restored saves become the newest copy, here and in the cloud, so the
     // next Play doesn't bring the cloud's older-chosen ones back over them.
-    let _ = backup_saves(folders, recomp_id, install_dir, tk!("Restaurado"));
-    Ok(restored)
+    let warning = backup_saves(folders, recomp_id, install_dir, tk!("Restaurado"))
+        .err()
+        .map(|e| tr!("Restaurado neste PC, mas não foi possível guardar os saves restaurados como os mais novos (nem na nuvem): {}. Faça um backup manual antes de jogar em outro PC.", e));
+    Ok((restored, warning))
 }
 
 pub fn library_id(recomp_id: &str) -> String {

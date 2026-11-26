@@ -2710,6 +2710,11 @@ fn list_backups(library: State<'_, LocalLibrary>, folders: State<'_, recomp::Fol
 /// `None` when there was nothing new to copy.
 #[tauri::command]
 async fn backup_now(app: AppHandle, library: State<'_, LocalLibrary>, folders: State<'_, recomp::Folders>, id: String) -> Result<Option<Backup>, String> {
+    // A game open by itself may be writing its save right now: a copy taken
+    // then could hold half of it. (Sessions Cerberus started back up when they end.)
+    if library.get(&id).ok().flatten().is_some_and(|g| sessions::open_outside(&g)) {
+        return Err(tr!("O jogo está aberto: feche-o antes de fazer um backup, para não copiar um save pela metade.").into());
+    }
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
     let result = recomp::backup_saves(&folders, &recomp_id, &install_dir, tk!("Manual"));
     trail::note(&app, &id, tk!("Backup manual"), &sessions::backup_outcome(&result));
@@ -2733,9 +2738,14 @@ async fn restore_backup(
     }
     let (recomp_id, install_dir) = recomp_of(&library, &id)?;
     let result = recomp::restore_backup(&folders, &recomp_id, &install_dir, &name);
-    let outcome = result.as_ref().map(|n| tr!("{} arquivos de {} restaurados", n, name)).map_err(Clone::clone);
+    let outcome = result.as_ref().map(|(n, _)| tr!("{} arquivos de {} restaurados", n, name)).map_err(Clone::clone);
     trail::note(&app, &id, tk!("Restaurar backup"), &outcome);
-    result
+    let (restored, warning) = result?;
+    if let Some(warning) = warning {
+        trail::note(&app, &id, tk!("Restaurar backup"), &Err(warning.clone()));
+        let _ = app.emit("toast", warning);
+    }
+    Ok(restored)
 }
 
 fn found_view(found: recomp::adopt::Found) -> Option<cerberus_shared::AdoptFound> {
