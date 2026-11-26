@@ -85,13 +85,18 @@ async fn run_microsoft_installer(http: &reqwest::Client, downloads: &Path, what:
     if !(host == "microsoft.com" || host.ends_with(".microsoft.com")) {
         return Err(tr!("O link da Microsoft levou a outro site ({}); a instalação foi cancelada.", host));
     }
-    let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
+    let bytes = crate::net::read_limited(reply, 512 << 20).await.map_err(|e| tr!("Não foi possível baixar o {}: {}", what, e))?;
     if bytes.len() < smallest || !bytes.starts_with(b"MZ") {
         return Err(tr!("O instalador do {} veio incompleto.", what));
     }
     std::fs::create_dir_all(downloads).map_err(|e| e.to_string())?;
     let installer = downloads.join(file);
-    std::fs::write(&installer, &bytes).map_err(|e| e.to_string())?;
+    crate::state_file::write_bytes(&installer, &bytes)?;
+    // Signed by Microsoft, as Windows checks it: a mirror or a proxy can't hand over another program.
+    if let Err(why) = crate::authenticode::require(&installer, "Microsoft Corporation") {
+        let _ = std::fs::remove_file(&installer);
+        return Err(why);
+    }
     let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
     // Windows' permission prompt when the installer asks for administrator rights.
     let code = tauri::async_runtime::spawn_blocking(move || match std::process::Command::new(&installer).args(&args).status() {

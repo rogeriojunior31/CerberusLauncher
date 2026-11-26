@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod art_cache;
+mod authenticode;
 mod emulator_saves;
 mod state_file;
 mod epic;
