@@ -2101,7 +2101,9 @@ fn xbox_art(app: &AppHandle, http: &reqwest::Client, games: &mut [Game]) {
             let candidates = vec![plain.trim().to_string(), plain.replace(" for Windows", "").trim().to_string()];
             let found = steam_store::identify(&http, &candidates).await;
             any |= found.is_some();
-            known.insert(id, found.map(|f| xbox::art::Found { cover: f.art.cover, hero: f.art.hero }));
+            // A miss keeps its date: asked again in a month.
+            let now = xbox::art::now();
+            known.insert(id, Some(found.map_or_else(|| xbox::art::missed_now(now), |f| xbox::art::Found { cover: f.art.cover, hero: f.art.hero, missed: None })));
         }
         xbox::art::save(&data, &known);
         ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
