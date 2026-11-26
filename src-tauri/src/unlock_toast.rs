@@ -6,7 +6,9 @@
 //! screen; borderless and windowed games show it.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use cerberus_shared::UnlockNotice;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
@@ -21,6 +23,63 @@ const MARGIN: f64 = 28.0;
 #[derive(Default)]
 pub struct Queue(Mutex<VecDeque<UnlockNotice>>);
 
+/// The window asks for the next notice every 6 s while it shows them: this
+/// long without a word, with notices waiting, means it's stuck (crashed,
+/// never loaded, reloaded).
+const STUCK_AFTER: Duration = Duration::from_secs(10);
+
+/// When the window last asked for a notice, or one was queued.
+static LAST_SIGN: Mutex<Option<Instant>> = Mutex::new(None);
+static WATCHING: AtomicBool = AtomicBool::new(false);
+
+fn sign_of_life() {
+    *LAST_SIGN.lock().unwrap_or_else(|p| p.into_inner()) = Some(Instant::now());
+}
+
+/// Notices are waiting and the window hasn't asked for one in `STUCK_AFTER`.
+fn stuck(waiting: bool, since_last_sign: Duration) -> bool {
+    waiting && since_last_sign > STUCK_AFTER
+}
+
+/// Watches the window while notices wait: a stuck one is made again; stuck
+/// twice, the notices left go as Windows notifications and it's closed.
+fn watch(app: AppHandle) {
+    if WATCHING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut strikes = 0;
+        loop {
+            std::thread::sleep(Duration::from_secs(2));
+            let waiting = !app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).is_empty();
+            if !waiting {
+                break;
+            }
+            let since = LAST_SIGN.lock().unwrap_or_else(|p| p.into_inner()).map_or(Duration::ZERO, |t| t.elapsed());
+            if !stuck(waiting, since) {
+                continue;
+            }
+            strikes += 1;
+            if let Some(w) = app.get_webview_window(LABEL) {
+                let _ = w.destroy();
+            }
+            if strikes == 1 {
+                // Made again; it asks for the notices still waiting as it loads.
+                sign_of_life();
+                // In the same order; this watch goes on (`present` sees it running).
+                present(&app);
+                continue;
+            }
+            let left: Vec<UnlockNotice> = app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).drain(..).collect();
+            for notice in left {
+                crate::notify::tell(&app, crate::notify::Kind::Reply, &notice.title, &notice.name);
+            }
+            break;
+        }
+        WATCHING.store(false, Ordering::SeqCst);
+    });
+}
+
 /// Shows a notice over the game. When the window can't be made, a Windows
 /// notification says it instead. Never call it on the main thread (a sync
 /// command): making the window there waits on itself.
@@ -29,8 +88,13 @@ pub fn show(app: &AppHandle, notice: UnlockNotice) {
     if !crate::in_game::get().unlock_notice {
         return;
     }
-    let fallback = (notice.title.clone(), notice.name.clone());
     app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).push_back(notice);
+    present(app);
+}
+
+/// Shows the notice window (made when it isn't there) for the notices queued.
+fn present(app: &AppHandle) {
+    let fallback = app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).front().map(|n| (n.title.clone(), n.name.clone())).unwrap_or_default();
     let window = match app.get_webview_window(LABEL) {
         Some(w) => w,
         None => {
@@ -61,6 +125,11 @@ pub fn show(app: &AppHandle, notice: UnlockNotice) {
     let _ = window.set_ignore_cursor_events(true);
     win::show_quietly(&window);
     let _ = window.emit("unlock-queued", ());
+    // Nothing waiting sits forever behind a window that stopped asking.
+    if !WATCHING.load(Ordering::SeqCst) {
+        sign_of_life();
+    }
+    watch(app.clone());
 }
 
 /// Bottom right of the screen the game in front is on.
@@ -88,6 +157,7 @@ fn place(app: &AppHandle, window: &tauri::WebviewWindow) {
 /// The next notice, for the window to show; `None` hides it.
 #[tauri::command]
 pub fn unlock_next(app: AppHandle) -> Option<UnlockNotice> {
+    sign_of_life();
     let next = app.state::<Queue>().0.lock().unwrap_or_else(|p| p.into_inner()).pop_front();
     if next.is_none() {
         if let Some(w) = app.get_webview_window(LABEL) {
@@ -133,5 +203,17 @@ mod win {
 mod win {
     pub fn show_quietly(window: &tauri::WebviewWindow) {
         let _ = window.show();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_that_stops_asking_is_stuck_only_with_notices_waiting() {
+        assert!(!stuck(true, Duration::from_secs(6)), "one notice on screen is 6 s");
+        assert!(stuck(true, Duration::from_secs(11)));
+        assert!(!stuck(false, Duration::from_secs(60)), "nothing waiting: nothing to unstick");
     }
 }
