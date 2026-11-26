@@ -399,11 +399,21 @@ pub fn LibraryGrid() -> impl IntoView {
             });
         }
         match order.get() {
-            1 => list.sort_by_key(|i| fold(&i.name())),
+            // Each name worked out once, not in every comparison.
+            1 => list.sort_by_cached_key(|i| fold(&i.name())),
             2 => list.sort_by_key(|i| std::cmp::Reverse(stats(i).1)),
-            _ => list.sort_by_key(|i| (std::cmp::Reverse(stats(i).0), i.name().to_lowercase())),
+            _ => list.sort_by_cached_key(|i| (std::cmp::Reverse(stats(i).0), i.name().to_lowercase())),
         }
         list
+    });
+    // Drawn a few rows at a time, as far as the focus has gone (a jump or a
+    // search can take it far down): a big library isn't drawn whole at once.
+    let shown = RwSignal::new(48usize);
+    Effect::new(move |_| {
+        let needed = (focus.row.get() + 3) * COLUMNS;
+        if needed > shown.get_untracked() {
+            shown.set(needed + 36);
+        }
     });
     let rows = move || {
         let mut r = vec![kinds.len() + 2];
@@ -525,6 +535,7 @@ pub fn LibraryGrid() -> impl IntoView {
             return view! { <p class="tv-empty">{empty}</p> }.into_any();
         }
         list.into_iter()
+            .take(shown.get())
             .enumerate()
             .map(|(i, item)| {
                 let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
