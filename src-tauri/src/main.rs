@@ -619,6 +619,10 @@ async fn import_bios(app: AppHandle) -> Result<(cerberus_shared::EmulationView, 
 /// Starts a classic from the ROM folders in RetroArch.
 #[tauri::command(async)]
 fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), String> {
+    // Two at once would each change and put back the same emulator settings.
+    if background::classic_running() {
+        return Err(tr!("Um clássico já está aberto. Feche-o antes de abrir outro.").into());
+    }
     let (data, picked) = retroarch_choice(&app);
     let rom = PathBuf::from(&path);
     // Only files from the player's own ROM folders are started.
@@ -657,6 +661,7 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
             return Err(e);
         }
     };
+    cheevos::started(&data, child.id());
     watch_classic(app, path, child, session, ("retroarch", exe.clone()));
     Ok(())
 }
@@ -822,6 +827,7 @@ fn play_standalone(app: AppHandle, path: String, rom: PathBuf, emulator: &'stati
             return Err(e);
         }
     };
+    cheevos::started(&data, child.id());
     watch_classic(app, path, child, session, (emulator.id, exe.to_path_buf()));
     Ok(())
 }

@@ -1674,6 +1674,7 @@
   "URL da fonte": "Source URL",
   "Um arquivo .zip com a biblioteca, favoritos, coleções, notas, tempo de jogo, capas que você escolheu e configurações. Suas chaves e senhas ficam de fora. Os saves têm os próprios backups.": "A .zip file with the library, favorites, collections, notes, play time, covers you picked and settings. Your keys and passwords stay out. Saves have their own backups.",
   "Um aviso pequeno, sem tirar o foco do jogo, quando uma conquista é desbloqueada. Diz quando ela é rara.": "A small notice that doesn't take focus from the game when an achievement unlocks. It says when it's rare.",
+  "Um clássico já está aberto. Feche-o antes de abrir outro.": "A classic is already open. Close it before opening another.",
   "Um download ou instalação está em andamento e seria interrompido.": "A download or installation is in progress and would be interrupted.",
   "Um jogador": "Single player",
   "Um jogo aberto pelo Cerberus ainda está rodando: o tempo de jogo e o backup dos saves do fim da partida dependem dele.": "A game Cerberus opened is still running: its play time and the end-of-session save backup depend on it.",
