@@ -183,6 +183,79 @@ fn snapshot(pad: &web_sys::Gamepad) -> Option<Snapshot> {
     }
 }
 
+impl PadState {
+    /// One look at the controller (`face`, Menu, d-pad, stick) at time `t` (ms):
+    /// the presses it makes. Pure, so it can be tested without a controller.
+    fn advance(&mut self, face: [bool; 8], menu: bool, dpad: Option<Btn>, stick: (f64, f64), t: f64) -> Vec<Btn> {
+        let mut fire = Vec::new();
+        if !self.primed {
+            self.primed = true;
+            self.pressed = face;
+            self.menu_blocked = menu;
+            self.menu_since = None;
+            self.stick_seen_resting = false;
+        }
+        if self.menu_blocked && !menu {
+            self.menu_blocked = false;
+        }
+        const FACE: [Btn; 8] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb, Btn::Lt, Btn::Rt];
+        for (i, btn) in FACE.iter().enumerate() {
+            if face[i] && !self.pressed[i] {
+                fire.push(*btn);
+            }
+        }
+        self.pressed = face;
+
+        // Menu: a tap opens Settings, a long hold leaves.
+        match (menu && !self.menu_blocked, self.menu_since) {
+            (true, None) => {
+                self.menu_since = Some(t);
+                self.menu_fired = false;
+            }
+            (true, Some(since)) if !self.menu_fired && t - since >= MENU_HOLD => {
+                self.menu_fired = true;
+                fire.push(Btn::MenuHold);
+            }
+            (false, Some(_)) => {
+                if !self.menu_fired {
+                    fire.push(Btn::Menu);
+                }
+                self.menu_since = None;
+            }
+            _ => {}
+        }
+
+        // The stick counts only after it has been seen at rest.
+        let (sx, sy) = stick;
+        if sx.abs() < STICK_REST && sy.abs() < STICK_REST {
+            self.stick_seen_resting = true;
+        }
+        let from_stick = if !self.stick_seen_resting {
+            None
+        } else if sx.abs() > sy.abs() && sx.abs() > STICK_ON {
+            Some(if sx < 0.0 { Btn::Left } else { Btn::Right })
+        } else if sy.abs() > STICK_ON {
+            Some(if sy < 0.0 { Btn::Up } else { Btn::Down })
+        } else {
+            None
+        };
+        let dir = dpad.or(from_stick);
+        match dir {
+            Some(d) if self.dir != Some(d) => {
+                fire.push(d);
+                self.next_repeat = t + REPEAT_FIRST;
+            }
+            Some(d) if t >= self.next_repeat => {
+                fire.push(d);
+                self.next_repeat = t + REPEAT_NEXT;
+            }
+            _ => {}
+        }
+        self.dir = dir;
+        fire
+    }
+}
+
 fn now() -> f64 {
     js_sys::Date::now()
 }
@@ -206,73 +279,7 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
                 pad_kind.set(kind);
             }
             let t = now();
-            let mut fire = Vec::new();
-            state.update_value(|s| {
-                if !s.primed {
-                    s.primed = true;
-                    s.pressed = face;
-                    s.menu_blocked = menu;
-                    s.menu_since = None;
-                    s.stick_seen_resting = false;
-                }
-                if s.menu_blocked && !menu {
-                    s.menu_blocked = false;
-                }
-                const FACE: [Btn; 8] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb, Btn::Lt, Btn::Rt];
-                for (i, btn) in FACE.iter().enumerate() {
-                    if face[i] && !s.pressed[i] {
-                        fire.push(*btn);
-                    }
-                }
-                s.pressed = face;
-
-                // Menu: a tap opens Settings, a long hold leaves.
-                match (menu && !s.menu_blocked, s.menu_since) {
-                    (true, None) => {
-                        s.menu_since = Some(t);
-                        s.menu_fired = false;
-                    }
-                    (true, Some(since)) if !s.menu_fired && t - since >= MENU_HOLD => {
-                        s.menu_fired = true;
-                        fire.push(Btn::MenuHold);
-                    }
-                    (false, Some(_)) => {
-                        if !s.menu_fired {
-                            fire.push(Btn::Menu);
-                        }
-                        s.menu_since = None;
-                    }
-                    _ => {}
-                }
-
-                // The stick counts only after it has been seen at rest.
-                let (sx, sy) = stick;
-                if sx.abs() < STICK_REST && sy.abs() < STICK_REST {
-                    s.stick_seen_resting = true;
-                }
-                let from_stick = if !s.stick_seen_resting {
-                    None
-                } else if sx.abs() > sy.abs() && sx.abs() > STICK_ON {
-                    Some(if sx < 0.0 { Btn::Left } else { Btn::Right })
-                } else if sy.abs() > STICK_ON {
-                    Some(if sy < 0.0 { Btn::Up } else { Btn::Down })
-                } else {
-                    None
-                };
-                let dir = dpad.or(from_stick);
-                match dir {
-                    Some(d) if s.dir != Some(d) => {
-                        fire.push(d);
-                        s.next_repeat = t + REPEAT_FIRST;
-                    }
-                    Some(d) if t >= s.next_repeat => {
-                        fire.push(d);
-                        s.next_repeat = t + REPEAT_NEXT;
-                    }
-                    _ => {}
-                }
-                s.dir = dir;
-            });
+            let fire = state.try_update_value(|s| s.advance(face, menu, dpad, stick, t)).unwrap_or_default();
             for btn in fire {
                 on_pad(btn);
             }
@@ -329,6 +336,48 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NONE: [bool; 8] = [false; 8];
+    const A: [bool; 8] = [true, false, false, false, false, false, false, false];
+
+    #[test]
+    fn a_held_direction_repeats_after_400_then_every_120_ms() {
+        let mut s = PadState::default();
+        assert!(s.advance(NONE, false, None, (0.0, 0.0), 0.0).is_empty());
+        assert_eq!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 10.0), [Btn::Down]);
+        assert!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 300.0).is_empty(), "not yet");
+        assert_eq!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 410.0), [Btn::Down]);
+        assert!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 500.0).is_empty());
+        assert_eq!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 530.0), [Btn::Down]);
+    }
+
+    #[test]
+    fn buttons_and_the_stick_held_when_reading_starts_dont_count() {
+        let mut s = PadState::default();
+        // A held from before, and a stick drifting at 0.7 that was never seen at rest.
+        assert!(s.advance(A, false, None, (0.7, 0.0), 0.0).is_empty());
+        assert!(s.advance(A, false, None, (0.7, 0.0), 40.0).is_empty());
+        assert!(s.advance(NONE, false, None, (0.7, 0.0), 80.0).is_empty(), "released: nothing either");
+        assert_eq!(s.advance(A, false, None, (0.7, 0.0), 120.0), [Btn::A], "a new press counts");
+        assert!(s.advance(NONE, false, None, (0.1, 0.0), 160.0).is_empty(), "the stick at rest");
+        assert_eq!(s.advance(NONE, false, None, (0.9, 0.0), 200.0), [Btn::Right]);
+    }
+
+    #[test]
+    fn menu_tapped_opens_settings_held_leaves_and_one_held_at_start_waits() {
+        let mut s = PadState::default();
+        s.advance(NONE, false, None, (0.0, 0.0), 0.0);
+        assert!(s.advance(NONE, true, None, (0.0, 0.0), 10.0).is_empty());
+        assert_eq!(s.advance(NONE, false, None, (0.0, 0.0), 200.0), [Btn::Menu], "a tap");
+        s.advance(NONE, true, None, (0.0, 0.0), 300.0);
+        assert_eq!(s.advance(NONE, true, None, (0.0, 0.0), 1250.0), [Btn::MenuHold], "held 900 ms");
+        assert!(s.advance(NONE, false, None, (0.0, 0.0), 1300.0).is_empty(), "no tap after the hold");
+        // The hold that opened the TV is still down when reading begins.
+        let mut s = PadState::default();
+        assert!(s.advance(NONE, true, None, (0.0, 0.0), 0.0).is_empty());
+        assert!(s.advance(NONE, true, None, (0.0, 0.0), 2000.0).is_empty(), "not a hold to leave");
+        assert!(s.advance(NONE, false, None, (0.0, 0.0), 2100.0).is_empty(), "nor a tap when let go");
+    }
 
     #[test]
     fn the_controller_in_use_is_read_not_an_idle_one_first() {
