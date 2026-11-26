@@ -155,6 +155,15 @@ pub fn overlay_quit_game(app: AppHandle) -> Result<(), String> {
         let _ = menu.hide();
     }
     win::ask_to_close(window);
+    // A game that ignores the request (or waits on a question of its own) would
+    // leave the player with no answer: after a while, they are told.
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(6));
+        if win::still_open(window) {
+            crate::notify::tell(&app, crate::notify::Kind::Reply, &tr!("O jogo não fechou"), &tr!("Ele pode estar perguntando se quer salvar, ou não respondeu. Feche por dentro do jogo; se ele travou, pelo Gerenciador de Tarefas."));
+        }
+    });
     Ok(())
 }
 

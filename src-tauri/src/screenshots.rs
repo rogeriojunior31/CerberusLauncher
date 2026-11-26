@@ -397,6 +397,12 @@ pub(crate) mod win {
         }
     }
 
+    /// The window is still there.
+    pub fn still_open(window: isize) -> bool {
+        // SAFETY: IsWindow only checks the handle.
+        unsafe { IsWindow(window as HWND) != 0 }
+    }
+
     /// Asks a window to close, as its X button would.
     pub fn ask_to_close(window: isize) {
         let window = window as HWND;
@@ -428,6 +434,10 @@ pub(crate) mod win {
     }
     pub fn bring_to_front(_: isize) {}
     pub fn ask_to_close(_: isize) {}
+
+    pub fn still_open(_: isize) -> bool {
+        false
+    }
     pub fn foreground() -> Option<((), u32)> {
         None
     }
