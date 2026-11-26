@@ -585,6 +585,8 @@
   "Essa pasta não tem {0}. Escolha a pasta do jogo{1}.": "This folder doesn't have {0}. Choose the game's folder{1}.",
   "Essa pasta não tem {0}. Escolha: {1}.": "This folder doesn't have {0}. Pick: {1}.",
   "Essa pasta é sua: mova pelo Windows e use \"Já tenho instalado\" de novo.": "This folder is yours: move it in Windows and use \"I already have it installed\" again.",
+  "Esse CD tem faixas de áudio, que uma ISO não guarda; use o jogo em BIN/CUE.": "This CD has audio tracks, which an ISO doesn't keep; use the game as BIN/CUE.",
+  "Esse CD tem setores Mode 2 Form 2 (vídeos e áudio XA do PlayStation), que uma ISO não guarda; use o jogo em BIN/CUE.": "This CD has Mode 2 Form 2 sectors (PlayStation videos and XA audio), which an ISO doesn't keep; use the game as BIN/CUE.",
   "Esse CHD depende de outro (é um CHD \"filho\"); use o CHD completo.": "This CHD depends on another one (it's a \"child\" CHD); use the complete CHD.",
   "Esse CSO tem um cabeçalho que o Cerberus não entende.": "This CSO has a header Cerberus doesn't understand.",
   "Esse CSO usa LZ4, que o Cerberus ainda não abre.": "This CSO uses LZ4, which Cerberus can't open yet.",

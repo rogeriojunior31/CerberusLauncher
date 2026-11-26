@@ -46,14 +46,21 @@ pub fn kind_of(path: &Path) -> Kind {
 /// Opens an image as its disc data: CHD and CSO decompressed as they are read,
 /// anything else as the file itself.
 pub fn open(path: &Path) -> io::Result<Box<dyn Disc>> {
+    open_as(path, false)
+}
+
+/// The same, to copy the whole disc as an ISO: a CD whose data has Mode 2
+/// Form 2 sectors (PlayStation videos and XA audio) or more than one track
+/// (audio) can't become one without losing them, so it's refused when met.
+fn open_as(path: &Path, whole: bool) -> io::Result<Box<dyn Disc>> {
     match kind_of(path) {
-        Kind::Chd => chd(path),
+        Kind::Chd => chd(path, whole),
         Kind::Cso => Ok(Box::new(Cso::open(BufReader::new(File::open(path)?))?)),
         Kind::Plain => Ok(Box::new(BufReader::new(File::open(path)?))),
     }
 }
 
-fn chd(path: &Path) -> io::Result<Box<dyn Disc>> {
+fn chd(path: &Path, whole: bool) -> io::Result<Box<dyn Disc>> {
     let fail = |e: chd::Error| bad(&tr!("CHD ilegível: {}", e));
     let mut chd = chd::Chd::open(BufReader::new(File::open(path)?), None).map_err(fail)?;
     if chd.header().has_parent() {
@@ -61,6 +68,7 @@ fn chd(path: &Path) -> io::Result<Box<dyn Disc>> {
     }
     let refs: Vec<chd::metadata::MetadataRef> = chd.metadata_refs().collect::<Result<_, _>>().map_err(fail)?;
     let mut first_track = None;
+    let mut tracks = 0;
     for r in refs {
         let meta = r.read(chd.inner()).map_err(fail)?;
         if meta.metatag == chd::metadata::KnownMetadata::GdRomTrack as u32 {
@@ -68,6 +76,7 @@ fn chd(path: &Path) -> io::Result<Box<dyn Disc>> {
         }
         let cd = [chd::metadata::KnownMetadata::CdRomTrack2 as u32, chd::metadata::KnownMetadata::CdRomTrack as u32];
         if cd.contains(&meta.metatag) {
+            tracks += 1;
             let text = String::from_utf8_lossy(&meta.value).into_owned();
             if track_number(&text) == Some(1) {
                 first_track = Some(text);
@@ -80,8 +89,13 @@ fn chd(path: &Path) -> io::Result<Box<dyn Disc>> {
         return Ok(Box::new(reader));
     };
     let start = data_start(&track).ok_or_else(|| bad(tr!("A primeira faixa desse CD não é de dados.")))?;
+    if whole && tracks > 1 {
+        return Err(bad(tr!("Esse CD tem faixas de áudio, que uma ISO não guarda; use o jogo em BIN/CUE.")));
+    }
     let frames = field(&track, "FRAMES").and_then(|f| f.parse::<u64>().ok()).unwrap_or(0);
-    Ok(Box::new(CdSectors { inner: reader, start, len: frames * SECTOR, position: 0 }))
+    // Mode 2 keeps a subheader before the data; its submode says Form 1 or Form 2.
+    let submode = (whole && start >= 8).then(|| start - 6);
+    Ok(Box::new(CdSectors { inner: reader, start, len: frames * SECTOR, position: 0, submode }))
 }
 
 /// `TRACK:1 TYPE:MODE2_RAW SUBTYPE:NONE FRAMES:12345 ...`: one field's value.
@@ -113,6 +127,9 @@ struct CdSectors<R> {
     start: u64,
     len: u64,
     position: u64,
+    /// When copying the whole disc: where each frame's submode byte sits, to
+    /// stop at a Form 2 sector instead of cutting it to 2048 bytes.
+    submode: Option<u64>,
 }
 
 impl<R: Read + Seek> Read for CdSectors<R> {
@@ -123,6 +140,14 @@ impl<R: Read + Seek> Read for CdSectors<R> {
         let sector = self.position / SECTOR;
         let within = self.position % SECTOR;
         let count = (buf.len() as u64).min(SECTOR - within).min(self.len - self.position) as usize;
+        if let (Some(at), 0) = (self.submode, within) {
+            let mut mode = [0u8];
+            self.inner.seek(SeekFrom::Start(sector * CD_FRAME + at))?;
+            self.inner.read_exact(&mut mode)?;
+            if is_form2(mode[0]) {
+                return Err(bad(tr!("Esse CD tem setores Mode 2 Form 2 (vídeos e áudio XA do PlayStation), que uma ISO não guarda; use o jogo em BIN/CUE.")));
+            }
+        }
         self.inner.seek(SeekFrom::Start(sector * CD_FRAME + self.start + within))?;
         self.inner.read_exact(&mut buf[..count])?;
         self.position += count as u64;
@@ -135,6 +160,11 @@ impl<R> Seek for CdSectors<R> {
         self.position = seek_to(pos, self.position, self.len)?;
         Ok(self.position)
     }
+}
+
+/// A Mode 2 subheader's submode with the Form 2 bit set.
+fn is_form2(submode: u8) -> bool {
+    submode & 0x20 != 0
 }
 
 fn seek_to(pos: SeekFrom, current: u64, len: u64) -> io::Result<u64> {
@@ -241,7 +271,7 @@ impl<R> Seek for Cso<R> {
 /// Writes the disc's plain data to `to` (an ISO), for a recomp that wants the
 /// image itself. Returns the bytes written.
 pub fn write_iso(image: &Path, to: &Path) -> Result<u64, String> {
-    let mut disc = open(image).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
+    let mut disc = open_as(image, true).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
     // Room for the whole disc first, not a full drive half-way through.
     let size = disc.seek(SeekFrom::End(0)).and_then(|n| disc.seek(SeekFrom::Start(0)).map(|_| n)).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
     crate::disk::require(to.parent().unwrap_or(Path::new(".")), size)?;
@@ -263,6 +293,22 @@ pub fn write_iso(image: &Path, to: &Path) -> Result<u64, String> {
 pub(crate) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_cd_with_form2_sectors_is_not_flattened() {
+        // Two raw Mode 2 frames: the first Form 1, the second Form 2 (a video sector).
+        let mut raw = vec![0u8; 2 * CD_FRAME as usize];
+        raw[18] = 0x08;
+        raw[CD_FRAME as usize + 18] = 0x20 | 0x04;
+        let mut whole = CdSectors { inner: std::io::Cursor::new(raw.clone()), start: 24, len: 2 * SECTOR, position: 0, submode: Some(18) };
+        let mut out = Vec::new();
+        let error = std::io::copy(&mut whole, &mut out).unwrap_err();
+        assert!(error.to_string().contains("Form 2"), "{error}");
+        // Read only for what's on it (the console), the same disc reads as before.
+        let mut plain = CdSectors { inner: std::io::Cursor::new(raw), start: 24, len: 2 * SECTOR, position: 0, submode: None };
+        assert_eq!(std::io::copy(&mut plain, &mut Vec::new()).unwrap(), 2 * SECTOR);
+        assert!(is_form2(0x24) && !is_form2(0x08));
+    }
 
     fn temp(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("cerberus-disc-{name}-{}", std::process::id()));
@@ -349,7 +395,7 @@ pub(crate) mod tests {
             frames.extend(vec![n + 1; SECTOR as usize]);
             frames.extend(vec![0xEE; (CD_FRAME - 24 - SECTOR) as usize]);
         }
-        let mut cd = CdSectors { inner: io::Cursor::new(frames), start: 24, len: 3 * SECTOR, position: 0 };
+        let mut cd = CdSectors { inner: io::Cursor::new(frames), start: 24, len: 3 * SECTOR, position: 0, submode: None };
         let mut all = Vec::new();
         cd.read_to_end(&mut all).unwrap();
         assert_eq!(all, disc(3).iter().map(|b| b + 1).collect::<Vec<u8>>());
