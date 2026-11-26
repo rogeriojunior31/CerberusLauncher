@@ -41,7 +41,7 @@ impl GameMenu {
         self.0.set(Some((game, x, y)));
         // The first choice takes the focus, so the keyboard lands in the menu.
         request_animation_frame(|| {
-            if let Some(first) = document().query_selector(".ctx [role=menuitem]:not([disabled])").ok().flatten() {
+            if let Some(first) = document().query_selector(".ctx [role^=menuitem]:not([disabled])").ok().flatten() {
                 let first: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(first);
                 let _ = first.focus();
             }
@@ -116,7 +116,13 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
             view! {
                 <form class="ctx-form" on:submit=move |e| { e.prevent_default(); put(typed.get_untracked(), true); }>
                     <input class="input" type="text" maxlength="40" placeholder=tr!("Nome da coleção") aria-label=tr!("Nome da nova coleção") node_ref=name_box
-                        prop:value=move || typed.get() on:input=move |e| typed.set(event_target_value(&e)) />
+                        prop:value=move || typed.get() on:input=move |e| typed.set(event_target_value(&e))
+                        on:keydown=move |e| if e.key() == "Escape" {
+                            // Esc here closes the box, not the whole menu.
+                            e.stop_propagation();
+                            typing.set(false);
+                            typed.set(String::new());
+                        } />
                 </form>
             }.into_any()
         } else {
@@ -131,6 +137,11 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
 
 /// Up and down move between the menu's items.
 fn step_items(e: &web_sys::KeyboardEvent) {
+    // Typing a collection's name: the arrows, Home and End move in the text.
+    let typing = e.target().and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok()).is_some_and(|el| matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA"));
+    if typing {
+        return;
+    }
     let key = e.key();
     let step: i32 = match key.as_str() {
         "ArrowDown" => 1,
@@ -139,7 +150,7 @@ fn step_items(e: &web_sys::KeyboardEvent) {
         _ => return,
     };
     e.prevent_default();
-    let Some(list) = document().query_selector_all(".ctx [role=menuitem]:not([disabled])").ok() else { return };
+    let Some(list) = document().query_selector_all(".ctx [role^=menuitem]:not([disabled])").ok() else { return };
     let n = list.length() as i32;
     if n == 0 {
         return;
@@ -169,7 +180,8 @@ pub fn GameMenuLayer() -> impl IntoView {
         if menu.0.with_untracked(Option::is_none) {
             return;
         }
-        if e.key() == "Escape" {
+        let in_box = e.target().and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok()).is_some_and(|el| el.tag_name() == "INPUT");
+        if e.key() == "Escape" && !in_box {
             menu.close();
         } else {
             step_items(&e);

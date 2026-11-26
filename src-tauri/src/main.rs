@@ -1677,6 +1677,14 @@ async fn list_games(
     }
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
+    // A cover picked for a game added by hand, kept by full path: after the data
+    // folder moved (another PC, a backup restored) it's found by its name.
+    let covers = app.state::<DataDir>().0.join("covers");
+    for game in games.iter_mut() {
+        if let Some(kept) = game.cover_path.clone().filter(|p| !Path::new(p).is_file() && p.contains("covers")) {
+            game.cover_path = art_custom::in_folder(&covers, &kept);
+        }
+    }
     // The player's own pictures win over every other art.
     let custom = app.state::<art_custom::CustomArt>();
     games.iter_mut().for_each(|game| custom.apply(game));

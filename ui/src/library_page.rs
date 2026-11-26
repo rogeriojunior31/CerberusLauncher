@@ -468,7 +468,8 @@ pub fn LibraryPage() -> impl IntoView {
             }.into_any(),
             Some(Ok(games)) => games,
         };
-        if games.is_empty() {
+        // Empty only with no classics in the ROM folders either: those show in Todos.
+        if games.is_empty() && crate::classics::standalone(library).is_empty() {
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Library size=32 />
