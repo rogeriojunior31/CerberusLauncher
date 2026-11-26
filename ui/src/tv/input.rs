@@ -115,15 +115,51 @@ struct PadState {
     stick_seen_resting: bool,
 }
 
-/// One snapshot of the first connected controller: face and shoulder buttons
-/// (A, B, X, Y, LB, RB), Menu, the direction held, and its kind.
-fn read_pad() -> Option<([bool; 8], bool, Option<Btn>, (f64, f64), PadKind)> {
+type Snapshot = ([bool; 8], bool, Option<Btn>, (f64, f64), PadKind);
+
+thread_local! {
+    /// The controller used last (its index): a virtual one sitting idle in the
+    /// first slot (Steam Input, DS4Windows) doesn't block the real one.
+    static ACTIVE: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether a snapshot has anything pressed or the stick pushed.
+fn in_use(s: &Snapshot) -> bool {
+    s.0.iter().any(|b| *b) || s.1 || s.2.is_some() || s.3.0.abs() >= STICK_ON || s.3.1.abs() >= STICK_ON
+}
+
+/// The controller to read: one in use now (the one used last if it still is),
+/// else the one used last while connected, else the first connected.
+fn choose(active: Option<u32>, pads: &[(u32, bool)]) -> Option<u32> {
+    let busy: Vec<u32> = pads.iter().filter(|(_, b)| *b).map(|(i, _)| *i).collect();
+    if let Some(a) = active.filter(|a| busy.contains(a)) {
+        return Some(a);
+    }
+    busy.first().copied().or_else(|| active.filter(|a| pads.iter().any(|(i, _)| i == a))).or_else(|| pads.first().map(|(i, _)| *i))
+}
+
+/// One snapshot of the controller in use: face and shoulder buttons
+/// (A, B, X, Y, LB, RB, LT, RT), Menu, the direction held, and its kind.
+fn read_pad() -> Option<Snapshot> {
     let pads = web_sys::window()?.navigator().get_gamepads().ok()?;
-    for pad in pads.iter() {
+    let mut all: Vec<(u32, Snapshot)> = Vec::new();
+    for (index, pad) in pads.iter().enumerate() {
         let Ok(pad) = pad.dyn_into::<web_sys::Gamepad>() else { continue };
         if !pad.connected() {
             continue;
         }
+        if let Some(s) = snapshot(&pad) {
+            all.push((index as u32, s));
+        }
+    }
+    let flags: Vec<(u32, bool)> = all.iter().map(|(i, s)| (*i, in_use(s))).collect();
+    let picked = choose(ACTIVE.with(std::cell::Cell::get), &flags)?;
+    ACTIVE.with(|a| a.set(Some(picked)));
+    all.into_iter().find(|(i, _)| *i == picked).map(|(_, s)| s)
+}
+
+fn snapshot(pad: &web_sys::Gamepad) -> Option<Snapshot> {
+    {
         let kind = kind_of(&pad.id());
         let buttons = pad.buttons();
         let down = |i: u32| buttons.get(i).dyn_into::<web_sys::GamepadButton>().is_ok_and(|b| b.pressed());
@@ -143,9 +179,8 @@ fn read_pad() -> Option<([bool; 8], bool, Option<Btn>, (f64, f64), PadKind)> {
         };
         let axes = pad.axes();
         let stick = (axes.get(0).as_f64().unwrap_or(0.0), axes.get(1).as_f64().unwrap_or(0.0));
-        return Some((face, down(9), dpad, stick, kind));
+        Some((face, down(9), dpad, stick, kind))
     }
-    None
 }
 
 fn now() -> f64 {
@@ -293,6 +328,19 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_controller_in_use_is_read_not_an_idle_one_first() {
+        // A virtual pad idle in slot 0, the real one in 1 pressing a button.
+        assert_eq!(choose(None, &[(0, false), (1, true)]), Some(1));
+        // The real one stays chosen while idle; the idle virtual one doesn't take over.
+        assert_eq!(choose(Some(1), &[(0, false), (1, false)]), Some(1));
+        // Unplugged: back to what's there.
+        assert_eq!(choose(Some(1), &[(0, false)]), Some(0));
+        // Two in use: the one used last keeps it.
+        assert_eq!(choose(Some(1), &[(0, true), (1, true)]), Some(1));
+        assert_eq!(choose(None, &[]), None);
+    }
 
     #[test]
     fn pad_names_drop_the_driver_details() {
