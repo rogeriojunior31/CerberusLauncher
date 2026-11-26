@@ -3674,6 +3674,8 @@ fn main() {
             app.manage(http);
             // After the HTTP client is in place: a game already open at start
             // reaches the live achievements, which use it.
+            // Store-game sessions Cerberus closed in the middle of reach the log now.
+            play_log::close_left_open(&data_dir);
             store_time::watch(app.handle().clone());
 
             // The UI may only load local files from folders we allow here:

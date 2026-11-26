@@ -115,7 +115,8 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
         let played_lately = last.is_some_and(|t| now - (t as f64 * 1000.0) <= 14.0 * DAY);
         let empty_note = (!any_recent).then(|| {
             let text = if played_lately {
-                tr!("Jogou nesses dias, mas fora do Cerberus: só o total conta essas partidas.")
+                // Played lately with no session written down: outside Cerberus, or a session the app closed in the middle of.
+                tr!("Jogou nesses dias, mas sem registro de cada partida: só o total conta essas.")
             } else {
                 tr!("Não jogou nas últimas duas semanas.")
             };

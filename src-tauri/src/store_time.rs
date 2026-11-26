@@ -37,13 +37,15 @@ pub fn load(data: &Path) -> HashMap<String, Played> {
     crate::state_file::load_or_default(&file(data))
 }
 
-fn add(data: &Path, id: &str, seconds: u64, now: u64) -> Result<(), String> {
+/// Adds `seconds` to a game's time; `session` is how long the session that
+/// brought them has lasted so far (the minute-by-minute credit isn't one).
+fn add(data: &Path, id: &str, seconds: u64, now: u64, session: u64) -> Result<(), String> {
     // A file that can't be read is left alone (the minute is lost, never the total).
     crate::state_file::update(&file(data), |all: &mut HashMap<String, Played>| {
         let entry = all.entry(id.to_string()).or_default();
         entry.seconds += seconds;
         entry.last = now;
-        entry.last_session = seconds;
+        entry.last_session = session;
     })
 }
 
@@ -166,9 +168,10 @@ pub fn watch(app: AppHandle) {
                     let (done, at) = credited.get(id).copied().unwrap_or((0, *started));
                     if so_far >= 30 && at.elapsed() >= Duration::from_secs(60) {
                         let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
-                        if add(&data, id, so_far - done, now).is_ok() {
+                        if add(&data, id, so_far - done, now, so_far).is_ok() {
                             credited.insert(id.clone(), (so_far, Instant::now()));
                         }
+                        crate::play_log::still_going(&data, id, so_far, now);
                     }
                 }
             }
@@ -190,7 +193,8 @@ pub fn watch(app: AppHandle) {
                 }
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };
-                let saved = add(&data, &id, seconds.saturating_sub(already), now);
+                let saved = add(&data, &id, seconds.saturating_sub(already), now, seconds);
+                crate::play_log::ended(&data, &id);
                 crate::play_log::record(&data, &id, seconds, now);
                 let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { crate::sessions::played_text(seconds / 60 * 60) };
                 crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
@@ -238,13 +242,25 @@ mod tests {
     #[test]
     fn kept_time_adds_up_and_reaches_the_listed_game() {
         let dir = tempfile::tempdir().unwrap();
-        add(dir.path(), "steam:1", 600, 100).unwrap();
-        add(dir.path(), "steam:1", 120, 200).unwrap();
+        add(dir.path(), "steam:1", 600, 100, 600).unwrap();
+        add(dir.path(), "steam:1", 120, 200, 120).unwrap();
         let mut games: Vec<Game> = vec![serde_json::from_value(serde_json::json!({
             "id": "steam:1", "name": "Balatro", "source": {"kind": "steam", "app_id": 1}, "install_dir": "x"
         }))
         .unwrap()];
         apply(dir.path(), &mut games);
         assert_eq!((games[0].playtime_secs, games[0].last_played, games[0].last_session_secs), (720, Some(200), Some(120)));
+    }
+
+    #[test]
+    fn the_last_session_is_the_whole_session_not_its_last_minute() {
+        let dir = tempfile::tempdir().unwrap();
+        // An hour, credited a minute at a time, then the close.
+        for minute in 1..=59u64 {
+            add(dir.path(), "steam:1", 60, minute * 60, minute * 60).unwrap();
+        }
+        add(dir.path(), "steam:1", 10, 3550, 3550).unwrap();
+        let kept = load(dir.path());
+        assert_eq!((kept["steam:1"].seconds, kept["steam:1"].last_session), (59 * 60 + 10, 3550));
     }
 }

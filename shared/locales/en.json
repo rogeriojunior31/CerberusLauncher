@@ -850,7 +850,7 @@
   "Jogos já instalados continuam onde estão; só as próximas instalações vão para a nova pasta.{}": "Games already installed stay where they are; only new installs go to the new folder.{}",
   "Jogos nesta release ({})": "Games in this release ({})",
   "Jogos parecidos": "Similar games",
-  "Jogou nesses dias, mas fora do Cerberus: só o total conta essas partidas.": "Played in these days, but outside Cerberus: only the total counts those sessions.",
+  "Jogou nesses dias, mas sem registro de cada partida: só o total conta essas.": "Played these days, but without a record of each session: only the total counts them.",
   "Jogou por {}": "Played for {}",
   "Jogou por {} · última vez {}": "Played for {} · last played {}",
   "Jogue de novo": "Play again",

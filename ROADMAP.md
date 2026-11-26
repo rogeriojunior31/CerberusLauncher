@@ -995,7 +995,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - Clássicos: ~~C F5~~ (25/11/2026: `.zip` pelo cartucho dentro, `.7z` pela pasta), F6, F9–F17, F19–F22, F24–F26.
 - Durante o jogo e app: ~~J F3~~ (25/11/2026: fechar a janela de vez encerra o app, com as janelas escondidas do menu e do aviso), F6–F9, F11–F13, F15–F24.
 - Big Picture: ~~BP F2, BP F3~~ (25/11/2026: botões só contam depois de vistos soltos, Menu precisa ser solto depois de sair, F11 sem repetição, controle só com o Cerberus em foco; o controle real ainda precisa ser conferido à mão), ~~BP F4~~ (25/11/2026: chip Buscar na Biblioteca com busca própria e sem acento; LT/RT (Home/End) saltam de letra em A a Z com a letra grande, ou uma página; conferido no app), F6, F7, F9–F19.
-- Partidas: P F7–F9, F18, F20–F22, F24–F26.
+- Partidas: ~~P F8, P F9~~ (26/11/2026: "Última sessão" dos jogos de loja é a partida inteira, não o último minuto; a partida em andamento é anotada a cada minuto e entra no histórico mesmo se o Cerberus fechar no meio; o cartão não culpa mais "fora do Cerberus"), P F7, F18, F20–F22, F24–F26.
 - Recomps: RC F17–F23; RP F16, F18–F22.
 
 ### Divergências do próprio roadmap (corrigir o texto)
