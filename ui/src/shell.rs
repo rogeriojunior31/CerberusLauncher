@@ -298,7 +298,7 @@ fn SideGames() -> impl IntoView {
                 <Show when=move || { total() > 8 }>
                     <label class="sg-search">
                         <Svg icon=Icon::Search size=14 />
-                        <input type="search" placeholder=tr!("Filtrar jogos") prop:value=move || query.get()
+                        <input type="search" placeholder=tr!("Filtrar jogos") aria-label=tr!("Filtrar jogos") prop:value=move || query.get()
                             on:input=move |e| query.set(event_target_value(&e)) />
                     </label>
                 </Show>

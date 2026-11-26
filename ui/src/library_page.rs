@@ -360,7 +360,7 @@ pub fn LibraryPage() -> impl IntoView {
     let tabs = move || Category::ALL.into_iter().filter(|which| *which != Category::Hidden || any_hidden() || category.get() == Category::Hidden).map(|which| {
         let active = move || category.get() == which;
         view! {
-            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string() title=which.meaning()
+            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string() tabindex=move || if active() { "0" } else { "-1" } title=which.meaning()
                 on:click=move |_| { category.set(which); filter.set(Filter::All); }>{which.label()}</button>
         }
     }).collect_view();
@@ -717,7 +717,21 @@ pub fn LibraryPage() -> impl IntoView {
                     </div>
                 </div>
                 <div class="lib-tabs">
-                    <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
+                    <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo") on:keydown=move |e| {
+                        // Left and right go from tab to tab, as in any tab list.
+                        let step: isize = match e.key().as_str() { "ArrowRight" => 1, "ArrowLeft" => -1, _ => return };
+                        e.prevent_default();
+                        let shown: Vec<Category> = Category::ALL.into_iter().filter(|w| *w != Category::Hidden || any_hidden() || category.get_untracked() == Category::Hidden).collect();
+                        let at = shown.iter().position(|w| *w == category.get_untracked()).unwrap_or(0) as isize;
+                        let next = shown[((at + step).rem_euclid(shown.len() as isize)) as usize];
+                        category.set(next);
+                        filter.set(Filter::All);
+                        request_animation_frame(|| {
+                            if let Some(tab) = document().query_selector(".lib-tabs [role=tab].on").ok().flatten() {
+                                let _ = tab.unchecked_into::<web_sys::HtmlElement>().focus();
+                            }
+                        });
+                    }>{tabs}</div>
                     // Always in sight: a search never hides the games that aren't installed without saying so.
                     <Show when=move || !matches!(category.get(), Category::Classics | Category::Hidden)>
                         <div class="lib-presence">{presence}</div>

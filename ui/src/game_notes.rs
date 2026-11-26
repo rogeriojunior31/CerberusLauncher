@@ -97,7 +97,7 @@ pub fn NoteCardFor(id: String, status: Option<GameStatus>, rating: u8, notes: St
                 n <= shown
             };
             view! {
-                <button type="button" class="star" class:lit=lit aria-label=tr!("{} estrelas", n)
+                <button type="button" class="star" class:lit=lit role="radio" aria-checked=move || (rating.get() == n).to_string() aria-label=tr!("{} de 5 estrelas", n)
                     on:mouseenter=move |_| hover.set(n) on:mouseleave=move |_| hover.set(0)
                     on:click=move |_| {
                         rating.update(|r| *r = if *r == n { 0 } else { n });
@@ -112,7 +112,7 @@ pub fn NoteCardFor(id: String, status: Option<GameStatus>, rating: u8, notes: St
         <section class="card rail-card note-card">
             <h3>{tr!("Seu jogo")}</h3>
             <label class="st-row"><span>{tr!("Situação")}</span>{chips}</label>
-            <div class="stars" role="group" aria-label=tr!("Sua nota")>{stars}</div>
+            <div class="stars" role="radiogroup" aria-label=tr!("Sua nota")>{stars}</div>
             <textarea class="input note-text" rows="3" placeholder=tr!("Anotações: onde parou, o que falta, dicas...") maxlength="4000"
                 prop:value=move || notes.get() on:input=move |e| {
                     notes.set(event_target_value(&e));
@@ -172,11 +172,18 @@ pub fn RandomPick(pool: Vec<Game>, open: RwSignal<bool>) -> impl IntoView {
         }
         pick()
     };
+    // Esc closes it, as every dialog.
+    let keys = window_event_listener(leptos::ev::keydown, move |e| {
+        if e.key() == "Escape" && open.get_untracked() {
+            open.set(false);
+        }
+    });
+    on_cleanup(move || keys.remove());
     move || {
         let Some(g) = chosen.get() else {
             return view! {
                 <div class="backdrop-dim" on:click=move |_| open.set(false)>
-                    <div class="dialog" on:click=|e| e.stop_propagation()>
+                    <div class="dialog" role="dialog" aria-modal="true" on:click=|e| e.stop_propagation()>
                         <h2>{tr!("Nada para sortear")}</h2>
                         <p class="muted">{tr!("Nenhum jogo instalado com esses filtros.")}</p>
                         <div class="dialog-footer"><button type="button" class="btn" on:click=move |_| open.set(false)>{tr!("Fechar")}</button></div>

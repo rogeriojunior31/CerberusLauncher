@@ -348,7 +348,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
                     {marks_view(&info.marks)}
-                    {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
+                    {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito") role="img" aria-label=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
                     {info.progress.filter(|(_, total)| *total > 0).map(|(got, total)| {
                         let pct = got * 100 / total;
                         let tip = if got == total { tr!("Platinado · {} conquistas", total) } else { tr!("{} de {} conquistas", got, total) };
