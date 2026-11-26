@@ -168,7 +168,6 @@ pub fn Home() -> impl IntoView {
     let focus = Focus::new("home", false);
     tv.keep_position(focus);
 
-    library.roms.refetch();
     let shelves = Memo::new(move |_| {
         let classic_items = classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default());
         let mut games = library_games(library);
@@ -259,7 +258,7 @@ pub fn Home() -> impl IntoView {
                 None => tr!("Na sua biblioteca").to_string(),
             },
             Item::Entry(e) if e.owned_copy.is_some() => tr!("Você já tem o jogo").to_string(),
-            Item::Entry(e) => format!("{} downloads", format::count(e.downloads)),
+            Item::Entry(e) => tr!("{} downloads", format::count(e.downloads)),
             Item::Classic(r, c) => crate::classics::classic_sub(r, c, &library.players.get_untracked().unwrap_or_default()),
         };
         let entry = match &item {
@@ -368,7 +367,6 @@ pub fn LibraryGrid() -> impl IntoView {
     // The desktop library's tabs, in its order.
     let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), tr!("Nativos"), "PC", tr!("Clássicos")];
     let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
-    library.roms.refetch();
     let games = Memo::new(move |_| {
         let which = kind.get();
         let needle = fold(&tv.lib_search.get());
@@ -876,7 +874,8 @@ pub fn Settings() -> impl IntoView {
                     sounds.set(on);
                 }
                 2 if btn == Btn::A => library.go(crate::Route::Home),
-                3 if btn == Btn::A => api::window_action("close"),
+                // Asked first, as from Home (a download may be running).
+                3 if btn == Btn::A => tv.sheet.set(Some(super::Sheet::Leave)),
                 _ => {}
             }
             true
@@ -891,7 +890,7 @@ pub fn Settings() -> impl IntoView {
             </div>
         }
     };
-    let on_off = |s: RwSignal<bool>| -> Box<dyn Fn() -> String + Send + Sync> { Box::new(move || if s.get() { "◀ Ligado ▶".into() } else { "◀ Desligado ▶".into() }) };
+    let on_off = |s: RwSignal<bool>| -> Box<dyn Fn() -> String + Send + Sync> { Box::new(move || if s.get() { tr!("◀ Ligado ▶").into() } else { tr!("◀ Desligado ▶").into() }) };
     view! {
         <div class="tv-page">
             <h1 class="tv-title">{tr!("Configurações")}</h1>

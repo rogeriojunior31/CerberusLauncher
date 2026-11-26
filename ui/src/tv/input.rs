@@ -252,7 +252,9 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             "ArrowDown" => Btn::Down,
             "ArrowLeft" => Btn::Left,
             "ArrowRight" => Btn::Right,
-            "Enter" | " " => Btn::A,
+            "Enter" => Btn::A,
+            // Space types a space on the search keyboard; elsewhere it is A.
+            " " => Btn::Type(' '),
             "Escape" => Btn::B,
             "Backspace" => Btn::Erase,
             // Q/E and X/Y arrive as letters: the TV screen reads them as LB/RB and X/Y
