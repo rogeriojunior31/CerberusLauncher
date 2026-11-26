@@ -119,6 +119,14 @@ impl Folders {
         self.installs.read().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
+    /// Where releases download: beside the installs when the player moved them
+    /// (another drive), so a full system drive doesn't stop the download and
+    /// the finished file moves in place instead of being copied across drives.
+    pub fn downloads(&self) -> PathBuf {
+        let installs = self.installs();
+        if installs == self.default_installs { self.downloads.clone() } else { installs.join(DOWNLOADS_BESIDE) }
+    }
+
     /// New installs go here from now on; games already installed stay where they are.
     pub fn set_installs(&self, dir: PathBuf) {
         *self.installs.write().unwrap_or_else(|p| p.into_inner()) = dir;
@@ -1433,7 +1441,7 @@ async fn install_now(
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
     // Each recomp in its own folder: two catalogs' "release.zip" never land on one name.
-    let download_dir = folders.downloads.join(&entry.id);
+    let download_dir = folders.downloads().join(&entry.id);
     let downloaded = match &source {
         FileSource::Asset(asset) => match install::download(client, asset, &download_dir, cancel, on_bytes).await {
             Err(e) if e.starts_with(install::UNVERIFIED) => {
@@ -1784,6 +1792,8 @@ fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
 }
 
 pub(super) const REMOVING: &str = ".cerberus-removing-";
+/// The downloads folder inside an installs folder the player picked.
+pub(crate) const DOWNLOADS_BESIDE: &str = ".cerberus-downloads";
 
 /// Half-downloaded files nobody came back for in two weeks (a pause before a
 /// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
@@ -1835,7 +1845,9 @@ pub fn sweep_unfinished_installs(folders: &Folders) {
 
 pub fn sweep_stale_downloads(folders: &Folders) {
     let two_weeks = std::time::Duration::from_secs(14 * 24 * 3600);
-    let mut pending = vec![folders.downloads.clone()];
+    // Both places: the default one, and beside the installs (also where they were before a move).
+    let mut pending = vec![folders.downloads.clone(), folders.downloads()];
+    pending.dedup();
     while let Some(dir) = pending.pop() {
         let Ok(entries) = fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
@@ -2632,6 +2644,24 @@ Content-Length: {}
         assert!(Path::new(&again.install_dir).join("Game.exe").is_file());
         assert!(Path::new(&again.install_dir).join(MARKER).is_file());
         assert_eq!(library.games().unwrap().iter().filter(|g| g.id == again.id).count(), 1);
+    }
+
+    #[test]
+    fn downloads_go_to_the_drive_of_the_installs() {
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        assert_eq!(folders.downloads(), data.path().join("downloads"), "default: in the data folder");
+        let elsewhere = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), Some(elsewhere.path().to_path_buf()));
+        assert_eq!(folders.downloads(), elsewhere.path().join(DOWNLOADS_BESIDE), "moved: beside the installs");
+        // An old half download there is swept like the default folder's.
+        let old = folders.downloads().join("game").join("release.zip.part");
+        fs::create_dir_all(old.parent().unwrap()).unwrap();
+        let file = fs::File::create(&old).unwrap();
+        file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(20 * 24 * 3600)).unwrap();
+        drop(file);
+        sweep_stale_downloads(&folders);
+        assert!(!old.exists());
     }
 
     #[test]

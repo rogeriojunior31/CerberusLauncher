@@ -87,7 +87,8 @@ pub fn candidates(program: &Path, catalog: &[CatalogEntry]) -> Vec<Found> {
 /// Programs in a folder and the folders below it (three levels), skipping
 /// Cerberus's own installs, which are in the library already.
 fn programs_in(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
-    if dir.join(MARKER).is_file() {
+    // Cerberus's own installs and its downloads are no outside recomps.
+    if dir.join(MARKER).is_file() || dir.file_name().is_some_and(|n| n == super::DOWNLOADS_BESIDE) {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else { return };

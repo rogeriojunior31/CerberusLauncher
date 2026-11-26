@@ -131,7 +131,8 @@ fn settings_view(app: &AppHandle) -> SettingsView {
     let chosen = settings::load(&data.0);
     SettingsView {
         install_free_bytes: disk::available(&installs),
-        download_free_bytes: disk::available(&data.0.join("downloads")),
+        // Recomps download beside the installs when those moved to another drive.
+        download_free_bytes: disk::available(&folders.downloads()),
         recomps_dir_is_default: installs == folders.default_installs,
         recomps_dir: installs.to_string_lossy().into_owned(),
         data_dir: data.0.to_string_lossy().into_owned(),
