@@ -43,7 +43,14 @@ pub async fn download_file(
     cancel: &install::Halt,
     report: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf, String> {
-    install::download(client, asset, dir, cancel, report).await
+    match install::download(client, asset, dir, cancel, report).await {
+        // Elsewhere there is no second checksum to ask: what didn't match goes.
+        Err(e) if e.starts_with(install::UNVERIFIED) => {
+            install::drop_held(dir, asset);
+            Err(tr!("O arquivo baixado não bate com o checksum informado, então foi descartado. Tente de novo.").into())
+        }
+        other => other,
+    }
 }
 
 /// Unpacks a .zip archive into a folder.
@@ -1395,7 +1402,13 @@ async fn install_now(
     // Each recomp in its own folder: two catalogs' "release.zip" never land on one name.
     let download_dir = folders.downloads.join(&entry.id);
     let downloaded = match &source {
-        FileSource::Asset(asset) => install::download(client, asset, &download_dir, cancel, on_bytes).await,
+        FileSource::Asset(asset) => match install::download(client, asset, &download_dir, cancel, on_bytes).await {
+            Err(e) if e.starts_with(install::UNVERIFIED) => {
+                let got = e[install::UNVERIFIED.len()..].to_string();
+                settle_checksum(client, folders, entry, asset, &download_dir, &got).await
+            }
+            other => other,
+        },
         FileSource::Direct { name, url, headers, mega: Some(mega), .. } => {
             hoster::download_decrypted(client, mega, url, headers, &download_dir, name, cancel, on_bytes).await
         }
@@ -1570,6 +1583,36 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
         .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()).cloned())
         .ok_or(tr!("Ainda não tem uma versão para este sistema."))?;
     Ok((FileSource::Asset(asset), release.version))
+}
+
+/// A download that missed the checksum it was asked with. When that checksum
+/// was the catalog's and the project's server gives this file the checksum it
+/// has (the author uploaded it again), it is used; otherwise nothing is
+/// installed. Never without one of the two checksums matching.
+async fn settle_checksum(client: &Client, folders: &Folders, entry: &CatalogEntry, asset: &Asset, dir: &Path, got: &str) -> Result<PathBuf, String> {
+    let catalogs = entry.files.get(os_key()).is_some_and(|f| asset.sha256.as_deref().is_some_and(|s| f.sha256.eq_ignore_ascii_case(s)));
+    let vouched = if catalogs {
+        match entry.forge() {
+            Some(forge) => releases::latest(client, &folders.cache, &forge, true)
+                .await
+                .ok()
+                .and_then(|r| r.assets.into_iter().find(|a| assets::same_file(&a.name, &asset.name)))
+                .and_then(|a| a.sha256)
+                .is_some_and(|server| server.eq_ignore_ascii_case(got)),
+            None => false,
+        }
+    } else {
+        false
+    };
+    if vouched {
+        return install::accept_held(dir, asset);
+    }
+    install::drop_held(dir, asset);
+    Err(if catalogs {
+        tr!("O arquivo publicado para este jogo não bate com o checksum do catálogo, e o servidor do projeto não confirmou o novo; nada foi instalado. O catálogo pode estar desatualizado: tente de novo mais tarde.").into()
+    } else {
+        tr!("O arquivo baixado não bate com o checksum do servidor do projeto, então foi descartado. Tente de novo.").into()
+    })
 }
 
 /// The library's game for this recomp, under its current id or an older one.

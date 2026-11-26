@@ -18,6 +18,9 @@ use super::CatalogEntry;
 use super::assets::{Asset, Kind, kind, words};
 
 pub const CANCELLED: &str = tk!("Instalação cancelada.");
+/// A download that doesn't match the checksum it was asked with, kept aside
+/// (followed by the checksum it has): the catalog's may simply be old.
+pub const UNVERIFIED: &str = "\u{1}unverified:";
 pub use cerberus_shared::PAUSED;
 
 /// How a resolved hoster link differs from a plain release download.
@@ -129,11 +132,39 @@ pub async fn download_with(
     // Uploads from before GitHub kept checksums have nothing to compare against.
     let wrong = asset.sha256.as_ref().is_some_and(|expected| *expected != got);
     if wrong {
-        let _ = fs::remove_file(&part);
-        return Err(tr!("O arquivo baixado não bate com o checksum informado, então foi descartado. Tente de novo.").into());
+        // Kept aside, never under its real name: if the project's server vouches
+        // for this checksum, it is used without downloading it all again.
+        let held = held_for(&target);
+        if super::throttle::rename_patiently(&part, &held, 20).is_err() {
+            let _ = fs::remove_file(&part);
+        }
+        return Err(format!("{UNVERIFIED}{got}"));
     }
     super::throttle::rename_patiently(&part, &target, 20)?;
     Ok(target)
+}
+
+fn held_for(target: &Path) -> PathBuf {
+    let mut name = target.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(".unverified");
+    target.with_file_name(name)
+}
+
+fn target_in(dir: &Path, asset: &Asset) -> PathBuf {
+    let safe_name: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
+    dir.join(safe_name)
+}
+
+/// The download kept aside, now vouched for by another checksum: under its real name.
+pub fn accept_held(dir: &Path, asset: &Asset) -> Result<PathBuf, String> {
+    let target = target_in(dir, asset);
+    super::throttle::rename_patiently(&held_for(&target), &target, 20)?;
+    Ok(target)
+}
+
+/// The download kept aside, not vouched for by anyone: gone.
+pub fn drop_held(dir: &Path, asset: &Asset) {
+    let _ = fs::remove_file(held_for(&target_in(dir, asset)));
 }
 
 // Cancel a stalled connection or retry delay even if the server sends no further bytes.
@@ -508,6 +539,28 @@ fn name_words(name: &str) -> Vec<String> {
 pub(super) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_download_that_misses_its_checksum_is_kept_aside_not_installed() {
+        use std::{io::{BufRead, BufReader}, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let _: Vec<_> = BufReader::new(&socket).lines().map(Result::unwrap).take_while(|l| !l.is_empty()).collect();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nNEWS").unwrap();
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let asset = Asset { name: "game.zip".into(), url, size: 0, sha256: Some("00".repeat(32)) };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let error = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &Halt::default(), |_, _| {})).unwrap_err();
+        server.join().unwrap();
+        let got = error.strip_prefix(UNVERIFIED).expect("told apart from other failures");
+        assert_eq!(got, format!("{:x}", Sha256::digest(b"NEWS")));
+        assert!(!dir.path().join("game.zip").exists(), "never under its real name unchecked");
+        let accepted = accept_held(dir.path(), &asset).unwrap();
+        assert_eq!(fs::read(accepted).unwrap(), b"NEWS");
+    }
 
     #[test]
     fn resumptions_validate_the_server_range_before_publishing() {
