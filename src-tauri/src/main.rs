@@ -3345,13 +3345,19 @@ async fn put_in_steam(app: &AppHandle, http: &reqwest::Client, configs: &[PathBu
     let art = app.state::<Arc<ArtCache>>().inner().clone();
     let cover = art_bytes(http, &art, game.cover_path.as_deref(), game.cover_url.as_deref()).await;
     let hero = art_bytes(http, &art, game.hero_path.as_deref(), game.hero_url.as_deref()).await;
+    let mut pictures = 0;
     for config in configs {
         let mut list = steam_shortcuts::load(config)?;
-        steam_shortcuts::add(&mut list, &shortcut);
+        let old = steam_shortcuts::add(&mut list, &shortcut);
         steam_shortcuts::save(config, &list)?;
-        steam_shortcuts::place_art(config, shortcut.app_id(), cover.as_deref(), hero.as_deref());
+        // Renamed since: the pictures under the old number would stay orphaned.
+        for number in old {
+            steam_shortcuts::remove_art(config, number);
+        }
+        pictures += steam_shortcuts::place_art(config, shortcut.app_id(), cover.as_deref(), hero.as_deref());
     }
-    trail::note(app, &game.id, tk!("Steam"), &Ok(tr!("Adicionado à Steam").to_string()));
+    let said = if pictures == 0 { tr!("Adicionado à Steam, sem arte: nenhuma imagem do jogo pôde ser copiada").to_string() } else { tr!("Adicionado à Steam").to_string() };
+    trail::note(app, &game.id, tk!("Steam"), &Ok(said));
     Ok(())
 }
 

@@ -18,6 +18,9 @@ use std::path::{Path, PathBuf};
 pub enum Node {
     Map(Vec<(String, Node)>),
     Text(String),
+    /// A text that isn't UTF-8 (another program's name, written by hand or an
+    /// old tool): written back byte for byte, never "fixed".
+    Raw(Vec<u8>),
     Int(u32),
 }
 
@@ -42,10 +45,14 @@ impl Reader<'_> {
     }
 
     fn text(&mut self) -> Result<String, String> {
+        Ok(String::from_utf8_lossy(&self.raw()?).into_owned())
+    }
+
+    fn raw(&mut self) -> Result<Vec<u8>, String> {
         let rest = &self.bytes[self.at..];
         let end = rest.iter().position(|&b| b == 0).ok_or(tr!("shortcuts.vdf tem um texto sem fim."))?;
         self.at += end + 1;
-        Ok(String::from_utf8_lossy(&rest[..end]).into_owned())
+        Ok(rest[..end].to_vec())
     }
 
     fn map(&mut self) -> Result<Vec<(String, Node)>, String> {
@@ -58,7 +65,13 @@ impl Reader<'_> {
             let key = self.text()?;
             let value = match kind {
                 MAP => Node::Map(self.map()?),
-                TEXT => Node::Text(self.text()?),
+                TEXT => {
+                    let raw = self.raw()?;
+                    match String::from_utf8(raw) {
+                        Ok(text) => Node::Text(text),
+                        Err(e) => Node::Raw(e.into_bytes()),
+                    }
+                }
                 INT => {
                     let end = self.at + 4;
                     let raw = self.bytes.get(self.at..end).ok_or(tr!("shortcuts.vdf terminou no meio."))?;
@@ -84,7 +97,7 @@ fn write_map(items: &[(String, Node)], out: &mut Vec<u8>) {
     for (key, value) in items {
         let kind = match value {
             Node::Map(_) => MAP,
-            Node::Text(_) => TEXT,
+            Node::Text(_) | Node::Raw(_) => TEXT,
             Node::Int(_) => INT,
         };
         out.push(kind);
@@ -94,6 +107,10 @@ fn write_map(items: &[(String, Node)], out: &mut Vec<u8>) {
             Node::Map(inner) => write_map(inner, out),
             Node::Text(text) => {
                 out.extend(text.bytes().filter(|&b| b != 0));
+                out.push(0);
+            }
+            Node::Raw(bytes) => {
+                out.extend(bytes.iter().filter(|&&b| b != 0));
                 out.push(0);
             }
             Node::Int(n) => out.extend_from_slice(&n.to_le_bytes()),
@@ -118,6 +135,7 @@ pub fn app_id(exe: &str, name: &str) -> u32 {
 }
 
 /// What Cerberus puts in Steam for one game.
+#[derive(Clone)]
 pub struct Shortcut {
     pub name: String,
     /// Cerberus's own program.
@@ -202,12 +220,15 @@ fn renumber(entries: &mut [(String, Node)]) {
     }
 }
 
-/// Adds the game, or replaces Cerberus's earlier entry for it.
-pub fn add(top: &mut Vec<(String, Node)>, shortcut: &Shortcut) {
+/// Adds the game, or replaces Cerberus's earlier entry for it. Returns the
+/// numbers the earlier entry had that the new one doesn't (renamed: Steam's
+/// number changes), whose pictures would be left behind.
+pub fn add(top: &mut Vec<(String, Node)>, shortcut: &Shortcut) -> Vec<u32> {
+    let gone: Vec<u32> = remove(top, &shortcut.game_id).into_iter().filter(|n| *n != shortcut.app_id()).collect();
     let entries = entries_mut(top);
-    entries.retain(|(_, e)| !is_ours(e, &shortcut.game_id));
     entries.push((String::new(), shortcut.entry()));
     renumber(entries);
+    gone
 }
 
 /// Takes the game out; returns the numbers of the entries removed.
@@ -282,6 +303,11 @@ pub fn save(config: &Path, top: &[(String, Node)]) -> Result<(), String> {
     fs::create_dir_all(config).map_err(|e| e.to_string())?;
     // The list from before a batch ("Adicionar todos" saves once per game):
     // a copy made in the last ten minutes already holds it, and is kept.
+    // The list as it was before Cerberus ever changed it, made once and kept.
+    let original = config.join("shortcuts.vdf.cerberus-original.bak");
+    if file.is_file() && !original.exists() {
+        fs::copy(&file, &original).map_err(|e| tr!("Não foi possível guardar uma cópia da lista da Steam: {}", e))?;
+    }
     let backup = config.join("shortcuts.vdf.cerberus.bak");
     let recent = fs::metadata(&backup).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < std::time::Duration::from_secs(600));
     if file.is_file() && !recent {
@@ -330,6 +356,47 @@ pub fn remove_art(config: &Path, app_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// This PC's real lists, read only: read and written again, the same bytes.
+    /// `cargo test -p cerberus-launcher real_shortcuts_round_trip -- --ignored --nocapture`
+    #[test]
+    #[ignore = "reads this PC's Steam"]
+    fn real_shortcuts_round_trip() {
+        let steam = PathBuf::from(r"C:\Program Files (x86)\Steam");
+        for config in config_dirs(&steam) {
+            let Ok(bytes) = fs::read(config.join("shortcuts.vdf")) else { continue };
+            let top = parse(&bytes).unwrap();
+            assert_eq!(write(&top), bytes, "{}", config.display());
+            println!("{}: {} bytes, the same after", config.display(), bytes.len());
+        }
+    }
+
+    #[test]
+    fn another_programs_name_outside_utf8_keeps_its_bytes() {
+        // An entry named "Café" in Latin-1 (0xE9), as an old tool writes it.
+        let mut bytes = vec![MAP];
+        bytes.extend_from_slice(b"shortcuts\0");
+        bytes.push(MAP);
+        bytes.extend_from_slice(b"0\0");
+        bytes.push(TEXT);
+        bytes.extend_from_slice(b"AppName\0Caf\xe9\0");
+        bytes.extend_from_slice(&[END, END, END]);
+        let mut top = parse(&bytes).unwrap();
+        assert_eq!(write(&top), bytes, "read and written unchanged");
+        add(&mut top, &shortcut("local:x"));
+        let after = write(&top);
+        assert!(after.windows(5).any(|w| w == b"Caf\xe9\0"), "the other name's bytes stay");
+    }
+
+    #[test]
+    fn readding_a_renamed_game_says_which_old_number_to_clear() {
+        let mut top = Vec::new();
+        let first = shortcut("local:x");
+        assert!(add(&mut top, &first).is_empty());
+        let renamed = Shortcut { name: "Another name".into(), ..first.clone() };
+        assert_eq!(add(&mut top, &renamed), vec![first.app_id()]);
+        assert!(add(&mut top, &renamed).is_empty(), "same name again: same number");
+    }
 
     fn shortcut(id: &str) -> Shortcut {
         Shortcut { name: "Zelda 64: Recompiled".into(), launcher: PathBuf::from(r"C:\Apps\Cerberus\cerberus-launcher.exe"), game_id: id.into(), icon: None }
