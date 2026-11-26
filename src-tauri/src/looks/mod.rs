@@ -178,22 +178,22 @@ pub async fn ensure(http: &reqwest::Client, data: &Path) -> Result<(), String> {
     }
     let version = latest(http).await?;
     let url = format!("https://reshade.me/downloads/ReShade_Setup_{version}.exe");
-    let setup = http
+    let reply = http
         .get(&url)
         .timeout(Duration::from_secs(120))
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?
-        .bytes()
-        .await
-        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?;
+        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e.without_url()))?;
+    let setup = crate::net::read_limited(reply, 256 << 20).await.map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?;
     let (x64, x86) = dlls_from_setup(&setup)?;
     let dir = reshade_dir(data);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    fs::write(dir.join("ReShade64.dll"), x64).map_err(|e| e.to_string())?;
-    fs::write(dir.join("ReShade32.dll"), x86).map_err(|e| e.to_string())?;
-    fs::write(dir.join("version.txt"), &version).map_err(|e| e.to_string())
+    // Each DLL whole or not at all, and the version noted last: an interrupted
+    // download is never taken as ready (a cut DLL would crash the game).
+    crate::state_file::write_bytes(&dir.join("ReShade64.dll"), &x64)?;
+    crate::state_file::write_bytes(&dir.join("ReShade32.dll"), &x86)?;
+    crate::state_file::write_bytes(&dir.join("version.txt"), version.as_bytes())
 }
 
 /// What a game start with a look needs: the environment for ReShade. The file

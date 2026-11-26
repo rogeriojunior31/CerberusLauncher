@@ -300,16 +300,15 @@ pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Res
         return Err(tr!("Núcleo desconhecido.").into());
     }
     let url = format!("{NIGHTLY_CORES}/{core}_libretro.dll.zip");
-    let bytes = http
+    let reply = http
         .get(&url)
         .timeout(Duration::from_secs(120))
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e))?
-        .bytes()
-        .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e.without_url()))?;
+    // A core is a few MB; a server that doesn't stop can't fill the memory.
+    let bytes = crate::net::read_limited(reply, 256 << 20).await.map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e))?;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| tr!("O núcleo baixado veio corrompido.").to_string())?;
     let name = format!("{core}_libretro.dll");
     let mut file = zip.by_name(&name).map_err(|_| tr!("O núcleo baixado veio diferente do esperado.").to_string())?;
@@ -320,7 +319,8 @@ pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Res
     }
     let target = core_file(exe, core);
     fs::create_dir_all(target.parent().unwrap_or(Path::new("."))).map_err(|e| e.to_string())?;
-    fs::write(&target, dll).map_err(|e| tr!("Não foi possível guardar o núcleo: {}", e))?;
+    // Whole or not at all: a cut download never replaces the core that was there.
+    crate::state_file::write_bytes(&target, &dll).map_err(|e| tr!("Não foi possível guardar o núcleo: {}", e))?;
     if let Some(pack) = system_files(core) {
         install_system_files(http, exe, pack).await?;
     }
