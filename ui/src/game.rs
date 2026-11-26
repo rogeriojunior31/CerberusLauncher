@@ -981,11 +981,15 @@ fn PrepareStatus(game_id: String) -> impl IntoView {
         Some(p) => {
             let width = p.fraction.map(|f| format!("width: {:.0}%", f * 100.0));
             let busy = width.is_none();
+            let title = if p.cancellable { tr!("Copiando o jogo") } else { tr!("Preparando o jogo") };
+            let cancel = p.cancellable.then(|| view! {
+                <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { let _ = api::cancel_copy().await; })>{tr!("Cancelar")}</button>
+            });
             view! {
                 <div class="prep">
-                    <span class="ver-label">{tr!("Preparando o jogo")}</span>
+                    <span class="ver-label">{title}</span>
                     <div class="bar" class:busy=busy><i style=width.unwrap_or_default()></i></div>
-                    <small class="muted">{p.text}</small>
+                    <div class="act-row"><small class="muted">{p.text}</small>{cancel}</div>
                 </div>
             }
             .into_any()

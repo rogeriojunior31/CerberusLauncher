@@ -28,6 +28,7 @@ mod favorites;
 mod game_notes;
 mod achievements;
 mod language;
+mod copying;
 mod dlss;
 mod downloads;
 mod elevated;
@@ -2395,9 +2396,51 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
         picked
     };
     // Copying or unpacking a disc image can take minutes; not on an async worker.
+    // Meanwhile the game's page shows how far it is, with Cancelar.
+    let total = if copy.is_dir() { recomp::tree_size(&copy) } else { fs::metadata(&copy).map(|m| m.len()).unwrap_or(0) };
+    copying::begin();
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let (app, id, done) = (app.clone(), id.clone(), done.clone());
+        tauri::async_runtime::spawn(async move {
+            // Small copies end before the first tick: nothing to show for them.
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            while !done.load(std::sync::atomic::Ordering::SeqCst) {
+                let copied = copying::copied();
+                // A compressed image unpacks to more than its file: the bar waits at the end.
+                let fraction = (total > 0).then(|| (copied as f32 / total as f32).min(0.99));
+                let text = tr!("Copiando sua cópia do jogo · {}", format_bytes(copied));
+                let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: id.clone(), fraction, text, finished: false, cancellable: true });
+                tokio::time::sleep(Duration::from_millis(400)).await;
+            }
+            let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: id, fraction: Some(1.0), text: String::new(), finished: true, cancellable: false });
+        });
+    }
     let handle = app.clone();
-    let setup = tauri::async_runtime::spawn_blocking(move || recomp::use_game_copy(&handle.state::<LocalLibrary>(), &id, &copy));
-    setup.await.map_err(|e| e.to_string())?.map(Some)
+    let game_id = id.clone();
+    let setup = tauri::async_runtime::spawn_blocking(move || recomp::use_game_copy(&handle.state::<LocalLibrary>(), &game_id, &copy));
+    let result = setup.await.map_err(|e| e.to_string());
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+    copying::finish();
+    match result? {
+        Err(e) if copying::was_stopped(&e) => Err(tr!("Cópia cancelada.").into()),
+        other => other.map(Some),
+    }
+}
+
+/// Stops the copy of the player's game going on now.
+#[tauri::command(async)]
+fn cancel_copy() {
+    copying::stop();
+}
+
+/// "1,2 GB", "350 MB".
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1 << 30 {
+        format!("{:.1} GB", bytes as f64 / (1u64 << 30) as f64)
+    } else {
+        format!("{} MB", bytes >> 20)
+    }
 }
 
 /// Where a recomp's mods come from.
@@ -3665,6 +3708,7 @@ fn main() {
             open_recomp_request,
             cancel_install,
             pause_install,
+            cancel_copy,
             download_queue,
             forget_download,
             move_game,

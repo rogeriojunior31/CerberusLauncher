@@ -276,7 +276,7 @@ pub fn write_iso(image: &Path, to: &Path) -> Result<u64, String> {
     let size = disc.seek(SeekFrom::End(0)).and_then(|n| disc.seek(SeekFrom::Start(0)).map(|_| n)).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
     crate::disk::require(to.parent().unwrap_or(Path::new(".")), size)?;
     let part = to.with_extension("iso.part");
-    let result = File::create(&part).and_then(|mut out| io::copy(&mut disc, &mut out));
+    let result = File::create(&part).and_then(|mut out| crate::copying::stream(&mut disc, &mut out));
     match result {
         Ok(bytes) => {
             std::fs::rename(&part, to).map_err(|e| e.to_string())?;

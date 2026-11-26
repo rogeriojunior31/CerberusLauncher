@@ -1204,7 +1204,7 @@ pub(crate) fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
             copy_tree(&entry.path(), &target)?;
             continue;
         }
-        fs::copy(entry.path(), target)?;
+        crate::copying::file(&entry.path(), &target)?;
     }
     Ok(())
 }
@@ -1906,7 +1906,7 @@ pub(crate) fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut partial = to.as_os_str().to_owned();
     partial.push(".part");
     let partial = PathBuf::from(partial);
-    if let Err(e) = fs::copy(from, &partial) {
+    if let Err(e) = crate::copying::file(from, &partial) {
         let _ = fs::remove_file(&partial);
         return Err(e);
     }

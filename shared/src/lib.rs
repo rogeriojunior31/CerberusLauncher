@@ -181,6 +181,9 @@ pub struct GameAction {
 /// How the game's setup step is going: 0 to 1 when it says, and its line.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrepareProgress {
+    /// A copy the player can stop (Cancelar).
+    #[serde(default)]
+    pub cancellable: bool,
     pub game_id: String,
     pub fraction: Option<f32>,
     pub text: String,

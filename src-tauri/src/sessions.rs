@@ -351,7 +351,7 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
     let (mut child, tied) = windows::spawn_tied(&mut command, 0x0800_0000).map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
     let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
     let say = |app: &AppHandle, fraction: Option<f32>, text: String, finished: bool| {
-        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished });
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished, cancellable: false });
     };
     say(app, Some(0.0), step.label.clone(), false);
 
@@ -369,7 +369,7 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
                 }
                 if let Some((fraction, text)) = progress_line(&line) {
                     let text = if text.is_empty() { label.clone() } else { text };
-                    let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game_id.clone(), fraction, text, finished: false });
+                    let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game_id.clone(), fraction, text, finished: false, cancellable: false });
                 }
                 if let Ok(mut h) = heard.lock() {
                     h.0 = Instant::now();
@@ -420,7 +420,7 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
             clear_own_temp(temp);
         }
         crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
-        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true });
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true, cancellable: false });
         release(&app, &game.id);
         match outcome {
             Ok(()) => {

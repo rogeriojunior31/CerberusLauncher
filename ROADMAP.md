@@ -957,7 +957,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Filtro aplicado no programa errado [RP F7] — feito em 25/11/2026: a partida põe o ReShade ao lado do mesmo programa que a aba Ajustes avalia (o acompanhado, quando um launcher abre o jogo); retirar a DLL tenta por ~3 s; antes de cada partida sem filtro, um que sobrou é retirado. Testado (DLL presa por 600 ms); não exercitado com o ReStreet.
 - [x] Disco cheio e rede caída [RC F14] — feito em 26/11/2026: disco cheio no download diz qual disco encheu e que o baixado ficou guardado para continuar; uma queda de rede espera 2, 4, 8, 16, 30 e 30 s antes de desistir (~1,5 min). Conversão para ISO e cópias de pasta conferem o espaço antes. Testado.
 - [x] Fila de downloads no backend, persistida [RC F13] — feito em 26/11/2026: `downloads.json` guarda o estado de cada download quando ele muda (não a cada porcentagem); ao abrir, os pausados e os que não terminaram voltam para Downloads (um que estava baixando volta pausado); um download por vez, os outros "Na fila" (pausar ou cancelar na fila funciona); cancelar e dispensar tiram da lista. Testado; conferido no app que a página abre e a fila é lida.
-- [ ] Cópias grandes com progresso e cancelamento [RP F14]; reordenar a fila
+- [x] Cópias grandes com progresso e cancelamento [RP F14] — feito em 26/11/2026: ao escolher a cópia do jogo, a página mostra "Copiando o jogo" com a barra e os GB copiados, e um botão Cancelar; as cópias de arquivo, de pasta, a extração de ISO/XISO e a conversão para ISO contam o que gravam e param no bloco seguinte ao Cancelar (só a cópia em andamento: um Cancelar antigo nunca para a próxima). Testado; não exercitado com uma cópia real (pede o seletor de arquivo).
+- [ ] Reordenar a fila de downloads
 
 ### Lote E — Segurança
 

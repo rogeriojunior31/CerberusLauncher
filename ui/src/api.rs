@@ -569,6 +569,11 @@ struct RestoreArgs<'a> {
 }
 
 /// How many files were put back.
+/// Stops the copy of the player's game going on now.
+pub async fn cancel_copy() -> Result<(), String> {
+    call("cancel_copy", &()).await
+}
+
 /// The paused and unfinished downloads kept from the last run.
 pub async fn download_queue() -> Result<Vec<cerberus_shared::InstallProgress>, String> {
     call("download_queue", &()).await
