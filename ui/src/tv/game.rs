@@ -222,6 +222,13 @@ pub fn GamePage(id: String) -> impl IntoView {
         Btn::Left | Btn::Right | Btn::Up | Btn::Down => {
             if focus.step(btn, &rows()) {
                 play(Sound::Move);
+            } else if matches!(btn, Btn::Up | Btn::Down) {
+                // Nothing further to focus: the page's text (a long description,
+                // "How to start") scrolls instead, so all of it can be read.
+                if let Some(main) = document().query_selector(".tv-main").ok().flatten() {
+                    let step = f64::from(main.client_height()) * 0.4;
+                    main.scroll_by_with_x_and_y(0.0, if btn == Btn::Down { step } else { -step });
+                }
             }
             true
         }
