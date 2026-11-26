@@ -248,11 +248,11 @@ async fn add_source(app: AppHandle, http: State<'_, reqwest::Client>, url: Strin
     let url = url.trim().to_string();
     let data = app.state::<DataDir>();
     let source = recomp::sources::fetch(&http, &data.cache(), &url).await?;
-    let mut chosen = settings::load(&data.0);
-    if !chosen.sources.contains(&url) {
-        chosen.sources.push(url.clone());
-        settings::save(&data.0, &chosen)?;
-    }
+    settings::update(&data.0, |s| {
+        if !s.sources.contains(&url) {
+            s.sources.push(url.clone());
+        }
+    })?;
     remember_source(&app, &url, Some(source));
     publish_sources(&app);
     Ok(settings_view(&app))
@@ -284,9 +284,7 @@ async fn remove_source(app: AppHandle, url: String) -> Result<SettingsView, Stri
     let state = app.state::<Sources>();
     let _guard = state.sync.lock().await;
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.sources.retain(|u| *u != url);
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.sources.retain(|u| *u != url))?;
     state.list.lock().unwrap_or_else(|p| p.into_inner()).retain(|(v, _)| v.url != url);
     publish_sources(&app);
     Ok(settings_view(&app))
@@ -307,9 +305,7 @@ async fn set_cloud_dir(app: AppHandle, clear: bool) -> Result<SettingsView, Stri
         Some(picked.into_path().map_err(|e| e.to_string())?)
     };
     let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
-    chosen.cloud_dir = dir.clone();
-    settings::save(&data_dir, &chosen)?;
+    settings::update(&data_dir, |s| s.cloud_dir = dir.clone())?;
     app.state::<recomp::Folders>().set_cloud(dir);
     Ok(settings_view(&app))
 }
@@ -390,11 +386,11 @@ async fn add_rom_dir(app: AppHandle) -> Result<SettingsView, String> {
     };
     let dir = picked.into_path().map_err(|e| e.to_string())?;
     let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
-    if !chosen.rom_dirs.contains(&dir) {
-        chosen.rom_dirs.push(dir);
-        settings::save(&data_dir, &chosen)?;
-    }
+    settings::update(&data_dir, |s| {
+        if !s.rom_dirs.contains(&dir) {
+            s.rom_dirs.push(dir);
+        }
+    })?;
     rescan_roms(&app).await;
     Ok(settings_view(&app))
 }
@@ -402,9 +398,7 @@ async fn add_rom_dir(app: AppHandle) -> Result<SettingsView, String> {
 #[tauri::command]
 async fn remove_rom_dir(app: AppHandle, path: String) -> Result<SettingsView, String> {
     let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
-    chosen.rom_dirs.retain(|d| d.to_string_lossy() != path);
-    settings::save(&data_dir, &chosen)?;
+    settings::update(&data_dir, |s| s.rom_dirs.retain(|d| d.to_string_lossy() != path))?;
     rescan_roms(&app).await;
     Ok(settings_view(&app))
 }
@@ -445,9 +439,7 @@ async fn set_steamgriddb_key(app: AppHandle, http: State<'_, reqwest::Client>, k
         art_custom::search(&http, &key, "Mario").await?;
     }
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.steamgriddb_key = (!key.is_empty()).then_some(key);
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.steamgriddb_key = (!key.is_empty()).then_some(key))?;
     Ok(settings_view(&app))
 }
 
@@ -538,10 +530,10 @@ async fn set_look(
 #[tauri::command(async)]
 fn finish_setup(app: AppHandle, start_in_tv: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.setup_done = true;
-    chosen.start_in_tv = start_in_tv;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| {
+        s.setup_done = true;
+        s.start_in_tv = start_in_tv;
+    })?;
     Ok(settings_view(&app))
 }
 
@@ -571,9 +563,7 @@ async fn install_retroarch(app: AppHandle, http: State<'_, reqwest::Client>) -> 
     trail::note(&app, "emulation", tk!("Instalar RetroArch"), &result.as_ref().map(|p| p.display().to_string()).map_err(Clone::clone));
     result?;
     // Cerberus's own copy wins over a pick that no longer exists.
-    let mut chosen = settings::load(&data);
-    chosen.retroarch = None;
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.retroarch = None)?;
     Ok(emulation::status(&data, None))
 }
 
@@ -589,9 +579,7 @@ async fn pick_retroarch(app: AppHandle) -> Result<cerberus_shared::EmulationView
     if name != "retroarch.exe" {
         return Err(tr!("Escolha o programa retroarch.exe.").into());
     }
-    let mut chosen = settings::load(&data);
-    chosen.retroarch = Some(exe.clone());
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.retroarch = Some(exe.clone()))?;
     Ok(emulation::status(&data, Some(&exe)))
 }
 
@@ -901,9 +889,7 @@ async fn install_standalone(app: AppHandle, http: State<'_, reqwest::Client>, id
     trail::note(&app, "emulation", tk!("Instalar emulador"), &result.as_ref().map(|p| format!("{} · {}", emulator.name, p.display())).map_err(Clone::clone));
     result?;
     // Cerberus's own copy wins over a pick made before.
-    let mut chosen = settings::load(&data);
-    chosen.emulators.remove(&id);
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.emulators.remove(&id))?;
     rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
@@ -921,9 +907,7 @@ async fn pick_standalone(app: AppHandle, id: String) -> Result<cerberus_shared::
     if !emulator.exe.iter().any(|w| name.eq_ignore_ascii_case(w)) {
         return Err(tr!("Esse não parece ser o programa do {} (esperado: {}).", emulator.name, emulator.exe[0]));
     }
-    let mut chosen = settings::load(&data);
-    chosen.emulators.insert(id, exe);
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.emulators.insert(id, exe))?;
     rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
@@ -933,13 +917,15 @@ async fn pick_standalone(app: AppHandle, id: String) -> Result<cerberus_shared::
 async fn remove_standalone(app: AppHandle, id: String) -> Result<cerberus_shared::StandaloneStatus, String> {
     let emulator = standalone::find(&id).ok_or(tr!("Emulador desconhecido."))?;
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
-    if chosen.emulators.remove(&id).is_none() {
+    // The files are moved before the settings change (and outside their lock).
+    if !settings::load(&data).emulators.contains_key(&id) {
         // Saves, BIOS and settings stay aside, and come back if it's installed again.
         standalone::remove_keeping(&data, emulator)?;
     }
-    chosen.play_with.retain(|_, who| who != &id);
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| {
+        s.emulators.remove(&id);
+        s.play_with.retain(|_, who| who != &id);
+    })?;
     rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
@@ -1008,9 +994,7 @@ fn set_play_with(app: AppHandle, console: String, who: String) -> Result<cerberu
         return Err(tr!("Esse emulador não roda jogos desse console.").into());
     }
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
-    chosen.play_with.insert(console, who);
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.play_with.insert(console, who))?;
     Ok(standalone_status_now(&data))
 }
 
@@ -1018,9 +1002,7 @@ fn set_play_with(app: AppHandle, console: String, who: String) -> Result<cerberu
 #[tauri::command]
 async fn set_emulator_folders(app: AppHandle, on: bool) -> Result<cerberus_shared::StandaloneStatus, String> {
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
-    chosen.emulator_folders = on;
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.emulator_folders = on)?;
     rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
@@ -1029,11 +1011,9 @@ async fn set_emulator_folders(app: AppHandle, on: bool) -> Result<cerberus_share
 #[tauri::command]
 async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Client>, password: String) -> Result<cerberus_shared::EmulationView, String> {
     let (data, picked) = retroarch_choice(&app);
-    let mut chosen = settings::load(&data);
-    let user = chosen.ra_user.clone().ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
+    let user = settings::load(&data).ra_user.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
     let (name, token) = emulation::connect_token(&http, &user, &password).await?;
-    chosen.ra_token = Some(token.clone());
-    settings::save(&data, &chosen)?;
+    settings::update(&data, |s| s.ra_token = Some(token.clone()))?;
     // RetroArch gets it now when it's there, or at the next game otherwise.
     if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
         emulation::write_token(&exe, &name, &token, true)?;
@@ -1057,9 +1037,7 @@ fn set_start_page(app: AppHandle, page: String) -> Result<SettingsView, String> 
         return Err(tr!("Página inválida.").into());
     }
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.start_page = page;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.start_page = page)?;
     Ok(settings_view(&app))
 }
 
@@ -1077,9 +1055,7 @@ fn set_autostart(app: AppHandle, on: bool) -> Result<SettingsView, String> {
 #[tauri::command(async)]
 fn set_start_hidden(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.start_hidden = on;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.start_hidden = on)?;
     Ok(settings_view(&app))
 }
 
@@ -1115,20 +1091,20 @@ async fn steam_connect(app: AppHandle, http: State<'_, reqwest::Client>, key: St
     };
     let account = achievements::steam_api::account(&http, &key, &id).await?;
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.steam_key = Some(key);
-    chosen.steam_id = Some(id);
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| {
+        s.steam_key = Some(key);
+        s.steam_id = Some(id);
+    })?;
     Ok(account)
 }
 
 #[tauri::command(async)]
 fn steam_disconnect(app: AppHandle) -> Result<(), String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.steam_key = None;
-    chosen.steam_id = None;
-    settings::save(&data.0, &chosen)
+    settings::update(&data.0, |s| {
+        s.steam_key = None;
+        s.steam_id = None;
+    })
 }
 
 /// Opens Steam's page for the key, the privacy settings, or the profile.
@@ -1226,15 +1202,14 @@ async fn update_install(app: AppHandle, http: State<'_, reqwest::Client>) -> Res
 #[tauri::command]
 async fn whats_new(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<Option<cerberus_shared::AppUpdate>, String> {
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
+    let chosen = settings::load(&data);
     let now = self_update::current();
     match chosen.seen_version.as_deref() {
         Some(seen) if self_update::is_newer(now, seen) => self_update::notes_of(&http, now).await,
         Some(_) => Ok(None),
         None => {
             // First run of a fresh install: nothing to tell, just remember this version.
-            chosen.seen_version = Some(now.to_string());
-            settings::save(&data, &chosen)?;
+            settings::update(&data, |s| s.seen_version = Some(now.to_string()))?;
             Ok(None)
         }
     }
@@ -1243,9 +1218,7 @@ async fn whats_new(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<O
 #[tauri::command(async)]
 fn whats_new_seen(app: AppHandle) -> Result<(), String> {
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
-    chosen.seen_version = Some(self_update::current().to_string());
-    settings::save(&data, &chosen)
+    settings::update(&data, |s| s.seen_version = Some(self_update::current().to_string()))
 }
 
 /// A game's play sessions, oldest first, for its play-time chart.
@@ -1333,10 +1306,9 @@ fn list_monitors(app: AppHandle) -> Vec<cerberus_shared::MonitorView> {
 #[tauri::command(async)]
 fn set_language(app: AppHandle, code: Option<String>) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.language = code.filter(|c| !c.is_empty());
-    settings::save(&data.0, &chosen)?;
-    language::apply(chosen.language.as_deref());
+    let language = code.filter(|c| !c.is_empty());
+    settings::update(&data.0, |s| s.language = language.clone())?;
+    language::apply(language.as_deref());
     background::retitle_tray(&app);
     Ok(settings_view(&app))
 }
@@ -1345,11 +1317,10 @@ fn set_language(app: AppHandle, code: Option<String>) -> Result<SettingsView, St
 #[tauri::command(async)]
 fn set_monitor(app: AppHandle, name: Option<String>) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.monitor = name.filter(|n| !n.is_empty());
-    settings::save(&data.0, &chosen)?;
+    let monitor = name.filter(|n| !n.is_empty());
+    settings::update(&data.0, |s| s.monitor = monitor.clone())?;
     if let Some(window) = app.get_webview_window("main") {
-        monitors::place(&window, chosen.monitor.as_deref());
+        monitors::place(&window, monitor.as_deref());
     }
     Ok(settings_view(&app))
 }
@@ -1367,9 +1338,7 @@ fn to_chosen_monitor(app: AppHandle) {
 #[tauri::command(async)]
 fn set_close_to_tray(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.close_to_tray = on;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.close_to_tray = on)?;
     Ok(settings_view(&app))
 }
 
@@ -1377,9 +1346,7 @@ fn set_close_to_tray(app: AppHandle, on: bool) -> Result<SettingsView, String> {
 #[tauri::command(async)]
 fn set_game_pass(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.game_pass = on;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.game_pass = on)?;
     let _ = app.emit("catalog-changed", ());
     Ok(settings_view(&app))
 }
@@ -1394,9 +1361,7 @@ fn xbox_open(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn set_site_catalog(app: AppHandle, http: State<'_, reqwest::Client>, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.site_catalog = on;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.site_catalog = on)?;
     recomp::catalog::use_site(on);
     if on {
         recomp::catalog::load_copy(&data.cache());
@@ -1410,9 +1375,7 @@ async fn set_site_catalog(app: AppHandle, http: State<'_, reqwest::Client>, on: 
 #[tauri::command(async)]
 fn rerun_setup(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.setup_done = false;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.setup_done = false)?;
     Ok(settings_view(&app))
 }
 
@@ -1430,23 +1393,30 @@ async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: Stri
         None => None,
     };
     let (data, picked) = retroarch_choice(&app);
-    let mut chosen = settings::load(&data);
+    let chosen = settings::load(&data);
     // Another account than the one before: the old one's token goes, here and in the emulators.
     let switched = chosen.ra_user.as_deref().is_some_and(|before| !before.eq_ignore_ascii_case(&profile.user));
     if switched {
-        if let Some(old) = chosen.ra_token.take() {
-            forget_ra_everywhere(&data, &chosen, &old);
+        if let Some(old) = &chosen.ra_token {
+            forget_ra_everywhere(&data, &chosen, old);
         }
     }
-    chosen.ra_user = Some(profile.user.clone());
-    chosen.ra_key = Some(key);
     if let Some((name, token)) = &token {
-        chosen.ra_token = Some(token.clone());
         if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
             let _ = emulation::write_token(&exe, name, token, true);
         }
     }
-    settings::save(&data, &chosen)?;
+    // The emulators' files above are touched outside the settings' lock; only the fields change under it.
+    settings::update(&data, |s| {
+        if switched {
+            s.ra_token = None;
+        }
+        s.ra_user = Some(profile.user.clone());
+        s.ra_key = Some(key);
+        if let Some((_, token)) = &token {
+            s.ra_token = Some(token.clone());
+        }
+    })?;
     Ok(profile)
 }
 
@@ -1462,15 +1432,16 @@ async fn ra_profile(app: AppHandle, http: State<'_, reqwest::Client>) -> Result<
 #[tauri::command(async)]
 fn ra_disconnect(app: AppHandle) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
+    let chosen = settings::load(&data.0);
     // "Forget the account on this PC" includes every emulator it was written into.
-    if let Some(token) = chosen.ra_token.clone() {
-        forget_ra_everywhere(&data.0, &chosen, &token);
+    if let Some(token) = &chosen.ra_token {
+        forget_ra_everywhere(&data.0, &chosen, token);
     }
-    chosen.ra_user = None;
-    chosen.ra_key = None;
-    chosen.ra_token = None;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| {
+        s.ra_user = None;
+        s.ra_key = None;
+        s.ra_token = None;
+    })?;
     Ok(settings_view(&app))
 }
 
@@ -1505,11 +1476,12 @@ fn ra_open(app: AppHandle, keys: bool) -> Result<(), String> {
 #[tauri::command(async)]
 fn set_download_limit(app: AppHandle, mb: u32, slow_while_playing: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.download_limit = mb.min(1000);
-    chosen.slow_while_playing = slow_while_playing;
-    settings::save(&data.0, &chosen)?;
-    recomp::throttle::set_limit(chosen.download_limit, chosen.slow_while_playing);
+    let limit = mb.min(1000);
+    settings::update(&data.0, |s| {
+        s.download_limit = limit;
+        s.slow_while_playing = slow_while_playing;
+    })?;
+    recomp::throttle::set_limit(limit, slow_while_playing);
     Ok(settings_view(&app))
 }
 
@@ -1582,30 +1554,25 @@ fn epic_open(app: AppHandle) -> Result<(), String> {
 #[tauri::command(async)]
 fn set_notices(app: AppHandle, choices: cerberus_shared::Notices) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.notices = choices;
-    settings::save(&data.0, &chosen)?;
-    notify::set(chosen.notices.clone());
+    settings::update(&data.0, |s| s.notices = choices.clone())?;
+    notify::set(choices);
     Ok(settings_view(&app))
 }
 
 #[tauri::command(async)]
 fn set_in_game(app: AppHandle, choices: cerberus_shared::InGame) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
     let corner = if ["br", "bl", "tr", "tl"].contains(&choices.corner.as_str()) { choices.corner.clone() } else { "br".into() };
-    chosen.in_game = cerberus_shared::InGame { corner, ..choices };
-    settings::save(&data.0, &chosen)?;
-    in_game::set(chosen.in_game.clone());
+    let in_game = cerberus_shared::InGame { corner, ..choices };
+    settings::update(&data.0, |s| s.in_game = in_game.clone())?;
+    in_game::set(in_game);
     Ok(settings_view(&app))
 }
 
 #[tauri::command(async)]
 fn set_start_in_tv(app: AppHandle, on: bool) -> Result<SettingsView, String> {
     let data = app.state::<DataDir>();
-    let mut chosen = settings::load(&data.0);
-    chosen.start_in_tv = on;
-    settings::save(&data.0, &chosen)?;
+    settings::update(&data.0, |s| s.start_in_tv = on)?;
     Ok(settings_view(&app))
 }
 
@@ -1636,9 +1603,7 @@ fn use_recomps_dir(app: &AppHandle, dir: Option<PathBuf>) -> Result<SettingsView
     let target = dir.clone().unwrap_or_else(|| folders.default_installs.clone());
     fs::create_dir_all(&target).map_err(|e| tr!("Não foi possível usar {0}: {1}", target.display(), e))?;
     let data_dir = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data_dir);
-    chosen.recomps_dir = dir;
-    settings::save(&data_dir, &chosen)?;
+    settings::update(&data_dir, |s| s.recomps_dir = dir)?;
     folders.set_installs(target);
     Ok(settings_view(app))
 }
@@ -3107,13 +3072,13 @@ fn set_game_setting(
 #[tauri::command(async)]
 fn set_updates_paused(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     let data = app.state::<DataDir>().0.clone();
-    let mut chosen = settings::load(&data);
-    if on {
-        chosen.paused_updates.insert(id);
-    } else {
-        chosen.paused_updates.remove(&id);
-    }
-    settings::save(&data, &chosen)
+    settings::update(&data, |s| {
+        if on {
+            s.paused_updates.insert(id);
+        } else {
+            s.paused_updates.remove(&id);
+        }
+    })
 }
 
 /// The player's status, rating and notes for a game.
@@ -3970,4 +3935,23 @@ fn windows_get_no_wildcard_or_remote_permissions_and_the_csp_stays_on() {
     let conf: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("tauri.conf.json")).unwrap()).unwrap();
     let csp = conf["app"]["security"]["csp"].as_str().unwrap_or_default();
     assert!(csp.contains("default-src 'self'") && !csp.contains("'unsafe-eval'") && csp.contains("object-src 'none'"), "the CSP: {csp}");
+}
+
+#[cfg(test)]
+#[test]
+fn settings_are_changed_under_their_lock_not_loaded_and_saved_whole() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // Split so this test's own text doesn't count.
+    let needle = concat!("settings", "::save(");
+    // The restore writes the whole merged copy on purpose, even over a damaged
+    // file (which `settings::update` refuses to change).
+    let allowed = concat!("crate::settings", "::save(data, &settings)?;");
+    for file in ["src/main.rs", "src/data_backup.rs"] {
+        let text = fs::read_to_string(dir.join(file)).unwrap();
+        for (n, line) in text.lines().enumerate() {
+            if line.contains(needle) && !line.contains(allowed) {
+                panic!("{file}:{}: use settings::update instead of load + save: {}", n + 1, line.trim());
+            }
+        }
+    }
 }
