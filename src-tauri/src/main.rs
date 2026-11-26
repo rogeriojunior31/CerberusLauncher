@@ -3577,7 +3577,12 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             background::show(app);
             // A desktop shortcut while Cerberus runs: the open window plays the game.
+            // Kept first, then told: a window still loading takes it once it's ready
+            // (the event alone would be lost), and it's taken once either way.
             if let Some(id) = shortcut::play_request(&args) {
+                if let Some(request) = app.try_state::<PlayRequest>() {
+                    *request.0.lock().unwrap_or_else(|p| p.into_inner()) = Some(id.clone());
+                }
                 let _ = app.emit("play-request", id);
             }
         }))
@@ -3919,6 +3924,11 @@ fn main() {
             play
         ])
         .on_window_event(|window, event| {
+            // Alt+Tab with the menu over the game open: it closes instead of
+            // staying on top of everything, the size of the game.
+            if window.label() == overlay::LABEL && matches!(event, tauri::WindowEvent::Focused(false)) {
+                overlay::hide(window.app_handle());
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     if background::on_close(window, window.app_handle()) {

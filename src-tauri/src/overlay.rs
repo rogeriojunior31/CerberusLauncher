@@ -89,6 +89,13 @@ pub fn toggle(app: &AppHandle) {
 }
 
 /// Hides the menu and gives the game its window back.
+/// Hides the menu only, leaving the window the player switched to (Alt+Tab) in front.
+pub fn hide(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(LABEL) {
+        let _ = window.hide();
+    }
+}
+
 pub fn close(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();

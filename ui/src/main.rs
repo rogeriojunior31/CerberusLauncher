@@ -462,7 +462,14 @@ fn App() -> impl IntoView {
             wanted.set(Some(id));
         }
     });
-    api::on_play_request(move |id| wanted.set(Some(id)));
+    // The request is kept in the backend: taken from there, so a game is played once.
+    api::on_play_request(move |_| {
+        spawn_local(async move {
+            if let Some(id) = api::take_play_request().await {
+                let _ = wanted.try_set(Some(id));
+            }
+        });
+    });
     api::on_show_game(move |id: String| library.go(Route::Game(id)));
     Effect::new(move |_| {
         let Some(id) = wanted.get() else { return };

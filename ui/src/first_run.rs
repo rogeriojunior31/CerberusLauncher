@@ -313,7 +313,13 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
 
     view! {
         <div class="fr" role="dialog" aria-modal="true" aria-label=tr!("Configuração inicial")
-            on:keydown=move |e| if e.key() == "Enter" && !busy.get_untracked() { next() }>
+            on:keydown=move |e| {
+                // Enter on a button, link or field does what that one says, not also Continue.
+                let on_control = e.target().and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok()).is_some_and(|el| matches!(el.tag_name().as_str(), "BUTTON" | "A" | "INPUT" | "SELECT" | "TEXTAREA"));
+                if e.key() == "Enter" && !on_control && !busy.get_untracked() {
+                    next()
+                }
+            }>
             <div class="fr-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
             <div class="fr-top" data-tauri-drag-region>
                 <div class="brand fr-brand" data-tauri-drag-region>
