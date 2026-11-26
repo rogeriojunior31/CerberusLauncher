@@ -343,7 +343,10 @@ mod tests {
         b[0x80..0x84].copy_from_slice(b"PE\0\0");
         b[0x84..0x86].copy_from_slice(&0x8664u16.to_le_bytes());
         b.extend_from_slice(names);
-        let exe = dir.join("Game.exe");
+        // One file per program: `route` remembers a program by path, size and
+        // date, and two fakes of one size written in the same instant would look alike.
+        let tag: String = String::from_utf8_lossy(names).chars().filter(char::is_ascii_alphanumeric).collect();
+        let exe = dir.join(format!("Game-{tag}.exe"));
         fs::write(&exe, b).unwrap();
         exe
     }
