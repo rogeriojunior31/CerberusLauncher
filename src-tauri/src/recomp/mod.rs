@@ -870,8 +870,14 @@ pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
                 return NextStep::ChooseCopy { found: found.cloned() };
             }
         }
-        if !manifest::missing_for(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest), part_of(game)).is_empty() {
-            return NextStep::ChooseCopy { found: found.cloned() };
+        let missing = manifest::missing_for(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest), part_of(game));
+        if !missing.is_empty() {
+            // The main copy itself: chosen again. Anything else (disc 2, a key): named.
+            let main_missing = manifest.main_input().is_some_and(|m| missing.iter().any(|i| i.id == m.id));
+            if main_missing || game.game_copy.is_none() {
+                return NextStep::ChooseCopy { found: found.cloned() };
+            }
+            return NextStep::ChooseInput { label: missing.iter().map(|i| i.label.as_str()).collect::<Vec<_>>().join(", ") };
         }
     }
     // A folder copy the recomp reads named parts from: they must be in its folder.
@@ -2626,6 +2632,33 @@ Content-Length: {}
         assert!(Path::new(&again.install_dir).join("Game.exe").is_file());
         assert!(Path::new(&again.install_dir).join(MARKER).is_file());
         assert_eq!(library.games().unwrap().iter().filter(|g| g.id == again.id).count(), 1);
+    }
+
+    #[test]
+    fn a_missing_second_disc_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        fs::create_dir_all(&install).unwrap();
+        fs::write(install.join(MARKER), "twodiscs").unwrap();
+        fs::write(install.join("g.exe"), b"MZ").unwrap();
+        keep_entry(&install, &CatalogEntry { id: "twodiscs".into(), name: "Two Discs".into(), ..Default::default() });
+        fs::write(install.join(manifest::FILE), r#"{"format":1,"inputs":[
+            {"id":"disc1","label":"Disc 1","role":"disc"},{"id":"disc2","label":"Disc 2","role":"disc"}],
+            "start":{"program":["g.exe"],"args":["{input:disc1}","{input:disc2}"]}}"#).unwrap();
+        let disc1 = dir.path().join("disc1.iso");
+        fs::write(&disc1, b"iso").unwrap();
+        let mut game = crate::library::game_from_exe(&install.join("g.exe"));
+        game.install_dir = install.to_string_lossy().into();
+        game.source = Source::Recomp { recomp_id: "twodiscs".into(), version: "1".into(), exe: install.join("g.exe").to_string_lossy().into(), generation: 0 };
+        // No copy at all: the copy is asked for.
+        assert!(matches!(next_step(&game, None), NextStep::ChooseCopy { .. }));
+        // Disc 1 given, disc 2 not: disc 2 is named, the copy isn't blamed.
+        game.game_copy = Some(disc1.to_string_lossy().into());
+        assert_eq!(next_step(&game, None), NextStep::ChooseInput { label: "Disc 2".into() });
+        let disc2 = dir.path().join("disc2.iso");
+        fs::write(&disc2, b"iso").unwrap();
+        game.inputs.insert("disc2".into(), disc2.to_string_lossy().into());
+        assert_eq!(next_step(&game, None), NextStep::Play);
     }
 
     #[test]

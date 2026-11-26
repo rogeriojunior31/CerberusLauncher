@@ -447,6 +447,7 @@ fn step_hint(game: &Game, library: Library) -> Option<String> {
                 None => tr!("O recomp precisa do jogo original (a sua cópia). Abra o jogo para escolher onde ela está.").to_string(),
             })
         }
+        cerberus_shared::NextStep::ChooseInput { label } => Some(tr!("Falta: {}. Abra o jogo para escolher.", label)),
         cerberus_shared::NextStep::RunInstaller => Some(tr!("O instalador do recomp ainda não rodou: abra o jogo para terminar.").to_string()),
         cerberus_shared::NextStep::Locate { reason } => Some(reason.clone()),
         _ => None,
@@ -459,6 +460,7 @@ fn waiting_for(game: &Game) -> Option<&'static str> {
         cerberus_shared::NextStep::Play => None,
         cerberus_shared::NextStep::RunInstaller => Some(tr!("Instalação pendente")),
         cerberus_shared::NextStep::ChooseCopy { .. } => Some(tr!("Falta sua cópia")),
+        cerberus_shared::NextStep::ChooseInput { .. } => Some(tr!("Falta um arquivo")),
         cerberus_shared::NextStep::Locate { .. } => Some(tr!("Programa não encontrado")),
         // Dimmed already, and under its own filter: no chip on every cover.
         cerberus_shared::NextStep::Install => None,

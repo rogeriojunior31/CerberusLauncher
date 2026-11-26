@@ -2726,6 +2726,7 @@ fn ready_to_play(game: &Game) -> Result<(), String> {
             Some(why) => Err(tr!("A cópia escolhida não serve para {0}. {1}", game.name, why)),
             None => Err(tr!("{} precisa da sua cópia do jogo. Escolha o arquivo na página do jogo.", game.name)),
         },
+        cerberus_shared::NextStep::ChooseInput { label } => Err(tr!("{0} ainda precisa de: {1}. Escolha na página do jogo, em \"O jogo também precisa\".", game.name, label)),
         cerberus_shared::NextStep::Locate { reason } => Err(tr!("{} Use \"Localizar programa\" na página do jogo.", reason)),
         _ => Ok(()),
     }

@@ -215,6 +215,7 @@ pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
         NextStep::RunInstaller => (tr!("Abrir instalador"), icons::Icon::External),
         NextStep::ChooseCopy { found: Some(_) } => (tr!("Usar minha cópia"), icons::Icon::Check),
         NextStep::ChooseCopy { found: None } => (tr!("Escolher cópia do jogo"), icons::Icon::Folder),
+        NextStep::ChooseInput { .. } => (tr!("Escolher o que falta"), icons::Icon::Folder),
         NextStep::Locate { .. } => (tr!("Localizar programa"), icons::Icon::Search),
         NextStep::Install => (tr!("Instalar"), icons::Icon::Download),
     }
@@ -247,6 +248,12 @@ pub fn play_game(library: Library, game: Game) {
                 }
                 // Plays right away; Play itself refuses if anything is still missing.
                 set
+            }
+            // A second disc or a key: picked on the game's page, under "The game also needs".
+            NextStep::ChooseInput { label } => {
+                library.toast(tr!("Falta: {}. Escolha em \"O jogo também precisa\".", label));
+                library.go(Route::Game(game.id.clone()));
+                None
             }
             NextStep::Locate { reason } => {
                 library.toast(reason.clone());

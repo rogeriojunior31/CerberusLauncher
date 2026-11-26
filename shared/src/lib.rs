@@ -334,6 +334,9 @@ pub enum NextStep {
     /// The recomp needs the player's copy of the game. `found` is one the ROM
     /// folders have, used with one click; otherwise the player picks a file.
     ChooseCopy { found: Option<String> },
+    /// The copy is fine, but something else the game asks for is still missing
+    /// (a second disc, a key): `label` names it, as the developer does.
+    ChooseInput { label: String },
     /// The program to open is gone (moved, deleted, or an installer put it
     /// somewhere unknown); the player points at it.
     Locate { reason: String },
