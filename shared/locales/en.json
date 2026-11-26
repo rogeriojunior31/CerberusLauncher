@@ -1204,6 +1204,7 @@
   "O catálogo veio vazio.": "The catalog came back empty.",
   "O desenvolvedor desligou os filtros para esse jogo.": "The developer turned picture filters off for this game.",
   "O destino do save é inválido.": "The save's destination is invalid.",
+  "O disco {} encheu. O que já foi baixado ficou guardado: libere espaço e clique em Instalar de novo, que o download continua de onde parou.": "Drive {} is full. What was already downloaded is kept: free up space and click Install again, and the download picks up where it stopped.",
   "O endereço do projeto no catálogo não é válido.": "The project's address in the catalog isn't valid.",
   "O escolhido (desligado agora)": "The chosen one (unplugged now)",
   "O firmware do PS3 é instalado pelo próprio RPCS3, a partir do arquivo PS3UPDAT.PUP.": "The PS3 firmware is installed by RPCS3 itself, from the PS3UPDAT.PUP file.",

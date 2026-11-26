@@ -955,7 +955,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Programa de outro jogo adotado [RP F6] — feito em 25/11/2026: pelo registro do Windows só vale um nome com todas as palavras do recomp, nunca numa pasta da Steam/Epic/Xbox/GOG nem na de outro jogo da biblioteca; na dúvida, o jogador escolhe o programa. Testado. Falta o "fechou cedo demais" (bootstrapper).
 - [x] Mods mexem em arquivos que não são deles [RP F11] — feito em 25/11/2026: instalar recusa um nome que já está na pasta e não é deste mod (de outro mod ou do jogador), antes de gravar qualquer coisa; remover deixa um arquivo que outro mod também lista; vale para Thunderstore e pacotes do GameBanana. Testado.
 - [x] Filtro aplicado no programa errado [RP F7] — feito em 25/11/2026: a partida põe o ReShade ao lado do mesmo programa que a aba Ajustes avalia (o acompanhado, quando um launcher abre o jogo); retirar a DLL tenta por ~3 s; antes de cada partida sem filtro, um que sobrou é retirado. Testado (DLL presa por 600 ms); não exercitado com o ReStreet.
-- [ ] Cópias grandes sem espaço conferido, progresso ou cancelamento [RP F14]; fila e disco cheio [RC F13, RC F14]
+- [x] Disco cheio e rede caída [RC F14] — feito em 26/11/2026: disco cheio no download diz qual disco encheu e que o baixado ficou guardado para continuar; uma queda de rede espera 2, 4, 8, 16, 30 e 30 s antes de desistir (~1,5 min). Conversão para ISO e cópias de pasta conferem o espaço antes. Testado.
+- [ ] Cópias grandes com progresso e cancelamento [RP F14]; fila de downloads no backend, persistida [RC F13]
 
 ### Lote E — Segurança
 

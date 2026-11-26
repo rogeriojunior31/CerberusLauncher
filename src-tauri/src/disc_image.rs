@@ -242,6 +242,9 @@ impl<R> Seek for Cso<R> {
 /// image itself. Returns the bytes written.
 pub fn write_iso(image: &Path, to: &Path) -> Result<u64, String> {
     let mut disc = open(image).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
+    // Room for the whole disc first, not a full drive half-way through.
+    let size = disc.seek(SeekFrom::End(0)).and_then(|n| disc.seek(SeekFrom::Start(0)).map(|_| n)).map_err(|e| tr!("Não foi possível abrir a imagem de disco: {}", e))?;
+    crate::disk::require(to.parent().unwrap_or(Path::new(".")), size)?;
     let part = to.with_extension("iso.part");
     let result = File::create(&part).and_then(|mut out| io::copy(&mut disc, &mut out));
     match result {
