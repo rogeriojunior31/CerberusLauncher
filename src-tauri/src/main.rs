@@ -74,7 +74,7 @@ use cerberus_shared::{Backup, Game, InstallProgress, RecompEntry, SettingsView, 
 use library::LocalLibrary;
 use recomp::sources::{CatalogSource, Entries};
 use cerberus_shared::{SourcePage, SourceView};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use tauri_plugin_opener::OpenerExt;
 
@@ -1628,7 +1628,10 @@ async fn list_games(
         }
     };
     games.iter_mut().for_each(recomp::apply_art);
-    let owned = owned_games(&app);
+    // Only the recomps listed here are matched with the player's ROMs, not the whole catalog.
+    let listed: std::collections::HashSet<&str> = games.iter().filter_map(|g| match &g.source { Source::Recomp { recomp_id, .. } => Some(recomp_id.as_str()), _ => None }).collect();
+    let wanted: Vec<recomp::catalog::CatalogEntry> = recomp::catalog::all().iter().filter(|e| listed.contains(e.id.as_str())).cloned().collect();
+    let owned = roms::match_catalog(&wanted, &app.state::<RomIndex>().get());
     for game in &mut games {
         let found = match &game.source {
             Source::Recomp { recomp_id, .. } => owned.get(recomp_id),
@@ -1636,19 +1639,7 @@ async fn list_games(
         };
         game.next_step = recomp::next_step(game, found);
     }
-    // Scanning library folders touches the disk; keep it off the async runtime.
-    let scan = tauri::async_runtime::spawn_blocking(|| {
-        let mut found = steam::installed_games();
-        found.extend(epic::installed_games());
-        found.extend(xbox::installed_games());
-        found
-    });
-    games.extend(scan.await.unwrap_or_default());
-    game_pass(&app, &http, &mut games);
-    epic_library(&app, &http, &mut games);
-    xbox_library(&app, &http, &mut games);
-    xbox_art(&app, &http, &mut games);
-    owned_not_installed(&app, &http, &mut games);
+    games.extend(store_games(&app, &http).await);
     gamepass::drop_owned_elsewhere(&mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
     let mut missing = Vec::new();
@@ -1695,6 +1686,42 @@ async fn list_games(
     games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
+}
+
+/// The stores' games, as last listed: a heart or a page change doesn't read
+/// every store again. Listed afresh when a store says it changed
+/// (`catalog-changed`) or after a short while (a game installed by the store itself).
+static STORES: std::sync::Mutex<Option<(std::time::Instant, u64, Vec<Game>)>> = std::sync::Mutex::new(None);
+static STORES_CHANGED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const STORES_FRESH: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// The stores' listing is out of date.
+fn stores_changed() {
+    STORES_CHANGED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+async fn store_games(app: &AppHandle, http: &reqwest::Client) -> Vec<Game> {
+    let generation = STORES_CHANGED.load(std::sync::atomic::Ordering::SeqCst);
+    if let Some((at, seen, games)) = STORES.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        if *seen == generation && at.elapsed() < STORES_FRESH {
+            return games.clone();
+        }
+    }
+    // Scanning library folders touches the disk; keep it off the async runtime.
+    let scan = tauri::async_runtime::spawn_blocking(|| {
+        let mut found = steam::installed_games();
+        found.extend(epic::installed_games());
+        found.extend(xbox::installed_games());
+        found
+    });
+    let mut games = scan.await.unwrap_or_default();
+    game_pass(app, http, &mut games);
+    epic_library(app, http, &mut games);
+    xbox_library(app, http, &mut games);
+    xbox_art(app, http, &mut games);
+    owned_not_installed(app, http, &mut games);
+    *STORES.lock().unwrap_or_else(|p| p.into_inner()) = Some((std::time::Instant::now(), generation, games.clone()));
+    games
 }
 
 /// The Epic account's games (when signed in): from disk at once, asked again in
@@ -3457,6 +3484,8 @@ fn main() {
             recomp::catalog::load_copy(&data.cache());
             app.manage(RomIndex(std::sync::Mutex::new(roms::load_index(&data.rom_index()))));
             app.manage(Sources::default());
+            // Any store (or account) change lists the stores afresh next time.
+            app.listen_any("catalog-changed", |_| stores_changed());
             for url in &chosen.sources {
                 remember_source(app.handle(), url, recomp::sources::load_copy(&data.cache(), url));
             }

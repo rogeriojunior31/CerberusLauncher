@@ -45,12 +45,20 @@ impl ArtCache {
 
     /// Replaces an online address with its copy on disk when there is one;
     /// otherwise notes the address in `missing`.
-    fn swap(&self, value: &mut Option<String>, missing: &mut Vec<String>) {
+    /// The pictures on disk, listed once (a listing of a thousand games would
+    /// otherwise ask the disk about each picture).
+    fn on_disk(&self) -> std::collections::HashSet<std::ffi::OsString> {
+        std::fs::read_dir(&self.dir)
+            .map(|entries| entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name()).collect())
+            .unwrap_or_default()
+    }
+
+    fn swap(&self, value: &mut Option<String>, missing: &mut Vec<String>, here: &std::collections::HashSet<std::ffi::OsString>) {
         let Some(url) = value.as_ref().filter(|v| v.starts_with("http")) else {
             return;
         };
         let file = self.file_for(url);
-        if file.is_file() {
+        if file.file_name().is_some_and(|n| here.contains(n)) {
             *value = Some(file.to_string_lossy().into_owned());
             return;
         }
@@ -60,21 +68,23 @@ impl ArtCache {
     /// The online art each game shows first: art already on disk (Steam's own
     /// cache, a cover the player picked) is left alone.
     pub fn use_copies_for_games(&self, games: &mut [Game], missing: &mut Vec<String>) {
+        let here = self.on_disk();
         for game in games {
             if game.cover_path.is_none() {
-                self.swap(&mut game.cover_url, missing);
+                self.swap(&mut game.cover_url, missing, &here);
             }
             if game.hero_path.is_none() {
-                self.swap(&mut game.hero_url, missing);
+                self.swap(&mut game.hero_url, missing, &here);
             }
         }
     }
 
     pub fn use_copies_for_recomps(&self, entries: &mut [RecompEntry], missing: &mut Vec<String>) {
+        let here = self.on_disk();
         for entry in entries {
-            self.swap(&mut entry.cover, missing);
-            self.swap(&mut entry.hero, missing);
-            self.swap(&mut entry.icon, missing);
+            self.swap(&mut entry.cover, missing, &here);
+            self.swap(&mut entry.hero, missing, &here);
+            self.swap(&mut entry.icon, missing, &here);
         }
     }
 
@@ -160,7 +170,7 @@ mod tests {
 
         let mut value = Some(url);
         let mut missing = Vec::new();
-        cache.swap(&mut value, &mut missing);
+        cache.swap(&mut value, &mut missing, &cache.on_disk());
         assert!(value.unwrap().starts_with(&dir.to_string_lossy().into_owned()));
         assert!(missing.is_empty());
     }
@@ -170,7 +180,7 @@ mod tests {
         let cache = ArtCache::new(std::env::temp_dir().join("cerberus-art-empty"));
         let mut value = Some("https://example.com/nothing.png".to_string());
         let mut missing = Vec::new();
-        cache.swap(&mut value, &mut missing);
+        cache.swap(&mut value, &mut missing, &cache.on_disk());
         assert_eq!(missing, vec!["https://example.com/nothing.png"]);
         assert!(value.unwrap().starts_with("https://"));
     }
@@ -180,7 +190,7 @@ mod tests {
         let cache = ArtCache::new(std::env::temp_dir().join("cerberus-art-paths"));
         let mut value = Some(r"C:\Steam\appcache\librarycache\620\library_hero.jpg".to_string());
         let mut missing = Vec::new();
-        cache.swap(&mut value, &mut missing);
+        cache.swap(&mut value, &mut missing, &cache.on_disk());
         assert!(missing.is_empty());
     }
 }
