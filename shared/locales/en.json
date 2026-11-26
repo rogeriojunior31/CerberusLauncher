@@ -848,6 +848,7 @@
   "Jogue de novo": "Play again",
   "Já existe uma coleção chamada {}.": "There's already a collection called {}.",
   "Já existe uma pasta {} lá. Escolha outro lugar.": "There's already a {} folder there. Choose another place.",
+  "Já existe {} na pasta de mods, de outro mod ou posto à mão; nada foi instalado. Remova-o primeiro se quiser trocar.": "{} is already in the mods folder, from another mod or put there by hand; nothing was installed. Remove it first if you want to replace it.",
   "Já instalado: {}": "Already installed: {}",
   "Já tenho": "I have it",
   "Já tenho instalado": "I already have it installed",

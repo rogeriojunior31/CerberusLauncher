@@ -953,7 +953,8 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [ ] CHD de PS1 Mode 2 Form 2 [RP F15]
 - [x] Instalador que pede administrador (erro 740) [RP F5] — feito em 25/11/2026: no 740 o instalador abre pelo pedido de permissão do Windows e o fim é aguardado; recusar explica o que fazer. Vale para recomps e runtimes da Microsoft. Testado o mapeamento; não exercitado com um instalador real (abriria o pedido do Windows).
 - [x] Programa de outro jogo adotado [RP F6] — feito em 25/11/2026: pelo registro do Windows só vale um nome com todas as palavras do recomp, nunca numa pasta da Steam/Epic/Xbox/GOG nem na de outro jogo da biblioteca; na dúvida, o jogador escolhe o programa. Testado. Falta o "fechou cedo demais" (bootstrapper).
-- [ ] Mods mexem em arquivos que não são deles [RP F11]; filtro aplicado no programa errado [RP F7]
+- [x] Mods mexem em arquivos que não são deles [RP F11] — feito em 25/11/2026: instalar recusa um nome que já está na pasta e não é deste mod (de outro mod ou do jogador), antes de gravar qualquer coisa; remover deixa um arquivo que outro mod também lista; vale para Thunderstore e pacotes do GameBanana. Testado.
+- [ ] Filtro aplicado no programa errado [RP F7]
 - [ ] Cópias grandes sem espaço conferido, progresso ou cancelamento [RP F14]; fila e disco cheio [RC F13, RC F14]
 
 ### Lote E — Segurança

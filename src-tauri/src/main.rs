@@ -2457,8 +2457,9 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
             let mut installed = mods::load_installed(&record);
             let old = installed.0.get(&full_name).map(|(_, files)| files.clone()).unwrap_or_default();
             let old_files = old.clone();
+            let others = installed.others_files(&full_name);
             let placed = tauri::async_runtime::spawn_blocking(move || match kind {
-                gamebanana::Kind::Packs => gamebanana::place_packs(&archive, &mods_folder),
+                gamebanana::Kind::Packs => gamebanana::place_packs(&archive, &mods_folder, &old_files),
                 gamebanana::Kind::Hedge(user) => hedge::place(&archive, &mods_folder, user, mod_id, &name, &old_files),
             })
             .await
@@ -2466,7 +2467,7 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
             // Packs the new version no longer has go; the ones it has were just replaced.
             if kind == gamebanana::Kind::Packs {
                 let gone: Vec<String> = old.iter().filter(|f| !placed.contains(f)).cloned().collect();
-                mods::remove_files(&folder, &gone);
+                mods::remove_files(&folder, &gone, &others);
             }
             installed.0.insert(full_name, (version, placed));
             return mods::save_installed(&record, &installed);
@@ -2490,10 +2491,10 @@ async fn install_mod(app: AppHandle, http: State<'_, reqwest::Client>, id: Strin
             let bytes = mods::download(&http, &package.download_url).await?;
             // The new version goes in first; only then do the old version's
             // files it no longer has go (a broken download keeps the old mod).
-            let files = mods::unpack(&bytes, &folder)?;
+            let files = mods::unpack(&bytes, &folder, &installed.files_of(&name))?;
             if let Some((_, old)) = installed.0.get(&name) {
                 let gone: Vec<String> = old.iter().filter(|f| !files.contains(f)).cloned().collect();
-                mods::remove_files(&folder, &gone);
+                mods::remove_files(&folder, &gone, &installed.others_files(&name));
             }
             installed.0.insert(name.clone(), (package.version.clone(), files));
             mods::save_installed(&record, &installed)?;
@@ -2511,7 +2512,7 @@ async fn remove_mod(app: AppHandle, id: String, full_name: String) -> Result<(),
     if let Some((_, files)) = installed.0.remove(&full_name) {
         match (host, gamebanana::id_of(&full_name)) {
             (ModHost::GameBanana(_, gamebanana::Kind::Hedge(user)), Some(mod_id)) => hedge::remove(&folder, user, mod_id, &files)?,
-            _ => mods::remove_files(&folder, &files),
+            _ => mods::remove_files(&folder, &files, &installed.others_files(&full_name)),
         }
         mods::save_installed(&record, &installed)?;
     }
