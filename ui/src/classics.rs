@@ -742,6 +742,12 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 <aside class="ov-rail">
                     <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
                     <crate::game_overview::AchievementsCard data=achievements on_all />
+                {move || achievements.get().and_then(Result::ok).filter(|d| d.by_title).map(|_| view! {
+                    <p class="muted small">{tr!("Achado pelo nome do jogo, não pelo arquivo: pode ser outra versão, e aí o emulador não conta essas conquistas.")}</p>
+                })}
+                    {move || achievements.get().and_then(Result::ok).filter(|d| d.by_title).map(|_| view! {
+                        <p class="muted small">{tr!("Achado pelo nome do jogo, não pelo arquivo: pode ser outra versão, e aí o emulador não conta essas conquistas.")}</p>
+                    })}
                     <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{facts}</dl></section>
                 </aside>
             </div>

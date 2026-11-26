@@ -1179,11 +1179,11 @@ async fn classic_achievements(app: AppHandle, http: State<'_, reqwest::Client>, 
     };
     let stem = rom.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let data = app.state::<DataDir>().0.clone();
-    let Some(id) = achievements::classic::game_for(&http, &data, &user, &key, &rom, &console, &[known.title.clone(), stem]).await? else {
+    let Some((id, by_hash)) = achievements::classic::game_for(&http, &data, &user, &key, &rom, &console, &[known.title.clone(), stem]).await? else {
         return Ok(None);
     };
     let (game, list) = achievements::retro::game(&http, &user, &key, &id.to_string()).await?;
-    Ok(Some(cerberus_shared::GameAchievements { game, achievements: list }))
+    Ok(Some(cerberus_shared::GameAchievements { game, achievements: list, by_title: !by_hash }))
 }
 
 /// Asks GitHub now for a newer Cerberus.

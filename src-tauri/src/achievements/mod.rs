@@ -783,7 +783,7 @@ pub async fn game(
             if let Ok(mut db) = Store::open(data_dir) {
                 db.keep_list(&Scope::new(AchievementSource::Steam, ""), key, game.last_played.unwrap_or(0), &list);
             }
-            Ok(GameAchievements { game, achievements: list })
+            Ok(GameAchievements { game, achievements: list, by_title: false })
         }
         AchievementSource::Retro => {
             let (user, key_) = retro_account.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
@@ -791,7 +791,7 @@ pub async fn game(
             if let Ok(mut db) = Store::open(data_dir) {
                 db.keep_list(&Scope::new(AchievementSource::Retro, &user), key, game.last_played.unwrap_or(0), &achievements);
             }
-            Ok(GameAchievements { game, achievements })
+            Ok(GameAchievements { game, achievements, by_title: false })
         }
         AchievementSource::Epic => {
             let user = crate::settings::load(data_dir).epic_user.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
@@ -799,7 +799,7 @@ pub async fn game(
             let db = Store::open(data_dir)?;
             let game = db.game(&scope, key).ok_or(tr!("Esse jogo não está nas conquistas da Epic."))?;
             let achievements = db.list(&scope, key).map(|(_, l)| l).unwrap_or_default();
-            Ok(GameAchievements { game, achievements })
+            Ok(GameAchievements { game, achievements, by_title: false })
         }
         AchievementSource::Xbox => {
             let chosen = crate::settings::load(data_dir);
@@ -836,7 +836,7 @@ pub async fn game(
             };
             let game = xbox::with_list(game, &list);
             db.keep_games(&scope, std::slice::from_ref(&game));
-            Ok(GameAchievements { game, achievements: list })
+            Ok(GameAchievements { game, achievements: list, by_title: false })
         }
     }
 }

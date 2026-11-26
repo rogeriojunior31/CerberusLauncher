@@ -861,6 +861,10 @@ pub struct AchievementsHub {
 pub struct GameAchievements {
     pub game: AchievementGame,
     pub achievements: Vec<Achievement>,
+    /// A classic's game found by its title, not by the file's hash: probably
+    /// it, maybe another version (the emulator only grants it if it's the same).
+    #[serde(default)]
+    pub by_title: bool,
 }
 
 /// A picture taken of a game (F12 while it runs).

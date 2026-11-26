@@ -153,13 +153,38 @@ fn pick(list: &[ListGame], hash: Option<&str>, title: &str) -> Option<u64> {
     best.filter(|(s, _)| *s >= 2).map(|(_, id)| id)
 }
 
-/// The RetroAchievements game id for a ROM, remembered once found (or `None`).
-pub async fn game_for(http: &reqwest::Client, data_dir: &Path, user: &str, key: &str, path: &Path, console: &str, titles: &[String]) -> Result<Option<u64>, String> {
-    let memo_file = cache(data_dir).join("ra-matches.json");
-    let mut memo: HashMap<String, Option<u64>> = fs::read_to_string(&memo_file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+/// What was found for a ROM, remembered with the file it was found for.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
+struct Match {
+    id: Option<u64>,
+    /// By the file's hash (sure), else by its title (probably).
+    by_hash: bool,
+    size: u64,
+    modified: u64,
+    /// Unix seconds when it was looked up.
+    at: u64,
+}
+
+/// "Not found" is asked again after this long: RetroAchievements adds games and hashes.
+const NOT_FOUND_FOR: u64 = 30 * 24 * 3600;
+
+/// The RetroAchievements game id for a ROM, and whether it was found by the
+/// file's hash; remembered for that file (a changed file is looked up again,
+/// and "not found" only for 30 days).
+pub async fn game_for(http: &reqwest::Client, data_dir: &Path, user: &str, key: &str, path: &Path, console: &str, titles: &[String]) -> Result<Option<(u64, bool)>, String> {
+    let memo_file = cache(data_dir).join("ra-matches-v2.json");
+    let mut memo: HashMap<String, Match> = fs::read_to_string(&memo_file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let memo_key = path.to_string_lossy().to_string();
+    let meta = fs::metadata(path).ok();
+    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+    let modified = meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     if let Some(known) = memo.get(&memo_key) {
-        return Ok(*known);
+        let same_file = known.size == size && known.modified == modified;
+        let still_good = known.id.is_some() || now.saturating_sub(known.at) < NOT_FOUND_FOR;
+        if same_file && still_good {
+            return Ok(known.id.map(|id| (id, known.by_hash)));
+        }
     }
     let Some(ra_console) = console_id(console) else { return Ok(None) };
     let list = game_list(http, data_dir, user, key, ra_console).await?;
@@ -177,11 +202,13 @@ pub async fn game_for(http: &reqwest::Client, data_dir: &Path, user: &str, key: 
     } else {
         None
     };
-    let found = titles.iter().find_map(|t| pick(&list, hash.as_deref(), t)).or_else(|| pick(&list, hash.as_deref(), ""));
-    memo.insert(memo_key, found);
+    // By the hash first; the title only when the hash isn't listed.
+    let by_hash = hash.as_deref().and_then(|h| pick(&list, Some(h), ""));
+    let found = by_hash.or_else(|| titles.iter().find_map(|t| pick(&list, None, t)));
+    memo.insert(memo_key, Match { id: found, by_hash: by_hash.is_some(), size, modified, at: now });
     let _ = fs::create_dir_all(cache(data_dir));
     let _ = fs::write(&memo_file, serde_json::to_string(&memo).unwrap_or_default());
-    Ok(found)
+    Ok(found.map(|id| (id, by_hash.is_some())))
 }
 
 #[cfg(test)]
