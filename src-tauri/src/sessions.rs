@@ -843,6 +843,30 @@ mod tests {
     }
 
     #[test]
+    fn a_game_handed_off_outside_the_job_is_followed_by_its_folder() {
+        // A launcher that ends at once, and its game started by someone else
+        // (here the test itself, as the Explorer would): outside the job.
+        let dir = tempfile::tempdir().unwrap();
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("cmd.exe");
+        let (launcher, game) = (dir.path().join("Launcher.exe"), dir.path().join("Game.exe"));
+        std::fs::copy(&system, &launcher).unwrap();
+        std::fs::copy(&system, &game).unwrap();
+        let mut command = Command::new(&launcher);
+        command.args(["/c", "exit", "0"]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let process = spawn_game(command, None).unwrap();
+        let mut outside = Command::new(&game);
+        outside.args(["/c", "ping -n 4 127.0.0.1 >nul"]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let mut outside = outside.spawn().unwrap();
+        let mut played = std::time::Duration::ZERO;
+        process.observe(|event| if let Observation::Closed(t) = event { played = t; }).unwrap();
+        let _ = outside.wait();
+        assert!(played >= std::time::Duration::from_secs(2), "followed the game: {played:?}");
+        // Nothing comes: given up after the wait, the launcher's own seconds only.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(windows::follow_by_folder(empty.path(), std::time::Duration::from_secs(1)).is_none());
+    }
+
+    #[test]
     fn session_waits_for_game_after_launcher_exits() {
         // A launcher hands off to a game that keeps playing independently.
         let dir = tempfile::tempdir().unwrap();
