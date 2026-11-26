@@ -2158,6 +2158,15 @@ async fn add_local_game(
         return Ok(None);
     };
     let mut game = library::game_from_exe(&exe);
+    // Already here: that one opens, with its real data (not a new one never saved).
+    if let Some(existing) = library.get(&game.id)? {
+        let _ = app.emit("toast", tr!("{} já está na biblioteca.", existing.name));
+        return Ok(Some(existing));
+    }
+    // A store's own game: it's in the library already, from the store.
+    if let Some(store) = store_copy_of(&exe, &store_games(&app, &http).await) {
+        return Err(tr!("{0} já está na biblioteca, pela {1}. Abra por lá: o tempo e as conquistas contam no lugar certo.", store.name, store_name(&store.source)));
+    }
     // Offline or unknown to Steam: keep the guessed name; the user can edit it.
     if let Some(found) = steam_store::identify(&http, &library::name_candidates(&exe)).await {
         game.name = found.name;
@@ -2166,6 +2175,26 @@ async fn add_local_game(
     }
     library.add(game.clone())?;
     Ok(Some(game))
+}
+
+/// The installed store game whose folder holds `exe`, if any.
+fn store_copy_of<'a>(exe: &Path, stores: &'a [Game]) -> Option<&'a Game> {
+    let path = exe.to_string_lossy().replace('/', "\\").to_lowercase();
+    stores.iter().filter(|g| !g.install_dir.trim().is_empty()).find(|g| {
+        let mut dir = g.install_dir.replace('/', "\\").to_lowercase();
+        while dir.ends_with('\\') {
+            dir.pop();
+        }
+        path.starts_with(&format!("{dir}\\"))
+    })
+}
+
+fn store_name(source: &Source) -> &'static str {
+    match source {
+        Source::Epic { .. } => "Epic",
+        Source::Xbox { .. } => "Xbox",
+        _ => "Steam",
+    }
 }
 
 #[tauri::command(async)]
@@ -3936,6 +3965,17 @@ fn main() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) { sessions::checkpoint(app); }
         });
+}
+
+#[cfg(test)]
+#[test]
+fn a_stores_own_program_is_known_as_its_game() {
+    let mut steam: Game = serde_json::from_value(serde_json::json!({"id": "steam:1", "name": "Hades", "source": {"kind": "steam", "app_id": 1}, "install_dir": r"D:\Steam\steamapps\common\Hades"})).unwrap();
+    let stores = vec![steam.clone()];
+    assert_eq!(store_copy_of(Path::new(r"D:\Steam\steamapps\common\Hades\x64\Hades.exe"), &stores).map(|g| g.id.as_str()), Some("steam:1"));
+    assert!(store_copy_of(Path::new(r"D:\Steam\steamapps\common\Hades II\Hades2.exe"), &stores).is_none(), "a folder with a longer name");
+    steam.install_dir.clear();
+    assert!(store_copy_of(Path::new(r"D:\Games\Hades.exe"), &[steam]).is_none(), "owned, not installed");
 }
 
 #[cfg(test)]
