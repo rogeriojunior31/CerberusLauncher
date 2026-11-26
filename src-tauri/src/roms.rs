@@ -464,6 +464,22 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
 /// The same, reusing what `cache` knows of files that haven't changed; the
 /// cache is left holding only the files seen this time.
 pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
+    let (found, stopped) = scan_limited(dirs, cache, MOST_ENTRIES);
+    STOPPED_EARLY.store(stopped, std::sync::atomic::Ordering::SeqCst);
+    found
+}
+
+/// Whether the last scan stopped at its limit (a whole drive picked), so the
+/// screen can say so instead of "checked".
+static STOPPED_EARLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn last_scan_stopped_early() -> bool {
+    STOPPED_EARLY.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The scan, and whether it stopped at `most` entries.
+fn scan_limited(dirs: &[PathBuf], cache: &mut ScanCache, most: usize) -> (Vec<RomFile>, bool) {
+    let mut stopped = false;
     let before = std::mem::take(cache);
     let mut found = Vec::new();
     let mut seen_dirs = HashSet::new();
@@ -479,8 +495,9 @@ pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
         };
         for entry in entries.flatten() {
             looked += 1;
-            if looked > MOST_ENTRIES {
+            if looked > most {
                 // Stop looking, but what was found still gets its discs put together.
+                stopped = true;
                 pending.clear();
                 break;
             }
@@ -510,7 +527,7 @@ pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
             }
         }
     }
-    join_discs(found)
+    (join_discs(found), stopped)
 }
 
 /// The words of a name that say which game it is: lower case, without
@@ -704,6 +721,17 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scan_that_hits_its_limit_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..20 {
+            fs::write(dir.path().join(format!("game{i} (USA).sfc")), b"rom").unwrap();
+        }
+        let (found, stopped) = scan_limited(&[dir.path().to_path_buf()], &mut ScanCache::new(), 10);
+        assert!(stopped && found.len() <= 10);
+        assert!(!scan_limited(&[dir.path().to_path_buf()], &mut ScanCache::new(), 100).1);
+    }
 
     #[test]
     fn regions_are_read_from_the_no_intro_tags() {

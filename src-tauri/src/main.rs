@@ -343,7 +343,7 @@ fn classic_folders(data: &Path) -> Vec<PathBuf> {
 }
 
 /// Looks through the ROM folders again, off the UI's thread, and tells the window.
-async fn rescan_roms(app: &AppHandle) {
+async fn rescan_roms(app: &AppHandle) -> Result<(), String> {
     // Only the scan that started last says what's there: an older, slower one
     // (the one at start) finishing later doesn't put back a list without a new folder.
     static LATEST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -370,14 +370,18 @@ async fn rescan_roms(app: &AppHandle) {
     });
     // A scan that fell over keeps the list from before, instead of an empty one.
     let Ok(found) = scan.await else {
-        return;
+        return Err(tr!("A busca nas pastas de ROMs falhou; a lista de antes foi mantida.").into());
     };
     if LATEST.load(std::sync::atomic::Ordering::SeqCst) != mine {
-        return;
+        return Ok(());
     }
     roms::save_index(&app.state::<DataDir>().rom_index(), &found);
     app.state::<RomIndex>().set(found);
     let _ = app.emit("catalog-changed", ());
+    if roms::last_scan_stopped_early() {
+        return Err(tr!("A busca parou depois de 300 mil arquivos: uma das pastas é grande demais (um disco inteiro?). Os jogos achados até ali estão na lista; escolha pastas menores para ver todos.").into());
+    }
+    Ok(())
 }
 
 /// Asks for a ROM folder to look through for games that have a recomp.
@@ -395,7 +399,8 @@ async fn add_rom_dir(app: AppHandle) -> Result<SettingsView, String> {
             s.rom_dirs.push(dir);
         }
     })?;
-    rescan_roms(&app).await;
+    // Said when it failed or stopped early, instead of "checked".
+    rescan_roms(&app).await?;
     Ok(settings_view(&app))
 }
 
@@ -403,13 +408,15 @@ async fn add_rom_dir(app: AppHandle) -> Result<SettingsView, String> {
 async fn remove_rom_dir(app: AppHandle, path: String) -> Result<SettingsView, String> {
     let data_dir = app.state::<DataDir>().0.clone();
     settings::update(&data_dir, |s| s.rom_dirs.retain(|d| d.to_string_lossy() != path))?;
-    rescan_roms(&app).await;
+    // Said when it failed or stopped early, instead of "checked".
+    rescan_roms(&app).await?;
     Ok(settings_view(&app))
 }
 
 #[tauri::command]
 async fn scan_roms(app: AppHandle) -> Result<SettingsView, String> {
-    rescan_roms(&app).await;
+    // Said when it failed or stopped early, instead of "checked".
+    rescan_roms(&app).await?;
     Ok(settings_view(&app))
 }
 
@@ -894,7 +901,7 @@ async fn install_standalone(app: AppHandle, http: State<'_, reqwest::Client>, id
     result?;
     // Cerberus's own copy wins over a pick made before.
     settings::update(&data, |s| s.emulators.remove(&id))?;
-    rescan_roms(&app).await;
+    let _ = rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
 
@@ -912,7 +919,7 @@ async fn pick_standalone(app: AppHandle, id: String) -> Result<cerberus_shared::
         return Err(tr!("Esse não parece ser o programa do {} (esperado: {}).", emulator.name, emulator.exe[0]));
     }
     settings::update(&data, |s| s.emulators.insert(id, exe))?;
-    rescan_roms(&app).await;
+    let _ = rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
 
@@ -930,7 +937,7 @@ async fn remove_standalone(app: AppHandle, id: String) -> Result<cerberus_shared
         s.emulators.remove(&id);
         s.play_with.retain(|_, who| who != &id);
     })?;
-    rescan_roms(&app).await;
+    let _ = rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
 
@@ -1007,7 +1014,7 @@ fn set_play_with(app: AppHandle, console: String, who: String) -> Result<cerberu
 async fn set_emulator_folders(app: AppHandle, on: bool) -> Result<cerberus_shared::StandaloneStatus, String> {
     let data = app.state::<DataDir>().0.clone();
     settings::update(&data, |s| s.emulator_folders = on)?;
-    rescan_roms(&app).await;
+    let _ = rescan_roms(&app).await;
     Ok(standalone_status_now(&data))
 }
 
@@ -3662,7 +3669,7 @@ fn main() {
             if !chosen.rom_dirs.is_empty() {
                 // Games added to the folders since last time show up once this finishes.
                 let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move { rescan_roms(&handle).await });
+                tauri::async_runtime::spawn(async move { let _ = rescan_roms(&handle).await; });
             }
 
             let http = reqwest::Client::builder()

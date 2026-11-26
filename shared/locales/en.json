@@ -51,6 +51,8 @@
   "A a Z": "A to Z",
   "A atualização automática é só para Windows.": "Automatic updates are Windows only.",
   "A atualização em {} pertence a outra instalação.": "The update at {} belongs to another installation.",
+  "A busca nas pastas de ROMs falhou; a lista de antes foi mantida.": "Looking through the ROM folders failed; the list from before was kept.",
+  "A busca parou depois de 300 mil arquivos: uma das pastas é grande demais (um disco inteiro?). Os jogos achados até ali estão na lista; escolha pastas menores para ver todos.": "The search stopped after 300,000 files: one of the folders is too big (a whole drive?). The games found until then are on the list; choose smaller folders to see them all.",
   "A busca usa o nome acima. Mude o nome e busque de novo se a capa vier errada.": "The search uses the name above. Change the name and search again if the cover is wrong.",
   "A chave da Web API da Steam tem 32 letras e números. Copie de novo da página da Steam.": "A Steam Web API key has 32 letters and numbers. Copy it again from Steam's page.",
   "A conexão caiu durante o download da atualização.": "The connection dropped while downloading the update.",
