@@ -323,19 +323,16 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
     // A build needs room: at least 1 GB on the game's drive.
     crate::disk::require(install, 1 << 30).map_err(fail)?;
     if let Some(temp) = &step.temp {
-        let _ = std::fs::remove_dir_all(temp);
+        clear_own_temp(temp);
         std::fs::create_dir_all(temp).map_err(|e| fail(e.to_string()))?;
+        let _ = std::fs::write(temp.join(OWN_TEMP), b"");
     }
     let dir = step.program.parent().map(Path::to_path_buf).unwrap_or_default();
     let mut command = Command::new(&step.program);
     command.args(&step.args).envs(step.env.clone()).current_dir(dir).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // No window: the step never asks anything.
-        command.creation_flags(0x0800_0000);
-    }
-    let mut child = command.spawn().map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
+    // No window (the step never asks anything), and tied to Cerberus: closing
+    // or crashing it ends the step and all it started.
+    let (mut child, tied) = windows::spawn_tied(&mut command, 0x0800_0000).map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
     let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
     let say = |app: &AppHandle, fraction: Option<f32>, text: String, finished: bool| {
         let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished });
@@ -388,7 +385,13 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
                     let silent = heard.lock().map(|h| h.0.elapsed()).unwrap_or_default();
                     // No limit for a long build, but an hour without a word is a stuck one.
                     if step.timeout.is_some_and(|t| started.elapsed() > t) || silent > Duration::from_secs(3600) {
-                        let _ = child.kill();
+                        // Everything it started goes too, not only the program itself.
+                        match &tied {
+                            Some(job) => job.end(),
+                            None => {
+                                let _ = child.kill();
+                            }
+                        }
                         break Err(tr!("A preparação do jogo parou de responder e foi interrompida.").to_string());
                     }
                     std::thread::sleep(Duration::from_millis(500));
@@ -396,15 +399,21 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
                 Err(e) => break Err(e.to_string()),
             }
         };
+        drop(tied);
         if let Some(temp) = &step.temp {
-            let _ = std::fs::remove_dir_all(temp);
+            clear_own_temp(temp);
         }
         crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
         let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true });
         release(&app, &game.id);
         match outcome {
             Ok(()) => {
-                let _ = std::fs::write(&step.marker, &step.done_with);
+                // Not noted as done, it runs again on every Play: say so instead of staying quiet.
+                if let Err(e) = std::fs::write(&step.marker, &step.done_with) {
+                    let message = tr!("A preparação terminou, mas não foi possível anotar isso na pasta do jogo ({}); ela vai rodar de novo no próximo Jogar.", e);
+                    crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &Err(message.clone()));
+                    let _ = app.emit("toast", tr!("{0}: {1}", game.name, message));
+                }
                 match &exe {
                     Some(exe) => {
                         if let Err(error) = start(&app, &game, exe) {
@@ -422,6 +431,17 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
         }
     });
     Ok(())
+}
+
+/// Marks the setup step's temporary folder as Cerberus's own.
+const OWN_TEMP: &str = ".made-by-cerberus";
+
+/// Empties the setup step's temporary folder, only when Cerberus made it (a
+/// folder of that name the game itself keeps stays).
+fn clear_own_temp(temp: &Path) {
+    if temp.join(OWN_TEMP).is_file() {
+        let _ = std::fs::remove_dir_all(temp);
+    }
 }
 
 /// "progress 0.4 Unpacking menu art" (the SDK's way), or "@note 89%, 68606 files"
@@ -652,6 +672,33 @@ mod tests {
     use std::os::windows::process::CommandExt;
     use std::process::Stdio;
     use std::time::Instant;
+
+    #[test]
+    fn a_tied_program_and_its_children_end_with_the_job() {
+        // cmd starts a child that would wait 30 s; ending the job ends both at once.
+        let mut command = Command::new("cmd.exe");
+        command.args(["/c", "ping -n 30 127.0.0.1 >nul"]).stdout(Stdio::null());
+        let (mut child, tied) = windows::spawn_tied(&mut command, 0x0800_0000).unwrap();
+        let tied = tied.expect("Windows gives a job");
+        let started = Instant::now();
+        tied.end();
+        child.wait().unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn only_a_temp_folder_cerberus_made_is_emptied() {
+        let dir = tempfile::tempdir().unwrap();
+        let theirs = dir.path().join("theirs");
+        std::fs::create_dir_all(&theirs).unwrap();
+        clear_own_temp(&theirs);
+        assert!(theirs.exists());
+        let ours = dir.path().join("ours");
+        std::fs::create_dir_all(&ours).unwrap();
+        std::fs::write(ours.join(OWN_TEMP), b"").unwrap();
+        clear_own_temp(&ours);
+        assert!(!ours.exists());
+    }
 
     #[test]
     fn setup_steps_say_how_far_they_are() {

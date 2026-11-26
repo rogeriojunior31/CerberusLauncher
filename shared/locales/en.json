@@ -81,6 +81,7 @@
   "A pasta é sua e continua no PC. Os backups de saves continuam guardados.": "The folder is yours and stays on the PC. Save backups are kept.",
   "A preparação do jogo parou de responder e foi interrompida.": "The game's preparation stopped responding and was stopped.",
   "A preparação do jogo terminou com o código {}.": "The game's preparation ended with code {}.",
+  "A preparação terminou, mas não foi possível anotar isso na pasta do jogo ({}); ela vai rodar de novo no próximo Jogar.": "The setup finished, but it couldn't be noted in the game's folder ({}); it will run again on the next Play.",
   "A primeira faixa desse CD não é de dados.": "This CD's first track isn't a data track.",
   "A release não contém o programa do jogo.": "The release doesn't contain the game's program.",
   "A resposta excede o tamanho anunciado pela release.": "The reply exceeds the size announced by the release.",

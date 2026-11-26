@@ -16,6 +16,50 @@ use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, FILETIME, WAIT_OBJECT_0};
 use windows_sys::Win32::System::JobObjects::*;
 use windows_sys::Win32::System::Threading::*;
 
+/// A job a program runs in that ends with Cerberus: closed, crashed or killed,
+/// the job's last handle goes and Windows ends every process in it (the
+/// program and whatever it started). For the setup step, which must not go on
+/// alone and meet a second one started on the next Play.
+pub(super) struct Tied(OwnedHandle);
+
+impl Tied {
+    /// Ends the program and everything it started.
+    pub(super) fn end(&self) {
+        unsafe {
+            TerminateJobObject(self.0.as_raw_handle(), 1);
+        }
+    }
+}
+
+/// Starts `command` (with `flags`) inside a job tied to Cerberus. Without a
+/// job (Windows refused one), the program still starts, untied.
+pub(super) fn spawn_tied(command: &mut Command, flags: u32) -> io::Result<(Child, Option<Tied>)> {
+    let handle = unsafe { CreateJobObjectW(null(), null()) };
+    if handle.is_null() {
+        return command.creation_flags(flags).spawn().map(|c| (c, None));
+    }
+    let job = unsafe { OwnedHandle::from_raw_handle(handle) };
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let set = unsafe {
+        SetInformationJobObject(job.as_raw_handle(), JobObjectExtendedLimitInformation, (&raw const limits).cast(), size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32)
+    };
+    if set == 0 {
+        return command.creation_flags(flags).spawn().map(|c| (c, None));
+    }
+    // Enrolled before its first instruction, so nothing it starts escapes the job.
+    let mut child = command.creation_flags(flags | CREATE_SUSPENDED).spawn()?;
+    if unsafe { AssignProcessToJobObject(job.as_raw_handle(), child.as_raw_handle()) } == 0
+        || unsafe { ResumeThread(child.main_thread_handle().as_raw_handle()) } == u32::MAX
+    {
+        let error = io::Error::last_os_error();
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
+    Ok((child, Some(Tied(job))))
+}
+
 pub(super) struct GameProcess {
     job: OwnedHandle,
     launcher: Child,
