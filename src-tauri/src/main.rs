@@ -1330,6 +1330,12 @@ fn set_language(app: AppHandle, code: Option<String>) -> Result<SettingsView, St
     settings::update(&data.0, |s| s.language = language.clone())?;
     language::apply(language.as_deref());
     background::retitle_tray(&app);
+    // The in-game menu and the achievement notice, if open, redraw in it too.
+    for label in [overlay::LABEL, unlock_toast::LABEL] {
+        if let Some(window) = app.get_webview_window(label) {
+            let _ = window.reload();
+        }
+    }
     Ok(settings_view(&app))
 }
 

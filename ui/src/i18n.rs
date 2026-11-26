@@ -51,11 +51,16 @@ pub fn follow(choice: Option<&str>) {
     }
 }
 
-/// The player picked a language (none: automatic): redraw everything in it.
-pub fn choose(choice: Option<&str>) {
+/// Keeps the choice where every window reads it as it opens.
+pub fn remember(choice: Option<&str>) {
     if let Some(s) = storage() {
         let _ = s.set_item(KEY, choice.unwrap_or("auto"));
     }
+}
+
+/// The player picked a language (none: automatic): redraw everything in it.
+pub fn choose(choice: Option<&str>) {
+    remember(choice);
     reload();
 }
 

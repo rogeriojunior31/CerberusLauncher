@@ -527,6 +527,8 @@ fn language_row() -> impl IntoView {
             <select class="select" aria-label=tr!("Idioma") on:change=move |e| {
                 let code = event_target_value(&e);
                 let code = (!code.is_empty()).then_some(code);
+                // Kept first: the menu and notice windows, reloaded by the backend, read it.
+                crate::i18n::remember(code.as_deref());
                 spawn_local(async move {
                     let _ = api::set_language(code.clone()).await;
                     crate::i18n::choose(code.as_deref());
