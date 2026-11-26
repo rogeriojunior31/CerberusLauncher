@@ -634,7 +634,7 @@ fn play_classic(app: AppHandle, path: String, console: String, disc: Option<usiz
     };
     // What the scan read from the file itself (cartridge type, the disc's own
     // header) wins over what the page guessed from folder names.
-    let console = if known.system.is_empty() { console } else { known.system.clone() };
+    let console = console_for(&known.system, console);
     let chosen = settings::load(&data);
     let retroarch = emulation::retroarch(&data, picked.as_deref());
     if let Some((emulator, exe)) = standalone_for(&data, &chosen, &console, retroarch.is_some()) {
@@ -1156,6 +1156,11 @@ async fn open_store_link(app: AppHandle, http: State<'_, reqwest::Client>, app_i
 
 /// A classic's RetroAchievements: its game found by the ROM's hash or name.
 /// `None` when no account is connected or RetroAchievements has no such game.
+/// A classic's console: the one read from its file, else the one the page sent.
+fn console_for(read: &str, page: String) -> String {
+    if read.is_empty() { page } else { read.to_string() }
+}
+
 #[tauri::command]
 async fn classic_achievements(app: AppHandle, http: State<'_, reqwest::Client>, path: String, console: String) -> Result<Option<cerberus_shared::GameAchievements>, String> {
     let Some((user, key)) = retro_account(&app) else { return Ok(None) };
@@ -1165,6 +1170,8 @@ async fn classic_achievements(app: AppHandle, http: State<'_, reqwest::Client>, 
     };
     let stem = rom.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let data = app.state::<DataDir>().0.clone();
+    // The console read from the file, as Play uses; the page's only when the file says none.
+    let console = console_for(&known.system, console);
     let Some((id, by_hash)) = achievements::classic::game_for(&http, &data, &user, &key, &rom, &console, &[known.title.clone(), stem]).await? else {
         return Ok(None);
     };
@@ -3920,6 +3927,13 @@ fn main() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) { sessions::checkpoint(app); }
         });
+}
+
+#[cfg(test)]
+#[test]
+fn a_classic_uses_the_console_its_file_says() {
+    assert_eq!(console_for("ps1", "ps2".into()), "ps1");
+    assert_eq!(console_for("", "ps2".into()), "ps2");
 }
 
 #[cfg(test)]
