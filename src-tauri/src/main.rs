@@ -3543,6 +3543,7 @@ fn main() {
 
             let http = reqwest::Client::builder()
                 .user_agent("CerberusLauncher")
+                .redirect(net::redirects())
                 .timeout(Duration::from_secs(10))
                 .build()?;
             // Lists with no copy on this PC, or one over a day old, are fetched

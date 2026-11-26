@@ -77,10 +77,20 @@ pub fn resolve(template: &str, install: &Path) -> Option<PathBuf> {
         None => return None,
     };
     let rest = rest.trim_start_matches(['/', '\\']);
+    // A place stays inside its folder: no "..", no drive or root of its own.
+    if !Path::new(rest).components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) {
+        return None;
+    }
     if rest.is_empty() {
-        return Some(base);
+        // The game's own folders may be whole; the user's, Documents or AppData never
+        // (a backup would copy all of it, a restore write anywhere in it).
+        return matches!(key_of(template), "{install}" | "{data}").then_some(base);
     }
     Some(base.join(rest))
+}
+
+fn key_of(template: &str) -> &str {
+    template.split_once('}').map(|(k, _)| &template[..k.len() + 1]).unwrap_or(template)
 }
 
 fn base_folder(key: &str, install: &Path) -> Option<PathBuf> {
@@ -606,6 +616,19 @@ fn now_millis() -> u128 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_save_place_never_climbs_out_nor_takes_a_whole_user_folder() {
+        use std::path::Path;
+        let install = Path::new(r"C:\Games\x");
+        assert!(super::resolve("{home}/../x", install).is_none());
+        assert!(super::resolve("{documents}/../../Windows", install).is_none());
+        assert!(super::resolve("{home}", install).is_none());
+        assert!(super::resolve("{appdata}/", install).is_none());
+        assert_eq!(super::resolve("{install}", install).as_deref(), Some(install));
+        assert_eq!(super::resolve("{install}/Save", install), Some(install.join("Save")));
+        assert!(super::resolve("{install}/C:/Windows", install).is_none());
+    }
 
     #[test]
     fn a_big_game_folder_keeps_its_small_files_or_refuses() {

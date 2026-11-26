@@ -112,8 +112,8 @@ impl ArtCache {
         if !reply.status().is_success() {
             return Err(format!("{} answered {}", url, reply.status()));
         }
-        let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
-        if bytes.len() > MAX_BYTES || !is_image(&bytes) {
+        let bytes = crate::net::read_limited(reply, MAX_BYTES as u64).await?;
+        if !is_image(&bytes) {
             return Err(format!("{} is not a picture", url));
         }
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;

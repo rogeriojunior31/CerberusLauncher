@@ -298,11 +298,8 @@ pub async fn download(client: &Client, url: &str) -> Result<Vec<u8>, String> {
     if !reply.status().is_success() {
         return Err(tr!("O Thunderstore respondeu {}.", reply.status().as_u16()));
     }
-    if reply.content_length().is_some_and(|n| n > MAX_MOD_BYTES) {
-        return Err(tr!("Esse mod é grande demais.").into());
-    }
-    let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
-    Ok(bytes.to_vec())
+    // Read as it comes, up to the limit, even when the server doesn't say the size.
+    crate::net::read_limited(reply, MAX_MOD_BYTES).await.map_err(|_| tr!("Esse mod é grande demais, ou o download falhou.").to_string())
 }
 
 /// Takes a mod's own files out of the mods folder; one another mod also lists stays.

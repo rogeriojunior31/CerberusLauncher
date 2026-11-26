@@ -14,6 +14,40 @@ use reqwest::{RequestBuilder, Response, StatusCode};
 const FIRST: Duration = Duration::from_secs(30);
 const MOST: Duration = Duration::from_secs(3600);
 
+/// Reads an answer's body up to `max` bytes, as it arrives: a server that
+/// says nothing about the size (or lies) and never stops can't fill the memory.
+pub async fn read_limited(reply: Response, max: u64) -> Result<Vec<u8>, String> {
+    use futures_util::StreamExt;
+    if reply.content_length().is_some_and(|n| n > max) {
+        return Err(tr!("A resposta é grande demais.").into());
+    }
+    let mut body = Vec::new();
+    let mut stream = reply.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.without_url().to_string())?;
+        if body.len() as u64 + chunk.len() as u64 > max {
+            return Err(tr!("A resposta é grande demais.").into());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+/// Follows redirects (up to 10) but never from https to plain http: a
+/// download (a recomp, a core) never comes in without TLS halfway.
+pub fn redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let leaving_tls = attempt.previous().iter().any(|u| u.scheme() == "https") && attempt.url().scheme() != "https";
+        if leaving_tls {
+            attempt.error("redirected from https to http")
+        } else if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 /// Why a request didn't get an answer.
 #[derive(Debug)]
 pub enum Failed {
@@ -119,6 +153,40 @@ pub async fn send(request: RequestBuilder) -> Result<Response, Failed> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn serve(reply: String) -> String {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            if let Ok((mut socket, _)) = listener.accept() {
+                let _: Vec<_> = BufReader::new(&socket).lines().map_while(Result::ok).take_while(|l| !l.is_empty()).collect();
+                let _ = socket.write_all(reply.as_bytes());
+            }
+        });
+        url
+    }
+
+    #[test]
+    fn an_answer_without_a_size_stops_at_the_limit() {
+        // Chunked: no Content-Length to check first.
+        let url = serve("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n10\r\n0123456789abcdef\r\n10\r\n0123456789abcdef\r\n0\r\n\r\n".into());
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let reply = tauri::async_runtime::block_on(client.get(&url).send()).unwrap();
+        assert!(tauri::async_runtime::block_on(read_limited(reply, 20)).is_err());
+        let url = serve("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".into());
+        let reply = tauri::async_runtime::block_on(client.get(&url).send()).unwrap();
+        assert_eq!(tauri::async_runtime::block_on(read_limited(reply, 20)).unwrap(), b"ok");
+    }
+
+    #[test]
+    fn redirects_are_still_followed_without_leaving_tls() {
+        let client = reqwest::Client::builder().no_proxy().redirect(redirects()).build().unwrap();
+        let target = serve("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".into());
+        let first = serve(format!("HTTP/1.1 302 Found\r\nLocation: {target}\r\nContent-Length: 0\r\n\r\n"));
+        let reply = tauri::async_runtime::block_on(client.get(&first).send()).unwrap();
+        assert_eq!(reply.status(), 200);
+    }
 
     #[test]
     fn a_failed_request_never_shows_its_address() {
