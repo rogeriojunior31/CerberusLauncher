@@ -383,13 +383,19 @@ fn ShortcutSheet(close: Callback<()>) -> impl IntoView {
         ("Esc", tr!("Fechar um menu, sair de uma busca")),
         ("?", tr!("Esta lista")),
     ];
-    let list = rows
-        .into_iter()
-        .map(|(keys, what)| {
-            let caps = keys.split('+').map(|k| view! { <kbd>{k.to_string()}</kbd> }).collect_view();
-            view! { <li><span class="keys">{caps}</span><span>{what}</span></li> }
-        })
-        .collect_view();
+    // With a game Cerberus opened in front (they reach the game's window too).
+    let in_game: [(&str, &'static str); 4] = [
+        ("F12", tr!("Tirar uma foto do jogo")),
+        ("Ctrl+F12", tr!("Abrir ou fechar o menu por cima do jogo")),
+        ("View+Menu", tr!("No controle: o menu por cima do jogo (ou segure View)")),
+        ("View+RB", tr!("No controle: tirar uma foto")),
+    ];
+    let line = |(keys, what): (&str, &'static str)| {
+        let caps = keys.split('+').map(|k| view! { <kbd>{k.to_string()}</kbd> }).collect_view();
+        view! { <li><span class="keys">{caps}</span><span>{what}</span></li> }
+    };
+    let list = rows.into_iter().map(line).collect_view();
+    let game_list = in_game.into_iter().map(line).collect_view();
     request_animation_frame(|| {
         if let Some(el) = document().query_selector(".keys-sheet .link").ok().flatten() {
             let el: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(el);
@@ -404,6 +410,8 @@ fn ShortcutSheet(close: Callback<()>) -> impl IntoView {
                     <button type="button" class="link" on:click=move |_| close.run(())>{tr!("Fechar")}</button>
                 </div>
                 <ul class="keys-list">{list}</ul>
+                <h3 class="keys-h">{tr!("Durante o jogo")}</h3>
+                <ul class="keys-list">{game_list}</ul>
                 <p class="muted small">{tr!("Nos menus, as setas andam entre as opções. No Big Picture, o controle manda.")}</p>
             </section>
         </div>
