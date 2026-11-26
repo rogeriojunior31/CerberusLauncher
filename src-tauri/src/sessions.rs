@@ -38,6 +38,10 @@ enum Observation {
     Started(Instant),
     /// The game's exit code, reported just before `Closed` when it is known.
     Exited(i32),
+    /// Its windows were gone well before the process ended: whatever went
+    /// wrong happened while closing, after the play was over.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    WindowsClosedFirst,
     Closed(Duration),
 }
 
@@ -48,6 +52,12 @@ impl Sessions {
 
     pub fn is_running(&self, id: &str) -> bool {
         self.lock().contains_key(id)
+    }
+
+    /// The game, or one of the games its release carries (`{id}--part`), is open.
+    pub fn is_running_any(&self, id: &str) -> bool {
+        let part = format!("{id}--");
+        self.lock().keys().any(|k| k == id || k.starts_with(&part))
     }
 
     /// How long the game has been played this time, in seconds.
@@ -131,6 +141,13 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         if result.is_err() { release(app, &game.id); }
         return result;
     }
+    // Still open from before (Cerberus closed mid-game, or opened outside it): a
+    // second copy would fight over the saves, and pulling newer ones from the
+    // cloud would replace them under the running game.
+    if open_outside(game) {
+        release(app, &game.id);
+        return Err(tr!("{} já está aberto. Feche o jogo antes de abrir de novo pelo Cerberus.", game.name));
+    }
     // A setup step the release runs once with the player's copy (unpacking the
     // disc): it runs first, and the game starts when it's done.
     match recomp::preparation(game) {
@@ -190,9 +207,18 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         }
         _ => game.look.as_ref(),
     };
+    // The filter goes beside the program that draws the picture, the same one
+    // the Ajustes tab checked (the watched one, when a launcher starts the game).
+    let drawing = game.tracking_exe.as_deref().map(Path::new).unwrap_or(exe);
+    if look.is_none() {
+        // A filter left from a game that hadn't quite closed last time goes now.
+        if let Ok(data) = app.path().app_data_dir() {
+            crate::looks::take_back(&data, &game.id);
+        }
+    }
     if let Some(look) = look {
         let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        match crate::looks::prepare(&data, &game.id, exe, look, recomp::look_lines(game)) {
+        match crate::looks::prepare(&data, &game.id, drawing, look, recomp::look_lines(game)) {
             Ok(prepared) => {
                 command.envs(prepared.env);
             }
@@ -203,6 +229,10 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         }
     }
     let child = spawn_game(command, game.tracking_exe.as_deref().map(Path::new)).map_err(|e| {
+        // The filter put beside it, and the reservation, go too.
+        if let Ok(data) = app.path().app_data_dir() {
+            crate::looks::take_back(&data, &game.id);
+        }
         sessions.lock().remove(&game.id);
         let message = blocked_by_windows(e.raw_os_error()).map(str::to_string).unwrap_or_else(|| tr!("Não foi possível abrir {0}: {1}", exe.display(), e));
         crate::trail::note(app, &game.id, tk!("Abrir o jogo"), &Err(message.clone()));
@@ -214,15 +244,17 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     let game = game.clone();
     std::thread::spawn(move || {
         let mut exit_code = None;
+        let mut closing = false;
         let result = child.observe(|event| match event {
             Observation::Started(started) => {
                 app.state::<Sessions>().lock().insert(game.id.clone(), Some(Round { started, credited: 0 }));
             }
             Observation::Exited(code) => exit_code = Some(code),
+            Observation::WindowsClosedFirst => closing = true,
             Observation::Closed(duration) => {
                 record(&app, &game, duration.as_secs());
                 if let Some(code) = exit_code.take() {
-                    report_crash(&app, &game, code, duration);
+                    report_crash(&app, &game, code, duration, std::mem::take(&mut closing));
                 }
             }
         });
@@ -300,19 +332,16 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
     // A build needs room: at least 1 GB on the game's drive.
     crate::disk::require(install, 1 << 30).map_err(fail)?;
     if let Some(temp) = &step.temp {
-        let _ = std::fs::remove_dir_all(temp);
+        clear_own_temp(temp);
         std::fs::create_dir_all(temp).map_err(|e| fail(e.to_string()))?;
+        let _ = std::fs::write(temp.join(OWN_TEMP), b"");
     }
     let dir = step.program.parent().map(Path::to_path_buf).unwrap_or_default();
     let mut command = Command::new(&step.program);
     command.args(&step.args).envs(step.env.clone()).current_dir(dir).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // No window: the step never asks anything.
-        command.creation_flags(0x0800_0000);
-    }
-    let mut child = command.spawn().map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
+    // No window (the step never asks anything), and tied to Cerberus: closing
+    // or crashing it ends the step and all it started.
+    let (mut child, tied) = windows::spawn_tied(&mut command, 0x0800_0000).map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
     let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
     let say = |app: &AppHandle, fraction: Option<f32>, text: String, finished: bool| {
         let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished });
@@ -365,7 +394,13 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
                     let silent = heard.lock().map(|h| h.0.elapsed()).unwrap_or_default();
                     // No limit for a long build, but an hour without a word is a stuck one.
                     if step.timeout.is_some_and(|t| started.elapsed() > t) || silent > Duration::from_secs(3600) {
-                        let _ = child.kill();
+                        // Everything it started goes too, not only the program itself.
+                        match &tied {
+                            Some(job) => job.end(),
+                            None => {
+                                let _ = child.kill();
+                            }
+                        }
                         break Err(tr!("A preparação do jogo parou de responder e foi interrompida.").to_string());
                     }
                     std::thread::sleep(Duration::from_millis(500));
@@ -373,15 +408,21 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
                 Err(e) => break Err(e.to_string()),
             }
         };
+        drop(tied);
         if let Some(temp) = &step.temp {
-            let _ = std::fs::remove_dir_all(temp);
+            clear_own_temp(temp);
         }
         crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
         let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true });
         release(&app, &game.id);
         match outcome {
             Ok(()) => {
-                let _ = std::fs::write(&step.marker, &step.done_with);
+                // Not noted as done, it runs again on every Play: say so instead of staying quiet.
+                if let Err(e) = std::fs::write(&step.marker, &step.done_with) {
+                    let message = tr!("A preparação terminou, mas não foi possível anotar isso na pasta do jogo ({}); ela vai rodar de novo no próximo Jogar.", e);
+                    crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &Err(message.clone()));
+                    let _ = app.emit("toast", tr!("{0}: {1}", game.name, message));
+                }
                 match &exe {
                     Some(exe) => {
                         if let Err(error) = start(&app, &game, exe) {
@@ -399,6 +440,17 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
         }
     });
     Ok(())
+}
+
+/// Marks the setup step's temporary folder as Cerberus's own.
+const OWN_TEMP: &str = ".made-by-cerberus";
+
+/// Empties the setup step's temporary folder, only when Cerberus made it (a
+/// folder of that name the game itself keeps stays).
+fn clear_own_temp(temp: &Path) {
+    if temp.join(OWN_TEMP).is_file() {
+        let _ = std::fs::remove_dir_all(temp);
+    }
 }
 
 /// "progress 0.4 Unpacking menu art" (the SDK's way), or "@note 89%, 68606 files"
@@ -422,7 +474,7 @@ fn progress_line(line: &str) -> Option<(Option<f32>, String)> {
 }
 
 /// A game that ended badly: why, in the history and as a notice, with its log.
-fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
+fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration, while_closing: bool) {
     // The developer's own words for this code, or "ok": the game's normal close.
     let own = recomp::entry_for(game).and_then(|e| e.manifest).and_then(|m| m.exit_message(code));
     let why = match own {
@@ -431,6 +483,12 @@ fn report_crash(app: &AppHandle, game: &Game, code: i32, played: Duration) {
         None => crate::crash::reason(code, played.as_secs()),
     };
     let Some(mut why) = why else { return };
+    // Fell over after its window had closed: the play itself went fine. Kept in
+    // the history, without the alarm (a notice, "Precisa de atenção").
+    if while_closing {
+        crate::trail::note(app, &game.id, tk!("Fechamento do jogo"), &Ok(tr!("O jogo deu erro ao fechar, depois que a janela já tinha fechado. A partida não foi afetada. ({})", why)));
+        return;
+    }
     // "A DLL is too old": find which one, when something stands out.
     if code as u32 == crate::crash::OLD_DLL {
         let program_dir = match &game.source {
@@ -625,11 +683,67 @@ mod tests {
     use std::time::Instant;
 
     #[test]
+    fn a_tied_program_and_its_children_end_with_the_job() {
+        // cmd starts a child that would wait 30 s; ending the job ends both at once.
+        let mut command = Command::new("cmd.exe");
+        command.args(["/c", "ping -n 30 127.0.0.1 >nul"]).stdout(Stdio::null());
+        let (mut child, tied) = windows::spawn_tied(&mut command, 0x0800_0000).unwrap();
+        let tied = tied.expect("Windows gives a job");
+        let started = Instant::now();
+        tied.end();
+        child.wait().unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn only_a_temp_folder_cerberus_made_is_emptied() {
+        let dir = tempfile::tempdir().unwrap();
+        let theirs = dir.path().join("theirs");
+        std::fs::create_dir_all(&theirs).unwrap();
+        clear_own_temp(&theirs);
+        assert!(theirs.exists());
+        let ours = dir.path().join("ours");
+        std::fs::create_dir_all(&ours).unwrap();
+        std::fs::write(ours.join(OWN_TEMP), b"").unwrap();
+        clear_own_temp(&ours);
+        assert!(!ours.exists());
+    }
+
+    #[test]
     fn setup_steps_say_how_far_they_are() {
         assert_eq!(progress_line("progress 0.4 Unpacking menu art"), Some((Some(0.4), "Unpacking menu art".into())));
         assert_eq!(progress_line("@note 89%, 68606 files"), Some((Some(0.89), String::new())));
         assert_eq!(progress_line("@step 2 3 Unpacking the disc"), Some((None, "Unpacking the disc".into())));
         assert_eq!(progress_line("some log line"), None);
+    }
+
+    /// A window shown for a moment, then the program's own exit code, from PowerShell.
+    #[cfg(windows)]
+    fn window_then_exit(close_first: bool) -> Vec<String> {
+        let script = if close_first {
+            "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object Windows.Forms.Form; $f.Show(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 900; $f.Close(); Start-Sleep -Milliseconds 1500; exit -1073741819"
+        } else {
+            "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object Windows.Forms.Form; $f.Show(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 1500; exit -1073741819"
+        };
+        let mut game = Command::new("powershell.exe");
+        game.args(["-NoProfile", "-NonInteractive", "-Command", script]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let process = spawn_game(game, None).unwrap();
+        let mut seen = Vec::new();
+        process
+            .observe(|event| match event {
+                Observation::WindowsClosedFirst => seen.push("closed first".to_string()),
+                Observation::Exited(code) => seen.push(format!("exit {code:#X}")),
+                _ => {}
+            })
+            .unwrap();
+        seen
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_crash_after_the_window_closed_is_told_apart() {
+        assert_eq!(window_then_exit(true), ["closed first", "exit 0xC0000005"]);
+        assert_eq!(window_then_exit(false), ["exit 0xC0000005"], "the window was there when it fell: a real crash");
     }
 
     #[test]
@@ -643,7 +757,7 @@ mod tests {
             .observe(|event| match event {
                 Observation::Exited(code) => seen.push(format!("exit {code:#X}")),
                 Observation::Closed(_) => seen.push("closed".into()),
-                Observation::Started(_) => {}
+                Observation::Started(_) | Observation::WindowsClosedFirst => {}
             })
             .unwrap();
         assert_eq!(seen, ["exit 0xC0000135", "closed"]);
@@ -744,5 +858,31 @@ mod tests {
             assert_eq!(rounds, 2);
             assert!(dir.path().join("menu-closed").exists());
         }
+    }
+}
+
+/// A program from the game's own folder is running now (seen by Windows, not
+/// only by this Cerberus): the game is open, however it was started.
+pub fn open_outside(game: &Game) -> bool {
+    if game.install_dir.trim().is_empty() {
+        return false;
+    }
+    running_inside(&crate::store_time::running_programs(), Path::new(&game.install_dir))
+}
+
+fn running_inside(programs: &[String], dir: &Path) -> bool {
+    let dir = dir.to_string_lossy().to_lowercase().replace('/', "\\");
+    let dir = dir.trim_end_matches('\\');
+    programs.iter().any(|p| p.to_lowercase().replace('/', "\\").starts_with(&format!("{dir}\\")))
+}
+
+#[cfg(test)]
+mod open_outside_tests {
+    #[test]
+    fn a_program_in_the_games_folder_counts_and_a_neighbor_doesnt() {
+        let programs = vec![r"C:\Games\Zelda\Zelda64Recompiled.exe".to_string(), r"C:\Games\Zelda2\x.exe".to_string()];
+        assert!(super::running_inside(&programs, std::path::Path::new(r"c:\games\zelda")));
+        assert!(!super::running_inside(&programs, std::path::Path::new(r"C:\Games\Zel")));
+        assert!(!super::running_inside(&[], std::path::Path::new(r"C:\Games\Zelda")));
     }
 }

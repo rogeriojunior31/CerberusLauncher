@@ -85,6 +85,10 @@ pub struct Tv {
     pub sheet: RwSignal<Option<Sheet>>,
     pub pad: RwSignal<PadKind>,
     pub search: RwSignal<String>,
+    /// The Library's own search, apart from Discover's.
+    pub lib_search: RwSignal<String>,
+    /// The on-screen keyboard types into the Library's search (else Discover's).
+    pub kb_lib: RwSignal<bool>,
     pub hints: RwSignal<Vec<(Btn, &'static str)>>,
     pub sheet_hints: RwSignal<Vec<(Btn, &'static str)>>,
     backdrop: RwSignal<Vec<String>>,
@@ -165,9 +169,11 @@ impl Tv {
         let pending = self.pending_backdrop;
         let backdrop = self.backdrop;
         set_timeout(
+            // The TV may have closed in the meantime: only `try_` reads, never a panic.
             move || {
-                if pending.with_value(|p| *p == sources) && backdrop.with_untracked(|b| *b != sources) {
-                    backdrop.set(sources);
+                let still = pending.try_with_value(|p| *p == sources).unwrap_or(false);
+                if still && backdrop.try_with_untracked(|b| *b != sources).unwrap_or(false) {
+                    let _ = backdrop.try_set(sources);
                 }
             },
             Duration::from_millis(220),
@@ -195,6 +201,12 @@ pub fn glyph(btn: Btn, kind: PadKind) -> impl IntoView {
         (Btn::X, _) => ("X", "xb-x"),
         (Btn::Y, _) => ("Y", "xb-y"),
         (Btn::Lb, _) => ("LB", "shoulder"),
+        (Btn::Lt, PadKind::PlayStation) => ("L2", "shoulder"),
+        (Btn::Rt, PadKind::PlayStation) => ("R2", "shoulder"),
+        (Btn::Lt, PadKind::Nintendo) => ("ZL", "shoulder"),
+        (Btn::Rt, PadKind::Nintendo) => ("ZR", "shoulder"),
+        (Btn::Lt, _) => ("LT", "shoulder"),
+        (Btn::Rt, _) => ("RT", "shoulder"),
         (Btn::Rb, _) => ("RB", "shoulder"),
         (Btn::Menu | Btn::MenuHold, PadKind::PlayStation) => ("☰", "shoulder"),
         (Btn::Menu | Btn::MenuHold, _) => ("☰", "shoulder"),
@@ -217,6 +229,8 @@ pub fn TvMode() -> impl IntoView {
         sheet: RwSignal::new(None),
         pad: RwSignal::new(PadKind::default()),
         search: RwSignal::new(String::new()),
+        lib_search: RwSignal::new(String::new()),
+        kb_lib: RwSignal::new(false),
         hints: RwSignal::new(Vec::new()),
         sheet_hints: RwSignal::new(Vec::new()),
         backdrop: RwSignal::new(Vec::new()),
@@ -413,9 +427,17 @@ pub fn TvMode() -> impl IntoView {
 /// second, or pressing F11, opens it.
 pub fn watch_for_tv(library: Library) {
     let since = StoredValue::new(None::<f64>);
+    // After the TV (left by holding Menu), Menu must be let go before it counts again.
+    let wait_release = StoredValue::new(false);
     let poll = set_interval_with_handle(
         move || {
             if library.route.get_untracked() == Route::BigPicture {
+                since.set_value(None);
+                wait_release.set_value(true);
+                return;
+            }
+            // A game in front owns the pad.
+            if !web_sys::window().and_then(|w| w.document()).is_some_and(|d| d.has_focus().unwrap_or(true)) {
                 since.set_value(None);
                 return;
             }
@@ -429,6 +451,12 @@ pub fn watch_for_tv(library: Library) {
                         })
                     })
                 });
+            if wait_release.get_value() {
+                if !held {
+                    wait_release.set_value(false);
+                }
+                return;
+            }
             let now = js_sys::Date::now();
             match (held, since.get_value()) {
                 (true, None) => since.set_value(Some(now)),
@@ -443,7 +471,7 @@ pub fn watch_for_tv(library: Library) {
         Duration::from_millis(100),
     );
     let keys = window_event_listener(leptos::ev::keydown, move |e| {
-        if e.key() == "F11" && library.route.get_untracked() != Route::BigPicture {
+        if e.key() == "F11" && !e.repeat() && library.route.get_untracked() != Route::BigPicture {
             e.prevent_default();
             library.go(Route::BigPicture);
         }

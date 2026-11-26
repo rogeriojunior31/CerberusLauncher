@@ -106,10 +106,7 @@ pub fn GamePage(id: String) -> impl IntoView {
                         });
                     list.extend(original);
                 }
-                let update = e.as_ref().filter(|_| !g.external && !downloading).and_then(|e| {
-                    let newest = e.latest.as_ref()?;
-                    (e.installed.as_ref() != Some(&newest.version)).then(|| e.id.clone())
-                });
+                let update = e.as_ref().filter(|_| !g.external && !downloading).and_then(|e| e.update_to().map(|_| e.id.clone()));
                 if let Some(u) = update {
                     list.push(Act::Update(u));
                 }
@@ -273,7 +270,8 @@ pub fn GamePage(id: String) -> impl IntoView {
         let e = entry.get();
         let g = game.get();
         let kicker = match &e {
-            Some(e) => tr!("Recomp · {}", e.console),
+            // As on the desktop page: which native version, and its console.
+            Some(e) => format!("{} · {}", e.name, e.console),
             None => g.as_ref().map(|g| crate::tiles::source_name(&g.source).to_string()).unwrap_or_default(),
         };
         let title = match g.as_ref().and_then(|g| g.logo_path.clone()).or_else(|| e.as_ref().and_then(|e| e.logo.clone())) {

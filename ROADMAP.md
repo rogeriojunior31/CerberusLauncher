@@ -1,7 +1,51 @@
 # Roadmap
 
-Comparado ao RecompLauncher (referência de comportamento) e ao Hydra. Cada onda só fecha com teste
-real, não só compilação.
+Comparado ao RecompLauncher (referência de comportamento), ao Hydra, ao Playnite e ao Heroic. Cada onda só
+fecha com teste real, não só compilação.
+
+## Mapa rápido (atualizado em 25/11/2026)
+
+Onde estamos e o que vem a seguir, para não se perder. O detalhe de cada item está nas ondas abaixo; a Onda 7 é o
+levantamento de 25/11 (um agente por launcher: Heroic, Hydra, Playnite e RecompLauncher).
+
+**Feito agora (branch `ajustes-rapidos`, 23 a 25/11, sem PR ainda):**
+
+- Lojas: jogos do app Xbox e do PC Game Pass (com arte oficial e instalação pelo app Xbox), login da Epic (inclusive
+  com Xbox/Google/Apple) e da conta Microsoft, biblioteca inteira das duas contas com os não instalados, filtro por
+  plataforma e não instalados em Todos; Game Pass não duplica jogo comprado em outra loja.
+- Conquistas: banco local `achievements.db` (SQLite) que nunca perde um desbloqueio, sincronização econômica com espera
+  gravada depois de recusa; Xbox completo (249 jogos na conta real) e Epic; cartão por plataforma, Platinados e Perto
+  dos 100% com Ver todos, Próximas conquistas e Suas mais raras; aba Conquistas nos jogos Epic e Xbox.
+- Tempo de jogo das contas Xbox (horas e última vez) e Epic na Biblioteca, sincronizado em segundo plano.
+- Página do jogo com dados da loja também para Epic e Xbox (Steam quando vende lá, senão Microsoft Store).
+- Capas com selo de origem (Steam, Epic, Xbox/Game Pass, Recomp, emulador e console) e fotos reais dos consoles
+  (Hydra + domínio público do Evan Amos).
+- Backup dos saves dos emuladores, Xenia e xemu para os clássicos de Xbox, varredura de bugs do backend.
+
+**Próximos, nesta ordem:**
+
+0. **Corrigir as falhas da auditoria completa** (Onda 9, 178 falhas, 17 críticas), lote A primeiro: nenhum arquivo do
+   jogador apagado por uma leitura que falhou. Junto, os itens 8.0 que restam.
+   **Deixar completo o que já foi entregue** (Onda 8): primeiro o que perde dados ou mexe em contas — saves dos
+   emuladores apagados ao remover/reinstalar, tokens indo no backup, conta que volta depois de Sair, uma falha
+   derrubando a sincronização inteira. Revisões: [lojas e contas](docs/roadmap/lojas-e-contas.md),
+   [conquistas e tempo](docs/roadmap/conquistas-e-tempo.md), [emulação](docs/roadmap/emulacao-e-saves-dos-emuladores.md).
+1. **Saves de qualquer jogo de PC** (Steam, Epic, Xbox, GOG, adicionados) pelos locais conhecidos, reaproveitando o
+   backup e a nuvem dos recomps — apontado por Hydra, Heroic e Playnite. (7.1, [plano](docs/roadmap/saves-de-jogos-de-pc.md))
+2. **GOG**: jogos instalados pelo GOG Galaxy, depois login e biblioteca, conquistas e tempo de jogo como Epic e Xbox.
+   Depois Amazon, Ubisoft, EA e Battle.net. (7.2, [plano](docs/roadmap/gog-e-outras-lojas.md))
+3. **Steam sem chave** (token da sessão da loja) e **biblioteca da família**. (6.1, [plano](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md))
+4. **Gerenciar jogos das lojas sem sair do Cerberus**: desinstalar, verificar e mover pela própria loja; argumentos de
+   inicialização da Steam. (7.2, mesmo [plano](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md))
+5. **Ações antes e depois de jogar** e variáveis de ambiente por jogo. (6.4, 7.4)
+6. **Metadados guardados na biblioteca** (gênero, desenvolvedora, ano, série...) que destravam filtros salvos,
+   agrupamento e edição de vários jogos. (7.3, 6.3, [plano](docs/roadmap/metadados-filtros-e-estatisticas.md))
+7. **Estatísticas e "seu ano"** só com dados locais. (6.3, 7.3, mesmo plano)
+8. **Troféus do RPCS3 e do shadPS4** e **foto no momento da conquista**. (5.4, 6.1, [plano](docs/roadmap/trofeus-e-lembrancas.md))
+9. **Recomps**: escolher, fixar e voltar uma versão; campos do SDK ainda ignorados; RVZ e cia.; janela "Resolver
+   problemas" com o log do jogo. (7.5, [plano](docs/roadmap/recomps-robustos.md))
+10. Pequenos de alto retorno: aviso de sem internet, central de notificações, som e volume do aviso de conquista,
+    HowLongToBeat e anti-cheat na página do jogo. (7.4, 7.6)
 
 ## Referência Hydra e próximas entregas
 
@@ -9,7 +53,7 @@ Comparação com o checkout local do Hydra em `6b7ad7bf2`.
 
 | Área | Comportamento observado no Hydra | Entrega no Cerberus |
 | --- | --- | --- |
-| Fontes | O cliente cadastra a URL via HydraApi e persiste a fonte. As publicações têm título, tamanho e data. [Cadastro](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/events/download-sources/add-download-source.ts) e [tipos](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/types/index.ts) | Implementado. Configurações importa os metadados por HTTPS, guarda a última cópia válida e permite pesquisar por fonte. Cada fonte mostra a última sincronização e eventuais erros. |
+| Fontes | O cliente cadastra a URL via HydraApi e persiste a fonte. As publicações têm título, tamanho e data. [Cadastro](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/events/download-sources/add-download-source.ts) e [tipos](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/types/index.ts) | Implementado. Configurações importa os metadados por HTTPS, guarda a última cópia válida e permite pesquisar por fonte. Links HTTP(S) diretos entram no Descobrir e instalam quando o jogador pedir; magnet e torrent ficam só para consulta. |
 | Sessões | O observador compara caminhos de executáveis e grava incrementos de tempo durante a execução. [Observador](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/process-watcher.ts) | O Cerberus grava o tempo a cada 15 segundos e ao sair normalmente. No Windows, Gerenciar permite escolher o executável acompanhado. O teste usa processos reais em pastas distintas e inclui um segundo executável de mesmo nome. Falta comparar a próxima partida real do ReStreet com o relógio. |
 | Disco e downloads | O Hydra compara os bytes restantes com o espaço disponível no volume de destino e considera dados reaproveitáveis. [Verificação de espaço](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download/disk-space.ts) | Configurações mostra o espaço dos dois destinos. O download verifica os bytes restantes quando o tamanho é conhecido. ZIP, 7z e executáveis verificam espaço antes da extração ou cópia. O teste retomou um ZIP em C: e instalou em D:. A previsão do espaço descompactado para tar.gz segue pendente. |
 | Novidades por jogo | O Hydra cruza a identidade do jogo com mudanças das fontes e mantém a referência anterior se uma consulta falhar. [Verificador de fontes](https://github.com/hydralauncher/hydra/blob/6b7ad7bf2/src/main/services/download-sources-checker.ts) | Pendente. Vincular publicação e jogo com confirmação quando o título for ambíguo. Só então mostrar novidades na página do jogo. |
@@ -213,7 +257,7 @@ Cerberus são implementadas em Rust sobre os nossos formatos e comandos Tauri.
 - [x] Descobrir com busca, filtro por console, "Tenho o jogo", ordenação e paginação.
 - [x] Pastas de ROMs: acha os jogos (N64 pelo cabeçalho, o resto pelo nome) e mostra quais têm recomp.
 - [x] Fontes de catálogo em JSON (como o Hydra), só com jogos de repositórios no GitHub,
-      baixados das releases oficiais. Listas Hydra podem ser consultadas em Configurações por título, tamanho e data.
+      baixados das releases oficiais. Listas Hydra podem ser consultadas em Configurações; links HTTP(S) diretos também entram no Descobrir e instalam sob demanda.
 - [x] Recomps com instalador próprio: `single-exe` instala direto; `installer` roda no primeiro
       "Jogar" e depois o Cerberus acha o jogo (pasta própria, depois "Aplicativos" do Windows),
       ou pergunta onde ficou.
@@ -398,7 +442,7 @@ página de cada jogo, com filtros como os da Biblioteca. Nem o Hydra tem um hub 
       - `API_GetGameInfoAndUserProgress` dá as conquistas do jogo com pontos, emblema e data, separando normal e hardcore.
       - `API_GetUserCompletionProgress` dá todos os jogos com o progresso de cada um, para o hub.
       - Falta descobrir o id do jogo no RA para cada clássico (pelo hash da ROM ou pela linha do log do RetroArch). *A validar.*
-- [ ] **Epic (fase 3, precisa de login na conta Epic):**
+- [x] **Epic (fase 3, precisa de login na conta Epic):** feito em 25/11/2026 (conquistas e tempo de jogo, no banco local).
       - Login OAuth com o cliente público do launcher, o mesmo do Legendary, do Heroic e do Hydra.
       - Conquistas pela GraphQL do launcher (`playerAchievementGameRecordsBySandbox`).
       - Tempo de jogo pelo `library-service` (`/library/api/public/playtime/account/<id>/all`).
@@ -538,19 +582,25 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
       `earned.json`, linhas do log) e mostrar no hub; nomes e ícones num JSON nosso no catálogo. — M
 - [ ] **Foto no momento da conquista** [H]: capturar a janela do jogo quando a conquista cai; no RetroArch, ligar a
       opção dele de foto ao desbloquear só durante a partida. — M
-- [ ] Conquistas da Epic [H] (GraphQL da loja da Epic), depois do login da Epic (6.2). — M
+- [x] Conquistas da Epic [H] (GraphQL da loja da Epic), depois do login da Epic (6.2). — M (25/11/2026)
+- [x] **Conquistas do Xbox** (conta Microsoft): todos os jogos da conta, com raridade, guardados no banco local. (25/11/2026)
+- [x] **Banco local de conquistas** (`achievements.db`, SQLite): um desbloqueio visto nunca se perde; 5 min entre
+      sincronizações e espera de 2 min a 6 h depois de recusa, gravadas. (25/11/2026)
+- [x] Hub: cartão por plataforma, Ver todos em Platinados e Perto dos 100%, Próximas conquistas e Suas mais raras. (25/11/2026)
 - [ ] Separar conquistas do jogo base e das DLCs [H]. — P
 
 ### 6.2 Biblioteca e lojas (prioridade 2)
 
-- [x] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" e
-      "Desinstalar" por `steam://install|uninstall/<id>`, e o jogo vira instalado sozinho quando aparece o
-      `appmanifest_*.acf`. — M
+- [x] **Jogos da Steam não instalados na Biblioteca** [H][P], pelo `GetOwnedGames` que o hub já usa; "Instalar" por
+      `steam://install/<id>`, e o jogo vira instalado sozinho quando aparece o `appmanifest_*.acf`. — M
+      - [ ] "Desinstalar" por `steam://uninstall/<id>`: ainda não existe (conferido no código em 25/11/2026).
 - [ ] Opções de inicialização passadas à Steam: `steam://run/<id>//<argumentos>/` [H]. — P
 - [ ] Ler o `appinfo.vdf` da Steam para saber o executável real de cada jogo [H] (medir a partida certo). — M
-- [ ] **Login da Epic e biblioteca completa** [H]: login numa janela da Epic e o Legendary para listar, instalar,
-      verificar e abrir (conferir a licença do Legendary, GPL, antes de distribuir junto); tempo de jogo da Epic pelos
-      servidores dela. — G
+- [x] **Login da Epic e biblioteca completa** [H]: login na página da Epic, biblioteca inteira com os não instalados,
+      tempo de jogo pelos servidores dela; instalar abre o launcher da Epic. (25/11/2026)
+      - [ ] Instalar, verificar e abrir sem o launcher da Epic (Legendary é GPL: só como programa à parte). — G
+- [x] **Conta Microsoft e PC Game Pass**: jogos do app Xbox instalados, catálogo do Game Pass e jogos de PC da conta,
+      instalando pelo app Xbox; tempo de jogo e última vez da conta. (24–25/11/2026)
 - [ ] **Importar o tempo de jogo das lojas** com escolha: sempre, só para jogos novos ou nunca; "última vez" da loja só
       vale se for mais nova [P]. Tempo separado por fonte (Cerberus, Steam, Epic), editar e zerar [H]. — P
 - [ ] **Achar jogos fora das lojas** [P][H]: atalhos do Menu Iniciar (ignorando desinstaladores, setup, vc_redist,
@@ -559,20 +609,23 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 - [ ] O mesmo jogo na Steam e na Epic aparece como um só [H]. — M
 - [ ] Ordem pelo nome sem "The"/"A" e com algarismos romanos na ordem certa [P]. — P
 - [ ] Tamanho instalado de cada jogo, agrupar por disco e mover um jogo de PC para outro disco [P][H]. — M
-- [ ] **Página do jogo com dados da loja** [H]: descrição, requisitos mínimo e recomendado, idiomas, suporte a controle,
-      imagens e trailers (`store.steampowered.com/api/appdetails`). — M
+- [x] **Página do jogo com dados da loja** [H]: descrição, requisitos mínimo e recomendado, idiomas, suporte a controle,
+      imagens e trailers (`store.steampowered.com/api/appdetails`); Epic e Xbox pela Steam ou pela Microsoft Store
+      (`ms_store.rs`). — M (25/11/2026)
 - [ ] Atalho no Menu Iniciar além da área de trabalho [H][R]. — P
 
 ### 6.3 Organizar a coleção (prioridade 3)
 
 - [x] **Situação do jogo** [P]: Não jogado, Jogado, Jogando, Zerado, Completo, Abandonado, Em pausa, Quero jogar,
       editáveis. Vira "Jogado" na primeira partida; os selos do hub (Zerado, Completo, Dominado) sugerem a situação. — P
-- [x] Nota pessoal (0 a 100) e anotações por jogo [P]. — P
+- [x] Nota pessoal (de 1 a 5 estrelas; a ideia original era 0 a 100) e anotações por jogo [P]. — P
 - [ ] **Filtros salvos** com ordem e agrupamento [P]: prontos "Todos", "Jogados recentemente", "Favoritos" e
       "Mais jogados"; aparecem também no Big Picture. — M
 - [ ] **Agrupar** por plataforma, loja, situação, ano, disco, faixa de tempo de jogo (menos de 1 h, 1 a 10 h, 10 a
       100 h...) e última vez jogado (hoje, ontem, esta semana, este mês, este ano, nunca) [P]. — M
-- [x] Mais ordens: adicionado em, nota, situação, tamanho, vezes jogado [P]. — P
+- [ ] Mais ordens: adicionado em, situação, tamanho, vezes jogado [P]. — P
+      (Corrigido em 25/11/2026: estava marcado como feito, mas a Biblioteca só tem nome, recentes, tempo, nota e
+      conquistas. Desenho em `docs/roadmap/metadados-filtros-e-estatisticas.md`.)
 - [ ] Fixar jogos no topo e ordem manual por arrasto, também dentro das coleções [H][R]. — M
 - [ ] **Editar vários jogos de uma vez** (situação, coleção, ocultar) [P]. — M
 - [ ] **Página de estatísticas** [P]: total de jogos, instalados, tempo total e médio, os 50 mais jogados, quantos por
@@ -615,6 +668,9 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
       shadPS4 pelas releases oficiais; conferir BIOS e firmware (sem baixar BIOS); levar o login do RetroAchievements
       para eles e ler as conquistas pelos logs; troféus do RPCS3 e do shadPS4; tempo de jogo deles. — G
 - [ ] Cartões de memória de PS1 e PS2: listar e exportar saves [H]. — M
+      - [x] Backup e restauração dos memory cards e estados dos emuladores (`emulator_saves.rs`, 24/11/2026).
+- [x] Xenia e xemu para os clássicos de Xbox 360 e Xbox (24/11/2026).
+- [x] Selo de origem na capa (loja, Recomp, emulador e console) e fotos reais dos consoles (25/11/2026).
 
 ### 6.6 Big Picture (prioridade 6)
 
@@ -658,7 +714,311 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
   desenvolvedores e pedidos de recomp [R]; arte do SteamGridDB sem chave do jogador vem do servidor do
   Hydra [H]. Para nós, só com servidor próprio.
 
+## Onda 7: consolidado de Heroic, Hydra, Playnite e RecompLauncher (levantamento de 25/11/2026)
+
+Quatro agentes, um por launcher, leram o código de cada um e o do Cerberus. Aqui entra só o que **não** estava nas
+ondas 5 e 6. Licenças: **Heroic GPL-3** e **RecompLauncher GPL** só ideias; **Hydra MIT**, **Playnite MIT** e
+**RecompLauncher-SDK MIT** podem ser adaptados com crédito. Origem: [E] Heroic, [H] Hydra, [P] Playnite,
+[R] RecompLauncher, [S] SDK. Esforço: P, M, G.
+
+### 7.1 Saves de jogos de PC (prioridade 1)
+
+- [ ] Achar os saves de qualquer jogo de PC pelos locais conhecidos (manifesto do Ludusavi/PCGamingWiki; conferir a
+      licença dos dados) e usar o mesmo backup, rodízio e nuvem por pasta dos recomps [H][E][P]. — M
+- [ ] Versões de backup com nome, conflito entre dois PCs resolvido com escolha clara, e caminho de save adicionado
+      pelo jogador [H]. — M
+- [ ] Backup automático da biblioteca do Cerberus (configurações, notas, tempo, artes próprias) diário ou semanal com
+      rodízio; hoje só o zip manual (`data_backup.rs`) [P]. — P
+
+### 7.2 Mais lojas e gerenciar os jogos delas (prioridade 2)
+
+- [ ] **GOG**: jogos instalados pelo GOG Galaxy (registro do Windows), depois login, biblioteca com os não instalados,
+      conquistas e tempo de jogo [E]. — P para os instalados, G para a conta
+- [ ] Amazon (Prime Gaming), itch.io, Ubisoft Connect, EA app e Battle.net: primeiro os instalados, depois contas [E]. — P/M cada
+- [ ] Desinstalar, verificar e mover jogos das lojas pelos próprios links ou janelas delas (Steam, Epic, Xbox) [E][P]. — P
+- [ ] Argumentos de inicialização para jogos da Steam (`steam://run/<id>//<args>`); Epic e Xbox a verificar [E]. — P
+- [ ] DLC: listar e, quando a loja deixar, instalar [E]. — M
+- [ ] Fila de downloads com ordem e "desligar o PC ao terminar" [E]. — P/M
+
+### 7.3 Biblioteca rica (prioridade 3)
+
+- [ ] **Metadados guardados no jogo**: gênero, desenvolvedora, publicadora, ano, série, classificação, descrição, links e
+      nota da crítica; baixados da loja ou do IGDB, escolhendo a fonte por campo e comparando antes de sobrescrever [P].
+      É o que destrava filtros salvos, agrupar e editar vários jogos (6.3). — G
+- [ ] Seleção de vários jogos na grade (caixas de seleção) para ocultar, coleção, situação [P]. — M
+- [ ] Lista de exclusão na importação (o jogo removido não volta) [P]. — P
+- [ ] Perfil local e "seu ano": tempo total, jogos e conquistas por mês, por loja e por situação, a partir de
+      `sessions.jsonl` e `achievements.db` [H][P]. — M
+- [ ] Descobrir também para jogos de PC: listas como Steam250 (joias escondidas, melhores do ano), filtros por ano e
+      gênero, abrindo a página da loja [H]. — M
+
+### 7.4 Partidas e avisos (prioridade 4)
+
+- [ ] Script antes e depois de jogar e variáveis de ambiente por jogo, também para jogos de loja [E][P]. — P
+- [ ] Aviso de sem internet e modo offline por jogo [E]. — P
+- [ ] Som do aviso de conquista com volume e som próprio do jogador [H]. — P
+- [ ] Controles além do XInput (DualSense, Switch Pro) para os combos e o menu por cima do jogo (SDL) [R]. — M/G
+- [ ] Discord Rich Presence [R]. — P
+
+### 7.5 Recomps (prioridade 5)
+
+- [ ] Escolher uma versão anterior, fixar e voltar (hoje só "pausar atualizações") [R]. — M
+- [ ] Campos do `recomplauncher.json` que o Cerberus ainda ignora: `extract`, `contains`, `destination` e
+      `check.nup_build_id` [S]. — P/M
+- [ ] Colocar as entradas como link em vez de cópia (ISOs grandes ocupam o dobro) [S]. — P
+- [ ] Teclas do jogo nos ajustes (`settings[].bindings`) [S]. — M
+- [ ] Liberar espaço depois de um build com `keeps_copy` [R]. — P
+- [ ] Janela "Resolver problemas": guardar a saída do jogo num log, tirar a marca "baixado da internet", preferir a placa
+      de vídeo mais rápida, avisar caminho com acento, exportar os logs num zip [R]. — M
+- [ ] Conquistas dos recomps pelo canal de sessão e pelos arquivos de unlock do ReXGlue (`title_id`) [R]. — M/G
+
+### 7.6 Página do jogo e aparência (prioridade 6)
+
+- [ ] HowLongToBeat (não oficial, pode quebrar) e situação do anti-cheat [E][H]. — P/M
+- [ ] Temas instaláveis (CSS) e editor de tema [H][P]. — M
+- [ ] Promoções e lista de desejos [E]. — M
+- [ ] Extensões/plugins com permissões; o primeiro passo são os scripts da 7.4 [P][R]. — G
+
+### Onde o Cerberus já está à frente (segundo os quatro levantamentos)
+
+- Hub de conquistas entre Steam, RetroAchievements, Xbox e Epic, guardado para sempre e com aviso por cima do jogo.
+- Xbox app, Game Pass e conta Microsoft (nenhum dos outros tem).
+- Recomps com catálogo, Easy Setup, ajustes por jogo, nuvem sem conta e listas por URL.
+- Emuladores instalados com um clique e RetroAchievements levado para eles.
+- Mods do GameBanana, troca de DLSS, filtros visuais e pacotes do Windows.
+
+## Onda 8: deixar completo o que já foi entregue (revisão de 25/11/2026)
+
+Três agentes revisaram o código das entregas de 23 a 25/11 procurando o que falta para cada feature ficar completa
+(bordas, estados de tela, segurança, testes). Cada item abaixo tem, no documento ligado, o problema, como reproduzir,
+como resolver, os arquivos, o critério de aceite e o teste. **Regra daqui em diante:** uma feature só é marcada [x]
+quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados aqui.
+
+### 8.0 Perde dados ou mexe em contas (fazer antes de qualquer feature nova)
+
+- [x] Remover ou reinstalar um emulador gerenciado apaga os saves dele (DuckStation, PCSX2, Dolphin, PPSSPP, RPCS3,
+      Xenia) — [emulação L1](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+      Feito em 25/11/2026: troca que guarda os arquivos do jogador para os 8 emuladores; Remover guarda à parte e devolve ao reinstalar. Validado numa cópia do DuckStation (3 itens) e do PCSX2 (12 itens), idênticos depois.
+- [x] Refresh tokens da Epic e do Xbox vão para o zip do backup e a restauração troca as contas — [lojas L6](docs/roadmap/lojas-e-contas.md);
+      erro de rede com a URL inteira pode vazar token no log ([plano Steam, etapa 0](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md)). — P
+      Feito em 25/11/2026: tokens fora da cópia, contas deste PC intocadas na restauração, erros de rede sem o endereço. Conferido com o backup dos dados reais (11 arquivos, sem token).
+- [x] `settings.json` gravado por várias tarefas ao mesmo tempo: Sair durante uma renovação devolve a conta — [lojas L1](docs/roadmap/lojas-e-contas.md). — M
+      Feito em 25/11/2026: a renovação só grava se a conta ainda é a mesma; entrar e sair por `settings::update` e zerando as sessões guardadas da Epic e do Xbox. Testado.
+- [ ] Um dono só da sessão de cada conta; a sessão da Epic de 30 min não é zerada ao sair nem presa à conta — [lojas L2](docs/roadmap/lojas-e-contas.md), [conquistas L3](docs/roadmap/conquistas-e-tempo.md). — P/M
+- [ ] Um jogo que falha derruba a sincronização da conta inteira e volta primeiro sempre — [conquistas L1](docs/roadmap/conquistas-e-tempo.md). — M
+- [ ] Sincronização pulada conta como sucesso e apaga a espera depois de uma recusa — [conquistas L2](docs/roadmap/conquistas-e-tempo.md). — P
+- [ ] Restaurar saves com o emulador aberto por fora — [emulação L3](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+- [ ] Backup do Dolphin leva a BIOS do GameCube e deixa de fora os saves do Wii — [emulação L2](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
+
+### 8.1 Contas e lojas — [revisão completa](docs/roadmap/lojas-e-contas.md)
+
+- [ ] Token revogado ou vencido vira "entre de novo" visível; erros distintos para 400/401/429/5xx (L3). — M
+- [ ] Conta identificada pelo id (xuid, account id, steamid), não pelo nome; Sair sem apagar conquistas (L4; conquistas L3). — M
+- [ ] Resposta parcial, limites de uso e custo de cada sincronização (L5). — M
+- [ ] Tokens fora do texto puro (Cofre de credenciais do Windows) (L6). — M
+- [ ] Endurecer a janela de login (L7). — P
+- [ ] Cartões de conta com carregando, erro, "sincronizado há" e "Atualizar agora" (L8). — P/M
+- [ ] Xbox: "jogos da conta" vem do histórico, não da posse (L9); pacotes instalados de verdade (L10). — M
+- [ ] Epic: plataforma, demos e limite de páginas (L11). — M
+- [ ] Game Pass: padrão, mercado e selos (L12); mesmo jogo com nomes diferentes entre lojas (L13). — M
+- [ ] Página da loja: vazio, fonte e "abrir na loja" (L14). — P
+- [ ] Big Picture e Início coerentes com a Biblioteca (L15). — M
+- [ ] Instalar, desinstalar e verificar pela loja com o launcher ausente (L16; ver também o plano da Steam). — P/M
+- [ ] Testes que faltam (L17). — M
+
+### 8.2 Conquistas e tempo de jogo — [revisão completa](docs/roadmap/conquistas-e-tempo.md)
+
+- [ ] Sessão vencida aparece como "loja ocupada" (L4). — P/M
+- [ ] Data desconhecida aparece como 31/12/1969 (L5). — P
+- [ ] Conquistas revogadas ou zeradas nunca saem do hub (L6). — M
+- [ ] Listas guardadas sem idioma (L7). — P/M
+- [ ] Steam e RetroAchievements quase não alimentam Próximas e Mais raras; página da Epic só lê o banco (L8). — M
+- [ ] Estados por fonte: quando sincronizou, quando tenta de novo, forçar (L9). — M
+- [ ] Concorrência no SQLite com escrita que some em silêncio (L10); esquema com versão (L11). — P/M
+- [ ] Banco fora do backup e órfãos acumulando (L12). — P/M
+- [ ] Menos consultas por sincronização (L13; tabela de orçamento no documento). — M
+- [ ] Aviso ao vivo e releitura ao fechar o jogo também para Xbox e Epic (L14). — M/G
+- [ ] DLC, Xbox 360 e totais (L15). — P
+- [ ] Testes que faltam (L16). — M
+
+### 8.3 Emulação e saves dos emuladores — [revisão completa](docs/roadmap/emulacao-e-saves-dos-emuladores.md)
+
+- [ ] RPCS3, Cemu e Xenia sem backup, e o cartão some sem explicar (L4); xemu: arquivos do console, HD e saves (L5). — M
+- [ ] Um lugar só decide a pasta de cada emulador (L6). — P
+- [ ] Rodízio com limite de espaço e nuvem por pasta (L7). — M
+- [ ] Saves por jogo, não só a pasta inteira (L8). — M
+- [ ] Atualizar Xenia, xemu e os outros emuladores sem perder nada (L9, depende do 8.0). — M
+- [ ] Xenia e xemu: formatos, configuração, controles e conquistas (L10). — M
+- [ ] Uma tabela só de consoles: nomes, siglas e imagens (L11). — P
+- [ ] Imagens que faltam (Wii U, 32X, Dreamcast, Saturn, Switch, Sega CD, PC Engine, PS4 têm foto em domínio público)
+      e licença das existentes (L12). — P
+- [ ] Estados da UI e testes (L13). — M
+
+## Onda 9: auditoria completa do app (25/11/2026)
+
+Oito agentes mapearam cada área do app (como funciona, como os outros launchers fazem) e procuraram falhas lendo o
+código. **178 falhas: 17 críticas.** Cada uma tem arquivo:linha, reprodução, correção e teste no documento da área.
+Aqui elas estão agrupadas **pela causa**, para corrigir um lote inteiro de uma vez em vez de uma por uma.
+Códigos: [B] biblioteca, [BP] big-picture, [C] clássicos-e-retroarch, [J] durante-o-jogo-e-app, [Fu]
+fundações-do-backend, [P] partidas-tempo-e-saves, [RC] recomps-catálogo-e-instalação, [RP] recomps-preparação-e-ajustes.
+
+| Área | Documento | Críticas | Altas | Médias | Baixas |
+| --- | --- | --- | --- | --- | --- |
+| Biblioteca | [auditoria-biblioteca.md](docs/roadmap/auditoria-biblioteca.md) | 2 | 2 | 9 | 7 |
+| Big Picture | [auditoria-big-picture.md](docs/roadmap/auditoria-big-picture.md) | 0 | 4 | 6 | 9 |
+| Clássicos e RetroArch | [auditoria-classicos-e-retroarch.md](docs/roadmap/auditoria-classicos-e-retroarch.md) | 1 | 4 | 13 | 8 |
+| Durante o jogo e app | [auditoria-durante-o-jogo-e-app.md](docs/roadmap/auditoria-durante-o-jogo-e-app.md) | 2 | 3 | 9 | 11 |
+| Fundações do backend | [auditoria-fundacoes-do-backend.md](docs/roadmap/auditoria-fundacoes-do-backend.md) | 4 | 3 | 4 | 6 |
+| Partidas, tempo e saves | [auditoria-partidas-tempo-e-saves.md](docs/roadmap/auditoria-partidas-tempo-e-saves.md) | 4 | 2 | 12 | 8 |
+| Recomps: catálogo e instalação | [auditoria-recomps-catalogo-e-instalacao.md](docs/roadmap/auditoria-recomps-catalogo-e-instalacao.md) | 3 | 4 | 9 | 7 |
+| Recomps: preparação e ajustes | [auditoria-recomps-preparacao-e-ajustes.md](docs/roadmap/auditoria-recomps-preparacao-e-ajustes.md) | 1 | 4 | 11 | 6 |
+
+### Lote A — Nenhum arquivo do jogador apagado por uma leitura que falhou (primeiro)
+
+Causa única: arquivo ilegível (travado, corrompido, outra codificação) vira "vazio" e a próxima gravação apaga tudo.
+Correção única: um módulo comum de estado (ler distinguindo "não existe" de "não consegui ler"; nunca gravar por cima
+do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por arquivo; `.bak` da última versão boa).
+
+- [x] `settings.json` [Fu F1, J F1, J F14, Fu F6, lojas L1] — Feito em 25/11/2026 (`state_file.rs`): lido com volta à última cópia boa (`.bak`), o arquivo ruim guardado à parte, gravação com trava; `settings::update` e `renew_token` para quem grava depois de uma espera. Falta migrar as outras ~35 gravações síncronas para `update`.
+- [x] favoritos, coleções, ocultos, notas, arte [Fu F2, B F1, B F2, B F5] — Feito em 25/11/2026 (`state_file.rs`): mudanças por `update` (uma por vez, nunca sobre um arquivo que não leu). Lista de mods também (25/11/2026).
+- [x] tempo de jogo das lojas e dos clássicos [P F1, C F1] — Feito em 25/11/2026 (`state_file.rs`): dois clássicos fechando juntos somam os dois; arquivo ilegível nunca é trocado por uma sessão só.
+- [x] configuração dos emuladores (`retroarch.cfg`, `.ini`) [Fu F3] — corrigido em 25/11/2026: arquivo que não se lê (em uso, UTF-16) nunca é regravado; gravação em um passo; o que não voltou ao fim da partida fica registrado e volta na próxima (C F10).
+- [x] arquivos do próprio jogo nos Ajustes [RP F1] — feito em 25/11/2026: arquivo que existe e não se lê (UTF-16, JSON com comentário, em uso) nunca é regravado; JSON com BOM lido; cópia `.cerberus-orig` do original na primeira mudança. Testado.
+- [x] HedgeModManager [RP F2] — feito em 25/11/2026: `ModsDB.ini`/`cpkredir.ini` ilegível ou travado é recusado sem mudança; os dois ganham cópia antes da primeira mudança; gravação inteira ou nada; mod atualizado: o novo entra antes de sair o velho. Testado.
+- [x] Valores de INI com `#`/`;` [RP F13] — feito em 25/11/2026: comentário só quando `;`/`#` está sozinho entre espaços (`60 ; nota`); `D:\Jogos #2\zelda.iso` e `C:\a#b.iso` ficam inteiros na leitura e na gravação. Testado.
+- [x] JSONL com linha cortada, gravações sem `sync_all` [P F10, P F11, Fu F11] — feito em 25/11/2026: `state_file::write_bytes` (temporário próprio, `sync_all`, rename) na biblioteca, `retroarch.cfg`, histórico, partidas e restauração; `append_line` fecha a linha que um travamento deixou aberta; `json_lines` lê linha por linha (bytes inválidos só perdem a própria linha). `retroarch.cfg` ilegível é recusado em vez de regravado só com as chaves do Cerberus. Testado; conferido no app (950 jogos e histórico lidos).
+- [ ] Caches com `fs::write` direto [Fu F12]; `sessions.jsonl` sem limite [P F10, resto]
+
+### Lote B — Nada se perde quando algo é interrompido ou o app fecha
+
+- [x] Reinstalação de emulador interrompida apaga os saves guardados em `.<nome>-old` [Fu F4] (regressão do commit 3d05150) — corrigido em 25/11/2026: os arquivos do jogador nunca passam pela pasta temporária; `recover_swap` termina a troca interrompida antes de qualquer coisa. Testado nos dois pontos de interrupção.
+- [x] Fechar o app (janela, bandeja, atualização, fim do jogo) com download, instalação, backup ou jogo de loja aberto [J F4, RC F7, P F19, Fu F10] — feito em 25/11/2026: `background::busy` (jogo, clássico, jogo de loja, download/instalação); fechar a janela esconde e fecha sozinho quando acaba (com aviso se for só download); Sair na bandeja pergunta; atualizar espera. Não exercitado no app (fecharia o app em uso).
+- [x] Cerberus fechado no meio da partida; próximo Jogar restaura saves sob o jogo aberto [P F6] — a parte que perde saves feita em 25/11/2026: Jogar e restaurar backup conferem se um programa da pasta do jogo está rodando (mesmo aberto fora do Cerberus) e recusam. Falta adotar a partida que ficou aberta (sessions-open.json) para gravar última vez e fazer o backup do fim.
+- [x] Cópia/extração pela metade conta como pronta [RP F3] — feito em 25/11/2026: `fill_folder` copia/extrai numa pasta ao lado e só dá o nome no fim; falha deixa a escolha anterior intacta. Teste de interrupção. Espaço livre conferido antes de copiar uma pasta (25/11/2026).
+- [x] Instalação nova parcial não é notada [RC F11] — feito em 25/11/2026: a primeira instalação é extraída em `<id>.cerberus-part` e só ganha o nome do jogo (com marcador e registro do que a versão trouxe) quando completa; sobras `.cerberus-part` e `.staging-*` somem ao abrir o app. Testado (instalação ponta a ponta e varredura).
+- [x] Mover entre discos apaga a pasta antiga antes de gravar a biblioteca [RC F6] — corrigido em 25/11/2026: a biblioteca é gravada antes de apagar a antiga; se não gravar, a mudança é desfeita. Testado com a biblioteca bloqueada.
+- [x] Backup do DLSS interrompido vira o "original"; mod atualizado apaga o antigo antes do novo [RP F9, RP F10] — feito em 25/11/2026: DLL guardada por cópia conferida (tamanho e versão) e nunca restaurada danificada; mods do Thunderstore: o novo entra antes de sair o velho; registro de mods pelo state_file. HedgeModManager feito em 25/11/2026 (o novo entra antes de sair o velho).
+- [x] Preparação órfã, duas em paralelo [RP F12] — feito em 25/11/2026: a preparação roda num Job Object com KILL_ON_JOB_CLOSE (fecha com o Cerberus, filhos incluídos; o tempo esgotado encerra a árvore toda); `.recomplauncher-tmp` só é apagada com o marcador `.made-by-cerberus`; marcador de "pronto" que não grava vai para o histórico e um toast. Testado.
+- [x] Restos `.part`/`.tmp` dos saves e da nuvem [P F23] — feito em 25/11/2026: ao abrir, `.part` e `.tmp*` com mais de 1 dia somem de `saves/` e da pasta da nuvem (os recentes ficam: outro PC pode estar gravando). Testado. Falta mostrar zips ilegíveis como "danificados".
+- [x] Importar dados desfeito pelo cache na memória [Fu F5, P F5, P F17] — feito em 25/11/2026: a cópia é conferida e preparada à parte e trocada no próximo início, antes de qualquer leitura; recusada com jogo/download em andamento; guardar os dados atuais é obrigatório; tempo de jogo mesclado (maior por jogo); entradas acima de 256 MiB recusadas; só as 3 últimas before-restore ficam. Conferido com os dados reais.
+
+### Lote C — Saves e nuvem sem confiar no relógio
+
+- [x] Nuvem escolhe o "mais novo" pelo relógio; dois PCs se sobrescrevem [P F2] — feito em 25/11/2026: âncora por jogo e pasta de nuvem (`sync.json`), gravada só quando o envio termina ou ao trazer; só a nuvem mudou → traz; só aqui → envia depois; os dois → conflito, nada trocado, a cópia do outro PC fica em Backups. A primeira sincronização de um PC ainda usa a data (sem histórico). Falta o cartão de escolha na tela. (desenho de âncora em `saves-de-jogos-de-pc.md`)
+- [x] Rodízio apaga o backup errado e as cópias de segurança [P F3] — feito em 25/11/2026: datas sempre crescentes, 10 regulares + 3 por motivo de segurança, o recém-feito nunca sai. Testado.
+- [x] Restaurar não é atômico; restaurar com o jogo aberto por fora [P F13, P F14, P F16] — feito em 25/11/2026: cada save vivo é posto de lado antes da troca e, se um não puder ser trocado (outro programa o segura), os já trocados voltam: "Nada foi mudado"; 3 tentativas para quem segura por um instante. Backup manual recusado com o jogo aberto por fora (a restauração já recusava desde 6406731). Falha do backup "Restaurado" (o que vai para a nuvem) vira aviso no toast e no histórico. Testado com um save travado.
+- [x] Cada Jogar abre os 20 zips da nuvem (OneDrive sob demanda) [P F12] — feito em 25/11/2026: o manifesto de cada backup é lido uma vez e guardado neste PC (`cache/backup-manifests.json`, por nome, tamanho e data; nada na pasta compartilhada); listar de novo não abre nenhum zip. Testado; conferido no app (2ª listagem em 2 ms). Falta o limite de tempo e o aviso de "não conferido".
+- [x] UI que diz "na nuvem" sem saber [P F15] — feito em 25/11/2026: cada backup vem com `in_cloud` (conferido na pasta) e `waiting` (marca de envio); a linha do jogo diz "Na pasta da nuvem", "Esperando a pasta da nuvem" ou "Só neste PC"; "Tudo enviado" virou "Tudo copiado para a pasta", com a explicação de que o app da pasta leva para a internet. Testado. Mantida a decisão existente de que uma cópia esperando uma pasta não vai para outra escolhida depois; falta mostrar essas cópias no contador.
+- [x] Reinstalar um recomp zera o tempo de jogo [P F4] — feito em 25/11/2026: a biblioteca guarda o tempo e o último dia de um jogo removido (`played-kept.json`) e devolve quando ele volta. Testado.
+
+### Lote D — Instalar, atualizar e reparar recomps sem estragar a pasta do jogador
+
+- [x] **Desinstalar um recomp tem que funcionar sempre, e fácil** — feito em 25/11/2026 (commit desta data):
+      Desinstalar… no botão direito da capa (abre Gerenciar já na Zona de perigo), página de outra versão aponta para
+      a instalada, backup que falha pergunta "Desinstalar sem backup dos saves", pasta que o Cerberus não fez oferece
+      "Tirar da biblioteca e manter a pasta", nome temporário único por tentativa e sobras limpas. Falta: entrada do
+      catálogo guardada na instalação [RC F4] e conferir se a sessão "aberta" ainda existe (item 5).
+      Texto original do item: (relatado pelo jogador em 25/11/2026: não
+      conseguiu desinstalar; **o botão nem aparece para ele**).
+      **Por que o botão não aparece** (`ui/src/game.rs`, `Manage`):
+      a. Ele só existe no fim da aba Gerenciar, em "Zona de perigo" (`{danger_h}{remove}`), abaixo de tudo.
+      b. O menu do botão direito na capa (`ui/src/game_menu.rs`) não tem Desinstalar; o Big Picture tem (`tv/sheets.rs`).
+      c. Só aparece quando a página tem o jogo da Biblioteca (`editable` exige `game`). Aberta pelo Descobrir ou numa
+         versão diferente da instalada (id antigo, outra versão do mesmo jogo [RC F8]), `game` é `None` e não há botão.
+      **Correção da tela:** Desinstalar no menu do botão direito e no menu "…" ao lado de Jogar; na página de qualquer
+      versão, achar a instalação pelo jogo (todas as versões e ids antigos) e oferecer Desinstalar.
+      **Por que, quando aparece, pode falhar** — `remove_game` (`src-tauri/src/main.rs`) para tudo no primeiro obstáculo:
+      1. `recomp::backup_saves(...)?` falha → nada é removido. Falha quando o recomp saiu do catálogo ou o catálogo do
+         site foi desligado (`entry_at` → "Esse recomp não está no catálogo.") [RC F4], ou quando a cópia dos saves dá
+         erro. **Correção:** backup com a entrada guardada na instalação (`.cerberus-entry.json`); se ainda assim falhar,
+         perguntar "Desinstalar sem backup dos saves?" em vez de travar.
+      2. `check_install_folder` recusa pasta sem o marcador (copiada, adotada, marcador apagado). **Correção:** oferecer
+         "Tirar da Biblioteca e manter a pasta" ou "Apagar a pasta" com o caminho à vista e confirmação.
+      3. Arquivo em uso (Explorer, antivírus, o jogo) trava a renomeação. **Correção:** dizer qual programa/arquivo e
+         "Tentar de novo"; nunca deixar meio apagado.
+      4. Sobra `.cerberus-removing-<id>` de uma tentativa anterior faz as próximas falharem até reiniciar [RC F20].
+         **Correção:** nome único por tentativa e limpeza das sobras.
+      5. Sessão marcada como aberta por engano ("Feche o jogo antes de removê-lo."). **Correção:** conferir se o
+         processo existe de verdade antes de recusar.
+      **Aceite:** com cada um dos 5 casos reproduzido em pasta temporária, Desinstalar termina (ou pergunta e termina),
+      o jogo sai da Biblioteca e a mensagem diz o que aconteceu. Conferir no app com um recomp real de teste.
+
+- [x] Instalação nova adota pasta alheia com o mesmo nome e depois a apaga inteira [RC F1] — feito em 25/11/2026: pasta existente sem a nossa marca nunca é usada; a instalação vai para `<id>-2`, `<id>-3`... Testado. (Uma instalação nossa interrompida antes da marca também vai para a próxima livre; limpar fica com RC F11.)
+- [x] Reparar/Atualizar sobrescrevem configurações e mods [RC F2] — feito em 25/11/2026: `.cerberus-files.json` com o hash do que cada versão trouxe; arquivo que o jogador mudou fica, o da versão nova vai para `<nome>.cerberus-new`. Vale a partir da próxima instalação/atualização (as antigas não têm o registro). Testado.; arquivos removidos pela versão nova ficam [RC F12]
+- [x] Reparar falha quando a pasta sumiu [RC F5] — feito em 25/11/2026: pasta que não existe mais é instalada de novo no mesmo lugar, com o mesmo jogo na biblioteca (tempo e cópia ficam). Teste ponta a ponta com servidor local.
+- [x] Recomp que saiu do catálogo não desinstala [RC F4] — feito em 25/11/2026: cada instalação guarda `.cerberus-entry.json` (nome, saves, repo, tipo, programa) e usa essa cópia quando o catálogo não tem mais o recomp; backup, desinstalar e a página seguem funcionando. As instalações antigas ganham a cópia ao abrir o app (conferido: os 9 recomps instalados).
+- [x] Versão comparada como texto; ids antigos [RC F8, RC F9] — feito em 25/11/2026: `cerberus_shared::is_update` compara pelos números (e pelo que vem depois deles, como "R3" → "R4"); sem números, só se diferente; a `RecompEntry` leva os ids antigos (`aliases`) e a tela usa `is()`/`update_to()` em Downloads, selos, página do jogo, TV e novidades. Testado; conferido nos 9 recomps instalados (só o MHGU, 0.20.0 → 0.20.3, é atualização).
+- [x] Checksum velho do catálogo em loop [RC F10] — feito em 25/11/2026: o download que não bate fica de lado (`.unverified`, nunca com o nome real); se o checksum era o do catálogo e o servidor do projeto dá ao arquivo o checksum que ele tem, é usado sem baixar de novo; senão, nada é instalado e a mensagem diz que o catálogo pode estar desatualizado. Testado.
+- [x] `.cue`/`.gdi`/`.m3u` sem as faixas [RP F4] — feito em 25/11/2026: as faixas da folha vão junto, com os nomes delas (só arquivos ao lado da folha). Testado; conferido com o .cue real do Crash Bandicoot. Falta o selo de verificado por faixa.
+- [ ] CHD de PS1 Mode 2 Form 2 [RP F15]
+- [x] Instalador que pede administrador (erro 740) [RP F5] — feito em 25/11/2026: no 740 o instalador abre pelo pedido de permissão do Windows e o fim é aguardado; recusar explica o que fazer. Vale para recomps e runtimes da Microsoft. Testado o mapeamento; não exercitado com um instalador real (abriria o pedido do Windows).
+- [x] Programa de outro jogo adotado [RP F6] — feito em 25/11/2026: pelo registro do Windows só vale um nome com todas as palavras do recomp, nunca numa pasta da Steam/Epic/Xbox/GOG nem na de outro jogo da biblioteca; na dúvida, o jogador escolhe o programa. Testado. Falta o "fechou cedo demais" (bootstrapper).
+- [x] Mods mexem em arquivos que não são deles [RP F11] — feito em 25/11/2026: instalar recusa um nome que já está na pasta e não é deste mod (de outro mod ou do jogador), antes de gravar qualquer coisa; remover deixa um arquivo que outro mod também lista; vale para Thunderstore e pacotes do GameBanana. Testado.
+- [x] Filtro aplicado no programa errado [RP F7] — feito em 25/11/2026: a partida põe o ReShade ao lado do mesmo programa que a aba Ajustes avalia (o acompanhado, quando um launcher abre o jogo); retirar a DLL tenta por ~3 s; antes de cada partida sem filtro, um que sobrou é retirado. Testado (DLL presa por 600 ms); não exercitado com o ReStreet.
+- [ ] Cópias grandes sem espaço conferido, progresso ou cancelamento [RP F14]; fila e disco cheio [RC F13, RC F14]
+
+### Lote E — Segurança
+
+- [x] Catálogo de terceiros manda no repositório e no checksum do catálogo próprio [RC F3] — feito em 25/11/2026: para os jogos do catálogo próprio, repositório, servidor, versão, arquivos/checksum, sistemas, programa e tipo vêm só dele; o site completa texto e arte. Testado.
+- [ ] Assinar o `recomps.json` do catálogo próprio (minisign/ed25519) e recusar cópia sem assinatura [RC F3, 2ª parte]
+- [x] Autoatualização às vezes sem hash; instalador no nome final [J F2, RC F15, Fu F15] — feito em 25/11/2026: checksum obrigatório (sem ele, não instala), download em `.part` renomeado só depois de conferido. Conferido com a release real do GitHub.
+- [ ] Autoatualização: exigir assinatura (Authenticode ou minisign) quando as releases forem assinadas [J F2]
+- [x] Núcleos e ReShade gravados pela metade [C F23, RP F8 parte] — feito em 25/11/2026: download lido com limite (256 MB); núcleo do RetroArch e as DLLs do ReShade gravados inteiros ou nada (`write_bytes`), com a versão do ReShade anotada por último (um download interrompido nunca conta como pronto).
+- [ ] Executáveis de terceiros sem hash nem assinatura (fixar versão/sha do ReShade, Authenticode) [RP F8, C F23]
+- [x] Trocar/desconectar conta do RetroAchievements deixa o token antigo no RetroArch, PCSX2 e Dolphin [C F2, C F3] — feito em 25/11/2026: trocar de conta apaga o token anterior; desconectar e trocar tiram o token do Cerberus do RetroArch, PCSX2, Dolphin e DuckStation (o do jogador fica). Testado.
+- [x] Respostas sem limite e redirecionamento para http [Fu F8]; `..` nos lugares de saves do manifesto [Fu F9] — feito em 25/11/2026: `net::read_limited` lê em streaming até o limite (mods do Thunderstore e arte); o `Client` segue redirecionamentos mas nunca de https para http; um lugar de saves com `..`, raiz ou unidade é recusado, e `{home}`/`{documents}`/`{appdata}`/`{local}`/`{config}` sem subpasta também. Testado; conferido que nenhum lugar do catálogo e dos 3 manifestos instalados é recusado. Falta aplicar o limite nos núcleos e na lista do Thunderstore.
+- [x] Nomes reservados do Windows vindos do disco [RP F17]; 7z/tar sem teste de path traversal [Fu F17] — feito em 25/11/2026: `disk::plain_name`/`safe_path` recusam `CON`/`NUL`/`COM1`…, `:`, ponto ou espaço no fim, `..`, raiz e unidade; usados no ISO9660, XDVDFS, 7z (todos os nomes conferidos antes de extrair) e tar (entrada por entrada; links só para um caminho seguro). Testado.
+- [x] Sem CSP [J F25, Fu F13, 1ª parte] — feito em 25/11/2026: CSP ligada (`default-src 'self'`, scripts só do app + `wasm-unsafe-eval`, imagens/mídia https/asset/data/blob, IPC); o player de trailers deixou de montar código a partir de texto (`vendor/hls-play.js`); imagens `http://` das lojas (Xbox store-images) pedidas por https (`net::secure`/`secure_all`); teste que falha com permissão `*`, capability remota ou CSP desligada. Validado na versão compilada: script injetado bloqueado, as 7 telas sem violação, trailer do Portal 2 tocando.
+- [x] Overlay e aviso com as permissões da janela principal [J F25, Fu F13, 2ª parte] — feito em 25/11/2026: `build.rs` lê o `generate_handler!` e dá a cada comando uma permissão `allow-*` (AppManifest), com o conjunto `main-window` só para a janela principal; o menu sobre o jogo só tem os `overlay_*` e o aviso só o `unlock_next`. Conferido no app: na janela do aviso `list_games`, `import_data`, `get_settings` e `overlay_state` são recusados e `unlock_next` passa; a principal segue com tudo.
+- [ ] Fontes no formato RecompLauncher de qualquer servidor [RC F16] — não feito: as mesmas fontes trazem as listas de downloads diretos (Hydra), área em que não trabalho; restringir só uma parte não fecha a brecha.
+
+### Lote F — Panics e travamentos da interface
+
+- [x] Sinais descartados lidos em timers e depois de `await` [BP F1, BP F8, J F5] — feito em 25/11/2026: `try_` no fundo da TV e depois de desinstalar; `on_event_here` desliga o ouvinte quando a tela sai (Fotos, progresso dos emuladores). Conferido no app: 4 visitas e evento depois de sair, sem erro.
+- [x] Comandos síncronos pesados na thread principal [Fu F7, B F12] — feito em 25/11/2026: 75 comandos que tocam disco, registro ou processos viraram `#[tauri::command(async)]`; ficam síncronos só os de memória, janela e bandeja. Conferido no app.
+- [ ] I/O bloqueante em async [Fu F16]; guardar em memória o tamanho da arte e as pendências da nuvem do `settings_view`
+- [x] `list_games` refeito a cada clique e em rajadas [B F4, passos 1 e 3] — feito em 25/11/2026: favoritar, ocultar e coleção mudam só o jogo na tela (`Library::patch_game`); vários `catalog-changed` viram uma leitura 300 ms depois do último. Medido: `list_games` ~310 ms com 950 jogos, agora 0 chamadas ao favoritar.
+- [x] Cache da montagem no backend [B F4, passo 2] — feito em 25/11/2026: os jogos das lojas ficam guardados e são lidos de novo quando chega `catalog-changed` ou depois de 20 s; a arte baixada é conferida com uma listagem da pasta em vez de ~1.900 consultas; só os recomps da lista são cruzados com as ROMs. Medido no app (build de desenvolvimento, 950 jogos): ~300 ms → ~75–105 ms quente; aviso de loja refaz (228 ms).
+- [ ] `settings::load` uma vez, arte da Steam por um `read_dir`, `owned-<id>.json` uma vez [B F4, passos 4 a 6]; arte pedida de novo [B F6]
+- [x] Varredura de ROMs que baixa arquivos só na nuvem [C F4] — feito em 25/11/2026: arquivo marcado pelo Windows como só na nuvem é reconhecido pelo nome e pela pasta, sem ser aberto. Testado; conferido no app (os 5 clássicos continuam).
+- [x] Varredura sem cache e que cobre pastas demais [C F7, C F8, C F18] — feito em 25/11/2026: `rom-cache.json` guarda o que cada arquivo tinha (tamanho e data), arquivo sem mudança não é aberto de novo; pastas e varredura fora do executor async; só a varredura mais recente publica; Downloads, Documentos, Área de Trabalho, Imagens/Vídeos/Músicas e a raiz do OneDrive não entram como "última pasta" de emulador. Testado; conferido no app (cache com 6 arquivos, os 5 clássicos iguais). Falta progresso/cancelamento.
+- [x] Biblioteca da TV desenha tudo [BP F5] — feito em 25/11/2026 (ff4464d): 48 capas e cresce até onde o foco vai; conferido no app.
+- [x] Menu escondido lendo o controle a 30 Hz [J F10] — resolvido junto com BP F3 (2c3474b): a leitura só acontece com a janela em foco, e a janela escondida nunca tem; A/B não agem no menu escondido. Fica só o timer, que pergunta pelo foco e volta.
+
+### Lote G — Funciona como promete (por área)
+
+- Biblioteca: ~~B F3~~ (25/11/2026: `library.json` ilegível tira só os jogos dele; as lojas continuam e a Biblioteca explica), F7–F11, F13–F20.
+- Clássicos: ~~C F5~~ (25/11/2026: `.zip` pelo cartucho dentro, `.7z` pela pasta), F6, F9–F17, F19–F22, F24–F26.
+- Durante o jogo e app: ~~J F3~~ (25/11/2026: fechar a janela de vez encerra o app, com as janelas escondidas do menu e do aviso), F6–F9, F11–F13, F15–F24.
+- Big Picture: ~~BP F2, BP F3~~ (25/11/2026: botões só contam depois de vistos soltos, Menu precisa ser solto depois de sair, F11 sem repetição, controle só com o Cerberus em foco; o controle real ainda precisa ser conferido à mão), ~~BP F4~~ (25/11/2026: chip Buscar na Biblioteca com busca própria e sem acento; LT/RT (Home/End) saltam de letra em A a Z com a letra grande, ou uma página; conferido no app), F6, F7, F9–F19.
+- Partidas: P F7–F9, F18, F20–F22, F24–F26.
+- Recomps: RC F17–F23; RP F16, F18–F22.
+
+### Divergências do próprio roadmap (corrigir o texto)
+
+- 5.2 marca como feitos `version.json`, versão mínima e arquivo ruim marcado: não existem em `self_update.rs` [RC F15, J F2]. Corrigir o texto da 5.2.
+- 6.1 diz que o aviso de conquista tem 6 posições, versão secreta, agrupamento e volume [J F11]: conferir e desmarcar o que falta.
+
+### Ordem
+
+A (dados do jogador) → B (interrupções) → C (saves) → E (segurança) → D (recomps) → F (travamentos) → G.
+Cada lote fecha com testes novos para cada item e conferência no app sem clicar em nada destrutivo.
+
+## Planos detalhados (25/11/2026)
+
+Cada tópico novo ganhou um plano escrito por um agente que leu o código do Cerberus e as referências. Os planos
+têm etapas pequenas com critério de aceite e testes; o que não foi confirmado está marcado "não verificado".
+
+| Tópico | Plano | Primeira etapa |
+| --- | --- | --- |
+| Saves de jogos de PC | [saves-de-jogos-de-pc.md](docs/roadmap/saves-de-jogos-de-pc.md) | Ler o manifesto do Ludusavi baixado sob demanda (não embutir: licença dos dados ambígua) |
+| GOG e outras lojas | [gog-e-outras-lojas.md](docs/roadmap/gog-e-outras-lojas.md) | GOG instalados pelo registro e pelo `galaxy-2.0.db` (biblioteca e tempo sem login) |
+| Steam sem chave e gerenciar lojas | [steam-sem-chave-e-gerenciar-lojas.md](docs/roadmap/steam-sem-chave-e-gerenciar-lojas.md) | Etapa 0 (segredos no backup e na URL), depois teste descartável do `webapi_token` |
+| Metadados, filtros e estatísticas | [metadados-filtros-e-estatisticas.md](docs/roadmap/metadados-filtros-e-estatisticas.md) | E1: tipos de filtro, agrupamento e ordem no `shared`, medidos com 1.500 jogos |
+| Troféus e lembranças | [trofeus-e-lembrancas.md](docs/roadmap/trofeus-e-lembrancas.md) | Parsers puros do `TROPUSR.DAT` e `TROPCONF.SFM` com arquivos sintéticos |
+| Recomps robustos | [recomps-robustos.md](docs/roadmap/recomps-robustos.md) | `extract`, `contains`, `destination` e entradas como link |
+
 ## Fora de vez
 
 - Ler arquivos de conquistas de emuladores de Steam usados em jogos piratas (CODEX, RUNE, Goldberg, EMPRESS etc.),
-  fontes de download, torrent, debrid e hosters, e instalar PKG de PS4 baixado. O Hydra tem; o Cerberus nunca terá.
+  torrent, debrid, resolvedores de hosters e instalação de PKG de PS4 baixado. O Hydra tem; o Cerberus não terá.

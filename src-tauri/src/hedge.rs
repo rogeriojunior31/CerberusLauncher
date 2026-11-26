@@ -93,21 +93,47 @@ pub fn user_dir(user: &str, exe_dir: &Path) -> PathBuf {
     std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| exe_dir.to_path_buf()).join(user)
 }
 
+/// Reads one of the mod manager's files: none yet is an empty one; one that
+/// can't be read (held open, another text format) is refused, so the player's
+/// list is never rewritten from nothing.
+fn read_ini(path: &Path) -> Result<String, String> {
+    match fs::read(path) {
+        Ok(bytes) => String::from_utf8(bytes).map_err(|_| tr!("{} está num formato que o Cerberus não lê; nada foi mudado. Abra-o no Hedge Mod Manager e salve de novo.", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(tr!("Não foi possível ler {0}: {1}. Feche o Hedge Mod Manager e tente de novo; nada foi mudado.", path.display(), e)),
+    }
+}
+
+/// Writes one of them whole or not at all; the first time Cerberus changes
+/// someone's file, a copy of it is kept beside it.
+fn write_ini(path: &Path, text: &str) -> Result<(), String> {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let backup = path.with_file_name(format!("{name}.cerberus.bak"));
+    if path.is_file() && !backup.exists() {
+        fs::copy(path, &backup).map_err(|e| tr!("Não foi possível guardar uma cópia de {0}: {1}", name, e))?;
+    }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let partial = path.with_file_name(format!("{name}.cerberus-tmp"));
+    fs::write(&partial, text).and_then(|()| fs::rename(&partial, path)).map_err(|e| {
+        let _ = fs::remove_file(&partial);
+        tr!("Não foi possível gravar {0}: {1}", name, e)
+    })
+}
+
 /// The ModsDB.ini the game reads. When there's none yet, one is made in the
 /// mods folder and named in a new (or turned on) cpkredir.ini.
 fn mods_db(user: &str, exe_dir: &Path) -> Result<PathBuf, String> {
     let cfg_path = user_dir(user, exe_dir).join("cpkredir.ini");
-    let mut cfg = Ini::parse(&fs::read_to_string(&cfg_path).unwrap_or_default());
+    let mut cfg = Ini::parse(&read_ini(&cfg_path)?);
     let named = cfg.get("CPKREDIR", "ModsDbIni").filter(|p| !p.is_empty()).map(PathBuf::from);
     let db = named.clone().unwrap_or_else(|| exe_dir.join("mods").join("ModsDB.ini"));
     let off = cfg.get("CPKREDIR", "Enabled").is_some_and(|v| v == "0" || v.eq_ignore_ascii_case("false"));
     if named.is_none() || off {
         cfg.set("CPKREDIR", "Enabled", "1");
         cfg.set("CPKREDIR", "ModsDbIni", &db.display().to_string());
-        if let Some(dir) = cfg_path.parent() {
-            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
-        fs::write(&cfg_path, cfg.text()).map_err(|e| tr!("Não foi possível gravar o cpkredir.ini: {}", e))?;
+        write_ini(&cfg_path, &cfg.text())?;
     }
     Ok(db)
 }
@@ -128,24 +154,15 @@ fn set_active(db: &mut Ini, list: &[String]) {
     }
 }
 
-/// Changes ModsDB.ini; the first time the launcher touches someone's file, a
-/// copy is kept beside it.
+/// Changes ModsDB.ini (see `write_ini` for the copy kept the first time).
 fn change_db(path: &Path, change: impl FnOnce(&mut Ini)) -> Result<(), String> {
-    let before = fs::read_to_string(path).ok();
-    let backup = path.with_extension("ini.cerberus.bak");
-    if before.is_some() && !backup.exists() {
-        let _ = fs::copy(path, &backup);
-    }
-    let mut db = Ini::parse(before.as_deref().unwrap_or_default());
+    let mut db = Ini::parse(&read_ini(path)?);
     if db.get("Main", "ActiveModCount").is_none() {
         db.set("Main", "ActiveModCount", "0");
     }
     db.section_mut("Mods");
     change(&mut db);
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    fs::write(path, db.text()).map_err(|e| tr!("Não foi possível gravar o ModsDB.ini: {}", e))
+    write_ini(path, &db.text())
 }
 
 pub fn db_id(mod_id: u64) -> String {
@@ -218,6 +235,12 @@ pub fn place(archive: &Path, mods: &Path, user: &str, mod_id: u64, name: &str, o
                 return Err(tr!("Esse mod vem em várias versões ({}); escolha uma na página dele e instale à mão.", names.join(", ")));
             }
         };
+        // The new version goes in beside the old one first: if moving it fails,
+        // the old one is still there to play.
+        fs::create_dir_all(mods).map_err(|e| e.to_string())?;
+        let staged = mods.join(format!(".cerberus-new-{mod_id}"));
+        let _ = fs::remove_dir_all(&staged);
+        move_dir(&folder, &staged)?;
         remove_folders(mods, old);
         let own = folder.file_name().filter(|_| folder != unpacked).map(|n| plain(&n.to_string_lossy())).unwrap_or_default();
         let base = [own, plain(name)].into_iter().find(|n| !n.is_empty()).unwrap_or_else(|| format!("gamebanana-{mod_id}"));
@@ -225,8 +248,10 @@ pub fn place(archive: &Path, mods: &Path, user: &str, mod_id: u64, name: &str, o
         let target_name = if mods.join(&base).exists() { format!("{base} (gb {mod_id})") } else { base };
         let target = mods.join(&target_name);
         let _ = fs::remove_dir_all(&target);
-        fs::create_dir_all(mods).map_err(|e| e.to_string())?;
-        move_dir(&folder, &target)?;
+        fs::rename(&staged, &target).map_err(|e| {
+            let _ = fs::remove_dir_all(&staged);
+            tr!("Não foi possível pôr o mod no lugar: {}", e)
+        })?;
         let ini = mod_ini(&target).ok_or(tr!("O mod.ini sumiu ao mover o mod."))?;
         let exe_dir = mods.parent().unwrap_or(mods);
         let db = mods_db(user, exe_dir)?;
@@ -249,7 +274,7 @@ pub fn place(archive: &Path, mods: &Path, user: &str, mod_id: u64, name: &str, o
 /// Takes the mod out of ModsDB.ini and its folders out of `mods`.
 pub fn remove(mods: &Path, user: &str, mod_id: u64, folders: &[String]) -> Result<(), String> {
     let exe_dir = mods.parent().unwrap_or(mods);
-    let cfg = Ini::parse(&fs::read_to_string(user_dir(user, exe_dir).join("cpkredir.ini")).unwrap_or_default());
+    let cfg = Ini::parse(&read_ini(&user_dir(user, exe_dir).join("cpkredir.ini"))?);
     if let Some(db) = cfg.get("CPKREDIR", "ModsDbIni").filter(|p| !p.is_empty()).map(PathBuf::from).filter(|p| p.is_file()) {
         let id = db_id(mod_id);
         change_db(&db, |db| {
@@ -274,6 +299,32 @@ mod tests {
             zip.write_all(body.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_db_is_left_alone_and_both_files_get_a_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("ModsDB.ini");
+        // UTF-16, as some tools save it: not rewritten from nothing.
+        fs::write(&db, [0xFF, 0xFE, b'[', 0, b'M', 0]).unwrap();
+        assert!(change_db(&db, |_| {}).is_err());
+        assert_eq!(fs::read(&db).unwrap(), vec![0xFF, 0xFE, b'[', 0, b'M', 0]);
+        // A readable one: the player's original is kept beside it once.
+        fs::write(&db, "[Main]
+ActiveModCount=1
+ActiveMod0=theirs
+").unwrap();
+        change_db(&db, |db| db.set("Mods", "ours", "x")).unwrap();
+        assert!(fs::read_to_string(dir.path().join("ModsDB.ini.cerberus.bak")).unwrap().contains("theirs"));
+        assert!(fs::read_to_string(&db).unwrap().contains("ours"));
+        let cfg = dir.path().join("cpkredir.ini");
+        fs::write(&cfg, "[CPKREDIR]
+Enabled=0
+").unwrap();
+        write_ini(&cfg, "[CPKREDIR]
+Enabled=1
+").unwrap();
+        assert!(fs::read_to_string(dir.path().join("cpkredir.ini.cerberus.bak")).unwrap().contains("Enabled=0"));
     }
 
     #[test]

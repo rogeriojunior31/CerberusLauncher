@@ -205,6 +205,11 @@ fn from_folders(path: &Path) -> Option<&'static str> {
 }
 
 /// The console of a disc image, or none when neither the disc nor its folder says.
+/// The console a disc is from by its folders' names only, never opening it.
+pub fn console_by_folder(path: &Path) -> Option<&'static str> {
+    from_folders(path)
+}
+
 pub fn console_of(path: &Path) -> Option<&'static str> {
     let ext = path.extension()?.to_string_lossy().to_lowercase();
     from_contents(path, &ext).or_else(|| from_folders(path))

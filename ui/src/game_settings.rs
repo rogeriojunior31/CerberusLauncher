@@ -21,9 +21,12 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
     let advanced = RwSignal::new(false);
     let armed_reset = RwSignal::new(false);
 
-    spawn_local(async move {
-        state.set(Some(api::game_settings(&id.get_value()).await));
-    });
+    let load = move || {
+        spawn_local(async move {
+            state.set(Some(api::game_settings(&id.get_value()).await));
+        });
+    };
+    load();
 
     // One change at a time; the reply is the settings as the file now has them.
     let apply = move |setting: Option<String>, choice: Option<usize>| {
@@ -59,7 +62,7 @@ pub fn GameSettingsTab(game_id: String) -> impl IntoView {
     let running = move || library.running.with(|all| all.contains(&id.get_value()));
 
     move || match state.get() {
-        None => view! { <crate::game_overview::Waiting text=tr!("Lendo os ajustes do jogo...") /> }.into_any(),
+        None => view! { <crate::game_overview::Waiting text=tr!("Lendo os ajustes do jogo...") retry=Callback::new(move |_| load()) /> }.into_any(),
         Some(Err(error)) => view! { <p class="problem">{error}</p> }.into_any(),
         Some(Ok(None)) => view! {
             <div class="empty small">

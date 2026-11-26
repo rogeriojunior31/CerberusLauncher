@@ -18,7 +18,25 @@ use super::CatalogEntry;
 use super::assets::{Asset, Kind, kind, words};
 
 pub const CANCELLED: &str = tk!("Instalação cancelada.");
+/// A download that doesn't match the checksum it was asked with, kept aside
+/// (followed by the checksum it has): the catalog's may simply be old.
+pub const UNVERIFIED: &str = "\u{1}unverified:";
 pub use cerberus_shared::PAUSED;
+
+/// How a resolved hoster link differs from a plain release download.
+#[derive(Debug, Clone, Default)]
+pub struct DownloadOptions {
+    pub url: String,
+    /// Stable source URL, so a refreshed temporary link still resumes the same partial file.
+    pub identity: String,
+    pub headers: Vec<(String, String)>,
+}
+
+impl DownloadOptions {
+    pub fn direct(asset: &Asset) -> Self {
+        Self { url: asset.url.clone(), identity: asset.url.clone(), headers: Vec::new() }
+    }
+}
 
 /// Stops a download: cancelled (its bytes are thrown away) or paused (they are
 /// kept, and the next download of the same file carries on from them).
@@ -40,7 +58,7 @@ impl Halt {
         self.stop.store(true, Ordering::Relaxed);
     }
 
-    fn stopped(&self) -> bool {
+    pub fn stopped(&self) -> bool {
         self.stop.load(Ordering::Relaxed)
     }
 
@@ -68,10 +86,21 @@ pub async fn download(
     cancel: &Halt,
     report: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf, String> {
+    download_with(client, asset, &DownloadOptions::direct(asset), dir, cancel, report).await
+}
+
+pub async fn download_with(
+    client: &Client,
+    asset: &Asset,
+    options: &DownloadOptions,
+    dir: &Path,
+    cancel: &Halt,
+    report: impl Fn(u64, u64) + Send,
+) -> Result<PathBuf, String> {
     tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
     let safe_name: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
     let target = dir.join(&safe_name);
-    let tag = &format!("{:x}", Sha256::digest(format!("{}|{}", asset.size, asset.url)))[..10];
+    let tag = &format!("{:x}", Sha256::digest(format!("{}|{}", asset.size, options.identity)))[..10];
     let part = dir.join(format!("{safe_name}.{tag}.part"));
     *cancel.part.lock().unwrap_or_else(|p| p.into_inner()) = Some(part.clone());
 
@@ -83,7 +112,7 @@ pub async fn download(
     let mut tries = 0;
     loop {
         tries += 1;
-        match fetch_into(client, asset, &part, &mut hash, &mut done, &mut total, cancel, &report).await {
+        match fetch_into(client, asset, options, &part, &mut hash, &mut done, &mut total, cancel, &report).await {
             Ok(()) => break,
             Err(Stop::Cancelled) if cancel.keep.load(Ordering::Relaxed) => return Err(PAUSED.into()),
             Err(Stop::Cancelled) => {
@@ -103,11 +132,39 @@ pub async fn download(
     // Uploads from before GitHub kept checksums have nothing to compare against.
     let wrong = asset.sha256.as_ref().is_some_and(|expected| *expected != got);
     if wrong {
-        let _ = fs::remove_file(&part);
-        return Err(tr!("O arquivo baixado não bate com o checksum do GitHub, então foi descartado. Tente de novo.").into());
+        // Kept aside, never under its real name: if the project's server vouches
+        // for this checksum, it is used without downloading it all again.
+        let held = held_for(&target);
+        if super::throttle::rename_patiently(&part, &held, 20).is_err() {
+            let _ = fs::remove_file(&part);
+        }
+        return Err(format!("{UNVERIFIED}{got}"));
     }
     super::throttle::rename_patiently(&part, &target, 20)?;
     Ok(target)
+}
+
+fn held_for(target: &Path) -> PathBuf {
+    let mut name = target.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(".unverified");
+    target.with_file_name(name)
+}
+
+fn target_in(dir: &Path, asset: &Asset) -> PathBuf {
+    let safe_name: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
+    dir.join(safe_name)
+}
+
+/// The download kept aside, now vouched for by another checksum: under its real name.
+pub fn accept_held(dir: &Path, asset: &Asset) -> Result<PathBuf, String> {
+    let target = target_in(dir, asset);
+    super::throttle::rename_patiently(&held_for(&target), &target, 20)?;
+    Ok(target)
+}
+
+/// The download kept aside, not vouched for by anyone: gone.
+pub fn drop_held(dir: &Path, asset: &Asset) {
+    let _ = fs::remove_file(held_for(&target_in(dir, asset)));
 }
 
 // Cancel a stalled connection or retry delay even if the server sends no further bytes.
@@ -160,6 +217,7 @@ fn resume_state(part: &Path, size: u64) -> (Sha256, u64) {
 async fn fetch_into(
     client: &Client,
     asset: &Asset,
+    options: &DownloadOptions,
     part: &Path,
     hash: &mut Sha256,
     done: &mut u64,
@@ -171,7 +229,9 @@ async fn fetch_into(
     if *done == *total && *total > 0 {
         return Ok(());
     }
-    let request = || client.get(&asset.url).timeout(Duration::from_secs(6 * 60 * 60));
+    let request = || {
+        options.headers.iter().fold(client.get(&options.url).timeout(Duration::from_secs(6 * 60 * 60)), |get, (name, value)| get.header(name, value))
+    };
     let dropped = || Stop::Retry(tr!("A conexão caiu durante o download. Tente de novo; ele continua de onde parou.").into());
     let mut get = request();
     if *done > 0 {
@@ -195,7 +255,7 @@ async fn fetch_into(
     }
     let status = reply.status();
     if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
-        return Err(Stop::Retry(tr!("O GitHub está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
+        return Err(Stop::Retry(tr!("O servidor está ocupado (resposta {}). Tente de novo em um minuto.", status.as_u16())));
     }
     let continuing = !restart && status == StatusCode::PARTIAL_CONTENT;
     let response_end = if continuing {
@@ -210,8 +270,11 @@ async fn fetch_into(
         *total = length.unwrap_or(asset.size);
         *total
     } else {
-        return Err(Stop::Fatal(tr!("O GitHub respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
+        return Err(Stop::Fatal(tr!("O servidor respondeu {} ao baixar {}.", status.as_u16(), asset.name)));
     };
+    if reply.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.to_ascii_lowercase().starts_with("text/html")) {
+        return Err(Stop::Fatal(tr!("O link abriu uma página em vez de um arquivo. Atualize a fonte ou tente outro link.").into()));
+    }
     crate::disk::require(part.parent().unwrap_or(part), total.saturating_sub(*done)).map_err(Stop::Fatal)?;
     if !continuing {
         *hash = Sha256::new();
@@ -347,16 +410,36 @@ pub(super) fn unzip(file: &Path, to: &Path) -> Result<(), String> {
 /// Entries naming `..`, a root or a drive are refused by the library itself.
 pub(super) fn un7z(file: &Path, to: &Path) -> Result<(), String> {
     let archive = sevenz_rust2::Archive::open(file).map_err(|e| e.to_string())?;
+    // Every name checked here first, whatever the library itself refuses.
+    if let Some(bad) = archive.files.iter().map(|f| f.name()).find(|n| !crate::disk::safe_path(n)) {
+        return Err(tr!("O arquivo baixado tem um caminho inseguro ({}); nada foi extraído.", bad));
+    }
     let size = archive.files.iter().fold(0u64, |sum, item| sum.saturating_add(item.size()));
     crate::disk::require(to, size)?;
     sevenz_rust2::decompress_file(file, to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))
 }
 
-/// `tar` refuses entries that would land outside `to`, and keeps Unix permissions.
+/// Entry by entry, each checked here: files, folders and links with safe names
+/// (a link only to a path beside it), Unix permissions kept.
 fn untar_gz(file: &Path, to: &Path) -> Result<(), String> {
     let reader = fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(reader));
-    archive.unpack(to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))
+    fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    let entries = archive.entries().map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))?;
+    for entry in entries {
+        let mut entry = entry.map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))?;
+        let name = entry.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let kind = entry.header().entry_type();
+        // A link (a Linux build's libfoo.so -> libfoo.so.1) only to a plain path
+        // beside it: never "..", a root or a drive, so nothing is written out of `to`.
+        let link_ok = || entry.link_name().ok().flatten().is_some_and(|t| crate::disk::safe_path(&t.to_string_lossy()));
+        let allowed = kind.is_file() || kind.is_dir() || ((kind.is_symlink() || kind.is_hard_link()) && link_ok());
+        if !allowed || !crate::disk::safe_path(&name) {
+            return Err(tr!("O arquivo baixado tem um caminho inseguro ({}); a extração parou.", name));
+        }
+        entry.unpack_in(to).map_err(|e| tr!("O arquivo baixado está corrompido: {}", e))?;
+    }
+    Ok(())
 }
 
 /// Many archives hold everything inside one `Game-v1.2/` folder; the game's files
@@ -476,6 +559,58 @@ fn name_words(name: &str) -> Vec<String> {
 pub(super) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_tar_with_a_link_or_a_climbing_path_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let make = |name: &str, link: bool| {
+            let file = dir.path().join(format!("{}.tar.gz", if link { "link" } else { "climb" }));
+            let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(fs::File::create(&file).unwrap(), flate2::Compression::fast()));
+            let mut header = tar::Header::new_gnu();
+            if link {
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_size(0);
+                header.set_cksum();
+                builder.append_link(&mut header, name, "..").unwrap();
+            } else {
+                header.set_size(1);
+                header.set_cksum();
+                // Written raw: the builder itself refuses "..".
+                let bytes = name.as_bytes();
+                header.as_old_mut().name[..bytes.len()].copy_from_slice(bytes);
+                header.set_cksum();
+                builder.append(&header, &b"x"[..]).unwrap();
+            }
+            builder.into_inner().unwrap().finish().unwrap();
+            file
+        };
+        let out = dir.path().join("out");
+        assert!(untar_gz(&make("up", true), &out).unwrap_err().contains("inseguro"), "a link to '..' is refused");
+        assert!(untar_gz(&make("../escaped.txt", false), &out).unwrap_err().contains("inseguro"));
+        assert!(!dir.path().join("escaped.txt").exists());
+    }
+
+    #[test]
+    fn a_download_that_misses_its_checksum_is_kept_aside_not_installed() {
+        use std::{io::{BufRead, BufReader}, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let _: Vec<_> = BufReader::new(&socket).lines().map(Result::unwrap).take_while(|l| !l.is_empty()).collect();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nNEWS").unwrap();
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let asset = Asset { name: "game.zip".into(), url, size: 0, sha256: Some("00".repeat(32)) };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let error = tauri::async_runtime::block_on(download(&client, &asset, dir.path(), &Halt::default(), |_, _| {})).unwrap_err();
+        server.join().unwrap();
+        let got = error.strip_prefix(UNVERIFIED).expect("told apart from other failures");
+        assert_eq!(got, format!("{:x}", Sha256::digest(b"NEWS")));
+        assert!(!dir.path().join("game.zip").exists(), "never under its real name unchecked");
+        let accepted = accept_held(dir.path(), &asset).unwrap();
+        assert_eq!(fs::read(accepted).unwrap(), b"NEWS");
+    }
 
     #[test]
     fn resumptions_validate_the_server_range_before_publishing() {

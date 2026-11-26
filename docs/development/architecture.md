@@ -66,8 +66,8 @@ The UI calls the backend with Tauri commands (`ui/src/api.rs` → `#[tauri::comm
 ## Principles
 
 - **The player's data comes first.** Library writes are published only after they reach the disk. Anything written outside Cerberus's folder is backed up first and can be undone.
-- **No game files are ever downloaded.** Recomps come from their developers' releases, and game data comes from the player's own copy.
-- **Downloads are verified** against the checksum the host publishes, and archives are checked for paths that escape their folder.
+- **Downloads require an explicit action.** Recomps come from their developers' releases and use the player's own copy. Direct HTTP(S) files from user-added Hydra sources install only when requested; magnet and torrent links are not downloaded.
+- **Downloads are verified** against the host's checksum when one is available, and archives are checked for paths that escape their folder.
 - **Updates are recoverable.** A new version is staged next to the old one and swapped in one step. An interrupted update is rolled back on the next start.
 
 ## See also

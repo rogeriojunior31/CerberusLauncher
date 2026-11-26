@@ -58,6 +58,30 @@ struct SearchItem {
     kind: String,
 }
 
+/// The Steam app with exactly this name, if the store has one. Remembered in
+/// `steam-match.json` (a name not found is asked again after a week).
+pub async fn app_for(client: &Client, data: &std::path::Path, name: &str) -> Option<u32> {
+    #[derive(serde::Serialize, Deserialize, Clone, Copy)]
+    struct Seen {
+        app: Option<u32>,
+        at: u64,
+    }
+    let file = data.join("cache").join("steam-match.json");
+    let mut known: std::collections::HashMap<String, Seen> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let key = normalize(name);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    if let Some(seen) = known.get(&key) {
+        if seen.app.is_some() || now < seen.at + 7 * 86_400 {
+            return seen.app;
+        }
+    }
+    let app = search(client, name, true).await.ok()?.map(|item| item.id);
+    known.insert(key, Seen { app, at: now });
+    let _ = std::fs::create_dir_all(file.parent()?);
+    let _ = std::fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+    app
+}
+
 async fn search(client: &Client, query: &str, exact: bool) -> Result<Option<SearchItem>, String> {
     let params = [("term", query), ("l", "english"), ("cc", "US")];
     let request = client.get(SEARCH_URL).query(&params);

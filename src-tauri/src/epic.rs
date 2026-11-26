@@ -6,7 +6,6 @@
 //! `LauncherInstalled.dat`. Names and covers come from the launcher's own
 //! catalog cache, so no network request is needed.
 
-use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,7 +30,7 @@ pub fn installed_games() -> Vec<Game> {
     let Some(program_data) = program_data() else {
         return Vec::new();
     };
-    let epic = program_data.join(tr!("Epic"));
+    let epic = program_data.join("Epic");
     let catalog_file = epic.join(r"EpicGamesLauncher\Data\Catalog\catcache.bin");
     let catalog = fs::read_to_string(catalog_file).map(|t| parse_catalog(&t)).unwrap_or_default();
 

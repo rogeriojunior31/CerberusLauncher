@@ -22,7 +22,7 @@ pub struct Update {
 
 /// Recomps installed by Cerberus whose newest release isn't the one installed.
 pub fn updates(games: &[Game], recomps: &[RecompEntry]) -> Vec<Update> {
-    let newest = |id: &str| recomps.iter().find(|e| e.id == id).and_then(|e| e.latest.as_ref()).map(|r| r.version.clone());
+    let newest = |id: &str| recomps.iter().find(|e| e.is(id)).and_then(|e| e.latest.as_ref()).map(|r| r.version.clone());
     behind(games, newest)
 }
 
@@ -33,7 +33,7 @@ fn behind(games: &[Game], newest: impl Fn(&str) -> Option<String>) -> Vec<Update
         .filter_map(|game| {
             let Source::Recomp { recomp_id, version, .. } = &game.source else { return None };
             let to = newest(recomp_id)?;
-            (to != *version).then(|| Update { game: game.clone(), recomp_id: recomp_id.clone(), from: version.clone(), to })
+            cerberus_shared::is_update(version, &to).then(|| Update { game: game.clone(), recomp_id: recomp_id.clone(), from: version.clone(), to })
         })
         .collect()
 }
@@ -382,7 +382,7 @@ pub fn NewsPage() -> impl IntoView {
                     <div class="dl-row card">
                         <div class="thumb"><Poster sources=cover_sources(&u.game) title=u.game.name.clone() /></div>
                         <div class="dl-info">
-                            <b>{u.game.name.clone()}</b>
+                            {let (game, recomp) = crate::tiles::game_names(&u.game, library); view! { <b>{game}{recomp.map(|v| view! { <small class="sv-ver">{v}</small> })}</b> }}
                             <span class="muted">{format!("{} → {}", u.from, u.to)}</span>
                         </div>
                         <div class="row">

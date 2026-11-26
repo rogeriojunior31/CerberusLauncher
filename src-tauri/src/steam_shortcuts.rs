@@ -280,8 +280,12 @@ pub fn load(config: &Path) -> Result<Vec<(String, Node)>, String> {
 pub fn save(config: &Path, top: &[(String, Node)]) -> Result<(), String> {
     let file = config.join("shortcuts.vdf");
     fs::create_dir_all(config).map_err(|e| e.to_string())?;
-    if file.is_file() {
-        fs::copy(&file, config.join("shortcuts.vdf.cerberus.bak")).map_err(|e| tr!("Não foi possível guardar uma cópia da lista da Steam: {}", e))?;
+    // The list from before a batch ("Adicionar todos" saves once per game):
+    // a copy made in the last ten minutes already holds it, and is kept.
+    let backup = config.join("shortcuts.vdf.cerberus.bak");
+    let recent = fs::metadata(&backup).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < std::time::Duration::from_secs(600));
+    if file.is_file() && !recent {
+        fs::copy(&file, &backup).map_err(|e| tr!("Não foi possível guardar uma cópia da lista da Steam: {}", e))?;
     }
     let temp = config.join("shortcuts.vdf.cerberus.tmp");
     fs::write(&temp, write(top)).map_err(|e| e.to_string())?;

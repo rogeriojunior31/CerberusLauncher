@@ -19,6 +19,8 @@ pub struct TileInfo {
     pub covers: Vec<String>,
     /// A corner chip: "Atualização", "Jogando"...
     pub badge: Option<String>,
+    /// What the chip means and what to do, on hover and for screen readers.
+    pub hint: Option<String>,
     /// The player's favorite: a heart on the cover.
     pub favorite: bool,
     /// The library game behind the tile, for its right-click menu.
@@ -30,12 +32,66 @@ pub struct TileInfo {
     pub absent: bool,
     /// Achievements unlocked and in all, for a bar on the cover.
     pub progress: Option<(u32, u32)>,
+    /// Where the game comes from and what runs it: the store's logo, "Nativo"
+    /// for a recomp, the emulator and console for a classic.
+    pub marks: Vec<SourceMark>,
+}
+
+/// One sign in the cover's corner.
+#[derive(Clone, PartialEq, Debug)]
+pub enum Mark {
+    /// A store's logo, drawn in one color (ui/brand/stores/<name>.svg).
+    Store(&'static str),
+    /// An emulator's icon.
+    Image(&'static str),
+    /// A few letters: "Nativo", "PS2".
+    Text(String),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct SourceMark {
+    pub mark: Mark,
+    /// What it means, on hover and for screen readers.
+    pub label: String,
+}
+
+/// The marks of a library game: its store, or "Nativo" for a recomp.
+pub fn source_marks(source: &Source) -> Vec<SourceMark> {
+    let one = |mark: Mark, label: &str| vec![SourceMark { mark, label: label.to_string() }];
+    match source {
+        Source::Steam { .. } => one(Mark::Store("steam"), "Steam"),
+        Source::Epic { .. } => one(Mark::Store("epic"), "Epic Games"),
+        Source::Xbox { game_pass: true, .. } => one(Mark::Store("xbox"), "Game Pass"),
+        Source::Xbox { .. } => one(Mark::Store("xbox"), "Xbox"),
+        Source::Recomp { .. } => one(Mark::Text("Recomp".to_string()), tr!("Recomp: versão nativa para PC")),
+        Source::Local { .. } => Vec::new(),
+    }
+}
+
+/// The corner signs, top left of the cover.
+fn marks_view(marks: &[SourceMark]) -> Option<impl IntoView + use<>> {
+    (!marks.is_empty()).then(|| {
+        let items = marks
+            .iter()
+            .map(|m| {
+                let body = match &m.mark {
+                    Mark::Store(name) => view! { <i class=format!("store-logo {name}")></i> }.into_any(),
+                    Mark::Image(src) => view! { <img src=*src alt="" /> }.into_any(),
+                    Mark::Text(text) => view! { <b>{text.clone()}</b> }.into_any(),
+                };
+                view! { <span class="src-mark" title=m.label.clone() aria-label=m.label.clone()>{body}</span> }
+            })
+            .collect_view();
+        view! { <span class="src-marks">{items}</span> }
+    })
 }
 
 pub fn source_name(source: &Source) -> &'static str {
     match source {
         Source::Steam { .. } => tr!("Steam"),
         Source::Epic { .. } => tr!("Epic Games"),
+        Source::Xbox { game_pass: true, .. } => "Game Pass",
+        Source::Xbox { .. } => "Xbox",
         Source::Local { .. } => tr!("Adicionado à mão"),
         Source::Recomp { .. } => tr!("Recomp"),
     }
@@ -53,8 +109,8 @@ fn has_update(game: &Game, library: Library) -> bool {
         let Some(Ok(entries)) = list else {
             return false;
         };
-        let entry = entries.iter().find(|e| e.id == *recomp_id);
-        entry.and_then(|e| e.latest.as_ref()).is_some_and(|latest| latest.version != *version)
+        let entry = entries.iter().find(|e| e.is(recomp_id));
+        entry.and_then(|e| e.latest.as_ref()).is_some_and(|latest| cerberus_shared::is_update(version, &latest.version))
     })
 }
 
@@ -91,7 +147,7 @@ pub fn game_names(game: &Game, library: Library) -> (String, Option<String>) {
     let Source::Recomp { recomp_id, .. } = &game.source else { return (game.name.clone(), None) };
     // Tracked: lists drawn before the catalog arrives show the game's name once it does.
     library.recomps.with(|r| {
-        let entry = r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == *recomp_id));
+        let entry = r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.is(recomp_id)));
         names_of(&game.name, entry)
     })
 }
@@ -105,6 +161,8 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
     let running = library.running.with_untracked(|all| all.contains(&game.id));
     let sub = match game.last_played {
         _ if running => tr!("Jogando agora").to_string(),
+        // Not on this PC: said plainly, where it comes from (installs from there).
+        _ if game.next_step == cerberus_shared::NextStep::Install => tr!("{} · não instalado", source_name(&game.source)),
         Some(when) => tr!("Jogado {}", format::ago(when)),
         None => source_name(&game.source).to_string(),
     };
@@ -114,6 +172,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         Some(v) => format!("{v} · {sub}"),
         None => sub,
     };
+    let hint = step_hint(game, library);
     let (badge, tone) = if running {
         (Some(tr!("Jogando").to_string()), Tone::Ok)
     } else if let Some(waiting) = waiting_for(game) {
@@ -129,20 +188,22 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         sub,
         covers: cover_sources(game),
         badge,
+        hint,
         favorite: game.favorite,
         game: Some(game.clone()),
         open: Route::Game(game.id.clone()),
         recomp_id: None,
         absent: game.next_step == cerberus_shared::NextStep::Install,
         progress: None,
+        marks: source_marks(&game.source),
     }
 }
 
 /// A classic from the ROM folders, as a tile: it opens its own page.
 /// `playable`: some emulator here opens it; the others are dimmed.
-pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool) -> TileInfo {
+pub fn classic_tile(title: String, sub: String, covers: Vec<String>, path: String, badge: Option<(String, Tone)>, playable: bool, hint: Option<String>, marks: Vec<SourceMark>) -> TileInfo {
     let (badge, tone) = badge.map_or((None, Tone::Accent), |(text, tone)| (Some(text), tone));
-    TileInfo { tone, title, sub, covers, badge, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None }
+    TileInfo { tone, title, sub, covers, badge, hint, favorite: false, game: None, open: Route::Classic(path), recomp_id: None, absent: !playable, progress: None, marks }
 }
 
 /// The meaning of a cover's corner chip.
@@ -170,10 +231,7 @@ impl Tone {
 }
 
 pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
-    let update = match (&entry.installed, &entry.latest) {
-        (Some(have), Some(newest)) => *have != newest.version,
-        _ => false,
-    };
+    let update = entry.update_to().is_some();
     let (badge, tone) = if update {
         (Some(tr!("Atualização").to_string()), Tone::Accent)
     } else if entry.installed.is_some() {
@@ -188,12 +246,14 @@ pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
         sub: version.map_or_else(|| entry.console.clone(), |v| format!("{v} · {}", entry.console)),
         covers: recomp_covers(entry),
         badge,
+        hint: None,
         favorite: false,
         game: None,
         open: Route::Game(format!("recomp:{}", entry.id)),
         recomp_id: Some(entry.id.clone()),
         absent: false,
         progress: None,
+        marks: vec![SourceMark { mark: Mark::Text("Recomp".to_string()), label: tr!("Recomp: versão nativa para PC").to_string() }],
     }
 }
 
@@ -249,8 +309,10 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             Some(InstallStep::Paused { .. }) => (Some(tr!("Pausado")), Tone::Accent),
             _ => (info.badge.as_deref(), info.tone),
         };
+        // Only the game's own chip has an explanation (not "Baixando").
+        let hint = step.is_none().then(|| info.hint.clone()).flatten();
         let badge = text.map(|text| view! {
-            <span class=tone.class()>
+            <span class=tone.class() title=hint.clone() aria-label=hint.clone().map(|h| format!("{text}: {h}"))>
                 {(tone == Tone::Warn).then(|| view! { <Svg icon=Icon::Info size=12 /> })}
                 {text.to_owned()}
             </span>
@@ -270,7 +332,8 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
         let label = format!("{label} · {}", g.name);
         view! {
             <div class="qp-zone">
-                <button type="button" class="qp" title=label.clone() aria-label=label
+                // Out of the Tab order: one stop per cover (the keyboard plays from the page or the menu).
+                <button type="button" class="qp" tabindex="-1" title=label.clone() aria-label=label
                     on:click=move |e| { e.stop_propagation(); crate::play_game(library, g.clone()); }>
                     <Svg icon size=20 />
                 </button>
@@ -283,6 +346,7 @@ pub fn Tile(info: TileInfo) -> impl IntoView {
             <button type="button" class="tile-b" on:click=on_open on:contextmenu=on_menu title=info.title.clone()>
                 <div class="poster-wrap">
                     <Poster sources=info.covers.clone() title=info.title.clone() />
+                    {marks_view(&info.marks)}
                     {info.favorite.then(|| view! { <span class="fav-mark" title=tr!("Favorito")><Svg icon=Icon::HeartFill size=16 /></span> })}
                     {info.progress.filter(|(_, total)| *total > 0).map(|(got, total)| {
                         let pct = got * 100 / total;
@@ -327,11 +391,13 @@ pub fn Shelf(
     // The arrows only when the row scrolls, and each one off at its end.
     let at_start = RwSignal::new(true);
     let at_end = RwSignal::new(false);
+    // Also runs from a frame callback or a window resize, which can come after
+    // the shelf is gone (a page change): then there is nothing to measure.
     let measure = move || {
-        if let Some(row) = track.get_untracked() {
+        if let Some(row) = track.try_get_untracked().flatten() {
             let (left, width, full) = (row.scroll_left(), row.client_width(), row.scroll_width());
-            at_start.set(left <= 2);
-            at_end.set(left + width >= full - 2);
+            at_start.try_set(left <= 2);
+            at_end.try_set(left + width >= full - 2);
         }
     };
     Effect::new(move || {
@@ -363,6 +429,26 @@ pub fn Shelf(
             </div>
             <div class="track" node_ref=track on:scroll=move |_| measure()>{cards}</div>
         </section>
+    }
+}
+
+/// What a step before playing asks of the player, in a line.
+fn step_hint(game: &Game, library: Library) -> Option<String> {
+    match &game.next_step {
+        cerberus_shared::NextStep::ChooseCopy { found: Some(_) } => Some(tr!("Sua cópia do jogo foi achada nas suas pastas de ROMs: é só abrir o jogo e confirmar.").to_string()),
+        cerberus_shared::NextStep::ChooseCopy { found: None } => {
+            let Source::Recomp { recomp_id, .. } = &game.source else { return None };
+            let needs = library.recomps.with_untracked(|r| {
+                r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.is(recomp_id)).map(|e| e.needs.clone()))
+            });
+            Some(match needs.filter(|n| !n.is_empty()) {
+                Some(needs) => tr!("{} Abra o jogo para escolher onde ela está.", needs),
+                None => tr!("O recomp precisa do jogo original (a sua cópia). Abra o jogo para escolher onde ela está.").to_string(),
+            })
+        }
+        cerberus_shared::NextStep::RunInstaller => Some(tr!("O instalador do recomp ainda não rodou: abra o jogo para terminar.").to_string()),
+        cerberus_shared::NextStep::Locate { reason } => Some(reason.clone()),
+        _ => None,
     }
 }
 

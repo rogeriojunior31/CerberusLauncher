@@ -11,6 +11,7 @@
 
 use cerberus_shared::tk;
 use cerberus_shared::tr;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -27,6 +28,9 @@ pub(super) const BEFORE_CLOUD: &str = tk!("Antes de trazer da nuvem");
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 /// The most a guess at the game's whole folder may add up to.
 const GAME_FOLDER_MAX: u64 = 50 * 1024 * 1024;
+/// In a game folder too big to copy whole, the files this small are kept:
+/// saves are small, the game's own data mostly isn't.
+const SMALL_FILE: u64 = 2 * 1024 * 1024;
 const MANIFEST: &str = "cerberus-backup.json";
 
 /// Never saves: game files, ROMs, programs, archives, logs.
@@ -40,7 +44,7 @@ const NOT_SAVE_DIRS: &[&str] = &[
     "screenshots", "texture_packs", "textures", "packs", "temp", "assets", "yamls", "meta",
 ];
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Manifest {
     places: Vec<String>,
     created: u64,
@@ -73,10 +77,20 @@ pub fn resolve(template: &str, install: &Path) -> Option<PathBuf> {
         None => return None,
     };
     let rest = rest.trim_start_matches(['/', '\\']);
+    // A place stays inside its folder: no "..", no drive or root of its own.
+    if !Path::new(rest).components().all(|c| matches!(c, Component::Normal(_) | Component::CurDir)) {
+        return None;
+    }
     if rest.is_empty() {
-        return Some(base);
+        // The game's own folders may be whole; the user's, Documents or AppData never
+        // (a backup would copy all of it, a restore write anywhere in it).
+        return matches!(key_of(template), "{install}" | "{data}").then_some(base);
     }
     Some(base.join(rest))
+}
+
+fn key_of(template: &str) -> &str {
+    template.split_once('}').map(|(k, _)| &template[..k.len() + 1]).unwrap_or(template)
 }
 
 fn base_folder(key: &str, install: &Path) -> Option<PathBuf> {
@@ -92,6 +106,8 @@ fn base_folder(key: &str, install: &Path) -> Option<PathBuf> {
         "{local}" | "{appdata}" => config,
         "{config}" if cfg!(windows) => env("APPDATA"),
         "{config}" => config,
+        // Where Windows really keeps Documents (often inside OneDrive).
+        "{documents}" if cfg!(windows) => crate::standalone::documents(),
         "{documents}" => home.map(|h| h.join("Documents")),
         "{home}" => home,
         _ => None,
@@ -140,17 +156,25 @@ fn files_of(template: &str, install: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
     Some((dir, here))
 }
 
-fn collect(templates: &[String], install: &Path) -> Vec<Found> {
+/// The files to copy, and whether a guess at the game's folder was too big to
+/// tell its saves apart (then nothing of it is in the list).
+fn collect_checked(templates: &[String], install: &Path) -> (Vec<Found>, bool) {
     let mut found = Vec::new();
+    let mut unsure = false;
     for (place, template) in templates.iter().enumerate() {
-        let Some((dir, here)) = files_of(template, install) else {
+        let Some((dir, mut here)) = files_of(template, install) else {
             continue;
         };
         let whole_game_folder = template == "{install}";
-        let total: u64 = here.iter().map(|path| fs::metadata(path).map(|m| m.len()).unwrap_or(0)).sum();
-        // A guess at the game folder that is this big is the game, not its saves.
-        if whole_game_folder && total > GAME_FOLDER_MAX {
-            continue;
+        let size = |path: &PathBuf| fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        // A guess at the game folder that is this big holds the game too: its
+        // small files are the saves' likely place. Still too much: not a guess to trust.
+        if whole_game_folder && here.iter().map(size).sum::<u64>() > GAME_FOLDER_MAX {
+            here.retain(|path| size(path) <= SMALL_FILE);
+            if here.iter().map(size).sum::<u64>() > GAME_FOLDER_MAX {
+                unsure = true;
+                continue;
+            }
         }
         for absolute in here {
             let Ok(relative) = absolute.strip_prefix(&dir) else {
@@ -159,7 +183,11 @@ fn collect(templates: &[String], install: &Path) -> Vec<Found> {
             found.push(Found { place, relative: relative.to_path_buf(), absolute: absolute.clone() });
         }
     }
-    found
+    (found, unsure)
+}
+
+fn collect(templates: &[String], install: &Path) -> Vec<Found> {
+    collect_checked(templates, install).0
 }
 
 fn walk(root: &Path, dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
@@ -191,7 +219,12 @@ fn walk(root: &Path, dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 /// Copies the saves into `backups`. `Ok(None)` when there is nothing to copy or
 /// nothing changed since the newest copy.
 pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str, cloud: Option<&Path>) -> Result<Option<Backup>, String> {
-    let found = collect(templates, install);
+    let (found, unsure) = collect_checked(templates, install);
+    // "Nothing to copy" must mean that: before an uninstall or an update, a
+    // folder whose saves can't be told apart stops it instead of losing them.
+    if found.is_empty() && unsure {
+        return Err(tr!("Não deu para separar os saves deste jogo dos arquivos dele (a pasta é grande demais para copiar inteira). Copie os saves por conta própria antes; a pasta é {}.", install.display()));
+    }
     if found.is_empty() {
         return Ok(None);
     }
@@ -209,7 +242,9 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
     }
 
     fs::create_dir_all(backups).map_err(|e| e.to_string())?;
-    let created = now();
+    // Always after the newest one, even with the clock set back (a dead CMOS
+    // battery, a dual boot): a new copy is never taken for an old one.
+    let created = now().max(list(backups).first().map_or(0, |b| b.created + 1));
     // Two PCs can finish in the same millisecond. Keep both backups in the shared folder.
     let temp = tempfile::Builder::new().prefix(&format!("{}-", now_millis())).suffix(".part")
         .tempfile_in(backups).map_err(|e| e.to_string())?;
@@ -228,9 +263,9 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
     temp.as_file().sync_all().map_err(|e| e.to_string())?;
     let queued = cloud.map(|destination| super::cloud::queue(&target, destination)).transpose();
     temp.persist_noclobber(&target).map_err(|e| e.to_string())?;
-    prune(backups);
+    prune(backups, &name);
     queued.map_err(|e| tr!("Backup local guardado. Falha ao agendar o envio: {}", e))?;
-    Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes }))
+    Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes, in_cloud: None, waiting: false }))
 }
 
 fn write_zip(file: &fs::File, found: &[Found], manifest: &Manifest) -> io::Result<()> {
@@ -276,7 +311,7 @@ pub fn list(backups: &Path) -> Vec<Backup> {
 fn describe(path: &Path) -> Option<Backup> {
     let manifest = read_manifest(path).ok()?;
     let name = path.file_name()?.to_string_lossy().into_owned();
-    Some(Backup { name, created: manifest.created, reason: manifest.reason, files: manifest.files, bytes: manifest.bytes })
+    Some(Backup { name, created: manifest.created, reason: manifest.reason, files: manifest.files, bytes: manifest.bytes, in_cloud: None, waiting: false })
 }
 
 /// The fingerprint a backup made now would have; `None` when there are no saves yet.
@@ -295,7 +330,58 @@ pub fn newest_with_fingerprint(dir: &Path) -> Option<(Backup, String)> {
     Some((newest, manifest.fingerprint))
 }
 
+/// What each backup's manifest says, by file, size and date. A backup is
+/// written once under a name of its own and never changed, so its manifest is
+/// read once: listing a cloud folder of 20 copies on every Play doesn't open
+/// (and, with OneDrive's "free up space", download) all 20 again. Kept on this
+/// PC only, never in the shared folder.
+type ManifestKey = (PathBuf, u64, u64);
+static MANIFESTS: std::sync::Mutex<Option<HashMap<ManifestKey, Manifest>>> = std::sync::Mutex::new(None);
+static MANIFEST_FILE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// Where the manifests already read are kept between runs.
+pub fn keep_manifests_in(file: PathBuf) {
+    *MANIFEST_FILE.lock().unwrap_or_else(|p| p.into_inner()) = Some(file);
+}
+
+#[cfg(test)]
+thread_local! {
+    static OPENED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn read_manifest(path: &Path) -> Result<Manifest, String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let key = (path.to_path_buf(), meta.len(), modified);
+    let file = MANIFEST_FILE.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    {
+        let mut known = MANIFESTS.lock().unwrap_or_else(|p| p.into_inner());
+        let known = known.get_or_insert_with(|| {
+            let kept: Vec<(ManifestKey, Manifest)> = file.as_deref().and_then(|f| fs::read(f).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+            kept.into_iter().collect()
+        });
+        if let Some(manifest) = known.get(&key) {
+            return Ok(manifest.clone());
+        }
+    }
+    let manifest = read_manifest_from_zip(path)?;
+    let mut known = MANIFESTS.lock().unwrap_or_else(|p| p.into_inner());
+    let known = known.get_or_insert_with(HashMap::new);
+    // Backups that are gone leave the index too.
+    known.retain(|(p, _, _), _| p.exists());
+    known.insert(key, manifest.clone());
+    if let Some(file) = file {
+        let list: Vec<(&ManifestKey, &Manifest)> = known.iter().collect();
+        if let Ok(bytes) = serde_json::to_vec(&list) {
+            let _ = crate::state_file::write_bytes(&file, &bytes);
+        }
+    }
+    Ok(manifest)
+}
+
+fn read_manifest_from_zip(path: &Path) -> Result<Manifest, String> {
+    #[cfg(test)]
+    OPENED.with(|n| n.set(n.get() + 1));
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     manifest_in(&mut zip)
@@ -308,13 +394,73 @@ fn manifest_in(zip: &mut zip::ZipArchive<fs::File>) -> Result<Manifest, String> 
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
-fn prune(backups: &Path) {
-    for old in list(backups).into_iter().skip(KEEP) {
-        let archive = backups.join(old.name);
-        if fs::remove_file(&archive).is_ok() {
-            let _ = fs::remove_file(archive.with_extension("upload"));
+/// The copies a game's cloud folder keeps (all PCs together): the newest ones.
+/// Without a limit it grew by one per session forever, and each Play read more.
+const CLOUD_KEEP: usize = 20;
+
+pub(super) fn prune_cloud(folder: &Path) {
+    for old in list(folder).into_iter().skip(CLOUD_KEEP) {
+        let _ = fs::remove_file(folder.join(old.name));
+    }
+}
+
+/// Safety copies (made before saves are replaced: from the cloud, a restore,
+/// an uninstall) kept per reason, apart from the regular ones.
+const KEEP_SAFETY: usize = 3;
+
+fn is_safety(reason: &str) -> bool {
+    reason.starts_with("Antes de")
+}
+
+/// The newest `KEEP` regular copies, and the newest `KEEP_SAFETY` of each
+/// safety reason; `just_made` always stays.
+fn prune(backups: &Path, just_made: &str) {
+    let mut regular = 0;
+    let mut safety: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for old in list(backups) {
+        let within = if is_safety(&old.reason) {
+            let n = safety.entry(old.reason.clone()).or_default();
+            *n += 1;
+            *n <= KEEP_SAFETY
+        } else {
+            regular += 1;
+            regular <= KEEP
+        };
+        let keep = within || old.name == just_made;
+        if !keep {
+            let archive = backups.join(old.name);
+            if fs::remove_file(&archive).is_ok() {
+                let _ = fs::remove_file(archive.with_extension("upload"));
+            }
         }
     }
+}
+
+/// The saves a backup holds, by their fingerprint.
+pub fn fingerprint_in(archive: &Path) -> Option<String> {
+    read_manifest(archive).ok().map(|m| m.fingerprint)
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct Anchor {
+    fingerprint: String,
+    /// The cloud folder it was agreed with: another folder starts over.
+    #[serde(default)]
+    cloud: String,
+}
+
+fn folder_key(cloud: &Path) -> String {
+    cloud.to_string_lossy().to_lowercase()
+}
+
+/// The saves this PC and that cloud folder last agreed on (pulled from it or sent to it).
+pub fn anchor_of(backups: &Path, cloud: &Path) -> Option<String> {
+    let anchor: Anchor = crate::state_file::load_or_default(&backups.join("sync.json"));
+    Some(anchor.fingerprint).filter(|f| !f.is_empty() && anchor.cloud == folder_key(cloud))
+}
+
+pub fn set_anchor(backups: &Path, cloud: &Path, fingerprint: &str) {
+    let _ = crate::state_file::save(&backups.join("sync.json"), &Anchor { fingerprint: fingerprint.to_string(), cloud: folder_key(cloud) });
 }
 
 /// Puts a copy's files back where they belong for the game as installed now.
@@ -324,7 +470,7 @@ pub fn restore(backups: &Path, name: &str, install: &Path) -> Result<u32, String
     restore_open(open_backup(backups, name)?, install, None)
 }
 
-pub(super) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<fs::File>, String> {
+pub(crate) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<fs::File>, String> {
     // Only a plain file name from our own list, never a path.
     let plain = Path::new(name).components().count() == 1 && name.ends_with(".zip");
     if !plain {
@@ -335,7 +481,7 @@ pub(super) fn open_backup(backups: &Path, name: &str) -> Result<zip::ZipArchive<
     zip::ZipArchive::new(file).map_err(|e| tr!("Esse backup não pode ser lido: {}", e))
 }
 
-pub(super) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, allowed_places: Option<&[String]>) -> Result<u32, String> {
+pub(crate) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, allowed_places: Option<&[String]>) -> Result<u32, String> {
     let manifest = manifest_in(&mut zip)?;
     if allowed_places.is_some_and(|places| manifest.places.iter().any(|p| !places.contains(p))) {
         return Err(tr!("As pastas do backup na nuvem diferem das pastas de saves deste jogo.").into());
@@ -359,10 +505,91 @@ pub(super) fn restore_open(mut zip: zip::ZipArchive<fs::File>, install: &Path, a
     }
     // Finish reading and checking every ZIP entry before replacing the first live save.
     let written = staged.len() as u32;
-    for (temp, target) in staged {
-        temp.persist(&target).map_err(|e| tr!("Não foi possível restaurar {}: {}", target.display(), e))?;
-    }
+    swap_all(staged)?;
     Ok(written)
+}
+
+/// Puts every staged file in place, or none: each live save is set aside
+/// first, and when one can't be replaced (another program holds it) the ones
+/// already replaced go back. Saves are never left half from the backup and
+/// half from before.
+fn swap_all(staged: Vec<(tempfile::TempPath, PathBuf)>) -> Result<(), String> {
+    let mut done: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
+    let undo = |done: &[(PathBuf, Option<PathBuf>)]| {
+        for (target, old) in done.iter().rev() {
+            match old {
+                Some(old) => {
+                    let _ = fs::rename(old, target);
+                }
+                None => {
+                    let _ = fs::remove_file(target);
+                }
+            }
+        }
+    };
+    let nothing_changed = |target: &Path, e: &dyn std::fmt::Display| tr!("Não foi possível restaurar {0}: {1}. Nada foi mudado: os saves continuam como estavam. Feche o jogo e o que estiver usando os saves e tente de novo.", target.display(), e);
+    for (index, (temp, target)) in staged.into_iter().enumerate() {
+        let old = if target.exists() {
+            let old = target.with_file_name(format!(".{}.cerberus-before-{index}", target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+            let _ = fs::remove_file(&old);
+            if let Err(e) = rename_patiently(&target, &old) {
+                undo(&done);
+                return Err(nothing_changed(&target, &e));
+            }
+            Some(old)
+        } else {
+            None
+        };
+        // A file held for a moment (the antivirus, a sync app) gets a few tries.
+        let mut temp = temp;
+        let mut placed = Err(String::new());
+        for attempt in 0..3 {
+            match temp.persist(&target) {
+                Ok(()) => {
+                    placed = Ok(());
+                    break;
+                }
+                Err(e) => {
+                    placed = Err(e.error.to_string());
+                    temp = e.path;
+                    if attempt < 2 {
+                        std::thread::sleep(std::time::Duration::from_millis(700));
+                    }
+                }
+            }
+        }
+        if let Err(e) = placed {
+            if let Some(old) = &old {
+                let _ = fs::rename(old, &target);
+            }
+            undo(&done);
+            return Err(nothing_changed(&target, &e));
+        }
+        done.push((target, old));
+    }
+    for (_, old) in done {
+        if let Some(old) = old {
+            let _ = fs::remove_file(old);
+        }
+    }
+    Ok(())
+}
+
+/// A rename tried a few times: a save held for a moment by another program.
+fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut last = None;
+    for attempt in 0..3 {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last = Some(e);
+                if attempt < 2 {
+                    std::thread::sleep(std::time::Duration::from_millis(700));
+                }
+            }
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("rename")))
 }
 
 /// `"0/slot1.bin"` -> the file in the first place. Anything climbing out of its place is refused.
@@ -389,6 +616,40 @@ fn now_millis() -> u128 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_save_place_never_climbs_out_nor_takes_a_whole_user_folder() {
+        use std::path::Path;
+        let install = Path::new(r"C:\Games\x");
+        assert!(super::resolve("{home}/../x", install).is_none());
+        assert!(super::resolve("{documents}/../../Windows", install).is_none());
+        assert!(super::resolve("{home}", install).is_none());
+        assert!(super::resolve("{appdata}/", install).is_none());
+        assert_eq!(super::resolve("{install}", install).as_deref(), Some(install));
+        assert_eq!(super::resolve("{install}/Save", install), Some(install.join("Save")));
+        assert!(super::resolve("{install}/C:/Windows", install).is_none());
+    }
+
+    #[test]
+    fn a_big_game_folder_keeps_its_small_files_or_refuses() {
+        let backups = tempfile::tempdir().unwrap();
+        let install = tempfile::tempdir().unwrap();
+        // The game's data: over the folder cap, file by file over the small size.
+        for n in 0..9 {
+            fs::write(install.path().join(format!("data{n}.bin")), vec![0u8; 6 * 1024 * 1024]).unwrap();
+        }
+        fs::write(install.path().join("slot1.sav"), b"save").unwrap();
+        let made = backup(backups.path(), &places(&[]), install.path(), "Antes de desinstalar", None).unwrap();
+        assert!(made.is_some(), "the save beside a big game is copied");
+
+        // Thousands of small game files too: the saves can't be told apart, so it says so.
+        let crowded = tempfile::tempdir().unwrap();
+        for n in 0..40 {
+            fs::write(crowded.path().join(format!("tex{n}.bin")), vec![0u8; 1536 * 1024]).unwrap();
+        }
+        assert!(backup(backups.path(), &places(&[]), crowded.path(), "Antes de desinstalar", None).is_err());
+    }
+
     use super::*;
 
     fn empty_dir(name: &str) -> PathBuf {
@@ -408,6 +669,24 @@ mod tests {
     }
 
     #[test]
+    fn each_backup_is_opened_once_to_be_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        let backups = dir.path().join("backups");
+        for n in 0..5 {
+            write(&install.join("Save/slot.sav"), &format!("progress {n}"));
+            backup(&backups, &install_saves(), &install, "Manual", None).unwrap();
+        }
+        let before = OPENED.with(std::cell::Cell::get);
+        assert_eq!(list(&backups).len(), 5);
+        assert!(newest_with_fingerprint(&backups).is_some());
+        let first = OPENED.with(std::cell::Cell::get) - before;
+        assert_eq!(list(&backups).len(), 5);
+        assert!(newest_with_fingerprint(&backups).is_some());
+        assert_eq!(OPENED.with(std::cell::Cell::get) - before, first, "a second listing opens no zip");
+    }
+
+    #[test]
     fn backs_up_and_restores_a_save() {
         let dir = empty_dir("roundtrip");
         let install = dir.join("game");
@@ -417,6 +696,36 @@ mod tests {
         write(&install.join("Save/file1.sav"), "lost");
         restore(&backups, &made.name, &install).unwrap();
         assert_eq!(fs::read_to_string(install.join("Save/file1.sav")).unwrap(), "progress");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_save_held_by_another_program_leaves_every_save_as_it_was() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        let backups = dir.path().join("backups");
+        let slots = ["a.sav", "b.sav", "c.sav"].map(|n| install.join("Save").join(n));
+        for slot in &slots {
+            write(slot, "from the backup");
+        }
+        let made = backup(&backups, &install_saves(), &install, "Manual", None).unwrap().unwrap();
+        for slot in &slots {
+            write(slot, "played since");
+        }
+        // The second slot open in another program, sharing nothing.
+        let held = fs::OpenOptions::new().read(true).share_mode(0).open(&slots[1]).unwrap();
+        let error = restore(&backups, &made.name, &install).unwrap_err();
+        drop(held);
+        assert!(error.contains("Nada foi mudado"), "{error}");
+        for slot in &slots {
+            assert_eq!(fs::read_to_string(slot).unwrap(), "played since", "{}", slot.display());
+        }
+        let left: Vec<_> = fs::read_dir(install.join("Save")).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left.len(), 3, "nothing set aside is left behind: {left:?}");
+        // Closed, it goes through.
+        restore(&backups, &made.name, &install).unwrap();
+        assert_eq!(fs::read_to_string(&slots[1]).unwrap(), "from the backup");
     }
 
     #[test]

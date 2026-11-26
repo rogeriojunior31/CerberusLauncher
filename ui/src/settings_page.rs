@@ -26,6 +26,7 @@ enum Section {
     Emulation,
     Steam,
     Epic,
+    Xbox,
     Retro,
     Pc,
     Storage,
@@ -45,7 +46,7 @@ const MENU: &[(&str, &[(Section, &str, Icon)])] = &[
         ],
     ),
     (tk!("Clássicos"), &[(Section::Emulation, tk!("Emulação"), Icon::Disc)]),
-    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::User), (Section::Epic, "Epic Games", Icon::Shelf), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
+    (tk!("Contas"), &[(Section::Steam, "Steam", Icon::User), (Section::Epic, "Epic Games", Icon::Shelf), (Section::Xbox, "Xbox", Icon::Gamepad), (Section::Retro, "RetroAchievements", Icon::Trophy)]),
     (tk!("Sistema"), &[(Section::Pc, tk!("Seu PC"), Icon::Cpu), (Section::Storage, tk!("Armazenamento"), Icon::Database), (Section::About, tk!("Sobre"), Icon::Info)]),
 ];
 
@@ -395,6 +396,7 @@ pub fn SettingsPage() -> impl IntoView {
             Section::Emulation => emulation(s).into_any(),
             Section::Steam => view! { <SteamAccountCard /> <SteamShortcutsCard /> }.into_any(),
             Section::Epic => view! { <EpicCard /> }.into_any(),
+            Section::Xbox => view! { <XboxCard /> }.into_any(),
             Section::Retro => view! { <RetroAchievements linked=s.ra_user.clone() retroarch=s.ra_retroarch /> }.into_any(),
             Section::Pc => view! { <YourPc /> }.into_any(),
             Section::Storage => storage(s, busy, apply).into_any(),
@@ -879,7 +881,7 @@ fn rom_folders(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'sta
                                     {move || if is_open() { tr!("Esconder jogos") } else { tr!("Ver jogos") }}
                                 </button>
                             })}
-                            <button type="button" class="btn sm" disabled=move || busy.get()
+                            <button type="button" class="btn sm remove" disabled=move || busy.get()
                                 on:click=move |_| apply(Box::pin(api::remove_rom_dir_owned(target.clone())), tr!("Pasta removida. Os arquivos continuam no seu PC."))>{tr!("Remover")}</button>
                         </div>
                     </header>
@@ -952,7 +954,7 @@ fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static st
     let library = expect_context::<Library>();
     let flow = view! {
         <div class="save-flow" class:on=on aria-hidden="true">
-            <span class="sf-node lit"><Svg icon=Icon::Saves size=22 /><b>{tr!("Este PC")}</b><small>{tr!("10 backups por jogo")}</small></span>
+            <span class="sf-node lit"><Svg icon=Icon::Saves size=22 /><b>{tr!("Este PC")}</b><small>{tr!("10 backups por recomp")}</small></span>
             <span class="sf-line"></span>
             <span class="sf-node" class:lit=on><Svg icon=Icon::Folder size=22 /><b>{tr!("Pasta da nuvem")}</b><small>{if on { tr!("Sincronizando") } else { tr!("Não escolhida") }}</small></span>
             <span class="sf-line"></span>
@@ -978,7 +980,7 @@ fn saves(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static st
                     <Svg icon=Icon::Folder size=16 />{tr!("Escolher pasta")}
                 </button>
             })}
-            {row(tr!("Backups neste PC"), tr!("Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada jogo."), ())}
+            {row(tr!("Backups neste PC"), tr!("Depois de cada partida, antes de atualizar e antes de desinstalar, o Cerberus guarda os 10 backups mais recentes de cada recomp, e de cada emulador quando um clássico fecha. Jogos da Steam usam a nuvem da Steam."), ())}
         </section>
     }
 }
@@ -998,7 +1000,15 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
     view! {
         <section class="card set">
             <h3>{tr!("Catálogo de recomps")}</h3>
-            {row(format!("{} recomps", s.catalog_count), if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
+            {row({
+                // Versions, and the games they are of (Descobrir counts games): said together.
+                let library = expect_context::<Library>();
+                let games = library.recomps.with_untracked(|r| r.as_ref().and_then(|r| r.as_ref().ok()).map(|all| crate::versions::one_each(all).len()));
+                match games {
+                    Some(games) if games != s.catalog_count => tr!("{} versões nativas de {} jogos", s.catalog_count, games),
+                    _ => format!("{} recomps", s.catalog_count),
+                }
+            }, if s.site_catalog { tr!("Lista de {}, atualizada sozinha a cada 6 horas, mais o catálogo próprio do Cerberus. Cada recomp é baixado da página do próprio desenvolvedor (GitHub, GitLab ou o servidor do projeto).", s.catalog_source) } else { tr!("Só o catálogo próprio do Cerberus e as suas fontes de projetos. Cada recomp é baixado da página do próprio desenvolvedor.").to_string() },
                 view! { <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| apply(Box::pin(api::refresh_catalog()), tr!("Catálogo atualizado."))>{tr!("Atualizar agora")}</button> })}
             {row(tr!("Catálogo do recomplauncher.com"), tr!("A lista grande, com recomps de mais de 25 consoles. Desligado, o Descobrir mostra só o catálogo do Cerberus e as suas fontes de projetos."),
                 switch(s.site_catalog, tr!("Catálogo do recomplauncher.com"), busy, move || {
@@ -1030,7 +1040,7 @@ fn console_name(id: &str) -> &'static str {
 
 
 /// The consoles that come on discs, each opened by RetroArch or a standalone emulator.
-const DISC_CONSOLES: [&str; 7] = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu"];
+const DISC_CONSOLES: [&str; 9] = ["ps1", "ps2", "ps3", "psp", "gc", "wii", "wiiu", "xbox", "x360"];
 
 /// How a console stands now.
 #[derive(Clone, Copy, PartialEq)]
@@ -1041,32 +1051,38 @@ enum Ready {
     NoEmulator,
 }
 
-/// A console's picture: pixel art from Hydra, and Cerberus's own where Hydra
-/// has none (see ui/emulation/LICENSE.md).
+/// A console's picture: Hydra's (PlayStation, PSP, GameCube, Wii) and public
+/// domain photos by Evan Amos from Wikimedia Commons for the rest; Cerberus's
+/// own drawing where neither has one (see ui/emulation/LICENSE.md).
+// "?v=2": the pictures were replaced by photos; a new address skips the copy the window kept.
 pub fn console_art(id: &str) -> Option<&'static str> {
     Some(match id {
-        "ps1" => "emulation/ps1.png",
-        "ps2" => "emulation/ps2.png",
-        "ps3" => "emulation/ps3.png",
-        "psp" => "emulation/psp.png",
-        "gc" => "emulation/gamecube.png",
-        "wii" => "emulation/wii.png",
-        "wiiu" => "emulation/wiiu.png",
-        "nes" => "emulation/nes.png",
-        "snes" => "emulation/snes.png",
-        "n64" => "emulation/n64.png",
-        "gb" => "emulation/gb.png",
-        "gbc" => "emulation/gbc.png",
-        "gba" => "emulation/gba.png",
-        "genesis" => "emulation/genesis.png",
-        "sms" => "emulation/sms.png",
-        "gg" => "emulation/gg.png",
+        "ps1" => "emulation/ps1.png?v=2",
+        "ps2" => "emulation/ps2.png?v=2",
+        "ps3" => "emulation/ps3.png?v=2",
+        "psp" => "emulation/psp.png?v=2",
+        "gc" => "emulation/gamecube.png?v=2",
+        "wii" => "emulation/wii.png?v=2",
+        "wiiu" => "emulation/wiiu.png?v=2",
+        "nes" => "emulation/nes.png?v=2",
+        "snes" => "emulation/snes.png?v=2",
+        "n64" => "emulation/n64.png?v=2",
+        "gb" => "emulation/gb.png?v=2",
+        "gbc" => "emulation/gbc.png?v=2",
+        "gba" => "emulation/gba.png?v=2",
+        "genesis" => "emulation/genesis.png?v=2",
+        "sms" => "emulation/sms.png?v=2",
+        "gg" => "emulation/gg.png?v=2",
+        "ds" => "emulation/ds.png?v=2",
+        "3ds" => "emulation/3ds.png?v=2",
+        "xbox" => "emulation/xbox.png?v=2",
+        "x360" => "emulation/x360.png?v=2",
         _ => return None,
     })
 }
 
 /// An emulator's own icon.
-fn emulator_icon(id: &str) -> Option<&'static str> {
+pub fn emulator_icon(id: &str) -> Option<&'static str> {
     Some(match id {
         "retroarch" => "emulation/icons/retroarch.png",
         "duckstation" => "emulation/icons/duckstation.png",
@@ -1160,7 +1176,9 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
         });
     };
     refresh();
-    api::on_emu_progress(move |p| progress.set(p));
+    api::on_emu_progress_here(move |p| {
+        let _ = progress.try_set(p);
+    });
     // Runs one action, says what it did, and reads both states again.
     let act = move |label: &str, task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>>>>| {
         busy.set(Some(label.to_string()));
@@ -1248,11 +1266,14 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                     <Svg icon=Icon::Left size=16 />{tr!("Todos os consoles")}
                 </button>
             };
-            let names: Vec<String> = my_roms.iter().filter(|r| crate::classics::console_of(r) == console).map(crate::classics::display_name).collect();
+            // Each one opens its page.
+            let names: Vec<(String, String)> = my_roms.iter().filter(|r| crate::classics::console_of(r) == console).map(|r| (crate::classics::display_name(r), r.path.clone())).collect();
             let games = (!names.is_empty()).then(|| view! {
                 <section class="cd-sec">
                     <h3>{tr!("Seus jogos")}</h3>
-                    <div class="cd-games">{names.into_iter().map(|n| view! { <span class="emu-chip">{n}</span> }).collect_view()}</div>
+                    <div class="cd-games">{names.into_iter().map(|(n, path)| view! {
+                        <button type="button" class="emu-chip" title=path.clone() on:click=move |_| library.go(Route::Classic(path.clone()))>{n}</button>
+                    }).collect_view()}</div>
                 </section>
             });
             let who = who_of(&console);
@@ -1263,7 +1284,8 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                 choices.push(("retroarch".into(), "RetroArch".into(), has_ra));
             }
             choices.extend(s.emulators.iter().filter(|e| e.consoles.iter().any(|c| *c == console)).map(|e| (e.id.clone(), e.name.clone(), e.exe.is_some())));
-            let only_one = choices.len() == 1;
+            // One choice and it's RetroArch: say so. One dedicated emulator: nothing to explain.
+            let only_one = choices.len() == 1 && choices.first().is_some_and(|(id, _, _)| id.as_str() == "retroarch");
             let cards = choices.into_iter().map(|(id, name, installed)| {
                 let chosen = id == who;
                 let c = console.clone();
@@ -1382,7 +1404,7 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                                     let is_armed = move || armed_remove.get().as_deref() == Some(armed_id.as_str());
                                     let label_armed = is_armed.clone();
                                     view! {
-                                        <button type="button" class="btn sm" class:warn=move || managed && is_armed() disabled=disabled on:click=move |_| {
+                                        <button type="button" class="btn sm" class:warn=move || managed && is_armed() class:remove=managed disabled=disabled on:click=move |_| {
                                             let id = i3.clone();
                                             if !managed {
                                                 act(&id.clone(), Box::pin(async move { api::pick_standalone(&id).await.map(|_| String::new()) }));
@@ -1398,6 +1420,12 @@ fn EmulationPage(roms: usize, ra_user: Option<String>, ra_retroarch: bool) -> im
                                             (true, false) => tr!("Remover"),
                                         }}</button>
                                     }
+                                }
+                                {
+                                    let armed_id = e.id.clone();
+                                    move || (managed && armed_remove.get().as_deref() == Some(armed_id.as_str())).then(|| view! {
+                                        <p class="muted small">{tr!("Seus saves, BIOS e configurações ficam guardados e voltam se instalar de novo.")}</p>
+                                    })
                                 }
                             </div>
                         </div>
@@ -1700,7 +1728,7 @@ fn about(s: SettingsView, _busy: RwSignal<bool>, _apply: impl Fn(Task, &'static 
             <div class="set-row">
                 <div>
                     <b>{tr!("Cerberus Launcher {}", s.version)}</b>
-                    <small>{tr!("Código aberto, licença MIT. Os recomps vêm das releases dos próprios desenvolvedores, e o Cerberus nunca baixa arquivos de jogo.")}</small>
+                    <small>{tr!("Código aberto, licença MIT. Recomps vêm das releases dos desenvolvedores; downloads das suas fontes só começam quando você pede.")}</small>
                 </div>
                 <img class="about-logo" src="brand/cerberus-launcher-pixel.svg" alt=tr!("Logo do Cerberus Launcher") />
             </div>
@@ -1772,11 +1800,144 @@ fn SteamShortcutsCard() -> impl IntoView {
     }
 }
 
+/// The Xbox app: its installed games, and PC Game Pass in the library.
+#[component]
+fn XboxCard() -> impl IntoView {
+    let library = expect_context::<Library>();
+    // Read again whenever the games are (a sign-in ends by listing them again).
+    let settings = LocalResource::new(move || {
+        library.games.track();
+        api::get_settings()
+    });
+    let busy = RwSignal::new(false);
+    // The account: read again when the window comes back to the front (the sign-in window closed).
+    let focus = window_event_listener(leptos::ev::focus, move |_| {
+        settings.refetch();
+        library.games.refetch();
+    });
+    on_cleanup(move || focus.remove());
+    let account = move || match settings.get().and_then(Result::ok).and_then(|s| s.xbox_user) {
+        Some(name) => view! {
+            <div class="set-row">
+                <div><b>{tr!("Conta Xbox")}</b><p class="muted small">{tr!("Conectada como {}. Os jogos de PC da conta que não estão neste PC aparecem na Biblioteca como não instalados.", name)}</p></div>
+                <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| {
+                    busy.set(true);
+                    spawn_local(async move {
+                        let _ = library.report(api::xbox_logout().await);
+                        settings.refetch();
+                        library.games.refetch();
+                        busy.set(false);
+                    });
+                }>{tr!("Sair")}</button>
+            </div>
+        }
+        .into_any(),
+        None => view! {
+            <div class="set-row">
+                <div><b>{tr!("Conta Xbox")}</b><p class="muted small">{tr!("Entre com a conta Microsoft para ver os jogos de PC da conta, inclusive os comprados que não estão instalados. O login é na página da Microsoft: o Cerberus nunca vê a sua senha e só guarda o acesso.")}</p></div>
+                <button type="button" class="btn sm main" on:click=move |_| spawn_local(async move { library.report(api::xbox_login().await); })>{tr!("Entrar com a Microsoft")}</button>
+            </div>
+        }
+        .into_any(),
+    };
+    let counts = move || {
+        library.games.with(|g| {
+            let all = g.as_ref().and_then(|r| r.as_ref().ok());
+            let xbox = |g: &&cerberus_shared::Game| matches!(g.source, cerberus_shared::Source::Xbox { .. });
+            let here = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| !g.install_dir.is_empty()).count());
+            let pass = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| g.install_dir.is_empty()).count());
+            (here, pass)
+        })
+    };
+    let body = move || {
+        let on = settings.get().and_then(Result::ok).is_some_and(|s| s.game_pass);
+        let (here, pass) = counts();
+        let installed = match here {
+            0 => tr!("Nenhum jogo instalado pelo app Xbox. Os que você instalar entram sozinhos na Biblioteca.").to_string(),
+            1 => tr!("1 jogo instalado pelo app Xbox está na Biblioteca.").to_string(),
+            n => tr!("{} jogos instalados pelo app Xbox estão na Biblioteca.", n),
+        };
+        let toggle = move || {
+            busy.set(true);
+            spawn_local(async move {
+                let _ = library.report(api::set_game_pass(!on).await);
+                settings.refetch();
+                library.games.refetch();
+                busy.set(false);
+            });
+        };
+        view! {
+            <div class="set-row">
+                <div><b>{tr!("App Xbox")}</b><p class="muted small">{installed}</p></div>
+                <span class="pill" class:ok={ here > 0 }>{if here > 0 { tr!("Encontrado") } else { tr!("Sem jogos") }}</span>
+            </div>
+            {row(
+                tr!("PC Game Pass na Biblioteca"),
+                if on && pass > 0 { tr!("{} jogos do Game Pass aparecem como não instalados: instalam pelo app Xbox. A lista vem do catálogo público da Microsoft.", pass) } else { tr!("Mostra os jogos do PC Game Pass como não instalados, para instalar pelo app Xbox.").to_string() },
+                switch(on, tr!("PC Game Pass na Biblioteca"), busy, toggle),
+            )}
+            <div class="row">
+                <button type="button" class="btn sm" disabled=here + pass == 0 on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
+                <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::xbox_open().await); })>
+                    <Svg icon=Icon::External size=16 />{tr!("Abrir o app Xbox")}
+                </button>
+            </div>
+            <p class="muted small">{tr!("Os jogos abrem e instalam pelo app Xbox, com a sua conta e o seu Game Pass. Tempo de jogo é contado.")}</p>
+        }
+    };
+    view! {
+        <section class="card set">
+            <div class="card-h"><h3>"Xbox"</h3></div>
+            {account}
+            {body}
+        </section>
+    }
+}
+
 /// The Epic Games Launcher: found or not, and its installed games in the library.
 #[component]
 fn EpicCard() -> impl IntoView {
     let library = expect_context::<Library>();
     let status = LocalResource::new(api::epic_status);
+    // The account: read again when the window comes back to the front (the
+    // sign-in window just closed).
+    let account = LocalResource::new(move || {
+        library.games.track();
+        api::get_settings()
+    });
+    let focus = window_event_listener(leptos::ev::focus, move |_| {
+        account.refetch();
+        library.games.refetch();
+    });
+    on_cleanup(move || focus.remove());
+    let busy = RwSignal::new(false);
+    let signed = move || {
+        let user = account.get().and_then(Result::ok).and_then(|s| s.epic_user);
+        match user {
+            Some(name) => view! {
+                <div class="set-row">
+                    <div><b>{tr!("Conta Epic")}</b><p class="muted small">{tr!("Conectada como {}. Os jogos da conta que não estão neste PC aparecem na Biblioteca como não instalados.", name)}</p></div>
+                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| {
+                        busy.set(true);
+                        spawn_local(async move {
+                            let _ = library.report(api::epic_logout().await);
+                            account.refetch();
+                            library.games.refetch();
+                            busy.set(false);
+                        });
+                    }>{tr!("Sair")}</button>
+                </div>
+            }
+            .into_any(),
+            None => view! {
+                <div class="set-row">
+                    <div><b>{tr!("Conta Epic")}</b><p class="muted small">{tr!("Entre para ver todos os jogos da sua conta, inclusive os que não estão instalados. O login é na página da própria Epic: o Cerberus nunca vê a sua senha e só guarda o acesso.")}</p></div>
+                    <button type="button" class="btn sm main" on:click=move |_| spawn_local(async move { library.report(api::epic_login().await); })>{tr!("Entrar na Epic")}</button>
+                </div>
+            }
+            .into_any(),
+        }
+    };
     let body = move || match status.get() {
         None => view! { <p class="muted small">{tr!("Procurando a Epic neste PC…")}</p> }.into_any(),
         Some(Err(e)) => view! { <p class="problem">{e}</p> }.into_any(),
@@ -1804,7 +1965,7 @@ fn EpicCard() -> impl IntoView {
                         <Svg icon=Icon::External size=16 />{tr!("Abrir a Epic")}
                     </button>
                 </div>
-                <p class="muted small">{tr!("Sem conta e sem senha: o Cerberus lê o que a Epic já guarda no PC. Os jogos abrem pela Epic, que precisa estar instalada. Tempo de jogo é contado; conquistas da Epic ainda não.")}</p>
+                <p class="muted small">{tr!("Os jogos instalados vêm do que a Epic já guarda no PC, sem conta. Abrem e instalam pela Epic, que precisa estar instalada. Tempo de jogo é contado; conquistas da Epic ainda não.")}</p>
             }
             .into_any()
         }
@@ -1812,6 +1973,7 @@ fn EpicCard() -> impl IntoView {
     view! {
         <section class="card set">
             <div class="card-h"><h3>"Epic Games"</h3></div>
+            {signed}
             {body}
         </section>
     }
@@ -2070,7 +2232,7 @@ fn Sources(
         let value = url.get_untracked();
         if !busy.get_untracked() && !value.trim().is_empty() { apply_source(value, true); }
     };
-    // Hydra lists are reference only: one folded group under the project sources, said once.
+    // Hydra's direct downloads also feed Discover; the folded group keeps their full metadata here.
     let (hydra, projects): (Vec<SourceView>, Vec<SourceView>) = sources.into_iter().partition(|s| s.hydra);
     let hydra_total: usize = hydra.iter().map(|s| s.games).sum();
     let hydra_count = hydra.len();
@@ -2116,7 +2278,7 @@ fn Sources(
         <div class="set-row sub hydra-group">
             <div>
                 <b>{if hydra_count == 1 { tr!("1 lista do Hydra").to_string() } else { tr!("{} listas do Hydra", hydra_count) }}</b>
-                <small>{tr!("{} publicações, só para consulta: não aparecem no Descobrir nem na Biblioteca, e o Cerberus não baixa nada delas.", format::count(hydra_total as u64))}</small>
+                <small>{tr!("{} publicações; downloads diretos HTTP(S) entram no Descobrir e podem ser instalados. Magnet e torrent ficam só para consulta.", format::count(hydra_total as u64))}</small>
             </div>
             <div class="row">
                 <button type="button" class="btn sm" aria-expanded=move || unfolded.get().to_string()
@@ -2133,7 +2295,7 @@ fn Sources(
             <form class="set-row" on:submit=on_add>
                 <div>
                     <b>{tr!("Adicionar por URL")}</b>
-                    <small>{tr!("Fontes de projetos (no formato do Cerberus ou do RecompLauncher) entram no Descobrir e instalam da página do desenvolvedor. Listas do Hydra ficam só para consulta aqui: títulos, tamanhos e datas.")}</small>
+                    <small>{tr!("Fontes de projetos entram no Descobrir e instalam da página do desenvolvedor. Listas do Hydra com links HTTP(S) também entram no catálogo e instalam quando você pedir; magnet e torrent ficam só para consulta. Use só fontes em que você confia.")}</small>
                 </div>
                 <div class="row">
                     <input class="input" type="url" required aria-label=tr!("URL da fonte") placeholder=tr!("https://.../jogos.json") prop:value=move || url.get() on:input=move |e| url.set(event_target_value(&e)) />

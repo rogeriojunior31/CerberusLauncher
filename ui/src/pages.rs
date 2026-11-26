@@ -58,9 +58,9 @@ pub fn DownloadsPage() -> impl IntoView {
         let rid = id.strip_prefix("recomp:").unwrap_or(id);
         // The game's name first, as everywhere else; the recomp's follows it.
         entry_of(rid)
-            .map(|e| match crate::tiles::entry_names(&e) { (game, Some(recomp)) => format!("{game} · {recomp}"), (game, None) => game })
-            .or_else(|| library.games.with_untracked(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| x.name.clone()))))
-            .unwrap_or_else(|| rid.to_string())
+            .map(|e| crate::tiles::entry_names(&e))
+            .or_else(|| library.games.with_untracked(|g| g.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|x| x.id == id).map(|x| (x.name.clone(), None)))))
+            .unwrap_or_else(|| (rid.to_string(), None))
     };
 
     // Installing now: the first one big, with speed and time left; the rest quiet.
@@ -179,8 +179,8 @@ pub fn DownloadsPage() -> impl IntoView {
             if g.external || busy.contains_key(recomp_id) {
                 continue;
             }
-            let Some(entry) = entries.iter().find(|e| &e.id == recomp_id) else { continue };
-            let Some(latest) = entry.latest.as_ref().filter(|l| &l.version != version) else { continue };
+            let Some(entry) = entries.iter().find(|e| e.is(recomp_id)) else { continue };
+            let Some(latest) = entry.latest.as_ref().filter(|l| cerberus_shared::is_update(version, &l.version)) else { continue };
             let row = (g.clone(), entry.clone(), version.clone(), latest.clone());
             if g.updates_paused { held.push(row) } else { ready.push(row) }
         }
@@ -251,7 +251,7 @@ pub fn DownloadsPage() -> impl IntoView {
             let rows = all
                 .into_iter()
                 .map(|(id, why)| {
-                    let name = name_of(&id);
+                    let name = name_of(&id).0;
                     let (again, dismiss) = (id.clone(), id.clone());
                     view! {
                         <div class="dl-row card dl-failed">
@@ -299,7 +299,7 @@ pub fn DownloadsPage() -> impl IntoView {
                         view! {
                             <button type="button" class="dl-hist" class:bad=!e.ok on:click=move |_| library.go(page.clone())>
                                 <Svg icon=if e.ok { Icon::Check } else { Icon::Info } size=16 />
-                                <b>{name_of(&e.game_id)}</b>
+                                {let (game, recomp) = name_of(&e.game_id); view! { <b>{game}{recomp.map(|v| view! { <small class="sv-ver">{v}</small> })}</b> }}
                                 <span>{cerberus_shared::i18n::translate(&e.message)}</span>
                                 <small>{time}</small>
                             </button>
@@ -399,7 +399,7 @@ pub fn SavesPage() -> impl IntoView {
                         <b>{tr!("Na nuvem")}</b>
                         <p class="muted small path">{dir.clone()}</p>
                     </div>
-                    <span class="pill ok">{tr!("Tudo enviado")}</span>
+                    <span class="pill ok" title=tr!("Copiado para a pasta sincronizada; o aplicativo dela (OneDrive, Google Drive, Dropbox) leva para a internet.")>{tr!("Tudo copiado para a pasta")}</span>
                 </div>
             }
             .into_any(),
@@ -445,12 +445,39 @@ pub fn SavesPage() -> impl IntoView {
             <header class="page-h">
                 <div>
                     <h1>{tr!("Saves")}</h1>
-                    <p class="muted">{tr!("Cópias automáticas ao fechar o jogo, antes de atualizar e antes de desinstalar. As 10 mais recentes de cada jogo ficam guardadas.")}</p>
+                    <p class="muted">{tr!("Cópias automáticas dos saves: dos recomps ao fechar, antes de atualizar e antes de desinstalar; dos emuladores sempre que um clássico fecha. As 10 mais recentes ficam guardadas. Jogos da Steam guardam os saves na nuvem da Steam.")}</p>
                 </div>
             </header>
             {cloud}
             {rows}
+            <EmulatorSaves />
         </div>
+    }
+}
+
+/// The classics' saves: one card per emulator on this PC, with the copies made
+/// after each classic closed.
+#[component]
+fn EmulatorSaves() -> impl IntoView {
+    let found = LocalResource::new(|| async { api::emulator_backups().await.unwrap_or_default() });
+    move || {
+        let list = found.get().unwrap_or_default();
+        (!list.is_empty()).then(|| {
+            let cards = list
+                .into_iter()
+                .map(|e| {
+                    let note = tr!("Memory cards e estados salvos de {}. Os 10 backups mais recentes ficam guardados.", e.folder);
+                    view! { <crate::backups::Backups game_id=e.id emulator=true title=e.name note /> }
+                })
+                .collect_view();
+            view! {
+                <section class="shelf">
+                    <div class="shelf-h"><h2>{tr!("Clássicos")}</h2></div>
+                    <p class="muted small sv-emu-note">{tr!("Cada emulador guarda os saves de todos os seus jogos juntos; o Cerberus copia essa pasta sempre que um clássico fecha.")}</p>
+                    <div class="sv-emu">{cards}</div>
+                </section>
+            }
+        })
     }
 }
 
@@ -474,8 +501,13 @@ fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl I
             Some(newest) => {
                 let bytes: u64 = list.iter().map(|b| b.bytes).sum();
                 let count = if list.len() == 1 { tr!("1 cópia").to_string() } else { tr!("{} cópias", list.len()) };
-                let where_ = if cloud_on { tr!("Na nuvem") } else { tr!("Só neste PC") };
-                (tr!("{} · última {}", where_, format::ago(newest.created)), if cloud_on { "ok" } else { "local" }, format!("{count} · {}", megabytes(bytes)))
+                // What the newest copy really is, as the backend found it.
+                let (where_, tone) = match (cloud_on, newest.in_cloud, newest.waiting) {
+                    (true, Some(true), _) => (tr!("Na pasta da nuvem"), "ok"),
+                    (true, _, true) => (tr!("Esperando a pasta da nuvem"), "wait"),
+                    _ => (tr!("Só neste PC"), "local"),
+                };
+                (tr!("{} · última {}", where_, format::ago(newest.created)), tone, format!("{count} · {}", megabytes(bytes)))
             }
         },
     };

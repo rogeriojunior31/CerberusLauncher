@@ -347,6 +347,15 @@ impl Game {
 
 /// A copy of a recomp's saves, kept by the launcher.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmulatorBackups {
+    pub id: String,
+    pub name: String,
+    /// Where the emulator keeps the saves that are copied.
+    pub folder: String,
+    pub backups: Vec<Backup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Backup {
     /// The file's name, used to ask for it back.
     pub name: String,
@@ -355,6 +364,12 @@ pub struct Backup {
     pub reason: String,
     pub files: u32,
     pub bytes: u64,
+    /// With a cloud folder set: whether this copy is in it (`None` without one).
+    #[serde(default)]
+    pub in_cloud: Option<bool>,
+    /// Made to go to the cloud folder and not there yet.
+    #[serde(default)]
+    pub waiting: bool,
 }
 
 /// One step the launcher took for a game (a session, a backup, an install), kept
@@ -454,6 +469,9 @@ pub struct SettingsView {
     /// Closing the window keeps Cerberus in the tray.
     #[serde(default)]
     pub close_to_tray: bool,
+    /// PC Game Pass's games listed in the library.
+    #[serde(default)]
+    pub game_pass: bool,
     /// Cerberus opens with Windows.
     #[serde(default)]
     pub autostart: bool,
@@ -463,6 +481,12 @@ pub struct SettingsView {
     /// The linked RetroAchievements username; the key never comes back to the window.
     #[serde(default)]
     pub ra_user: Option<String>,
+    /// The Epic Games account signed in (its name only).
+    #[serde(default)]
+    pub epic_user: Option<String>,
+    /// The Xbox profile signed in (its gamertag only).
+    #[serde(default)]
+    pub xbox_user: Option<String>,
     /// The RetroAchievements password was given once: RetroArch gets connected by itself.
     #[serde(default)]
     pub ra_retroarch: bool,
@@ -637,11 +661,32 @@ pub struct UnlockNotice {
 }
 
 /// Where a game's achievements come from.
+/// Uninstalling a recomp stopped on something the player can decide: the
+/// error starts with one of these, and the screen offers the way on.
+pub mod uninstall {
+    /// The saves couldn't be copied first: uninstall anyway, without a backup?
+    pub const NO_BACKUP: &str = "cerberus:uninstall:no-backup:";
+    /// The folder isn't one Cerberus made: take the game off the library and keep the folder?
+    pub const NOT_OURS: &str = "cerberus:uninstall:not-ours:";
+
+    /// The code and the message, when the error has one.
+    pub fn split(error: &str) -> (Option<&'static str>, &str) {
+        for code in [NO_BACKUP, NOT_OURS] {
+            if let Some(rest) = error.strip_prefix(code) {
+                return (Some(code), rest);
+            }
+        }
+        (None, error)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AchievementSource {
     Steam,
     Retro,
+    Xbox,
+    Epic,
 }
 
 impl AchievementSource {
@@ -650,6 +695,8 @@ impl AchievementSource {
         match self {
             AchievementSource::Steam => "steam",
             AchievementSource::Retro => "retro",
+            AchievementSource::Xbox => "xbox",
+            AchievementSource::Epic => "epic",
         }
     }
 
@@ -657,6 +704,8 @@ impl AchievementSource {
         match code {
             "steam" => Some(AchievementSource::Steam),
             "retro" => Some(AchievementSource::Retro),
+            "xbox" => Some(AchievementSource::Xbox),
+            "epic" => Some(AchievementSource::Epic),
             _ => None,
         }
     }
@@ -770,6 +819,18 @@ pub struct RecentUnlock {
 /// Everything the hub shows.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AchievementsHub {
+    /// The Xbox account is signed in (its games are among `games`).
+    #[serde(default)]
+    pub xbox: bool,
+    /// The Epic account is signed in.
+    #[serde(default)]
+    pub epic: bool,
+    /// The easiest achievements still locked in games being played (most players have them).
+    #[serde(default)]
+    pub next: Vec<RecentUnlock>,
+    /// The player's rarest unlocks (fewest players have them).
+    #[serde(default)]
+    pub rarest: Vec<RecentUnlock>,
     pub games: Vec<AchievementGame>,
     /// Newest first.
     pub recent: Vec<RecentUnlock>,
@@ -973,6 +1034,17 @@ pub struct SessionEvent {
 pub enum Source {
     Steam { app_id: u32 },
     Epic { app_name: String, namespace: String, item_id: String },
+    /// A PC game from the Xbox app (Game Pass, Microsoft Store), by its package family and app id.
+    Xbox {
+        family: String,
+        app: String,
+        /// The Store's product id: the Xbox app's page for the game (install, buy).
+        #[serde(default)]
+        product: String,
+        /// In PC Game Pass.
+        #[serde(default)]
+        game_pass: bool,
+    },
     /// Any executable the user added by hand.
     Local { exe: String },
     /// A recomp installed from its developer's GitHub releases.
@@ -990,6 +1062,9 @@ pub enum Source {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecompEntry {
     pub id: String,
+    /// Other ids this recomp was known by: a game installed under one of them is this one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     /// Which game this is; recomps sharing it are versions of the same game.
     pub title: String,
     pub name: String,
@@ -997,6 +1072,9 @@ pub struct RecompEntry {
     pub game: String,
     pub console: String,
     pub repo: String,
+    /// Came from a list the player added rather than the recomp catalog.
+    #[serde(default)]
+    pub from_source: bool,
     /// Where the project lives, for the player: "GitHub", "GitLab" or its server's name.
     #[serde(default)]
     pub host: String,
@@ -1159,4 +1237,76 @@ pub struct PlayerNote {
     pub rating: u8,
     pub notes: String,
     pub favorite: bool,
+}
+
+
+impl RecompEntry {
+    /// Whether a recomp installed as `id` is this one (its id now, or one it had before).
+    pub fn is(&self, id: &str) -> bool {
+        self.id == id || self.aliases.iter().any(|a| a == id)
+    }
+
+    /// The release to update to, when it is newer than the one installed.
+    pub fn update_to(&self) -> Option<&Release> {
+        let installed = self.installed.as_deref()?;
+        self.latest.as_ref().filter(|latest| is_update(installed, &latest.version))
+    }
+}
+
+/// The numbers a version is made of: "v1.2.0-beta" is 1, 2, 0; "2026-11-25" is
+/// 2026, 11, 25. `None` when it has none (a commit, a name).
+/// With them, what follows ("R3", "beta"), lower case.
+fn version_numbers(text: &str) -> Option<(Vec<u64>, String)> {
+    let text = text.trim().trim_start_matches(|c: char| !c.is_ascii_digit());
+    let mut numbers = Vec::new();
+    let mut rest = "";
+    for (i, part) in text.split(['.', '-', '_']).enumerate() {
+        match part.parse::<u64>() {
+            Ok(n) => numbers.push(n),
+            Err(_) => {
+                // What's left from this part on (its place in the text).
+                let start = text.split(['.', '-', '_']).take(i).map(|p| p.len() + 1).sum::<usize>().min(text.len());
+                rest = &text[start..];
+                break;
+            }
+        }
+    }
+    (!numbers.is_empty()).then(|| (numbers, rest.to_lowercase()))
+}
+
+/// Whether `latest` is an update over `installed`: by their numbers when both
+/// have them (so the catalog being behind never offers an older version, and
+/// "v1.3" isn't an update over "1.3.0"); otherwise only when they differ.
+pub fn is_update(installed: &str, latest: &str) -> bool {
+    match (version_numbers(installed), version_numbers(latest)) {
+        (Some((mut have, have_rest)), Some((mut new, new_rest))) => {
+            let len = have.len().max(new.len());
+            have.resize(len, 0);
+            new.resize(len, 0);
+            // Same numbers: a different ending ("R3" to "R4", "beta" to none) is a new build.
+            new > have || (new == have && new_rest != have_rest)
+        }
+        _ => installed.trim() != latest.trim(),
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::is_update;
+
+    #[test]
+    fn updates_are_newer_versions_only() {
+        assert!(is_update("v1.2", "1.3.0"));
+        assert!(!is_update("v1.3", "1.3.0"), "the same version written two ways");
+        assert!(!is_update("v1.3", "v1.2"), "the catalog behind never offers an older one");
+        assert!(is_update("1.9", "1.10"));
+        assert!(is_update("2026-11-01", "2026-11-25"));
+        assert!(!is_update("2026-11-25", "2026-11-25"));
+        assert!(is_update("abc123", "def456"), "no numbers: different is all there is");
+        assert!(is_update("v0.1.39.6-R3", "v0.1.39.6-R4"));
+        assert!(is_update("1.0-beta", "1.0"));
+        assert!(!is_update("windows-v3.2.1", "windows-v3.2.1"));
+        assert!(!is_update("0.20.3", "0.20.0"));
+        assert!(!is_update("nightly", "nightly"));
+    }
 }

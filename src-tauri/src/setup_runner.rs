@@ -27,18 +27,23 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
     } else {
         Command::new(installer)
     };
-    let mut child = command
-        .current_dir(installer.parent().unwrap_or(Path::new(".")))
-        .spawn()
-        .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))?;
+    let dir = installer.parent().unwrap_or(Path::new(".")).to_path_buf();
+    // An installer that asks for administrator rights goes through Windows'
+    // permission prompt; its end is waited for all the same.
+    let wait: Box<dyn FnOnce() -> Result<Option<i32>, String> + Send> = match command.current_dir(&dir).spawn() {
+        Ok(mut child) => Box::new(move || child.wait().map(|s| s.code()).map_err(|e| tr!("Falha ao aguardar o instalador: {}", e))),
+        Err(e) if crate::elevated::needs_admin(&e) => {
+            let installer = installer.to_path_buf();
+            Box::new(move || crate::elevated::run_and_wait(&installer, "", &dir).map_err(crate::elevated::failure))
+        }
+        Err(e) => return Err(tr!("Não foi possível abrir o instalador: {}", e)),
+    };
     let _ = app.emit("toast", tr!("Instalador de {} aberto. Siga os passos dele; quando ele fechar, o Cerberus procura o jogo.", game.name));
 
     let app = app.clone();
     let game = game.clone();
     std::thread::spawn(move || {
-        let outcome = child.wait()
-            .map_err(|e| tr!("Falha ao aguardar o instalador: {}", e))
-            .and_then(|status| installer_result(status.code(), msi_package));
+        let outcome = wait().and_then(|code| installer_result(code, msi_package));
         crate::trail::note(&app, &game.id, tk!("Instalador"), &outcome.clone().map(|()| tr!("Instalador concluído").to_string()));
         match outcome {
             Ok(()) => finish(&app, &game),
@@ -54,7 +59,7 @@ pub fn run(app: &AppHandle, game: &Game, installer: &Path) -> Result<(), String>
 pub fn recover(app: &AppHandle) {
     let Ok(games) = app.state::<LocalLibrary>().games() else { return };
     for game in games.into_iter().filter(|g| g.setup_pending) {
-        if let Some(program) = locate(&game) {
+        if let Some(program) = found_program(app, &game) {
             if use_program(app, &game.id, &program).is_ok() {
                 crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Ok(tr!("Encontrado depois de reiniciar: {}", program.display())));
             }
@@ -65,7 +70,7 @@ pub fn recover(app: &AppHandle) {
 /// The game, when its installer already put it somewhere, so Play doesn't run
 /// the installer a second time.
 pub fn already_installed(app: &AppHandle, game: &Game) -> Option<Game> {
-    let program = locate(game)?;
+    let program = found_program(app, game)?;
     let found = use_program(app, &game.id, &program).ok()?;
     crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Ok(tr!("Já instalado: {}", program.display())));
     Some(found)
@@ -82,7 +87,7 @@ fn installer_result(code: Option<i32>, msi_package: bool) -> Result<(), String> 
 }
 
 fn finish(app: &AppHandle, game: &Game) {
-    let Some(program) = locate(game) else {
+    let Some(program) = found_program(app, game) else {
         crate::trail::note(app, &game.id, tk!("Localizar o jogo"), &Err(tr!("O instalador terminou, mas o jogo instalado não foi encontrado. Escolha o programa dele.").into()));
         let _ = app.emit(NEEDS_LOCATION, game.id.clone());
         return;
@@ -117,6 +122,25 @@ pub fn use_program(app: &AppHandle, game_id: &str, program: &Path) -> Result<Gam
 }
 
 /// Where the installer put the game, if it can be found.
+/// The game's program, found by itself, unless it is another library game's:
+/// then the player is asked to point at it.
+fn found_program(app: &AppHandle, game: &Game) -> Option<PathBuf> {
+    let program = locate(game)?;
+    let others = app.state::<LocalLibrary>().games().unwrap_or_default();
+    (!claimed_by_another(&others, &game.id, &program)).then_some(program)
+}
+
+/// Whether `program` sits in the folder of another game in the library.
+fn claimed_by_another(games: &[Game], me: &str, program: &Path) -> bool {
+    games.iter().filter(|g| g.id != me && !g.install_dir.is_empty()).any(|g| program.starts_with(&g.install_dir))
+}
+
+/// A store's own library folder: the game there is the store's, not the recomp's.
+fn store_folder(dir: &Path) -> bool {
+    let text = format!("{}\\", dir.to_string_lossy().to_lowercase().replace('/', "\\"));
+    ["\\steamapps\\", "\\epic games\\", "\\xboxgames\\", "\\gog galaxy\\", "\\windowsapps\\"].iter().any(|s| text.contains(s))
+}
+
 fn locate(game: &Game) -> Option<PathBuf> {
     let Source::Recomp { recomp_id, exe, .. } = &game.source else {
         return None;
@@ -126,7 +150,7 @@ fn locate(game: &Game) -> Option<PathBuf> {
     let hints = [name.as_str(), game.name.as_str()];
     // Beside the installer, but never the installer itself.
     let here = recomp::find_game_program(Path::new(&game.install_dir), &hints).filter(|p| *p != installer);
-    here.or_else(|| installed_location(&name).and_then(|dir| recomp::find_game_program(&dir, &hints)))
+    here.or_else(|| installed_location(&name).filter(|dir| !store_folder(dir)).and_then(|dir| recomp::find_game_program(&dir, &hints)))
 }
 
 #[cfg(windows)]
@@ -170,7 +194,8 @@ fn installed_location(_name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Most of the recomp's name words are in the installed app's name.
+/// Every word of the recomp's name is in the installed app's name: "Sonic
+/// Unleashed" (the original game) is not "Sonic Unleashed Recompiled".
 fn same_name(wanted: &str, shown: &str) -> bool {
     let words = |s: &str| -> Vec<String> {
         s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 1 && *w != "the").map(str::to_string).collect()
@@ -181,12 +206,26 @@ fn same_name(wanted: &str, shown: &str) -> bool {
         return false;
     }
     let shared = wanted.iter().filter(|w| shown.contains(w)).count();
-    shared * 2 > wanted.len()
+    shared == wanted.len()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn another_game_is_not_taken_for_the_recomp() {
+        assert!(!same_name("Sonic Unleashed Recompiled", "Sonic Unleashed"));
+        assert!(same_name("Sonic Unleashed Recompiled", "Sonic Unleashed Recompiled 1.0.3"));
+        assert!(store_folder(Path::new(r"D:\SteamLibrary\steamapps\common\Sonic")));
+        assert!(!store_folder(Path::new(r"C:\Program Files\UnleashedRecomp")));
+        let other: Game = serde_json::from_value(serde_json::json!({
+            "id": "steam:1", "name": "Sonic", "source": {"kind": "local", "exe": "x"}, "install_dir": r"D:\Games\Sonic"
+        }))
+        .unwrap();
+        assert!(claimed_by_another(&[other.clone()], "recomp:x", Path::new(r"D:\Games\Sonic\sonic.exe")));
+        assert!(!claimed_by_another(&[other], "steam:1", Path::new(r"D:\Games\Sonic\sonic.exe")));
+    }
 
     #[test]
     fn only_success_can_trigger_game_detection() {

@@ -1,7 +1,7 @@
 //! The achievements hub: every game with achievements on Steam and
 //! RetroAchievements, the latest unlocks, and each game's own list.
 
-use cerberus_shared::{Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, GameAward, tr};
+use cerberus_shared::{RecentUnlock, Achievement, AchievementGame, AchievementSource, AchievementsHub, GameAchievements, GameAward, tr};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -14,6 +14,8 @@ enum Platform {
     All,
     Steam,
     Retro,
+    Xbox,
+    Epic,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -58,6 +60,8 @@ fn source_label(source: AchievementSource) -> &'static str {
     match source {
         AchievementSource::Steam => "Steam",
         AchievementSource::Retro => "RetroAchievements",
+        AchievementSource::Xbox => "Xbox",
+        AchievementSource::Epic => "Epic Games",
     }
 }
 
@@ -65,6 +69,8 @@ fn platform_chip(source: AchievementSource) -> impl IntoView {
     let class = match source {
         AchievementSource::Steam => "ach-src steam",
         AchievementSource::Retro => "ach-src retro",
+        AchievementSource::Xbox => "ach-src xbox",
+        AchievementSource::Epic => "ach-src epic",
     };
     view! { <span class=class>{source_label(source)}</span> }
 }
@@ -96,16 +102,19 @@ pub fn AchievementsPage() -> impl IntoView {
     let state = RwSignal::new(State::All);
     let order = RwSignal::new(Order::Recent);
     let refresh_later = StoredValue::new(None::<Callback<()>>);
+    // The answers can arrive after the page was left: then its signals are gone,
+    // and reading them must not bring the window down (try_ reads).
     let refresh = move || {
-        if refreshing.get_untracked() {
+        if refreshing.try_get_untracked() != Some(false) {
             return;
         }
         refreshing.set(true);
         leptos::task::spawn_local(async move {
             let got = api::achievements_hub(true).await;
+            let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
             let again = got.as_ref().is_ok_and(|h| h.retry_soon);
             // A failed refresh keeps what's already on screen.
-            if got.is_ok() || hub.get_untracked().is_none() {
+            if got.is_ok() || !shown {
                 hub.set(Some(got));
             }
             refreshing.set(false);
@@ -125,7 +134,8 @@ pub fn AchievementsPage() -> impl IntoView {
     refresh_later.set_value(Some(Callback::new(move |_| refresh())));
     leptos::task::spawn_local(async move {
         let got = api::achievements_hub(false).await;
-        if hub.get_untracked().is_none() {
+        let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
+        if !shown {
             hub.set(Some(got));
         }
         refresh();
@@ -193,6 +203,46 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         </section>
     };
 
+    // "Ver todos": the full list below, filtered and sorted for it.
+    let show_all = move |p: Platform, st: State, o: Order| {
+        platform.set(p);
+        state.set(st);
+        order.set(o);
+        if let Some(el) = document().get_element_by_id("ach-all") {
+            el.scroll_into_view();
+        }
+    };
+
+    // Each store on its own line: games, achievements, platinums, a click filters the list.
+    let mut by_source: Vec<(Platform, AchievementSource, usize, u32, u32, usize)> = Vec::new();
+    for (p, src) in [(Platform::Steam, AchievementSource::Steam), (Platform::Xbox, AchievementSource::Xbox), (Platform::Epic, AchievementSource::Epic), (Platform::Retro, AchievementSource::Retro)] {
+        let mine: Vec<&AchievementGame> = hub.games.iter().filter(|g| g.source == src).collect();
+        if mine.is_empty() {
+            continue;
+        }
+        let got: u32 = mine.iter().map(|g| g.unlocked).sum();
+        let all: u32 = mine.iter().map(|g| g.total).sum();
+        let done = mine.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+        by_source.push((p, src, mine.len(), got, all, done));
+    }
+    let stores = (by_source.len() > 1).then(|| view! {
+        <section class="ach-stores" aria-label=tr!("Por plataforma")>
+            {by_source.into_iter().map(|(p, src, games, got, all, done)| {
+                let pct = if all == 0 { 0 } else { (got as u64 * 100 / all as u64) as u32 };
+                view! {
+                    <button type="button" class="ach-store" on:click=move |_| show_all(p, State::All, Order::Percent)>
+                        {platform_chip(src)}
+                        <b>{format!("{pct}%")}</b>
+                        <small>{tr!("{} de {} conquistas", format::count(got as u64), format::count(all as u64))}</small>
+                        <small>{if games == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", games) }}
+                            {(done > 0).then(|| format!(" · {}", if done == 1 { tr!("1 platinado").to_string() } else { tr!("{} platinados", done) }))}</small>
+                        <span class="ach-bar"><i style=format!("width: {}%", pct.max(1))></i></span>
+                    </button>
+                }
+            }).collect_view()}
+        </section>
+    });
+
     let notes = view! {
         {(!hub.steam).then(|| view! {
             <div class="ach-note"><Svg icon=Icon::Info size=18 /><span>{tr!("A Steam não foi encontrada neste PC, ou ainda não guardou conquistas. Abra um jogo pela Steam e volte aqui.")}</span></div>
@@ -201,6 +251,13 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
             <div class="ach-note">
                 <Svg icon=Icon::Trophy size=18 />
                 <span>{tr!("Conecte sua conta do RetroAchievements para ver as conquistas dos clássicos.")}</span>
+                <button type="button" class="btn sm" on:click=move |_| library.go(Route::Settings)>{tr!("Conectar")}</button>
+            </div>
+        })}
+        {(!hub.xbox).then(|| view! {
+            <div class="ach-note">
+                <Svg icon=Icon::Trophy size=18 />
+                <span>{tr!("Entre com a conta Microsoft em Configurações › Xbox para ver as conquistas do Xbox e do Game Pass.")}</span>
                 <button type="button" class="btn sm" on:click=move |_| library.go(Route::Settings)>{tr!("Conectar")}</button>
             </div>
         })}
@@ -216,20 +273,59 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         let n = plats.len();
         view! {
             <section class="shelf">
-                <div class="shelf-h"><h2>{tr!("Platinados")}<small class="plat-n">{n}</small></h2></div>
+                <div class="shelf-h">
+                    <h2>{tr!("Platinados")}<small class="plat-n">{n}</small></h2>
+                    <button type="button" class="btn sm ghost" on:click=move |_| show_all(Platform::All, State::Done, Order::Recent)>{tr!("Ver todos")}</button>
+                </div>
                 <div class="plat-row">{plats.into_iter().map(|g| view! { <PlatCard g /> }).collect_view()}</div>
             </section>
         }
     });
 
     // The games closest to 100%: what's worth playing next.
-    let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 40).cloned().collect();
+    let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 25).cloned().collect();
     near.sort_by(|a, b| b.percent().cmp(&a.percent()).then_with(|| (a.total - a.unlocked).cmp(&(b.total - b.unlocked))));
-    near.truncate(4);
+    let near_n = near.len();
+    near.truncate(8);
     let near = (!near.is_empty()).then(|| view! {
         <section class="shelf">
-            <div class="shelf-h"><h2>{tr!("Perto dos 100%")}</h2></div>
+            <div class="shelf-h">
+                <h2>{tr!("Perto dos 100%")}<small class="plat-n">{near_n}</small></h2>
+                <button type="button" class="btn sm ghost" on:click=move |_| show_all(Platform::All, State::Started, Order::Percent)>{tr!("Ver todos")}</button>
+            </div>
             <div class="ach-near">{near.into_iter().map(|g| view! { <NearCard g /> }).collect_view()}</div>
+        </section>
+    });
+
+    // An achievement with how many players have it.
+    let rare_item = move |r: &RecentUnlock, unlocked: bool| {
+        let a = r.achievement.clone();
+        let route = Route::AchievementGame(r.source.code().to_string(), r.game_key.clone());
+        let share = a.rarity.map(|p| {
+            let n = format!("{:.1}", p).replace(".0", "");
+            let n = if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt { n.replace('.', ",") } else { n };
+            tr!("{}% dos jogadores", n)
+        }).unwrap_or_default();
+        let title = a.description.clone();
+        view! {
+            <button type="button" class="ach-unlock" class:locked=!unlocked title=title on:click=move |_| library.go(route.clone())>
+                <AchIcon a=a.clone() unlocked />
+                <b>{a.name.clone()}</b>
+                <small>{r.game_name.clone()}</small>
+                <small class="ach-ago">{share}</small>
+            </button>
+        }
+    };
+    let next = (!hub.next.is_empty()).then(|| view! {
+        <section class="shelf">
+            <div class="shelf-h"><div><h2>{tr!("Próximas conquistas")}</h2><p class="muted small shelf-sub">{tr!("As mais comuns que ainda faltam nos jogos em andamento.")}</p></div></div>
+            <div class="ach-strip">{hub.next.iter().map(|r| rare_item(r, false)).collect_view()}</div>
+        </section>
+    });
+    let rarest = (!hub.rarest.is_empty()).then(|| view! {
+        <section class="shelf">
+            <div class="shelf-h"><div><h2>{tr!("Suas mais raras")}</h2><p class="muted small shelf-sub">{tr!("Conquistas que poucos jogadores têm.")}</p></div></div>
+            <div class="ach-strip">{hub.rarest.iter().map(|r| rare_item(r, true)).collect_view()}</div>
         </section>
     });
 
@@ -264,6 +360,8 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::All => true,
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
+                Platform::Xbox => g.source == AchievementSource::Xbox,
+                Platform::Epic => g.source == AchievementSource::Epic,
             })
             .filter(|g| in_state(g, state.get()))
             .filter(|g| needle.is_empty() || g.name.to_lowercase().contains(&needle) || g.platform.to_lowercase().contains(&needle))
@@ -291,7 +389,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let seg = |label: &'static str, on: Signal<bool>, set: Callback<()>| {
         view! { <button type="button" class="seg" role="tab" class:on=on aria-selected=move || on.get().to_string() on:click=move |_| set.run(())>{label}</button> }
     };
-    let platforms = [(Platform::All, tr!("Todas")), (Platform::Steam, "Steam"), (Platform::Retro, "RetroAchievements")]
+    let platforms = [(Platform::All, tr!("Todas")), (Platform::Steam, "Steam"), (Platform::Retro, "RetroAchievements"), (Platform::Xbox, "Xbox"), (Platform::Epic, "Epic Games")]
         .into_iter()
         .map(|(p, label)| seg(label, Signal::derive(move || platform.get() == p), Callback::new(move |_| platform.set(p))))
         .collect_view();
@@ -304,6 +402,8 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                 Platform::All => true,
                 Platform::Steam => g.source == AchievementSource::Steam,
                 Platform::Retro => g.source == AchievementSource::Retro,
+                Platform::Xbox => g.source == AchievementSource::Xbox,
+                Platform::Epic => g.source == AchievementSource::Epic,
             })
             .filter(|g| in_state(g, s))
             .count()
@@ -321,11 +421,14 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
 
     view! {
         {summary}
+        {stores}
         {notes}
         {plats}
         {near}
+        {next}
         {recent}
-        <section class="shelf">
+        {rarest}
+        <section class="shelf" id="ach-all">
             <div class="shelf-h"><h2>{tr!("Todos os jogos")}</h2></div>
             <div class="ach-tools" aria-label=tr!("Filtros das conquistas")>
                 <div class="segs" role="tablist" aria-label=tr!("Plataforma")>{platforms}</div>
@@ -334,8 +437,10 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                     <Svg icon=Icon::Search size=18 />
                     <input type="search" placeholder=tr!("Buscar jogo") aria-label=tr!("Buscar jogo")
                         prop:value=move || search.get() on:input=move |e| search.set(event_target_value(&e)) />
+                        <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                 </label>
                 <select class="select" aria-label=tr!("Ordenar")
+                    prop:value=move || match order.get() { Order::Percent => "percent", Order::Most => "most", Order::Name => "name", Order::Played => "played", Order::Recent => "recent" }
                     on:change=move |e| order.set(match event_target_value(&e).as_str() {
                         "percent" => Order::Percent, "most" => Order::Most, "name" => Order::Name, "played" => Order::Played, _ => Order::Recent,
                     })>

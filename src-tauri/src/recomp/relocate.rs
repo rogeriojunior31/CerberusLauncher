@@ -37,8 +37,9 @@ pub fn move_install(folders: &Folders, library: &LocalLibrary, game_id: &str, in
     }
     fs::create_dir_all(into).map_err(|e| tr!("Não foi possível usar {0}: {1}", into.display(), e))?;
 
-    if fs::rename(&from, &to).is_err() {
-        // Another drive: copy, then delete the old folder.
+    let renamed = fs::rename(&from, &to).is_ok();
+    if !renamed {
+        // Another drive: copy to a temporary folder, then give it the real name.
         crate::disk::require(into, folder_size(&from))?;
         let staging = into.join(format!(".moving-{}", name.to_string_lossy()));
         let _ = fs::remove_dir_all(&staging);
@@ -47,22 +48,44 @@ pub fn move_install(folders: &Folders, library: &LocalLibrary, game_id: &str, in
             let _ = fs::remove_dir_all(&staging);
             return Err(tr!("Não foi possível copiar o jogo: {}. Ele continua onde estava.", e));
         }
-        // The copy is complete; a leftover old folder only costs space.
-        let _ = fs::remove_dir_all(&from);
     }
 
+    // The library points at the new place before anything old is deleted: if
+    // that can't be saved, the move is undone and the game stays where it was.
     let rebase = |path: &str| match Path::new(path).strip_prefix(&from) {
         Ok(rest) => to.join(rest).to_string_lossy().into_owned(),
         Err(_) => path.to_string(),
     };
-    library.update(game_id, |g| {
+    let updated = library.update(game_id, |g| {
         g.install_dir = to.to_string_lossy().into_owned();
         if let Source::Recomp { exe, .. } = &mut g.source {
             *exe = rebase(exe);
         }
         g.tracking_exe = g.tracking_exe.as_deref().map(rebase);
         g.game_copy = g.game_copy.as_deref().map(rebase);
-    })
+    });
+    match updated {
+        Ok(game) => {
+            if !renamed {
+                // The copy is in use: the old folder goes (set aside first; what can't
+                // be deleted now is swept the next time Cerberus starts).
+                let aside = from.with_file_name(format!("{}{}-moved", super::REMOVING, recomp_id));
+                let _ = fs::remove_dir_all(&aside);
+                if fs::rename(&from, &aside).is_ok() {
+                    let _ = fs::remove_dir_all(&aside);
+                }
+            }
+            Ok(game)
+        }
+        Err(e) => {
+            if renamed {
+                let _ = fs::rename(&to, &from);
+            } else {
+                let _ = fs::remove_dir_all(&to);
+            }
+            Err(tr!("Não foi possível mover o jogo: {}. Ele continua onde estava.", e))
+        }
+    }
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -135,6 +158,20 @@ mod tests {
         assert_eq!(fs::read(to.join("addons").join("mod.pk3")).unwrap(), b"mod");
         assert!(!Path::new(&game.install_dir).exists());
         assert_eq!(library.get(&game.id).unwrap().unwrap().install_dir, moved.install_dir);
+    }
+
+    #[test]
+    fn a_library_that_cant_be_saved_undoes_the_move() {
+        let root = tempfile::tempdir().unwrap();
+        let (folders, library, game) = installed(root.path());
+        // The library can't be written now.
+        let blocked = root.path().join("data").join("library.json.tmp");
+        fs::create_dir_all(&blocked).unwrap();
+        let into = root.path().join("D").join("Jogos");
+        assert!(move_install(&folders, &library, &game.id, &into).is_err());
+        assert!(Path::new(&game.install_dir).join("srb2win.exe").is_file(), "the game is where it was");
+        assert!(!into.join("srb2").exists(), "nothing left at the destination");
+        assert_eq!(library.get(&game.id).unwrap().unwrap().install_dir, game.install_dir);
     }
 
     #[test]

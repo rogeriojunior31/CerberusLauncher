@@ -104,7 +104,9 @@ pub async fn fetch_checked(http: &reqwest::Client, target: &Path, update: &AppUp
         .and_then(|r| r.error_for_status())
         .map_err(|_| tr!("Não foi possível baixar a atualização.").to_string())?;
     let total = reply.content_length().unwrap_or(update.size);
-    let mut file = std::fs::File::create(target).map_err(|e| e.to_string())?;
+    // Downloaded under another name: only a checked file ever has the installer's name.
+    let part = target.with_extension("exe.part");
+    let mut file = std::fs::File::create(&part).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
     let mut done = 0u64;
     let mut stream = reply.bytes_stream();
@@ -115,20 +117,26 @@ pub async fn fetch_checked(http: &reqwest::Client, target: &Path, update: &AppUp
         done += chunk.len() as u64;
         progress(done, total);
     }
+    file.sync_all().map_err(|e| e.to_string())?;
     drop(file);
     let digest = format!("{:x}", hasher.finalize());
     let size_ok = update.size == 0 || done == update.size;
-    let hash_ok = update.sha256.as_deref().is_none_or(|want| want == digest);
+    // No published checksum, no install: a file that can't be checked is never run.
+    let hash_ok = update.sha256.as_deref().is_some_and(|want| want == digest);
     if !size_ok || !hash_ok {
-        let _ = std::fs::remove_file(target);
+        let _ = std::fs::remove_file(&part);
         return Err(tr!("O arquivo baixado não confere com o publicado no GitHub. Nada foi instalado.").into());
     }
-    Ok(())
+    let _ = std::fs::remove_file(target);
+    std::fs::rename(&part, target).map_err(|e| e.to_string())
 }
 
 /// Downloads and checks the installer (progress as `update-progress`), starts
 /// it silently and closes Cerberus. A wrong file is deleted, never run.
 pub async fn install(app: &AppHandle, http: &reqwest::Client, data_dir: &Path, update: AppUpdate) -> Result<(), String> {
+    if update.sha256.is_none() {
+        return Err(tr!("O GitHub não informou o checksum dessa versão; por segurança ela não é instalada sozinha. Baixe pelo site do projeto.").into());
+    }
     let target = installer_path(data_dir, &update);
     fetch_checked(http, &target, &update, |done, total| {
         let _ = app.emit("update-progress", (done, total));
@@ -299,7 +307,15 @@ mod real {
         assert_eq!(std::fs::metadata(&target).unwrap().len(), notes.size);
         let mut wrong = notes.clone();
         wrong.sha256 = Some("00".repeat(32));
+        let good = std::fs::read(&target).unwrap();
         assert!(tauri::async_runtime::block_on(super::fetch_checked(&http, &target, &wrong, |_, _| {})).is_err());
-        assert!(!target.exists());
+        assert!(!target.with_extension("exe.part").exists(), "the bad download is deleted");
+        assert_eq!(std::fs::read(&target).unwrap(), good, "the checked installer isn't touched");
+        // No published checksum: refused.
+        let mut unknown = notes.clone();
+        unknown.sha256 = None;
+        let other = dir.path().join("other.exe");
+        assert!(tauri::async_runtime::block_on(super::fetch_checked(&http, &other, &unknown, |_, _| {})).is_err());
+        assert!(!other.exists());
     }
 }

@@ -22,6 +22,9 @@ pub enum Btn {
     Y,
     Lb,
     Rb,
+    /// The triggers: in the Library, a jump to the next letter (or page).
+    Lt,
+    Rt,
     Menu,
     MenuHold,
     /// A letter or digit typed on a physical keyboard (for the search keyboard).
@@ -100,7 +103,11 @@ const STICK_REST: f64 = 0.3;
 
 #[derive(Default)]
 struct PadState {
-    pressed: [bool; 6],
+    /// The first snapshot was taken: buttons already held then don't count as presses.
+    primed: bool,
+    /// Menu was held when reading began (the hold that opened the TV): it counts once released.
+    menu_blocked: bool,
+    pressed: [bool; 8],
     dir: Option<Btn>,
     next_repeat: f64,
     menu_since: Option<f64>,
@@ -110,7 +117,7 @@ struct PadState {
 
 /// One snapshot of the first connected controller: face and shoulder buttons
 /// (A, B, X, Y, LB, RB), Menu, the direction held, and its kind.
-fn read_pad() -> Option<([bool; 6], bool, Option<Btn>, (f64, f64), PadKind)> {
+fn read_pad() -> Option<([bool; 8], bool, Option<Btn>, (f64, f64), PadKind)> {
     let pads = web_sys::window()?.navigator().get_gamepads().ok()?;
     for pad in pads.iter() {
         let Ok(pad) = pad.dyn_into::<web_sys::Gamepad>() else { continue };
@@ -122,7 +129,7 @@ fn read_pad() -> Option<([bool; 6], bool, Option<Btn>, (f64, f64), PadKind)> {
         let down = |i: u32| buttons.get(i).dyn_into::<web_sys::GamepadButton>().is_ok_and(|b| b.pressed());
         // Standard layout: 0 bottom, 1 right, 2 left, 3 top. Nintendo prints A on the right, B at the bottom.
         let (a, b, x, y) = if kind == PadKind::Nintendo { (down(1), down(0), down(3), down(2)) } else { (down(0), down(1), down(2), down(3)) };
-        let face = [a, b, x, y, down(4), down(5)];
+        let face = [a, b, x, y, down(4), down(5), down(6), down(7)];
         let dpad = if down(12) {
             Some(Btn::Up)
         } else if down(13) {
@@ -152,6 +159,13 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
     let on_pad = on.clone();
     let poll = set_interval_with_handle(
         move || {
+            // Only while Cerberus is the window in front: with a game in front the
+            // pad is the game's. Coming back, what is held is read afresh.
+            let focused = web_sys::window().and_then(|w| w.document()).is_some_and(|d| d.has_focus().unwrap_or(true));
+            if !focused {
+                state.update_value(|s| s.primed = false);
+                return;
+            }
             let Some((face, menu, dpad, stick, kind)) = read_pad() else { return };
             if pad_kind.get_untracked() != kind {
                 pad_kind.set(kind);
@@ -159,7 +173,17 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             let t = now();
             let mut fire = Vec::new();
             state.update_value(|s| {
-                const FACE: [Btn; 6] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb];
+                if !s.primed {
+                    s.primed = true;
+                    s.pressed = face;
+                    s.menu_blocked = menu;
+                    s.menu_since = None;
+                    s.stick_seen_resting = false;
+                }
+                if s.menu_blocked && !menu {
+                    s.menu_blocked = false;
+                }
+                const FACE: [Btn; 8] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb, Btn::Lt, Btn::Rt];
                 for (i, btn) in FACE.iter().enumerate() {
                     if face[i] && !s.pressed[i] {
                         fire.push(*btn);
@@ -168,7 +192,7 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
                 s.pressed = face;
 
                 // Menu: a tap opens Settings, a long hold leaves.
-                match (menu, s.menu_since) {
+                match (menu && !s.menu_blocked, s.menu_since) {
                     (true, None) => {
                         s.menu_since = Some(t);
                         s.menu_fired = false;
@@ -235,7 +259,11 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             // except while the search keyboard is open, where they type.
             "PageUp" => Btn::Lb,
             "PageDown" => Btn::Rb,
+            "Home" => Btn::Lt,
+            "End" => Btn::Rt,
             "F10" => Btn::Menu,
+            // Held, F11 repeats: only the first press counts.
+            "F11" if e.repeat() => return,
             "F11" => Btn::MenuHold,
             k if k.chars().count() == 1 => {
                 let c = k.chars().next().unwrap_or(' ');

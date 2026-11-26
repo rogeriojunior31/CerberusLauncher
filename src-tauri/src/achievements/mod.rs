@@ -2,10 +2,30 @@
 //! RetroAchievements (from its Web API), side by side.
 
 pub mod classic;
+pub mod epic;
 pub mod live;
 pub mod retro;
 pub mod steam;
 pub mod steam_api;
+pub mod store;
+pub mod xbox;
+
+use store::{Scope, Store};
+
+/// The Xbox account's refresh token, renewed in the settings when Xbox Live
+/// hands a new one (only while the account the renewal started from is still signed in).
+fn save_xbox_refresh(data_dir: &Path, started_with: &str, refresh: &str) {
+    if started_with != refresh {
+        crate::settings::renew_token(data_dir, crate::settings::Account::Xbox, started_with, refresh);
+    }
+}
+
+/// Forgets the Epic session kept in memory (signed out, or another account).
+pub fn forget_epic_session() {
+    if let Ok(mut kept) = EPIC_SESSION.lock() {
+        *kept = None;
+    }
+}
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -317,6 +337,193 @@ fn retro_file(data_dir: &Path, user: &str) -> std::path::PathBuf {
 /// Everything the hub shows. A source that can't be read leaves a note in `problems`.
 /// With `online` off nothing is asked of the internet: the hub opens at once with
 /// what's on disk, and the page asks again with `online` on to bring it up to date.
+fn keep_retro(db: &mut Store, scope: &Scope, r: &RetroKept) {
+    db.keep_games(scope, &r.games);
+    let mut by_game: HashMap<&str, Vec<cerberus_shared::Achievement>> = HashMap::new();
+    for u in &r.recent {
+        by_game.entry(u.game_key.as_str()).or_default().push(u.achievement.clone());
+    }
+    for (game, list) in by_game {
+        db.keep_unlocks(scope, game, &list);
+    }
+}
+
+/// One account sync at a time.
+static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Games played since their list was read, asked again per sync (the rest wait for the next one).
+const XBOX_LISTS_PER_SYNC: usize = 8;
+
+/// The Xbox account into the store: every game's progress in one question; the
+/// first time, every list (a page per thousand achievements); after that, only
+/// the lists of games played since they were read.
+async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
+    // The hub and the library may both ask at once: one goes, the other finds it done.
+    let _one = SYNCING.lock().await;
+    if !db.due(scope) {
+        return Ok(());
+    }
+    let session = xbox::session(http, refresh, |r| save_xbox_refresh(data_dir, refresh, r)).await?;
+    let (games, last_played) = xbox::games(http, &session).await?;
+    // Minutes played too: a hundred titles per question.
+    let titles: Vec<String> = last_played.iter().map(|(_, title, _)| title.clone()).collect();
+    let minutes = xbox::minutes(http, &session, &titles).await;
+    // The library knows a game by its package; achievements are by title.
+    for (pfn, title, _) in &last_played {
+        if let Ok(title) = title.parse::<u64>() {
+            db.set_stamp(scope, &format!("pfn:{}", pfn.to_lowercase()), title);
+        }
+    }
+    db.keep_played(
+        scope,
+        &last_played.into_iter().map(|(pfn, title, last)| (pfn.to_lowercase(), minutes.get(&title).copied().unwrap_or(0) * 60, last)).collect::<Vec<_>>(),
+    );
+    if db.stamp(scope, "all_lists_v4").is_none() {
+        let lists = xbox::all_lists(http, &session).await?;
+        for g in &games {
+            if let Some(list) = lists.get(&g.key) {
+                db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), list);
+            }
+        }
+        db.set_stamp(scope, "all_lists_v4", store::now());
+    } else {
+        let mut stale: Vec<&AchievementGame> = games
+            .iter()
+            .filter(|g| db.list(scope, &g.key).is_none_or(|(played, _)| g.last_played.unwrap_or(0) > played))
+            .filter(|g| g.unlocked > 0 || g.total == 0)
+            .collect();
+        stale.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+        for g in stale.into_iter().take(XBOX_LISTS_PER_SYNC) {
+            let list = xbox::title_list(http, &session, &g.key).await?;
+            db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
+        }
+    }
+    let games: Vec<AchievementGame> = games
+        .into_iter()
+        .map(|g| match db.list(scope, &g.key) {
+            Some((_, list)) => xbox::with_list(g, &list),
+            None => g,
+        })
+        .collect();
+    db.keep_games(scope, &games);
+    Ok(())
+}
+
+/// The Epic session, kept for half an hour (Epic hands a new refresh token each time: it's saved).
+static EPIC_SESSION: std::sync::Mutex<Option<(std::time::Instant, String, String)>> = std::sync::Mutex::new(None);
+
+async fn epic_session(http: &reqwest::Client, data_dir: &Path) -> Result<(String, String), String> {
+    if let Ok(kept) = EPIC_SESSION.lock() {
+        if let Some((at, access, account)) = kept.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(1800) {
+                return Ok((access.clone(), account.clone()));
+            }
+        }
+    }
+    let refresh = crate::settings::load(data_dir).epic_refresh.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
+    let s = crate::epic_account::token(http, crate::epic_account::Grant::Refresh(&refresh)).await?;
+    crate::settings::renew_token(data_dir, crate::settings::Account::Epic, &refresh, &s.refresh);
+    // Signed out while asking: the session isn't kept.
+    if crate::settings::load(data_dir).epic_refresh.as_deref() != Some(s.refresh.as_str()) {
+        return Err(tr!("Entre na Epic em Configurações › Epic Games primeiro.").into());
+    }
+    if let Ok(mut kept) = EPIC_SESSION.lock() {
+        *kept = Some((std::time::Instant::now(), s.access.clone(), s.account.clone()));
+    }
+    Ok((s.access, s.account))
+}
+
+/// Epic games asked per sync (two questions each); the rest wait for the next sync.
+const EPIC_GAMES_PER_SYNC: usize = 40;
+
+/// The Epic account into the store: play time of every game in one question;
+/// then each game new to the store, or played since its list was read.
+async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
+    // The hub and the library may both ask at once: one goes, the other finds it done.
+    let _one = SYNCING.lock().await;
+    if !db.due(scope) {
+        return Ok(());
+    }
+    let (access, account) = epic_session(http, data_dir).await?;
+    let owned = crate::epic_account::cached(data_dir);
+    let played = epic::playtimes(http, &access, &account).await.unwrap_or_default();
+    let mut asked = 0;
+    let mut games = Vec::new();
+    // Games played first: the others have nothing unlocked yet.
+    let mut owned = owned;
+    owned.sort_by_key(|o| std::cmp::Reverse(played.get(&o.app_name).map_or(0, |p| p.0)));
+    db.keep_played(scope, &played.iter().map(|(k, (s, l))| (k.clone(), *s, *l)).collect::<Vec<_>>());
+    for o in &owned {
+        let secs = played.get(&o.app_name).map_or(0, |p| p.0);
+        let kept = db.list(scope, &o.namespace);
+        let fresh = kept.as_ref().is_some_and(|(at, _)| *at >= secs.max(1));
+        let list = if fresh || asked >= EPIC_GAMES_PER_SYNC {
+            kept.map(|(_, l)| l)
+        } else {
+            asked += 1;
+            let list = epic::game_list(http, &access, &account, &o.namespace).await?;
+            db.keep_list(scope, &o.namespace, secs.max(1), &list);
+            Some(list)
+        };
+        if let Some(list) = list.filter(|l| !l.is_empty()) {
+            games.push(epic::entry(&o.namespace, &o.title, o.cover.as_deref(), secs, &list));
+        }
+    }
+    db.keep_games(scope, &games);
+    Ok(())
+}
+
+/// The Xbox and Epic accounts' play time on the library's games: the larger
+/// time and the latest day played win over what this PC saw.
+pub fn account_times(data_dir: &Path, games: &mut [cerberus_shared::Game]) {
+    let chosen = crate::settings::load(data_dir);
+    let Ok(db) = Store::open(data_dir) else { return };
+    let epic = chosen.epic_user.map(|u| db.played(&Scope::new(AchievementSource::Epic, &u))).unwrap_or_default();
+    let xbox = chosen.xbox_user.map(|u| db.played(&Scope::new(AchievementSource::Xbox, &u))).unwrap_or_default();
+    for game in games.iter_mut() {
+        let found = match &game.source {
+            cerberus_shared::Source::Epic { app_name, .. } => epic.get(app_name),
+            cerberus_shared::Source::Xbox { family, .. } => xbox.get(&family.to_lowercase()),
+            _ => None,
+        };
+        if let Some(&(seconds, last)) = found {
+            game.playtime_secs = game.playtime_secs.max(seconds);
+            if last > 0 {
+                game.last_played = Some(game.last_played.unwrap_or(0).max(last));
+            }
+        }
+    }
+}
+
+/// The Xbox and Epic accounts brought up to date, when due (the library calls
+/// this in the background). True when a store was asked.
+pub async fn sync_accounts(http: &reqwest::Client, data_dir: &Path) -> bool {
+    let chosen = crate::settings::load(data_dir);
+    let Ok(mut db) = Store::open(data_dir) else { return false };
+    let mut asked = false;
+    if let (Some(refresh), Some(user)) = (chosen.xbox_refresh, chosen.xbox_user) {
+        let scope = Scope::new(AchievementSource::Xbox, &user);
+        if db.due(&scope) {
+            asked = true;
+            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
+                Ok(()) => db.synced(&scope),
+                Err(_) => db.refused(&scope),
+            }
+        }
+    }
+    if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
+        let scope = Scope::new(AchievementSource::Epic, &user);
+        if db.due(&scope) {
+            asked = true;
+            match sync_epic(http, data_dir, &mut db, &scope).await {
+                Ok(()) => db.synced(&scope),
+                Err(_) => db.refused(&scope),
+            }
+        }
+    }
+    asked
+}
+
 pub async fn hub(
     http: &reqwest::Client,
     data_dir: &Path,
@@ -348,37 +555,93 @@ pub async fn hub(
         }
     }
     fill_names(http, data_dir, &mut games, &mut recent, online).await;
-    hub.games.extend(games);
-    hub.recent.extend(recent);
+    let mut db = match Store::open(data_dir) {
+        Ok(db) => db,
+        Err(e) => {
+            hub.problems.push(e);
+            return hub;
+        }
+    };
+    let mut scopes = Vec::new();
+    if hub.steam {
+        let scope = Scope::new(AchievementSource::Steam, "");
+        db.keep_games(&scope, &games);
+        let mut by_game: HashMap<String, Vec<cerberus_shared::Achievement>> = HashMap::new();
+        for r in recent {
+            by_game.entry(r.game_key).or_default().push(r.achievement);
+        }
+        for (game, list) in by_game {
+            db.keep_unlocks(&scope, &game, &list);
+        }
+        scopes.push(scope);
+    }
     if let Some((user, key)) = retro_account {
         hub.retro = true;
+        let scope = Scope::new(AchievementSource::Retro, &user);
         let file = retro_file(data_dir, &user);
         let kept: Option<RetroKept> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok());
-        let fresh = if online {
+        if online && db.due(&scope) {
             let (games, recent, points) = futures_util::join!(retro::games(http, &user, &key), retro::recent(http, &user, &key), retro::points(http, &user, &key));
             match (games, points) {
                 (Ok(games), Ok(points)) => {
                     let got = RetroKept { games, recent: recent.unwrap_or_default(), points };
                     let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
                     let _ = std::fs::write(&file, serde_json::to_string(&got).unwrap_or_default());
-                    Some(got)
+                    db.synced(&scope);
+                    keep_retro(&mut db, &scope, &got);
+                    (hub.retro_points, hub.retro_softcore) = got.points;
                 }
                 (Err(e), _) | (_, Err(e)) => {
+                    db.refused(&scope);
                     hub.problems.push(tr!("RetroAchievements: {}", e));
-                    None
+                    if let Some(k) = &kept {
+                        (hub.retro_points, hub.retro_softcore) = k.points;
+                    }
                 }
             }
-        } else {
-            None
-        };
-        if let Some(r) = fresh.or(kept) {
-            hub.games.extend(r.games);
-            hub.recent.extend(r.recent);
-            (hub.retro_points, hub.retro_softcore) = r.points;
+        } else if let Some(k) = &kept {
+            // What was read before the store existed comes in too (merging again changes nothing).
+            keep_retro(&mut db, &scope, k);
+            (hub.retro_points, hub.retro_softcore) = k.points;
         }
+        scopes.push(scope);
     }
-    hub.recent.sort_by(|a, b| b.achievement.unlocked_at.cmp(&a.achievement.unlocked_at));
-    hub.recent.truncate(RECENT);
+    let chosen = crate::settings::load(data_dir);
+    if let (Some(refresh), Some(user)) = (chosen.xbox_refresh, chosen.xbox_user) {
+        hub.xbox = true;
+        let scope = Scope::new(AchievementSource::Xbox, &user);
+        if online && db.due(&scope) {
+            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
+                Ok(()) => db.synced(&scope),
+                Err(e) => {
+                    db.refused(&scope);
+                    hub.problems.push(tr!("Xbox: {}", e));
+                }
+            }
+        }
+        scopes.push(scope);
+    }
+    let chosen = crate::settings::load(data_dir);
+    if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
+        hub.epic = true;
+        let scope = Scope::new(AchievementSource::Epic, &user);
+        if online && db.due(&scope) {
+            match sync_epic(http, data_dir, &mut db, &scope).await {
+                Ok(()) => db.synced(&scope),
+                Err(e) => {
+                    db.refused(&scope);
+                    hub.problems.push(tr!("Epic: {}", e));
+                }
+            }
+        }
+        scopes.push(scope);
+    }
+    for scope in &scopes {
+        // A game whose total isn't known yet (its list not read) waits for the next sync.
+        hub.games.extend(db.games(scope).into_iter().filter(|g| g.total > 0));
+    }
+    hub.recent = db.recent(&scopes, RECENT);
+    (hub.next, hub.rarest) = db.highlights(&scopes, 12);
     if let Some((key, _)) = &steam_api_account {
         fill_recent_icons(http, data_dir, key, &mut hub.recent, online).await;
     }
@@ -516,12 +779,64 @@ pub async fn game(
                 a.rarity = rarity.get(&a.id).copied();
             }
             let game = steam::game_entry(app, name, &list, played.as_ref());
+            // Kept: the hub's next and rarest achievements come from the lists read.
+            if let Ok(mut db) = Store::open(data_dir) {
+                db.keep_list(&Scope::new(AchievementSource::Steam, ""), key, game.last_played.unwrap_or(0), &list);
+            }
             Ok(GameAchievements { game, achievements: list })
         }
         AchievementSource::Retro => {
             let (user, key_) = retro_account.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
             let (game, achievements) = retro::game(http, &user, &key_, key).await?;
+            if let Ok(mut db) = Store::open(data_dir) {
+                db.keep_list(&Scope::new(AchievementSource::Retro, &user), key, game.last_played.unwrap_or(0), &achievements);
+            }
             Ok(GameAchievements { game, achievements })
+        }
+        AchievementSource::Epic => {
+            let user = crate::settings::load(data_dir).epic_user.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
+            let scope = Scope::new(AchievementSource::Epic, &user);
+            let db = Store::open(data_dir)?;
+            let game = db.game(&scope, key).ok_or(tr!("Esse jogo não está nas conquistas da Epic."))?;
+            let achievements = db.list(&scope, key).map(|(_, l)| l).unwrap_or_default();
+            Ok(GameAchievements { game, achievements })
+        }
+        AchievementSource::Xbox => {
+            let chosen = crate::settings::load(data_dir);
+            let (Some(refresh), Some(user)) = (chosen.xbox_refresh, chosen.xbox_user) else {
+                return Err(tr!("Entre com a conta Microsoft em Configurações › Xbox primeiro.").into());
+            };
+            let scope = Scope::new(AchievementSource::Xbox, &user);
+            let mut db = Store::open(data_dir)?;
+            // From the library: "pfn:<package family>".
+            let title = match key.strip_prefix("pfn:") {
+                Some(pfn) => db.stamp(&scope, &format!("pfn:{}", pfn.to_lowercase())).map(|t| t.to_string()).ok_or(tr!("Esse jogo não está nas conquistas do Xbox."))?,
+                None => key.to_string(),
+            };
+            let key = title.as_str();
+            let game = db.game(&scope, key).ok_or(tr!("Esse jogo não está nas conquistas do Xbox."))?;
+            let played = game.last_played.unwrap_or(0);
+            let list = match db.list(&scope, key) {
+                Some((at, list)) if at >= played => list,
+                kept => {
+                    let fresh = async {
+                        let session = xbox::session(http, &refresh, |r| save_xbox_refresh(data_dir, &refresh, r)).await?;
+                        xbox::title_list(http, &session, key).await
+                    }
+                    .await;
+                    match (fresh, kept) {
+                        (Ok(list), _) => {
+                            db.keep_list(&scope, key, played, &list);
+                            list
+                        }
+                        (Err(_), Some((_, list))) => list,
+                        (Err(e), None) => return Err(e),
+                    }
+                }
+            };
+            let game = xbox::with_list(game, &list);
+            db.keep_games(&scope, std::slice::from_ref(&game));
+            Ok(GameAchievements { game, achievements: list })
         }
     }
 }
@@ -546,3 +861,4 @@ mod tests {
         assert!(!games.is_empty());
     }
 }
+

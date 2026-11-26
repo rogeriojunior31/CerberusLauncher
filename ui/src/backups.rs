@@ -9,7 +9,14 @@ use crate::icons::{Icon, Svg};
 use crate::{Library, api, format};
 
 #[component]
-pub fn Backups(game_id: String) -> impl IntoView {
+pub fn Backups(
+    game_id: String,
+    /// `game_id` is an emulator's ("duckstation"): its memory cards and states.
+    #[prop(optional)] emulator: bool,
+    /// The card's title and line under it, for an emulator.
+    #[prop(optional)] title: Option<String>,
+    #[prop(optional)] note: Option<String>,
+) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(game_id);
     let refresh = RwSignal::new(0u32);
@@ -19,13 +26,19 @@ pub fn Backups(game_id: String) -> impl IntoView {
         // A backup is made when the game closes, which also reloads the library.
         library.games.track();
         let id = id.get_value();
-        async move { api::list_backups(&id).await }
+        async move {
+            if emulator {
+                api::emulator_backups().await.map(|all| all.into_iter().find(|e| e.id == id).map(|e| e.backups).unwrap_or_default())
+            } else {
+                api::list_backups(&id).await
+            }
+        }
     });
 
     let on_backup = move |_| {
         busy.set(true);
         spawn_local(async move {
-            let made = library.report(api::backup_now(&id.get_value()).await);
+            let made = library.report(if emulator { api::backup_emulator_saves(&id.get_value()).await } else { api::backup_now(&id.get_value()).await });
             busy.set(false);
             match made {
                 Some(Some(_)) => library.toast(tr!("Backup criado.")),
@@ -37,7 +50,7 @@ pub fn Backups(game_id: String) -> impl IntoView {
     };
     let on_open = move |_| {
         spawn_local(async move {
-            library.report(api::open_backups(&id.get_value()).await);
+            library.report(if emulator { api::open_emulator_backups(&id.get_value()).await } else { api::open_backups(&id.get_value()).await });
         });
     };
 
@@ -47,12 +60,12 @@ pub fn Backups(game_id: String) -> impl IntoView {
         Some(Ok(list)) if list.is_empty() => view! {
             <div class="empty small">
                 <h3>{tr!("Nenhum backup ainda")}</h3>
-                <p class="muted">{tr!("Um é feito sempre que você fecha o jogo, antes de atualizar e antes de desinstalar.")}</p>
+                <p class="muted">{if emulator { tr!("Um é feito sempre que você fecha um clássico nesse emulador.") } else { tr!("Um é feito sempre que você fecha o jogo, antes de atualizar e antes de desinstalar.") }}</p>
             </div>
         }
         .into_any(),
         Some(Ok(list)) => {
-            let rows = list.into_iter().map(|backup| view! { <BackupRow backup game_id=id.get_value() refresh busy /> }).collect_view();
+            let rows = list.into_iter().map(|backup| view! { <BackupRow backup game_id=id.get_value() emulator refresh busy /> }).collect_view();
             view! { <ul class="backups">{rows}</ul> }.into_any()
         }
     };
@@ -61,14 +74,14 @@ pub fn Backups(game_id: String) -> impl IntoView {
         <section class="card">
             <div class="card-h">
                 <div>
-                    <h3>{tr!("Backups de saves")}</h3>
-                    <p class="muted small">{tr!("Os 10 mais recentes ficam guardados, mesmo se você desinstalar o jogo.")}</p>
+                    <h3>{title.unwrap_or_else(|| tr!("Backups de saves").to_string())}</h3>
+                    <p class="muted small">{note.unwrap_or_else(|| tr!("Os 10 mais recentes ficam guardados, mesmo se você desinstalar o jogo.").to_string())}</p>
                 </div>
                 <div class="row">
                     <button type="button" class="btn sm" on:click=on_open>
                         <Svg icon=Icon::Folder size=16 />{tr!("Abrir pasta")}
                     </button>
-                    <button type="button" class="btn sm main" on:click=on_backup disabled=move || busy.get()>{tr!("Fazer backup agora")}</button>
+                    <button type="button" class="btn sm" class:main=!emulator on:click=on_backup disabled=move || busy.get()>{tr!("Fazer backup agora")}</button>
                 </div>
             </div>
             {list}
@@ -77,7 +90,7 @@ pub fn Backups(game_id: String) -> impl IntoView {
 }
 
 #[component]
-fn BackupRow(backup: Backup, game_id: String, refresh: RwSignal<u32>, busy: RwSignal<bool>) -> impl IntoView {
+fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<u32>, busy: RwSignal<bool>) -> impl IntoView {
     let library = expect_context::<Library>();
     // Restoring replaces the current saves (after copying them), so it takes a second click.
     let armed = RwSignal::new(false);
@@ -92,7 +105,11 @@ fn BackupRow(backup: Backup, game_id: String, refresh: RwSignal<u32>, busy: RwSi
         armed.set(false);
         busy.set(true);
         spawn_local(async move {
-            let restored = library.report(api::restore_backup(&id.get_value(), &name.get_value()).await);
+            let restored = library.report(if emulator {
+                api::restore_emulator_backup(&id.get_value(), &name.get_value()).await
+            } else {
+                api::restore_backup(&id.get_value(), &name.get_value()).await
+            });
             busy.set(false);
             if let Some(files) = restored {
                 library.toast(if files == 1 {

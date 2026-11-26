@@ -31,7 +31,7 @@ O Cerberus é um launcher de jogos para Windows, gratuito, de código aberto e f
 - **Acompanha as suas conquistas.** Steam e RetroAchievements numa página só, com selos, raridade e aviso na hora em que uma conquista cai.
 
 > [!IMPORTANT]
-> **O Cerberus nunca baixa arquivos de jogo.** Cada recomp e cada clássico precisa de uma cópia do jogo que você tem.
+> Cada recomp e cada clássico precisa de uma cópia do jogo que você tem. Fontes Hydra que você adicionar podem oferecer downloads HTTP(S), feitos somente quando você pedir. Use apenas fontes em que confia.
 
 ## Recursos
 
@@ -137,7 +137,7 @@ Para desinstalar, vá em **Configurações → Aplicativos** do Windows. O progr
 <details>
 <summary><b>Isso é legal? De onde vêm os jogos?</b></summary>
 
-O Cerberus não hospeda nem baixa jogo nenhum. Os recomps são projetos de código aberto que os próprios desenvolvedores publicam no GitHub, GitLab ou Forgejo, e o Cerberus instala essas releases oficiais. Cada recomp precisa dos dados de **uma cópia do jogo que você tem**. O Cerberus entrega essa cópia a partir das suas pastas, no seu PC.
+O Cerberus não hospeda jogos. Os recomps são projetos de código aberto publicados pelos próprios desenvolvedores no GitHub, GitLab ou Forgejo, e cada um precisa dos dados de **uma cópia do jogo que você tem**. Downloads diretos de fontes Hydra adicionadas por você são opcionais e só acontecem quando você clica em Instalar.
 </details>
 
 <details>

@@ -5,8 +5,10 @@
 //! One JSON object per line in `trail.jsonl`. The file is cut back to the newest
 //! `KEEP` lines once it passes `KEEP + SLACK`, so it never grows without limit.
 
+#[cfg(test)]
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+#[cfg(test)]
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -27,9 +29,8 @@ fn now() -> u64 {
 }
 
 fn read_all(path: &Path) -> Vec<TrailEntry> {
-    let Ok(file) = fs::File::open(path) else { return Vec::new() };
     // A line cut short by a crash is skipped, not a reason to lose the rest.
-    BufReader::new(file).lines().map_while(Result::ok).filter_map(|line| serde_json::from_str(&line).ok()).collect()
+    crate::state_file::json_lines(path)
 }
 
 impl Trail {
@@ -53,24 +54,17 @@ impl Trail {
     fn append(&self, entry: &TrailEntry) -> std::io::Result<()> {
         let mut written = self.written.lock().unwrap_or_else(|e| e.into_inner());
         let count = written.get_or_insert_with(|| read_all(&self.path).len());
-        if let Some(dir) = self.path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        let mut file = OpenOptions::new().create(true).append(true).open(&self.path)?;
-        writeln!(file, "{}", serde_json::to_string(entry)?)?;
+        crate::state_file::append_line(&self.path, &serde_json::to_string(entry)?)?;
         *count += 1;
         if *count > KEEP + SLACK {
-            drop(file);
             let all = read_all(&self.path);
             let newest = &all[all.len().saturating_sub(KEEP)..];
-            let temp = self.path.with_extension("jsonl.tmp");
             let mut text = String::new();
             for e in newest {
                 text.push_str(&serde_json::to_string(e)?);
                 text.push('\n');
             }
-            fs::write(&temp, text)?;
-            fs::rename(&temp, &self.path)?;
+            crate::state_file::write_bytes(&self.path, text.as_bytes()).map_err(std::io::Error::other)?;
             *count = newest.len();
         }
         Ok(())

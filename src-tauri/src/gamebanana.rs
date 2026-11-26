@@ -283,7 +283,8 @@ fn packs_in(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 
 /// Unpacks the archive in a temporary folder and moves its packs into
 /// `mods`; returns their names. The archive and the folder are removed.
-pub fn place_packs(archive: &Path, mods: &Path) -> Result<Vec<String>, String> {
+/// `mine`: the packs this mod placed before, which it may replace.
+pub fn place_packs(archive: &Path, mods: &Path, mine: &[String]) -> Result<Vec<String>, String> {
     let unpacked = archive.with_extension("unpacked");
     let _ = fs::remove_dir_all(&unpacked);
     let opened = if archive.extension().is_some_and(|e| e == "7z") {
@@ -297,6 +298,8 @@ pub fn place_packs(archive: &Path, mods: &Path) -> Result<Vec<String>, String> {
         if packs.is_empty() {
             return Err(tr!("Esse mod não tem pacotes .otr, .o2r ou .nrm que o jogo carregue sozinho; a página dele explica como instalar.").into());
         }
+        let wanted: Vec<String> = packs.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+        crate::mods::check_free(mods, &wanted, mine)?;
         fs::create_dir_all(mods).map_err(|e| e.to_string())?;
         let mut names = Vec::new();
         for pack in packs {
@@ -394,7 +397,7 @@ mod tests {
         }
         zip.finish().unwrap();
         let mods = root.path().join("game").join("mods");
-        let mut placed = place_packs(&archive, &mods).unwrap();
+        let mut placed = place_packs(&archive, &mods, &[]).unwrap();
         placed.sort();
         assert_eq!(placed, vec!["Model.OTR", "textures.o2r"]);
         assert_eq!(fs::read_to_string(mods.join("textures.o2r")).unwrap(), "o2r");
@@ -418,7 +421,7 @@ fn a_real_mod_installs() {
                 continue;
             }
             let archive = download(&client, &file, &temp.path().join("dl")).await.unwrap();
-            match place_packs(&archive, &temp.path().join("mods")) {
+            match place_packs(&archive, &temp.path().join("mods"), &[]) {
                 Ok(placed) => {
                     println!("{} ({}): {placed:?}", m.name, file.name);
                     return;

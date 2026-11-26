@@ -91,7 +91,12 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
         menu.close();
         leptos::task::spawn_local(async move {
             if library.report(api::set_in_collection(&name, &id, on).await).is_some() {
-                library.games.refetch();
+                library.patch_game(&id, |g| {
+                    g.collections.retain(|c| c != &name);
+                    if on {
+                        g.collections.push(name.clone());
+                    }
+                });
                 library.toast(if on { tr!("Adicionado à coleção {}.", name) } else { tr!("Tirado da coleção {}.", name) });
             }
         });
@@ -126,15 +131,26 @@ fn Shelves(id: String, in_shelves: Vec<String>) -> impl IntoView {
 
 /// Up and down move between the menu's items.
 fn step_items(e: &web_sys::KeyboardEvent) {
-    let step: i32 = match e.key().as_str() {
+    let key = e.key();
+    let step: i32 = match key.as_str() {
         "ArrowDown" => 1,
         "ArrowUp" => -1,
+        "Home" | "End" => 0,
         _ => return,
     };
     e.prevent_default();
     let Some(list) = document().query_selector_all(".ctx [role=menuitem]:not([disabled])").ok() else { return };
     let n = list.length() as i32;
     if n == 0 {
+        return;
+    }
+    // Home and End: the first and the last item.
+    if step == 0 {
+        let index = if key == "Home" { 0 } else { n - 1 };
+        if let Some(item) = list.item(index as u32) {
+            let item: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(item);
+            let _ = item.focus();
+        }
         return;
     }
     let active = document().active_element();
@@ -165,6 +181,10 @@ pub fn GameMenuLayer() -> impl IntoView {
         let running = library.running.with(|all| all.contains(&game.id));
         let (play_label, play_icon) = if running { (tr!("Jogando"), Icon::Play) } else { crate::launch_action(&game) };
         let has_folder = !game.install_dir.is_empty();
+        // Recomps and games added by hand are the launcher's to remove.
+        let removable = matches!(game.source, cerberus_shared::Source::Recomp { .. } | cerberus_shared::Source::Local { .. });
+        let remove_label = if matches!(game.source, cerberus_shared::Source::Recomp { .. }) && !game.external { tr!("Desinstalar…") } else { tr!("Remover da biblioteca…") };
+        let remove_id = game.id.clone();
         let (id, on) = (game.id.clone(), game.favorite);
         let page_id = game.id.clone();
         let folder_id = game.id.clone();
@@ -189,7 +209,7 @@ pub fn GameMenuLayer() -> impl IntoView {
             <div class="ctx-catch" on:click=move |_| menu.close() on:contextmenu=move |e| { e.prevent_default(); menu.close(); }></div>
             <div class="ctx" role="menu" style:left=format!("{x}px") style:top=format!("{y}px")
                 on:keydown=move |e| if e.key() == "Escape" { menu.close(); }>
-                <span class="ctx-h">{game.name.clone()}</span>
+                <span class="ctx-h">{crate::tiles::game_names(&game, library).0}</span>
                 {(!on_page).then(|| view! {
                     <button type="button" role="menuitem" disabled=running on:click=move |_| { menu.close(); crate::play_game(library, play.clone()); }>
                         <Svg icon=play_icon size=16 />{play_label}
@@ -206,23 +226,16 @@ pub fn GameMenuLayer() -> impl IntoView {
                         <Svg icon=Icon::Info size=16 />{tr!("Página do jogo")}
                     </button>
                 })}
-                <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
-                    <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
-                    {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}
-                </button>
-                <button type="button" role="menuitem" on:click=move |_| {
-                    menu.close();
-                    let id = hide_id.clone();
-                    leptos::task::spawn_local(async move {
-                        if library.report(api::set_hidden(&id, !hidden).await).is_some() {
-                            library.games.refetch();
-                            library.toast(if hidden { tr!("O jogo voltou para a biblioteca.") } else { tr!("Jogo oculto. Ele fica na aba Ocultos da biblioteca.") });
-                        }
-                    });
-                }>
-                    <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
-                </button>
+                // On the game's page the heart sits beside this menu: not twice.
+                {(!on_page).then(|| view! {
+                    <button type="button" role="menuitem" on:click=move |_| { menu.close(); crate::toggle_favorite(library, id.clone(), !on); }>
+                        <Svg icon=if on { Icon::HeartFill } else { Icon::Heart } size=16 />
+                        {if on { tr!("Tirar dos favoritos") } else { tr!("Adicionar aos favoritos") }}
+                    </button>
+                })}
                 <Shelves id=shelf_id in_shelves />
+                // The game's files: a group of their own, not under Coleções.
+                {has_folder.then(|| view! { <span class="ctx-sep" role="separator"></span> })}
                 {has_folder.then(|| {
                     let id = game.id.clone();
                     view! {
@@ -246,6 +259,28 @@ pub fn GameMenuLayer() -> impl IntoView {
                         leptos::task::spawn_local(async move { library.report(api::open_folder(&id).await); });
                     }>
                         <Svg icon=Icon::Folder size=16 />{tr!("Abrir pasta do jogo")}
+                    </button>
+                })}
+                // Taking it off the shelf last, apart from the rest.
+                <span class="ctx-sep" role="separator"></span>
+                <button type="button" role="menuitem" on:click=move |_| {
+                    menu.close();
+                    let id = hide_id.clone();
+                    leptos::task::spawn_local(async move {
+                        if library.report(api::set_hidden(&id, !hidden).await).is_some() {
+                            library.patch_game(&id, |g| g.hidden = !hidden);
+                            library.toast(if hidden { tr!("O jogo voltou para a biblioteca.") } else { tr!("Jogo oculto. Ele fica na aba Ocultos da biblioteca.") });
+                        }
+                    });
+                }>
+                    <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
+                </button>
+                {removable.then(|| view! {
+                    <button type="button" role="menuitem" class="danger" on:click=move |_| {
+                        menu.close();
+                        crate::game::open_to_remove(library, remove_id.clone());
+                    }>
+                        <Svg icon=Icon::Trash size=16 />{remove_label}
                     </button>
                 })}
             </div>

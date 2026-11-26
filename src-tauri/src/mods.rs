@@ -206,16 +206,36 @@ pub async fn packages(client: &Client, cache: &Path, community: &str) -> Result<
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Installed(pub HashMap<String, (String, Vec<String>)>);
 
+impl Installed {
+    /// The files this mod placed before (an update may replace them).
+    pub fn files_of(&self, mod_name: &str) -> Vec<String> {
+        self.0.get(mod_name).map(|(_, files)| files.clone()).unwrap_or_default()
+    }
+
+    /// The files the other mods placed: never replaced nor removed for this one.
+    pub fn others_files(&self, mod_name: &str) -> std::collections::HashSet<String> {
+        self.0.iter().filter(|(name, _)| name.as_str() != mod_name).flat_map(|(_, (_, files))| files.iter().map(|f| f.to_lowercase())).collect()
+    }
+}
+
+/// Refuses names already in the mods folder that aren't this mod's own: a
+/// file the player put there by hand, or another mod's, is never replaced.
+pub fn check_free(mods: &Path, names: &[String], mine: &[String]) -> Result<(), String> {
+    let mine: std::collections::HashSet<String> = mine.iter().map(|f| f.to_lowercase()).collect();
+    if let Some(taken) = names.iter().find(|n| !mine.contains(&n.to_lowercase()) && mods.join(n.as_str()).exists()) {
+        return Err(tr!("Já existe {} na pasta de mods, de outro mod ou posto à mão; nada foi instalado. Remova-o primeiro se quiser trocar.", taken));
+    }
+    Ok(())
+}
+
+/// The record of a game's mods; a damaged one falls back to its last good copy
+/// (and is kept aside), never silently to "no mods".
 pub fn load_installed(file: &Path) -> Installed {
-    let text = fs::read_to_string(file).unwrap_or_default();
-    serde_json::from_str(&text).unwrap_or_default()
+    crate::state_file::load_or_default(file)
 }
 
 pub fn save_installed(file: &Path, installed: &Installed) -> Result<(), String> {
-    if let Some(dir) = file.parent() {
-        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    fs::write(file, serde_json::to_string_pretty(installed).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    crate::state_file::save(file, installed)
 }
 
 /// Files the game loads by itself: N64: Recompiled mods, texture packs, and the
@@ -233,8 +253,15 @@ fn loads_itself(name: &str) -> bool {
 }
 
 /// Puts a mod zip's files the game reads into its mods folder; returns their names.
-pub fn unpack(zip_bytes: &[u8], mods: &Path) -> Result<Vec<String>, String> {
+/// `mine`: the files this mod placed before, which it may replace.
+pub fn unpack(zip_bytes: &[u8], mods: &Path, mine: &[String]) -> Result<Vec<String>, String> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(|e| tr!("O mod está corrompido: {}", e))?;
+    // Every name first: one that belongs to someone else stops it before anything is written.
+    let names: Vec<String> = (0..zip.len())
+        .filter_map(|i| zip.by_index(i).ok().filter(|e| !e.is_dir()).and_then(|e| e.enclosed_name()).and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())))
+        .filter(|n| loads_itself(n))
+        .collect();
+    check_free(mods, &names, mine)?;
     fs::create_dir_all(mods).map_err(|e| e.to_string())?;
     let mut placed = Vec::new();
     for index in 0..zip.len() {
@@ -271,18 +298,15 @@ pub async fn download(client: &Client, url: &str) -> Result<Vec<u8>, String> {
     if !reply.status().is_success() {
         return Err(tr!("O Thunderstore respondeu {}.", reply.status().as_u16()));
     }
-    if reply.content_length().is_some_and(|n| n > MAX_MOD_BYTES) {
-        return Err(tr!("Esse mod é grande demais.").into());
-    }
-    let bytes = reply.bytes().await.map_err(|e| e.to_string())?;
-    Ok(bytes.to_vec())
+    // Read as it comes, up to the limit, even when the server doesn't say the size.
+    crate::net::read_limited(reply, MAX_MOD_BYTES).await.map_err(|_| tr!("Esse mod é grande demais, ou o download falhou.").to_string())
 }
 
-/// Takes a mod's own files out of the mods folder.
-pub fn remove_files(mods: &Path, files: &[String]) {
+/// Takes a mod's own files out of the mods folder; one another mod also lists stays.
+pub fn remove_files(mods: &Path, files: &[String], others: &std::collections::HashSet<String>) {
     for name in files {
         let plain_name = Path::new(name).components().count() == 1;
-        if plain_name {
+        if plain_name && !others.contains(&name.to_lowercase()) {
             let _ = fs::remove_file(mods.join(name));
         }
     }
@@ -307,6 +331,37 @@ pub fn item(p: &Package, installed: &Installed) -> ModItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_of_another_mod_is_neither_replaced_nor_removed() {
+        use std::io::Write;
+        let zip_of = |files: &[(&str, &str)]| {
+            let mut buf = std::io::Cursor::new(Vec::new());
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            for (name, body) in files {
+                zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(body.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+            buf.into_inner()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mods = dir.path().join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        // The player's own pack, put there by hand.
+        fs::write(mods.join("cool.nrm"), "mine").unwrap();
+        assert!(unpack(&zip_of(&[("cool.nrm", "theirs")]), &mods, &[]).unwrap_err().contains("cool.nrm"));
+        assert_eq!(fs::read_to_string(mods.join("cool.nrm")).unwrap(), "mine");
+        // Two mods sharing a pack: removing one keeps it for the other.
+        let mut installed = Installed::default();
+        let a = unpack(&zip_of(&[("shared.nrm", "x"), ("a.nrm", "a")]), &mods, &[]).unwrap();
+        installed.0.insert("A".into(), ("1".into(), a.clone()));
+        installed.0.insert("B".into(), ("1".into(), vec!["shared.nrm".into()]));
+        remove_files(&mods, &a, &installed.others_files("A"));
+        assert!(mods.join("shared.nrm").exists() && !mods.join("a.nrm").exists());
+        // An update may replace its own files.
+        assert!(unpack(&zip_of(&[("shared.nrm", "y")]), &mods, &["shared.nrm".into()]).is_ok());
+    }
     use std::io::Write;
 
     #[test]
@@ -353,7 +408,7 @@ mod tests {
         let bytes = zip.finish().unwrap().into_inner();
         let dir = std::env::temp_dir().join(format!("cerberus-mods-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let placed = unpack(&bytes, &dir).unwrap();
+        let placed = unpack(&bytes, &dir, &[]).unwrap();
         assert_eq!(placed, vec!["cool.nrm"]);
         assert!(dir.join("cool.nrm").is_file());
         assert!(!dir.join("README.md").exists());

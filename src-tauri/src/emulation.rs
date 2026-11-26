@@ -41,8 +41,24 @@ pub const CORES: &[(&str, &str, &str)] = &[
 const PS1_BIOS: u64 = 512 * 1024;
 const PS2_BIOS: u64 = 4 * 1024 * 1024;
 
+/// Where RetroArch reads BIOS files: its own `system` folder, or the one the
+/// player set in its settings (`:` meaning beside the program).
 fn system_dir(exe: &Path) -> PathBuf {
-    exe.parent().unwrap_or(Path::new(".")).join("system")
+    retroarch_dir(exe, "system_directory", "system")
+}
+
+/// A folder RetroArch's settings name (`key`), else its usual one beside the program.
+pub fn retroarch_dir(exe: &Path, key: &str, usual: &str) -> PathBuf {
+    let base = exe.parent().unwrap_or(Path::new("."));
+    let chosen = fs::read_to_string(config_file(exe))
+        .ok()
+        .and_then(|text| config_value(&text, key))
+        .filter(|v| !v.is_empty() && v != "default");
+    match chosen {
+        Some(v) if v.starts_with(':') => base.join(v.trim_start_matches(':').trim_start_matches(['\\', '/'])),
+        Some(v) => PathBuf::from(v),
+        None => base.join(usual),
+    }
 }
 
 fn ps2_bios_dir(exe: &Path) -> PathBuf {
@@ -267,9 +283,8 @@ pub async fn install(http: &reqwest::Client, data: &Path, report: impl Fn(u64, u
         .and_then(|mut d| d.find_map(|e| e.ok().map(|e| e.path()).filter(|p| p.join("retroarch.exe").is_file())))
         .unwrap_or_else(|| staging.clone());
     let target = managed_dir(data);
-    let _ = fs::remove_dir_all(&target);
     fs::create_dir_all(target.parent().unwrap_or(data)).map_err(|e| e.to_string())?;
-    fs::rename(&inner, &target).map_err(|e| tr!("Não foi possível instalar o RetroArch: {}", e))?;
+    swap_keeping_player_files(&target, &inner)?;
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&archive);
     let exe = target.join("retroarch.exe");
@@ -285,16 +300,15 @@ pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Res
         return Err(tr!("Núcleo desconhecido.").into());
     }
     let url = format!("{NIGHTLY_CORES}/{core}_libretro.dll.zip");
-    let bytes = http
+    let reply = http
         .get(&url)
         .timeout(Duration::from_secs(120))
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e))?
-        .bytes()
-        .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e.without_url()))?;
+    // A core is a few MB; a server that doesn't stop can't fill the memory.
+    let bytes = crate::net::read_limited(reply, 256 << 20).await.map_err(|e| tr!("Não foi possível baixar o núcleo: {}", e))?;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| tr!("O núcleo baixado veio corrompido.").to_string())?;
     let name = format!("{core}_libretro.dll");
     let mut file = zip.by_name(&name).map_err(|_| tr!("O núcleo baixado veio diferente do esperado.").to_string())?;
@@ -305,7 +319,8 @@ pub async fn install_core(http: &reqwest::Client, exe: &Path, core: &str) -> Res
     }
     let target = core_file(exe, core);
     fs::create_dir_all(target.parent().unwrap_or(Path::new("."))).map_err(|e| e.to_string())?;
-    fs::write(&target, dll).map_err(|e| tr!("Não foi possível guardar o núcleo: {}", e))?;
+    // Whole or not at all: a cut download never replaces the core that was there.
+    crate::state_file::write_bytes(&target, &dll).map_err(|e| tr!("Não foi possível guardar o núcleo: {}", e))?;
     if let Some(pack) = system_files(core) {
         install_system_files(http, exe, pack).await?;
     }
@@ -361,7 +376,12 @@ pub fn disc_list(data: &Path, rom: &Path, discs: &[PathBuf], console: &str) -> R
     }
     let dir = data.join("emulators").join("playlists");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let list = dir.join(format!("{:08x}.m3u", crc32fast::hash(rom.to_string_lossy().as_bytes())));
+    // Named after the game (not a number): emulators name saves and memory
+    // cards after the list, so "Final Fantasy VII (USA).srm" is found again.
+    let stem = discs[0].file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let name: String = crate::roms::without_disc_tag(&stem).chars().filter(|c| !r#"<>:"/\|?*"#.contains(*c)).collect();
+    let name = if name.trim().is_empty() { format!("{:08x}", crc32fast::hash(rom.to_string_lossy().as_bytes())) } else { name };
+    let list = dir.join(format!("{name}.m3u"));
     let text: String = discs.iter().map(|d| format!("{}\n", d.display())).collect();
     fs::write(&list, text).map_err(|e| tr!("Não foi possível preparar a lista de discos: {}", e))?;
     Ok(list)
@@ -418,18 +438,38 @@ pub async fn connect_token(http: &reqwest::Client, user: &str, password: &str) -
 /// (backed up first). Nothing is written when it's already there.
 pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
     let cfg = config_file(exe);
-    let text = fs::read_to_string(&cfg).unwrap_or_default();
+    // A settings file that's there but can't be read is left alone: writing
+    // ours in its place would wipe the player's RetroArch settings.
+    let text = match fs::read_to_string(&cfg) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(tr!("Não foi possível ler as configurações do RetroArch ({}); nada foi mudado.", e)),
+    };
     let same = config_value(&text, "cheevos_enable").as_deref() == Some("true")
         && config_value(&text, "cheevos_username").as_deref() == Some(name)
         && config_value(&text, "cheevos_token").as_deref() == Some(token);
     if same {
         return Ok(());
     }
-    if !text.is_empty() {
-        let _ = fs::copy(&cfg, cfg.with_extension("cfg.cerberus-bak"));
+    // The player's own settings, kept once: a second link mustn't replace them with ours.
+    let backup = cfg.with_extension("cfg.cerberus-bak");
+    if !text.is_empty() && !backup.exists() {
+        let _ = fs::copy(&cfg, &backup);
     }
     let updated = with_values(&text, &[("cheevos_enable", "true"), ("cheevos_username", name), ("cheevos_token", token), ("cheevos_password", "")]);
-    fs::write(&cfg, updated).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
+    crate::state_file::write_bytes(&cfg, updated.as_bytes()).map_err(|e| tr!("Não foi possível gravar as configurações do RetroArch: {}", e))
+}
+
+/// Takes the account Cerberus put in RetroArch's settings back out (when it is
+/// still that one: a token the player set there themselves stays).
+pub fn forget_token(exe: &Path, token: &str) {
+    let cfg = config_file(exe);
+    let Ok(text) = fs::read_to_string(&cfg) else { return };
+    if config_value(&text, "cheevos_token").as_deref() != Some(token) {
+        return;
+    }
+    let updated = with_values(&text, &[("cheevos_token", ""), ("cheevos_username", "")]);
+    let _ = crate::state_file::write_bytes(&cfg, updated.as_bytes());
 }
 
 /// Time played and when, per classic (by its file), kept in `classics.json`.
@@ -440,19 +480,17 @@ pub struct Played {
 }
 
 pub fn played(data: &Path) -> std::collections::HashMap<String, Played> {
-    fs::read_to_string(data.join("classics.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&data.join("classics.json"))
 }
 
+/// Adds a session; two classics closing at once both count, and a file that
+/// can't be read is never replaced by this one session.
 pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), String> {
-    let mut all = played(data);
-    let entry = all.entry(rom.to_string()).or_default();
-    entry.seconds += seconds;
-    entry.last = now;
-    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    let file = data.join("classics.json");
-    let temp = file.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &file).map_err(|e| e.to_string())
+    crate::state_file::update(&data.join("classics.json"), |all: &mut std::collections::HashMap<String, Played>| {
+        let entry = all.entry(rom.to_string()).or_default();
+        entry.seconds += seconds;
+        entry.last = now;
+    })
 }
 
 #[cfg(test)]
@@ -466,6 +504,7 @@ mod tests {
         let discs = vec![PathBuf::from(r"D:\ps1\FF7 (Disc 1).chd"), PathBuf::from(r"D:\ps1\FF7 (Disc 2).chd")];
         let list = disc_list(&data, &discs[0], &discs, "ps1").unwrap();
         assert!(list.starts_with(data.join("emulators").join("playlists")));
+        assert_eq!(list.file_name().unwrap(), "FF7.m3u", "named after the game, so its saves are found by name");
         assert_eq!(fs::read_to_string(&list).unwrap(), "D:\\ps1\\FF7 (Disc 1).chd\nD:\\ps1\\FF7 (Disc 2).chd\n");
         assert_eq!(disc_list(&data, &discs[0], &discs, "ps2").unwrap(), discs[0], "a core that can't swap: disc 1");
         let own = PathBuf::from(r"D:\ps1\FF7.m3u");
@@ -527,6 +566,37 @@ mod tests {
     }
 
     #[test]
+    fn the_bios_is_looked_for_where_retroarch_is_set_to_read_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        assert_eq!(system_dir(&exe), dir.path().join("system"));
+        fs::write(config_file(&exe), "system_directory = \":\\bios\"\n").unwrap();
+        assert_eq!(system_dir(&exe), dir.path().join("bios"));
+        fs::write(config_file(&exe), "system_directory = \"D:\\BIOS\"\n").unwrap();
+        assert_eq!(system_dir(&exe), PathBuf::from(r"D:\BIOS"));
+        fs::write(config_file(&exe), "system_directory = \"default\"\n").unwrap();
+        assert_eq!(system_dir(&exe), dir.path().join("system"));
+    }
+
+    #[test]
+    fn forgetting_the_account_takes_only_our_token_out_of_retroarch() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        fs::write(config_file(&exe), "video_fullscreen = \"true\"
+").unwrap();
+        write_token(&exe, "me", "abc").unwrap();
+        write_token(&exe, "me", "def").unwrap();
+        // The player's original settings are the backup, not our first edit.
+        assert!(!fs::read_to_string(config_file(&exe).with_extension("cfg.cerberus-bak")).unwrap().contains("cheevos_token"));
+        forget_token(&exe, "other");
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_token").as_deref(), Some("def"), "not ours: kept");
+        forget_token(&exe, "def");
+        let text = fs::read_to_string(config_file(&exe)).unwrap();
+        assert_eq!(config_value(&text, "cheevos_token").as_deref(), Some(""));
+        assert_eq!(config_value(&text, "video_fullscreen").as_deref(), Some("true"));
+    }
+
+    #[test]
     fn the_retroachievements_user_shows_only_with_a_token() {
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join("retroarch.exe");
@@ -548,4 +618,178 @@ fn launch_real_rom() {
     let mut child = launch(&exe, &rom, "n64", None).expect("started");
     std::thread::sleep(Duration::from_secs(12));
     println!("ainda aberto: {}", child.try_wait().unwrap().is_none());
+}
+
+
+/// What a reinstall of RetroArch keeps from the copy before: the player's
+/// saves, save states, BIOS (`system`), playlists, settings and cores.
+const KEPT_ON_REINSTALL: [&str; 10] =
+    ["saves", "states", "system", "playlists", "config", "cores", "thumbnails", "screenshots", "retroarch.cfg", "retroarch-core-options.cfg"];
+
+/// Puts the new RetroArch (`fresh`) in place of the one at `target`, moving the
+/// player's files over.
+fn swap_keeping_player_files(target: &Path, fresh: &Path) -> Result<(), String> {
+    swap_keeping(target, fresh, &KEPT_ON_REINSTALL, &|dir: &Path| dir.to_path_buf(), "RetroArch")
+}
+
+/// The names in `base` that `keep` asks to keep: exact names, or "*.ext" for
+/// every file with that extension.
+pub fn kept_names(base: &Path, keep: &[&str]) -> Vec<String> {
+    let mut names: Vec<String> = keep.iter().filter(|k| !k.starts_with("*.")).filter(|k| base.join(k).exists()).map(|k| k.to_string()).collect();
+    let extensions: Vec<String> = keep.iter().filter_map(|k| k.strip_prefix("*.")).map(str::to_ascii_lowercase).collect();
+    if !extensions.is_empty() {
+        for entry in fs::read_dir(base).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let ext = Path::new(&name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            if entry.path().is_file() && extensions.contains(&ext) && !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
+fn old_copy_of(target: &Path) -> PathBuf {
+    target.with_file_name(format!(".{}-old", target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))
+}
+
+/// Moves the player's files from `from_base` into `to_base`, replacing what the new copy brought.
+fn move_kept(from_base: &Path, to_base: &Path, keep: &[&str]) -> std::io::Result<()> {
+    for item in kept_names(from_base, keep) {
+        let (from, to) = (from_base.join(&item), to_base.join(&item));
+        if to.is_dir() {
+            fs::remove_dir_all(&to)?;
+        } else if to.exists() {
+            fs::remove_file(&to)?;
+        }
+        fs::rename(&from, &to)?;
+    }
+    Ok(())
+}
+
+/// Finishes a swap that was interrupted (app closed, power cut): the old copy
+/// set aside is never deleted while it may still hold the player's files.
+/// - No program at `target`: the old copy goes back whole.
+/// - The new copy in place: the player's files still in the old one move over.
+pub fn recover_swap(target: &Path, keep: &[&str], base: &dyn Fn(&Path) -> PathBuf) -> Result<(), String> {
+    let old = old_copy_of(target);
+    if !old.exists() {
+        return Ok(());
+    }
+    if !target.exists() {
+        return fs::rename(&old, target).map_err(|e| e.to_string());
+    }
+    move_kept(&base(&old), &base(target), keep).map_err(|e| e.to_string())?;
+    fs::remove_dir_all(&old).map_err(|e| e.to_string())
+}
+
+/// Puts a new copy of a program (`fresh`) in place of the one at `target`,
+/// keeping the player's files (`keep`, found in `base` of each copy: the folder
+/// with the program). The player's files never pass through `fresh` (a temporary
+/// folder, wiped on the next try): the old copy is set aside in one rename (a
+/// program that is open stops it there), the new one takes its place, and only
+/// then do the player's files move across. An interruption at any point is
+/// finished by `recover_swap` on the next install, with nothing lost.
+pub fn swap_keeping(target: &Path, fresh: &Path, keep: &[&str], base: &dyn Fn(&Path) -> PathBuf, name: &str) -> Result<(), String> {
+    recover_swap(target, keep, base).map_err(|e| tr!("Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.", name, e))?;
+    if !target.exists() {
+        return fs::rename(fresh, target).map_err(|e| tr!("Não foi possível instalar o {}: {}", name, e));
+    }
+    let old = old_copy_of(target);
+    fs::rename(target, &old).map_err(|_| tr!("Feche o {} antes de reinstalar: ele está aberto ou com arquivos em uso.", name))?;
+    if let Err(e) = fs::rename(fresh, target) {
+        let _ = fs::rename(&old, target);
+        return Err(tr!("Não foi possível reinstalar o {}: {}. A instalação anterior continua como estava.", name, e));
+    }
+    match move_kept(&base(&old), &base(target), keep) {
+        Ok(()) => {
+            let _ = fs::remove_dir_all(&old);
+            Ok(())
+        }
+        // Whatever didn't move is still in the old copy, which stays: the next try finishes it.
+        Err(e) => Err(tr!("Não foi possível terminar de reinstalar o {}: {}. Seus arquivos estão guardados e o Cerberus termina na próxima vez.", name, e)),
+    }
+}
+
+#[cfg(test)]
+mod reinstall_tests {
+    use super::*;
+
+    #[test]
+    fn a_reinstall_keeps_saves_bios_and_settings() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("retroarch");
+        let fresh = root.path().join("new");
+        for dir in [&target.join("saves"), &target.join("system"), &fresh.join("system")] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        fs::write(target.join("saves/ff7.srm"), b"mine").unwrap();
+        fs::write(target.join("system/scph5501.bin"), b"bios").unwrap();
+        fs::write(target.join("retroarch.cfg"), b"video_fullscreen = \"true\"").unwrap();
+        fs::write(target.join("retroarch.exe"), b"old").unwrap();
+        fs::write(fresh.join("retroarch.exe"), b"new").unwrap();
+        fs::write(fresh.join("retroarch.cfg"), b"defaults").unwrap();
+
+        swap_keeping_player_files(&target, &fresh).unwrap();
+        assert_eq!(fs::read(target.join("retroarch.exe")).unwrap(), b"new");
+        assert_eq!(fs::read(target.join("saves/ff7.srm")).unwrap(), b"mine");
+        assert_eq!(fs::read(target.join("system/scph5501.bin")).unwrap(), b"bios");
+        assert_eq!(fs::read(target.join("retroarch.cfg")).unwrap(), b"video_fullscreen = \"true\"");
+        assert!(!root.path().join(".retroarch-old").exists());
+    }
+
+    #[test]
+    fn a_failed_swap_puts_the_old_copy_back() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("emu");
+        fs::create_dir_all(target.join("memcards")).unwrap();
+        fs::write(target.join("memcards/card1.mcd"), b"mine").unwrap();
+        fs::write(target.join("emu.exe"), b"old").unwrap();
+        // The new copy can't be moved in: it doesn't exist.
+        let missing = root.path().join("not-there");
+        assert!(swap_keeping(&target, &missing, &["memcards"], &|d: &Path| d.to_path_buf(), "Emu").is_err());
+        assert_eq!(fs::read(target.join("memcards/card1.mcd")).unwrap(), b"mine");
+        assert_eq!(fs::read(target.join("emu.exe")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn an_interrupted_reinstall_loses_nothing_and_is_finished_next_time() {
+        let id = |d: &Path| d.to_path_buf();
+        // 1. Stopped right after setting the old copy aside: it comes back whole.
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("emu");
+        let old = root.path().join(".emu-old");
+        fs::create_dir_all(old.join("memcards")).unwrap();
+        fs::write(old.join("memcards/card.mcd"), b"mine").unwrap();
+        recover_swap(&target, &["memcards"], &id).unwrap();
+        assert_eq!(fs::read(target.join("memcards/card.mcd")).unwrap(), b"mine");
+        assert!(!old.exists());
+
+        // 2. Stopped after the new copy took its place, before the files moved:
+        //    a new reinstall (with yet another fresh copy) finishes the move first.
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("emu");
+        let old = root.path().join(".emu-old");
+        fs::create_dir_all(old.join("memcards")).unwrap();
+        fs::write(old.join("memcards/card.mcd"), b"mine").unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("emu.exe"), b"new").unwrap();
+        let fresh = root.path().join("fresher");
+        fs::create_dir_all(&fresh).unwrap();
+        fs::write(fresh.join("emu.exe"), b"newer").unwrap();
+        swap_keeping(&target, &fresh, &["memcards"], &id, "Emu").unwrap();
+        assert_eq!(fs::read(target.join("memcards/card.mcd")).unwrap(), b"mine");
+        assert_eq!(fs::read(target.join("emu.exe")).unwrap(), b"newer");
+        assert!(!old.exists());
+    }
+
+    #[test]
+    fn extensions_keep_every_matching_file() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("hdd.qcow2"), b"x").unwrap();
+        fs::write(root.path().join("xemu.exe"), b"x").unwrap();
+        let mut names = kept_names(root.path(), &["xemu.toml", "*.qcow2"]);
+        names.sort();
+        assert_eq!(names, vec!["hdd.qcow2"]);
+    }
 }

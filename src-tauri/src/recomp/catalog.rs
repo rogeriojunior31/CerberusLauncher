@@ -38,6 +38,9 @@ pub struct CatalogEntry {
     /// The console's short id (`n64`, `x360`...).
     pub origin: String,
     pub repo: String,
+    /// Came from a list the player added rather than the recomp catalog.
+    #[serde(skip)]
+    pub from_source: bool,
     /// Where the project lives: empty for GitHub, `gitlab` or `forgejo`.
     pub host: String,
     pub icon: Option<String>,
@@ -182,6 +185,10 @@ pub fn find(id: &str) -> Option<CatalogEntry> {
 pub struct DirectFile {
     pub name: String,
     pub sha256: String,
+    /// A user-added source's direct download. Releases derive their URL instead.
+    pub url: String,
+    /// Which hoster the URL points at (`pixeldrain`, `mediafire`, `mega`), or empty for a plain file.
+    pub hoster: String,
 }
 
 /// The catalog in use: the main list plus the player's sources, put together once per change.
@@ -229,13 +236,30 @@ fn rebuild() {
     let mut list = base.unwrap_or_else(bundled);
     for source in EXTRAS.read().unwrap_or_else(|p| p.into_inner()).iter() {
         for game in source {
-            let known = list.iter().any(|e| e.id == game.id || e.repo.eq_ignore_ascii_case(&game.repo));
+            let known = list.iter().any(|e| e.id == game.id || (!game.repo.is_empty() && e.repo.eq_ignore_ascii_case(&game.repo)));
             if !known {
                 list.push(game.clone());
             }
         }
     }
+    known_handoffs(&mut list);
     *STORE.write().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(list));
+}
+
+/// Ports that need the original game's files but whose listing doesn't say
+/// how they take them: without this they show Jogar and then ask for a folder
+/// in their own window (or close). OpenRCT2 reads RollerCoaster Tycoon 2 from
+/// `--rct2-data-path`; the folder has its `Data`.
+fn known_handoffs(list: &mut [CatalogEntry]) {
+    for entry in list.iter_mut().filter(|e| e.handoff.is_none()) {
+        if entry.is("openrct2") || entry.repo.eq_ignore_ascii_case("OpenRCT2/OpenRCT2") {
+            entry.handoff = Some(CopyHandoff::Flag { flag: "--rct2-data-path=".into() });
+            entry.accepts_folder = true;
+            entry.copy_accepts = "folder".into();
+            entry.copy_contains = vec!["Data".into()];
+            entry.needs = tr!("A pasta do seu RollerCoaster Tycoon 2 (Steam, GOG ou CD), a que tem a pasta Data.").into();
+        }
+    }
 }
 
 /// Cerberus's own list, as published in its repository: updated there, it
@@ -364,6 +388,27 @@ fn merge(mut list: Vec<CatalogEntry>, ours: Vec<CatalogEntry>) -> Vec<CatalogEnt
             list.push(mine);
             continue;
         };
+        // What is downloaded and run comes from our own list only: another list
+        // naming another repository or file (with a checksum that matches it) for
+        // a recomp we list must not change what gets installed. Theirs adds text and art.
+        theirs.repo = mine.repo.clone();
+        theirs.host = mine.host.clone();
+        if mine.tag.is_some() {
+            theirs.tag = mine.tag.clone();
+        }
+        if !mine.assets.is_empty() || !mine.files.is_empty() {
+            theirs.assets = mine.assets.clone();
+            theirs.files = mine.files.clone();
+        }
+        if !mine.systems.is_empty() {
+            theirs.systems = mine.systems.clone();
+        }
+        if mine.start.is_some() {
+            theirs.start = mine.start.clone();
+        }
+        if !mine.kind.is_empty() {
+            theirs.kind = mine.kind.clone();
+        }
         if theirs.saves.is_empty() {
             theirs.saves = mine.saves;
         }
@@ -689,6 +734,7 @@ pub fn from_recomplauncher(text: &str) -> Result<Vec<CatalogEntry>, String> {
             name: app.name,
             game: app.game.unwrap_or_default(),
             repo: app.repo,
+            from_source: false,
             host: app.host.unwrap_or_default(),
             icon: some(app.icon),
             parts: app.games.into_iter().filter(|g| super::manifest::valid_part_id(&g.id) && !g.name.trim().is_empty()).collect(),
@@ -765,6 +811,32 @@ pub fn bytes_of(size_text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn another_list_never_changes_what_our_recomps_download() {
+        let mut ours = CatalogEntry { id: "zelda64recomp".into(), repo: "Zelda64Recomp/Zelda64Recomp".into(), kind: "portable".into(), ..Default::default() };
+        ours.files.insert("windows".into(), DirectFile { url: "https://github.com/Zelda64Recomp/Zelda64Recomp/releases/download/v1/z.zip".into(), sha256: "aa".into(), ..Default::default() });
+        let mut theirs = CatalogEntry { id: "zelda64recomp".into(), repo: "evil/fork".into(), about: "Their text".into(), kind: "installer".into(), ..Default::default() };
+        theirs.files.insert("windows".into(), DirectFile { url: "https://github.com/evil/fork/releases/download/v1/z.zip".into(), sha256: "bb".into(), ..Default::default() });
+        let merged = merge(vec![theirs], vec![ours]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].repo, "Zelda64Recomp/Zelda64Recomp");
+        assert_eq!(merged[0].files["windows"].sha256, "aa");
+        assert_eq!(merged[0].kind, "portable");
+        assert_eq!(merged[0].about, "Their text", "their text stays");
+    }
+
+    #[test]
+    fn openrct2_asks_for_the_rollercoaster_tycoon_2_folder() {
+        let mut list: Vec<CatalogEntry> = vec![serde_json::from_value(serde_json::json!({"id": "openrct2", "repo": "OpenRCT2/OpenRCT2", "name": "OpenRCT2"})).unwrap()];
+        known_handoffs(&mut list);
+        assert!(matches!(&list[0].handoff, Some(CopyHandoff::Flag { flag }) if flag == "--rct2-data-path="));
+        assert_eq!(list[0].copy_contains, ["Data"]);
+        // A listing that says how is left as it is.
+        list[0].handoff = Some(CopyHandoff::AsksItself);
+        known_handoffs(&mut list);
+        assert!(matches!(list[0].handoff, Some(CopyHandoff::AsksItself)));
+    }
 
     #[test]
     fn mhgu_takes_only_the_extracted_folders_even_without_the_site() {

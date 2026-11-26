@@ -4,7 +4,6 @@
 //! games are read from their stores each time and this must survive that.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use cerberus_shared::{Game, GameStatus};
@@ -30,23 +29,19 @@ fn file(data: &Path) -> PathBuf {
 }
 
 pub fn load(data: &Path) -> BTreeMap<String, Note> {
-    fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&file(data))
 }
 
 /// Saves one game's note; an empty one is removed.
 pub fn set(data: &Path, id: &str, note: Note) -> Result<(), String> {
-    let mut all = load(data);
     let note = Note { rating: note.rating.min(5), notes: note.notes.chars().take(4000).collect(), ..note };
-    if note == Note::default() {
-        all.remove(id);
-    } else {
-        all.insert(id.to_string(), note);
-    }
-    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    let target = file(data);
-    let temp = target.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &target).map_err(|e| e.to_string())
+    crate::state_file::update(&file(data), |all: &mut BTreeMap<String, Note>| {
+        if note == Note::default() {
+            all.remove(id);
+        } else {
+            all.insert(id.to_string(), note);
+        }
+    })
 }
 
 /// Puts each game's note on it as listed.

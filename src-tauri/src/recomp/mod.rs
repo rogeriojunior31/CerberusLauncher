@@ -7,6 +7,7 @@ mod assets;
 pub mod catalog;
 pub(crate) mod cloud;
 mod forge;
+mod hoster;
 mod releases;
 mod install;
 pub mod manifest;
@@ -42,7 +43,14 @@ pub async fn download_file(
     cancel: &install::Halt,
     report: impl Fn(u64, u64) + Send,
 ) -> Result<PathBuf, String> {
-    install::download(client, asset, dir, cancel, report).await
+    match install::download(client, asset, dir, cancel, report).await {
+        // Elsewhere there is no second checksum to ask: what didn't match goes.
+        Err(e) if e.starts_with(install::UNVERIFIED) => {
+            install::drop_held(dir, asset);
+            Err(tr!("O arquivo baixado não bate com o checksum informado, então foi descartado. Tente de novo.").into())
+        }
+        other => other,
+    }
 }
 
 /// Unpacks a .zip archive into a folder.
@@ -142,9 +150,25 @@ impl Installing {
         let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
         let busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
         if busy.contains_key(&key) {
-            return Err(tr!("Aguarde a atualização do jogo terminar.").into());
+            return Err(tr!("Aguarde: o jogo está sendo instalado, atualizado ou movido.").into());
         }
         action()
+    }
+
+    /// Holds the recomp as busy (Play, Update and Uninstall wait) for work
+    /// outside an install, like moving its folder. Released with `release`.
+    pub fn reserve(&self, id: &str) -> Result<String, String> {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        let mut busy = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if busy.contains_key(&key) {
+            return Err(tr!("Aguarde: o jogo está sendo instalado, atualizado ou movido.").into());
+        }
+        busy.insert(key.clone(), Arc::new(install::Halt::default()));
+        Ok(key)
+    }
+
+    pub fn release(&self, key: &str) {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).remove(key);
     }
 
     pub fn cancel(&self, id: &str) {
@@ -204,39 +228,88 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     };
     let entry = entry_at(recomp_id, install_dir).ok_or(tr!("Esse recomp não está no catálogo."))?;
     let places = saves::places(&entry.saves);
-    if saves::current_fingerprint(&places, install_dir).as_deref() == Some(cloud_print.as_str()) {
-        return Ok(None);
-    }
     let local_dir = folders.backups_dir(recomp_id);
-    let local_newest = saves::newest_with_fingerprint(&local_dir);
-    // This PC played after the cloud copy was made: its saves are the newer ones.
-    // A local copy of that very cloud backup counts as "already here".
-    let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| (b.created, &b.name) >= (cloud_newest.created, &cloud_newest.name));
-    if local_is_newer {
+    let here = saves::current_fingerprint(&places, install_dir);
+    if here.as_deref() == Some(cloud_print.as_str()) {
+        saves::set_anchor(&local_dir, &cloud, &cloud_print);
         return Ok(None);
     }
-    let source = fs::File::open(cloud.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+    // Decided by what changed since this PC and the cloud last agreed, never by
+    // the clocks (a PC a day ahead would otherwise always win).
+    let anchor = saves::anchor_of(&local_dir, &cloud);
+    let Some(anchor) = anchor else {
+        // First sync on this PC (nothing agreed on yet): the newer copy wins, as
+        // before; from the next one on, the anchor decides.
+        let local_newest = saves::newest_with_fingerprint(&local_dir);
+        let local_is_newer = local_newest.as_ref().is_some_and(|(b, _)| (b.created, &b.name) >= (cloud_newest.created, &cloud_newest.name));
+        if local_is_newer {
+            return Ok(None);
+        }
+        return bring_down(folders, recomp_id, install_dir, &cloud, &cloud_newest.name, &cloud_print, &places);
+    };
+    let cloud_changed = anchor != cloud_print;
+    let here_changed = here.as_deref().is_some_and(|h| h != anchor);
+    if !cloud_changed {
+        // Only this PC changed: its saves go up after playing.
+        return Ok(None);
+    }
+    if here_changed {
+        // Changed on both sides: nothing is replaced. The other PC's copy is kept
+        // here, ready to restore; this PC's saves stay and go up after playing.
+        let source = fs::File::open(cloud.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+        let temp = cloud::stage(source, &local_dir).map_err(|e| e.to_string())?;
+        cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+        saves::set_anchor(&local_dir, &cloud, &cloud_print);
+        return Ok(Some(tr!("Os saves mudaram neste PC e em outro desde a última sincronização. Nada foi trocado: os deste PC continuam, e os do outro PC ficaram em Backups, prontos para restaurar se forem os certos.").into()));
+    }
+    bring_down(folders, recomp_id, install_dir, &cloud, &cloud_newest.name, &cloud_print, &places)
+}
+
+/// Puts the cloud's copy in place, after a safety copy of this PC's saves.
+fn bring_down(folders: &Folders, recomp_id: &str, install_dir: &Path, cloud: &Path, name: &str, cloud_print: &str, places: &[String]) -> Result<Option<String>, String> {
+    let local_dir = folders.backups_dir(recomp_id);
+    let source = fs::File::open(cloud.join(name)).map_err(|e| e.to_string())?;
     let temp = cloud::stage(source, &local_dir).map_err(|e| e.to_string())?;
     let zip = zip::ZipArchive::new(temp.reopen().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     backup_saves_to(folders, recomp_id, install_dir, saves::BEFORE_CLOUD, false)?;
-    if saves::restore_open(zip, install_dir, Some(&places))? == 0 {
+    if saves::restore_open(zip, install_dir, Some(places))? == 0 {
         return Err(tr!("O backup na nuvem não contém saves que este PC possa restaurar.").into());
     }
-    cloud::publish(temp, &local_dir.join(&cloud_newest.name)).map_err(|e| e.to_string())?;
+    cloud::publish(temp, &local_dir.join(name)).map_err(|e| e.to_string())?;
+    saves::set_anchor(&local_dir, cloud, cloud_print);
     Ok(Some(tr!("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.").into()))
 }
 
+/// A game's backups, each saying whether it is in the cloud folder or still
+/// waiting to go there (read from the folder itself, not assumed).
 pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
-    saves::list(&folders.backups_dir(recomp_id))
+    let local = folders.backups_dir(recomp_id);
+    let mut list = saves::list(&local);
+    if let Some(cloud) = folders.cloud_dir(recomp_id) {
+        for backup in &mut list {
+            backup.in_cloud = Some(cloud.join(&backup.name).is_file());
+            backup.waiting = local.join(&backup.name).with_extension("upload").is_file();
+        }
+    }
+    list
 }
 
 /// Puts a backup back, after keeping a copy of the saves as they are now, so
-/// restoring the wrong one can be undone.
-pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<u32, String> {
+/// restoring the wrong one can be undone; with it, a warning when the restored saves couldn't be
+/// copied as the newest (to the cloud too): the other PC would keep its older ones.
+pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<(u32, Option<String>), String> {
     // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
     let selected = saves::open_backup(&folders.backups_dir(recomp_id), name)?;
-    backup_saves(folders, recomp_id, install_dir, tk!("Antes de restaurar"))?;
-    saves::restore_open(selected, install_dir, None)
+    // The saves about to be replaced stay on this PC only: sent to the cloud
+    // they would be its newest, and come back on the other PC.
+    backup_saves_to(folders, recomp_id, install_dir, tk!("Antes de restaurar"), false)?;
+    let restored = saves::restore_open(selected, install_dir, None)?;
+    // The restored saves become the newest copy, here and in the cloud, so the
+    // next Play doesn't bring the cloud's older-chosen ones back over them.
+    let warning = backup_saves(folders, recomp_id, install_dir, tk!("Restaurado"))
+        .err()
+        .map(|e| tr!("Restaurado neste PC, mas não foi possível guardar os saves restaurados como os mais novos (nem na nuvem): {}. Faça um backup manual antes de jogar em outro PC.", e));
+    Ok((restored, warning))
 }
 
 pub fn library_id(recomp_id: &str) -> String {
@@ -249,13 +322,106 @@ pub fn library_id(recomp_id: &str) -> String {
 /// An installed recomp's catalog entry, with what its own `recomplauncher.json` says.
 pub fn entry_for(game: &Game) -> Option<CatalogEntry> {
     let Source::Recomp { recomp_id, exe, .. } = &game.source else { return None };
-    let entry = find(recomp_id)?;
+    let entry = find(recomp_id).or_else(|| kept_entry(Path::new(&game.install_dir), recomp_id))?;
     Some(catalog::with_manifest(entry, manifest::read(Path::new(&game.install_dir), Some(Path::new(exe)))))
 }
 
 /// The same, by the recomp and the folder it's installed in.
 pub fn entry_at(recomp_id: &str, install_dir: &Path) -> Option<CatalogEntry> {
-    Some(catalog::with_manifest(find(recomp_id)?, manifest::read(install_dir, None)))
+    let entry = find(recomp_id).or_else(|| kept_entry(install_dir, recomp_id))?;
+    Some(catalog::with_manifest(entry, manifest::read(install_dir, None)))
+}
+
+/// What an install keeps of its catalog entry, so a recomp that later leaves
+/// the catalog (a list removed, the site's catalog off) still backs up its
+/// saves, uninstalls and shows its name.
+const KEPT_ENTRY: &str = ".cerberus-entry.json";
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+struct KeptEntry {
+    id: String,
+    title: String,
+    name: String,
+    game: String,
+    console: String,
+    origin: String,
+    repo: String,
+    host: String,
+    saves: Vec<String>,
+    systems: Vec<String>,
+    kind: String,
+    start: Option<String>,
+    tag: Option<String>,
+    cover: Option<String>,
+    icon: Option<String>,
+    aliases: Vec<String>,
+}
+
+fn keep_entry(install_dir: &Path, entry: &CatalogEntry) {
+    let kept = KeptEntry {
+        id: entry.id.clone(),
+        title: entry.title.clone(),
+        name: entry.name.clone(),
+        game: entry.game.clone(),
+        console: entry.console.clone(),
+        origin: entry.origin.clone(),
+        repo: entry.repo.clone(),
+        host: entry.host.clone(),
+        saves: entry.saves.clone(),
+        systems: entry.systems.clone(),
+        kind: entry.kind.clone(),
+        start: entry.start.clone(),
+        tag: entry.tag.clone(),
+        cover: entry.cover.clone(),
+        icon: entry.icon.clone(),
+        aliases: entry.aliases.clone(),
+    };
+    if let Ok(text) = serde_json::to_string_pretty(&kept) {
+        let _ = fs::write(install_dir.join(KEPT_ENTRY), text);
+    }
+}
+
+/// Keeps the catalog entry beside every installed recomp that has none yet.
+pub fn keep_entries(library: &LocalLibrary) {
+    let Ok(games) = library.games() else { return };
+    for game in games {
+        let Source::Recomp { recomp_id, .. } = &game.source else { continue };
+        let dir = Path::new(&game.install_dir);
+        if dir.join(KEPT_ENTRY).exists() || !fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id) {
+            continue;
+        }
+        if let Some(entry) = find(recomp_id) {
+            keep_entry(dir, &entry);
+        }
+    }
+}
+
+/// The entry kept at install, for a recomp the catalog no longer has (only
+/// when it names this recomp: a copied folder can't pose as another).
+fn kept_entry(install_dir: &Path, recomp_id: &str) -> Option<CatalogEntry> {
+    let kept: KeptEntry = serde_json::from_str(&fs::read_to_string(install_dir.join(KEPT_ENTRY)).ok()?).ok()?;
+    let ours = kept.id == recomp_id || kept.aliases.iter().any(|a| a == recomp_id);
+    let marked = fs::read_to_string(install_dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
+    (ours && marked).then(|| CatalogEntry {
+        id: kept.id,
+        title: kept.title,
+        name: kept.name,
+        game: kept.game,
+        console: kept.console,
+        origin: kept.origin,
+        repo: kept.repo,
+        host: kept.host,
+        saves: kept.saves,
+        systems: kept.systems,
+        kind: kept.kind,
+        start: kept.start,
+        tag: kept.tag,
+        cover: kept.cover,
+        icon: kept.icon,
+        aliases: kept.aliases,
+        ..Default::default()
+    })
 }
 
 /// The games a release carries: the developer's list, with the site's art
@@ -449,9 +615,13 @@ pub fn preparation(game: &Game) -> Result<Option<Preparation>, String> {
         if copy.is_none() && !prepare.keeps_copy {
             return Ok(None);
         }
-        // A copy picked before Cerberus read the developer's checks gets them now.
+        // A copy picked before Cerberus read the developer's checks gets them now:
+        // the quick ones (name, size), and the full hash only when those don't
+        // already vouch for it, so a page visit never hashes a whole disc.
         if let (Some(main), Some(copy)) = (manifest.main_input(), &copy) {
-            manifest::check(main, Path::new(copy))?;
+            if !manifest::still_fits(main, Path::new(copy)) {
+                manifest::check(main, Path::new(copy))?;
+            }
         }
         let program = prepare.program.iter().filter_map(|p| manifest::inside(p)).map(|p| install.join(p)).find(|p| p.is_file());
         let Some(program) = program else { return Ok(None) };
@@ -739,6 +909,8 @@ pub fn launch_plan(game: &Game) -> LaunchPlan {
     }
     if let (Some(copy), Some(handoff)) = (&game.game_copy, entry.as_ref().and_then(|e| e.handoff.clone())) {
         match handoff {
+            // "--path=" takes the copy in the same argument; "--rom" before it.
+            CopyHandoff::Flag { flag } if flag.ends_with('=') => args.push(format!("{flag}{copy}")),
             CopyHandoff::Flag { flag } => args.extend([flag, copy.clone()]),
             CopyHandoff::Env { name } => env.push((name, copy.clone())),
             // Already in the game's folder, asked for by the game itself, or in the developer's arguments.
@@ -788,6 +960,35 @@ pub fn split_args(text: &str) -> Vec<String> {
 /// version the recomp needs, then handed over the way it expects. A recomp that
 /// reads its own folder gets the file (or the extracted folder, or an Xbox disc
 /// image's files) put there.
+/// A copy the player already chose, put back where the game reads it when it
+/// went missing: an update replaces the game's folder, and with it the copy
+/// that was placed inside. `None` when nothing needed (or could be) done.
+pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
+    let copy = game.game_copy.as_deref().filter(|c| Path::new(c).exists())?;
+    let entry = entry_for(game)?;
+    // Only the file an update can take away: a copy put in the game's folder
+    // under a fixed name. Everything else (a developer's checked input, a
+    // second disc not given yet) is left for the player, and never re-copied
+    // or re-checked on every start.
+    if entry.manifest.as_ref().and_then(|m| m.main_input()).is_some() {
+        return None;
+    }
+    let Some(CopyHandoff::Folder { folder, file_name: Some(name), .. }) = &entry.handoff else { return None };
+    if Path::new(&game.install_dir).join(folder).join(name).is_file() {
+        return None;
+    }
+    use_game_copy(library, &game.id, Path::new(copy)).ok()
+}
+
+/// The same for every installed recomp, when Cerberus starts.
+pub fn restore_copies(library: &LocalLibrary) {
+    for game in library.games().unwrap_or_default() {
+        if matches!(game.source, Source::Recomp { .. }) {
+            let _ = restore_copy(library, &game);
+        }
+    }
+}
+
 pub fn use_game_copy(library: &LocalLibrary, game_id: &str, copy: &Path) -> Result<Game, String> {
     if !copy.exists() {
         return Err(tr!("{} não existe mais.", copy.display()));
@@ -864,6 +1065,44 @@ fn holds(dir: &Path, name: &str) -> bool {
     fs::read_dir(dir).is_ok_and(|entries| entries.flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
+/// A sibling of `dir` with `suffix` added to its name.
+fn beside(dir: &Path, suffix: &str) -> PathBuf {
+    let mut name = dir.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(suffix);
+    dir.with_file_name(name)
+}
+
+/// Fills a folder in one step: everything goes into a temporary folder beside it
+/// first, and takes the real name only when complete. An interruption (app
+/// closed, disk full, a file that fails) leaves no half folder that would count
+/// as ready, and a folder chosen before stays as it was.
+pub(crate) fn fill_folder(dir: &Path, fill: impl FnOnce(&Path) -> Result<(), String>) -> Result<(), String> {
+    let part = beside(dir, ".cerberus-part");
+    let _ = fs::remove_dir_all(&part);
+    fs::create_dir_all(&part).map_err(|e| e.to_string())?;
+    if let Err(e) = fill(&part) {
+        let _ = fs::remove_dir_all(&part);
+        return Err(e);
+    }
+    let old = beside(dir, ".cerberus-old");
+    let _ = fs::remove_dir_all(&old);
+    if dir.exists() {
+        if let Err(e) = fs::rename(dir, &old) {
+            let _ = fs::remove_dir_all(&part);
+            return Err(e.to_string());
+        }
+    }
+    if let Err(e) = fs::rename(&part, dir) {
+        if old.exists() {
+            let _ = fs::rename(&old, dir);
+        }
+        let _ = fs::remove_dir_all(&part);
+        return Err(e.to_string());
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
+}
+
 fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, extract: bool, accepts_folder: bool, copy: &Path) -> Result<(), String> {
     // Folder and name come from the catalog: they must stay inside the game's
     // folder, so only plain names are taken (no "..", no drive, no root).
@@ -872,22 +1111,35 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         return Err(tr!("O catálogo pede um caminho inesperado; nada foi copiado.").into());
     }
     let dir = Path::new(install_dir).join(folder);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // A folder of its own is filled in one step; the game's own folder (".") can't be swapped whole.
+    let own_folder = Path::new(folder).components().any(|c| matches!(c, std::path::Component::Normal(_)));
+    let fill = |work: &dyn Fn(&Path) -> Result<(), String>| -> Result<(), String> {
+        if own_folder {
+            if let Some(parent) = dir.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            fill_folder(&dir, |part| work(part))
+        } else {
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            work(&dir)
+        }
+    };
     if copy.is_dir() {
         if !accepts_folder {
             return Err(tr!("Esse jogo precisa de um arquivo, não de uma pasta.").into());
         }
-        return copy_tree(copy, &dir).map_err(|e| tr!("Não foi possível copiar os arquivos do jogo: {}", e));
+        // Room for all of it first (a PS3 folder is tens of GB), not a full disk half-way.
+        crate::disk::require(&dir, tree_size(copy))?;
+        return fill(&|into: &Path| copy_tree(copy, into).map_err(|e| tr!("Não foi possível copiar os arquivos do jogo: {}", e)));
     }
     // A disc image is unpacked, whichever of the two formats the recomps ask for it is.
     if extract && crate::xdvdfs::is_xbox_disc(copy) {
-        crate::xdvdfs::extract(copy, &dir)?;
-        return Ok(());
+        return fill(&|into: &Path| crate::xdvdfs::extract(copy, into).map(|_| ()));
     }
     if extract && crate::iso9660::is_iso9660(copy) {
-        crate::iso9660::extract(copy, &dir)?;
-        return Ok(());
+        return fill(&|into: &Path| crate::iso9660::extract(copy, into).map(|_| ()));
     }
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = file_name.unwrap_or_else(|| copy.file_name().unwrap_or_default().to_string_lossy().into_owned());
     let plain_name = Path::new(&name).components().count() == 1 && inside(&name);
     if !plain_name {
@@ -901,8 +1153,23 @@ fn put_in_folder(install_dir: &str, folder: &str, file_name: Option<String>, ext
         crate::disc_image::write_iso(copy, &dir.join(Path::new(&name).with_extension("iso")))?;
         return Ok(());
     }
-    fs::copy(copy, dir.join(&name)).map_err(|e| tr!("Não foi possível copiar sua cópia do jogo: {}", e))?;
+    copy_whole(copy, &dir.join(&name)).map_err(|e| tr!("Não foi possível copiar sua cópia do jogo: {}", e))?;
+    // A disc sheet (.cue, .gdi, .m3u) brings its tracks, with their names.
+    copy_sheet_files(copy, &dir)?;
     Ok(())
+}
+
+/// How many bytes a folder's files hold, all the way down (links not followed).
+pub(crate) fn tree_size(dir: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => tree_size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
 }
 
 /// Copies a folder's files and folders under `to`, keeping their layout.
@@ -947,6 +1214,14 @@ fn problem_with(entry: &CatalogEntry) -> Option<String> {
     if !for_this_pc {
         return Some(tr!("Não tem versão para este sistema.").into());
     }
+    // A file Cerberus can't unpack (a .rar, a .bat): said on the page, not
+    // after downloading all of it.
+    if let Some(file) = entry.files.get(os_key()) {
+        if assets::kind(&file.name).is_none() && !assets::is_program(&file.name) {
+            let format = file.name.rsplit('.').next().unwrap_or_default().to_uppercase();
+            return Some(tr!("A versão para este PC vem em {} ({}), um formato que o Cerberus ainda não instala. Baixe pela página do projeto.", format, file.name));
+        }
+    }
     match entry.kind.as_str() {
         "source" => Some(tr!("Esse projeto só publica o código-fonte; precisa ser compilado. Veja a página do projeto.").into()),
         "installer" if !cfg!(windows) => Some(tr!("Esse recomp vem com um instalador de Windows.").into()),
@@ -975,6 +1250,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     let parts = if parts.len() >= 2 { parts } else { Vec::new() };
     let entry = entry.clone();
     RecompEntry {
+        aliases: entry.aliases.clone(),
         parts,
         system_needs,
         system_problem,
@@ -995,6 +1271,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
         console: entry.console,
         host,
         repo: entry.repo,
+        from_source: entry.from_source,
         icon: entry.icon,
         cover: entry.cover,
         hero: entry.hero,
@@ -1053,7 +1330,7 @@ pub async fn install(
         if installed.as_ref().is_some_and(|game| game.external) {
             return Err(tr!("{} foi instalado fora do Cerberus, então as atualizações dele ficam por sua conta. Para o Cerberus cuidar delas, remova o vínculo e instale por aqui.", entry.name));
         }
-        if installed.is_some_and(|game| sessions.is_running(&game.id)) {
+        if installed.is_some_and(|game| sessions.is_running_any(&game.id)) {
             return Err(tr!("Feche o jogo antes de atualizá-lo.").into());
         }
         busy.insert(entry.id.clone(), cancel.clone());
@@ -1075,7 +1352,20 @@ async fn install_now(
     cancel: &install::Halt,
     report: &(impl Fn(InstallStep) + Send + Sync),
 ) -> Result<Game, String> {
-    let (asset, version) = choose_download(client, folders, entry).await?;
+    let (source, version) = choose_download(client, folders, entry).await?;
+
+    // A source's file name decides how it is installed, since the catalog
+    // cannot say whether a hoster link is an archive, a game or its installer.
+    let mut effective = entry.clone();
+    if let FileSource::Direct { name, .. } = &source {
+        effective.kind = if assets::looks_like_installer(name) {
+            "installer"
+        } else if assets::is_program(name) {
+            "single-exe"
+        } else {
+            "portable"
+        }.into();
+    }
 
     // An update goes where the game already is, even if new installs now go
     // elsewhere, and keeps a copy of the saves first in case the new version
@@ -1083,12 +1373,19 @@ async fn install_now(
     let installed = installed_game(library, entry)?;
     let target = match &installed {
         Some(game) => PathBuf::from(&game.install_dir),
-        None => folders.install_dir(&entry.id),
+        None => free_install_dir(folders, &entry.id),
     };
-    if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source) {
+    // A folder that is gone (deleted, quarantined) is installed afresh in the
+    // same place: the library entry, play time and chosen copy stay.
+    let folder_gone = installed.is_some() && !target.exists();
+    if let Some(Source::Recomp { recomp_id, .. }) = installed.as_ref().map(|g| &g.source).filter(|_| !folder_gone) {
         check_install_folder(folders, recomp_id, &target)?;
         backup_saves(folders, recomp_id, &target, tk!("Antes de atualizar"))?;
     }
+    let marker = match installed.as_ref().map(|g| &g.source) {
+        Some(Source::Recomp { recomp_id, .. }) => recomp_id.clone(),
+        _ => entry.id.clone(),
+    };
 
     // Progress is sent at most once per percent; a 70 MB file has thousands of chunks.
     let last_percent = AtomicU64::new(u64::MAX);
@@ -1102,7 +1399,26 @@ async fn install_now(
         }
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
-    let file = match install::download(client, &asset, &folders.downloads, cancel, on_bytes).await {
+    // Each recomp in its own folder: two catalogs' "release.zip" never land on one name.
+    let download_dir = folders.downloads.join(&entry.id);
+    let downloaded = match &source {
+        FileSource::Asset(asset) => match install::download(client, asset, &download_dir, cancel, on_bytes).await {
+            Err(e) if e.starts_with(install::UNVERIFIED) => {
+                let got = e[install::UNVERIFIED.len()..].to_string();
+                settle_checksum(client, folders, entry, asset, &download_dir, &got).await
+            }
+            other => other,
+        },
+        FileSource::Direct { name, url, headers, mega: Some(mega), .. } => {
+            hoster::download_decrypted(client, mega, url, headers, &download_dir, name, cancel, on_bytes).await
+        }
+        FileSource::Direct { name, size, url, identity, headers, mega: None } => {
+            let asset = Asset { name: name.clone(), size: *size, url: url.clone(), sha256: None };
+            let options = install::DownloadOptions { url: url.clone(), identity: identity.clone(), headers: headers.clone() };
+            install::download_with(client, &asset, &options, &download_dir, cancel, on_bytes).await
+        }
+    };
+    let file = match downloaded {
         Err(e) if e == install::PAUSED => {
             report(InstallStep::Paused { done: got.load(Ordering::Relaxed), total: of.load(Ordering::Relaxed) });
             return Err(e);
@@ -1112,16 +1428,17 @@ async fn install_now(
 
     report(InstallStep::Unpacking);
     let unpack_target = target.clone();
-    let release = entry.clone();
-    let previous = installed.clone();
+    let release = effective.clone();
+    let previous = installed.clone().filter(|_| !folder_gone);
     let prepared = tauri::async_runtime::spawn_blocking(move || {
-        let result = prepare_release(&file, &unpack_target, &release, previous.as_ref());
+        let result = prepare_release(&file, &unpack_target, &release, previous.as_ref(), &marker);
         let _ = fs::remove_file(&file);
         result
     }).await.map_err(|e| e.to_string())?;
     let (program, transaction) = prepared?;
     fetch_repo_manifest(client, entry, &target).await;
-    let result = register(library, entry, installed.as_ref(), &version, &program, &target, entry.kind == "installer");
+    keep_entry(&target, entry);
+    let result = register(library, entry, installed.as_ref(), &version, &program, &target, effective.kind == "installer");
     let game = match transaction {
         Some(tx) => tx.finish(result)?,
         None => result?,
@@ -1135,7 +1452,26 @@ fn prepare_release(
     target: &Path,
     entry: &CatalogEntry,
     installed: Option<&Game>,
+    marker: &str,
 ) -> Result<(PathBuf, Option<update::Update>), String> {
+    // A first install is unpacked beside the game's folder and takes its name
+    // only when complete: Cerberus closed half-way leaves no half game there.
+    if installed.is_none() {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let staging = staging_for(target, &entry.id);
+        let mut relative = None;
+        fill_folder(target, |part| {
+            let program = install::unpack_over(file, &staging, part, entry)?;
+            relative = Some(program.strip_prefix(part).map_err(|e| e.to_string())?.to_path_buf());
+            put_marker(part, marker)?;
+            // What the release shipped, so a later update knows what the player changed.
+            update::write_release_files(part, &update::release_files(part));
+            Ok(())
+        })?;
+        return Ok((target.join(relative.unwrap_or_default()), None));
+    }
     let transaction = installed.map(update::Update::begin).transpose()?;
     let (destination, staging) = match &transaction {
         Some(tx) => (tx.candidate(), tx.candidate().with_file_name("extract")),
@@ -1144,20 +1480,10 @@ fn prepare_release(
     let prepare = || {
         let program = install::unpack_over(file, &staging, &destination, entry)?;
         let relative = program.strip_prefix(&destination).map_err(|e| e.to_string())?;
-        let marker = match installed.map(|g| &g.source) {
-            Some(Source::Recomp { recomp_id, .. }) => recomp_id,
-            _ => &entry.id,
-        };
-        let marker_path = destination.join(MARKER);
-        // Replace an archive-supplied marker without following a link.
-        if let Err(e) = fs::remove_file(&marker_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string());
-            }
-        }
-        fs::write(marker_path, marker).map_err(|e| e.to_string())?;
-        if let Some(tx) = &transaction {
-            tx.publish()?;
+        put_marker(&destination, marker)?;
+        match &transaction {
+            Some(tx) => tx.publish()?,
+            None => update::write_release_files(&destination, &update::release_files(&destination)),
         }
         Ok(target.join(relative))
     };
@@ -1170,16 +1496,66 @@ fn prepare_release(
     }
 }
 
+/// Our marker in an install folder, naming the recomp.
+fn put_marker(dir: &Path, marker: &str) -> Result<(), String> {
+    {
+        let marker_path = dir.join(MARKER);
+        // Replace an archive-supplied marker without following a link.
+        if let Err(e) = fs::remove_file(&marker_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+        fs::write(marker_path, marker).map_err(|e| e.to_string())
+    }
+}
+
 /// The game's program inside `dir`, picked by its name like after an install.
 pub fn find_game_program(dir: &Path, hints: &[&str]) -> Option<PathBuf> {
     install::find_program(dir, hints)
+}
+
+/// The file to download: a release picked from the project's server, or a direct
+/// link from a source the player added (a plain file, or a hoster page to resolve).
+enum FileSource {
+    Asset(Asset),
+    Direct {
+        name: String,
+        size: u64,
+        url: String,
+        identity: String,
+        headers: Vec<(String, String)>,
+        mega: Option<hoster::Mega>,
+    },
 }
 
 /// The file to download, and its version. When the catalog has the exact file
 /// with its checksum, it comes straight from the release: no question to the
 /// server's API (GitHub's hourly limit is easy to reach). Otherwise the newest
 /// release is asked for and its file picked by the catalog's pattern.
-async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntry) -> Result<(Asset, String), String> {
+async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntry) -> Result<(FileSource, String), String> {
+    if let Some(file) = entry.files.get(os_key()).filter(|f| !f.url.is_empty()) {
+        let version = entry.tag.clone().unwrap_or_else(|| "1".into());
+        if file.hoster.is_empty() {
+            return Ok((FileSource::Direct {
+                name: file.name.clone(),
+                size: 0,
+                url: file.url.clone(),
+                identity: file.url.clone(),
+                headers: Vec::new(),
+                mega: None,
+            }, version));
+        }
+        let resolved = hoster::resolve(client, &file.hoster, &file.url).await?;
+        return Ok((FileSource::Direct {
+            name: resolved.name,
+            size: resolved.size,
+            url: resolved.url,
+            identity: resolved.identity,
+            headers: resolved.headers,
+            mega: resolved.mega,
+        }, version));
+    }
     if let Some(problem) = problem_with(entry) {
         return Err(problem);
     }
@@ -1190,7 +1566,7 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
     {
         // The size comes with the download itself.
         let asset = Asset { name: file.name.clone(), size: 0, url, sha256: Some(file.sha256.to_lowercase()) };
-        return Ok((asset, tag.clone()));
+        return Ok((FileSource::Asset(asset), tag.clone()));
     }
     let release = releases::latest(client, &folders.cache, &forge, true).await?;
     // GitLab: the catalog's file among the release's links, which may leave out
@@ -1199,14 +1575,44 @@ async fn choose_download(client: &Client, folders: &Folders, entry: &CatalogEntr
         && let Some(link) = release.assets.iter().find(|a| assets::same_file(&a.name, &file.name))
     {
         let asset = Asset { name: file.name.clone(), sha256: Some(file.sha256.to_lowercase()), ..link.clone() };
-        return Ok((asset, release.version));
+        return Ok((FileSource::Asset(asset), release.version));
     }
     let pattern = entry.assets.get(os_key());
     let by_pattern = pattern.and_then(|p| assets::by_pattern(&release.assets, p).cloned().or_else(|| assets::by_bare_pattern(&release.assets, p)));
     let asset = by_pattern
         .or_else(|| assets::pick(&release.assets, Os::current(), is_arm()).cloned())
         .ok_or(tr!("Ainda não tem uma versão para este sistema."))?;
-    Ok((asset, release.version))
+    Ok((FileSource::Asset(asset), release.version))
+}
+
+/// A download that missed the checksum it was asked with. When that checksum
+/// was the catalog's and the project's server gives this file the checksum it
+/// has (the author uploaded it again), it is used; otherwise nothing is
+/// installed. Never without one of the two checksums matching.
+async fn settle_checksum(client: &Client, folders: &Folders, entry: &CatalogEntry, asset: &Asset, dir: &Path, got: &str) -> Result<PathBuf, String> {
+    let catalogs = entry.files.get(os_key()).is_some_and(|f| asset.sha256.as_deref().is_some_and(|s| f.sha256.eq_ignore_ascii_case(s)));
+    let vouched = if catalogs {
+        match entry.forge() {
+            Some(forge) => releases::latest(client, &folders.cache, &forge, true)
+                .await
+                .ok()
+                .and_then(|r| r.assets.into_iter().find(|a| assets::same_file(&a.name, &asset.name)))
+                .and_then(|a| a.sha256)
+                .is_some_and(|server| server.eq_ignore_ascii_case(got)),
+            None => false,
+        }
+    } else {
+        false
+    };
+    if vouched {
+        return install::accept_held(dir, asset);
+    }
+    install::drop_held(dir, asset);
+    Err(if catalogs {
+        tr!("O arquivo publicado para este jogo não bate com o checksum do catálogo, e o servidor do projeto não confirmou o novo; nada foi instalado. O catálogo pode estar desatualizado: tente de novo mais tarde.").into()
+    } else {
+        tr!("O arquivo baixado não bate com o checksum do servidor do projeto, então foi descartado. Tente de novo.").into()
+    })
 }
 
 /// The library's game for this recomp, under its current id or an older one.
@@ -1318,11 +1724,207 @@ pub fn delete_files(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<()
         return Ok(());
     }
     check_install_folder(folders, recomp_id, dir)?;
-    match fs::remove_dir_all(dir) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(tr!("Não foi possível apagar {0}: {1}. O jogo está aberto?", dir.display(), e)),
+    // Set aside in one rename first: a file in use (the game, an Explorer
+    // preview, the antivirus) stops it here with nothing deleted, instead of
+    // half-way through with the folder's marker already gone.
+    let aside = removing_name(dir, recomp_id);
+    if let Err(e) = throttle::rename_patiently(dir, &aside, 6) {
+        return Err(tr!("Não foi possível apagar {0}: {1}. Feche o jogo e o que estiver usando a pasta (o Explorador de Arquivos, por exemplo) e tente de novo; nada foi apagado.", dir.display(), e));
     }
+    // What can't go now goes the next time Cerberus starts; earlier leftovers beside it go too.
+    let _ = fs::remove_dir_all(&aside);
+    if let Some(parent) = dir.parent() {
+        for entry in fs::read_dir(parent).into_iter().flatten().flatten() {
+            if entry.file_name().to_string_lossy().starts_with(REMOVING) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The name a folder being removed gets beside its old place: new for each try,
+/// so a leftover of an earlier one (still locked) never blocks this one.
+fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    dir.with_file_name(format!("{REMOVING}{recomp_id}-{stamp}"))
+}
+
+pub(super) const REMOVING: &str = ".cerberus-removing-";
+
+/// Half-downloaded files nobody came back for in two weeks (a pause before a
+/// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
+/// Half-written save copies a crash left (`.part`, and `.tmp*` from a copy
+/// being staged) in the saves folder and the cloud folder. Only ones over a
+/// day old: in the shared cloud folder another PC may be writing one now.
+pub fn sweep_save_leftovers(folders: &Folders) {
+    let mut roots = vec![folders.saves.clone()];
+    if let Some(cloud) = folders.cloud.read().unwrap_or_else(|p| p.into_inner()).clone() {
+        roots.push(cloud.join("Cerberus Saves"));
+    }
+    sweep_old_partials(&roots, std::time::Duration::from_secs(24 * 3600));
+}
+
+fn sweep_old_partials(roots: &[PathBuf], older_than: std::time::Duration) {
+    for root in roots {
+        let Ok(games) = fs::read_dir(root) else { continue };
+        let dirs = games.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path());
+        for dir in std::iter::once(root.clone()).chain(dirs) {
+            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let partial = name.ends_with(".part") || name.starts_with(".tmp");
+                let old = entry.metadata().ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > older_than);
+                if partial && old {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
+}
+
+/// What a first install cut short left beside the installs: its half-unpacked
+/// folder (`<id>.cerberus-part`) and its extraction folder (`.staging-<id>`).
+/// Gone at start, so the space comes back; nothing else is touched.
+pub fn sweep_unfinished_installs(folders: &Folders) {
+    for root in [folders.installs(), folders.default_installs.clone()] {
+        let Ok(entries) = fs::read_dir(&root) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // (A `.cerberus-old` stays: after a crash mid-swap it can be the only copy.)
+            let leftover = name.ends_with(".cerberus-part") || name.starts_with(".staging-");
+            if leftover && entry.file_type().is_ok_and(|t| t.is_dir()) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+}
+
+pub fn sweep_stale_downloads(folders: &Folders) {
+    let two_weeks = std::time::Duration::from_secs(14 * 24 * 3600);
+    let mut pending = vec![folders.downloads.clone()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                pending.push(path);
+                continue;
+            }
+            let old = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > two_weeks);
+            if old && path.extension().is_some_and(|e| e == "part") {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
+}
+
+/// The files a disc sheet points at, beside it: a `.cue`'s `FILE` tracks, a
+/// `.gdi`'s tracks, a `.m3u`'s discs (and their own tracks). Other files: none.
+pub(crate) fn sheet_files(sheet: &Path) -> Vec<PathBuf> {
+    let ext = sheet.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !["cue", "gdi", "m3u"].contains(&ext.as_str()) {
+        return Vec::new();
+    }
+    let Ok(text) = fs::read_to_string(sheet) else { return Vec::new() };
+    let dir = sheet.parent().unwrap_or(Path::new("."));
+    // Only plain names beside the sheet: a sheet never reaches elsewhere.
+    let plain = |name: &str| {
+        let p = Path::new(name);
+        (p.components().count() == 1 && p.components().all(|c| matches!(c, std::path::Component::Normal(_)))).then(|| dir.join(p))
+    };
+    let mut found: Vec<PathBuf> = Vec::new();
+    for line in text.trim_start_matches('\u{feff}').lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let name = match ext.as_str() {
+            "cue" => line
+                .strip_prefix("FILE ")
+                .map(|rest| rest.trim().strip_prefix('"').and_then(|r| r.split('"').next()).unwrap_or_else(|| rest.split_whitespace().next().unwrap_or_default()).to_string()),
+            // "1 0 4 2352 track01.bin 0" (a quoted name may hold spaces); the first line is the count.
+            "gdi" => {
+                let quoted = line.split('"').nth(1).map(str::to_string);
+                quoted.or_else(|| line.split_whitespace().nth(4).map(str::to_string))
+            }
+            _ => Some(line.to_string()),
+        };
+        if let Some(file) = name.as_deref().and_then(plain).filter(|p| p.is_file()) {
+            if ext == "m3u" {
+                found.extend(sheet_files(&file));
+            }
+            if !found.contains(&file) {
+                found.push(file);
+            }
+        }
+    }
+    found
+}
+
+pub(crate) fn copy_sheet_files_pub(sheet: &Path, into: &Path) -> Result<(), String> {
+    copy_sheet_files(sheet, into)
+}
+
+/// Copies a disc sheet's tracks next to where the sheet was copied, with their names.
+fn copy_sheet_files(sheet: &Path, into: &Path) -> Result<(), String> {
+    let files = sheet_files(sheet);
+    if files.is_empty() {
+        return Ok(());
+    }
+    let size: u64 = files.iter().filter_map(|f| fs::metadata(f).ok()).map(|m| m.len()).sum();
+    crate::disk::require(into, size)?;
+    for file in files {
+        let name = file.file_name().ok_or(tr!("Faixa sem nome."))?;
+        copy_whole(&file, &into.join(name)).map_err(|e| tr!("Não foi possível copiar as faixas do disco: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Copies a file under a temporary name and renames it when complete: a copy
+/// cut short (Cerberus closed, the disk full) never sits under the real name,
+/// where the game would take it for the whole thing.
+pub(crate) fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut partial = to.as_os_str().to_owned();
+    partial.push(".part");
+    let partial = PathBuf::from(partial);
+    if let Err(e) = fs::copy(from, &partial) {
+        let _ = fs::remove_file(&partial);
+        return Err(e);
+    }
+    let _ = fs::remove_file(to);
+    fs::rename(&partial, to)
+}
+
+/// Folders an uninstall set aside but couldn't finish deleting.
+pub fn sweep_removed(folders: &Folders) {
+    for root in [folders.installs(), folders.default_installs.clone()] {
+        let Ok(entries) = fs::read_dir(&root) else { continue };
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(REMOVING) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+}
+
+/// Where a new install goes: the recomp's own folder, unless a folder of that
+/// name is already there and isn't ours (installed by hand, another program):
+/// then the next free `<id>-2`, `<id>-3`... so nothing of the player's is ever
+/// written over, or deleted on uninstall.
+fn free_install_dir(folders: &Folders, recomp_id: &str) -> PathBuf {
+    let first = folders.install_dir(recomp_id);
+    // Only our own marker counts here (not the old "default folder" allowance).
+    let ours = |dir: &Path| fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
+    let usable = |dir: &Path| !dir.exists() || ours(dir) || fs::read_dir(dir).is_ok_and(|mut d| d.next().is_none());
+    if usable(&first) {
+        return first;
+    }
+    (2..1000).map(|n| first.with_file_name(format!("{recomp_id}-{n}"))).find(|dir| usable(dir)).unwrap_or(first)
+}
+
+/// Whether `dir` is a folder Cerberus installed this recomp in (see `check_install_folder`).
+pub fn check_install_folder_pub(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    check_install_folder(folders, recomp_id, dir)
 }
 
 fn check_install_folder(folders: &Folders, recomp_id: &str, dir: &Path) -> Result<(), String> {
@@ -1343,6 +1945,93 @@ fn is_arm() -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_cue_sheet_brings_its_tracks() {
+        let root = tempfile::tempdir().unwrap();
+        let roms = root.path().join("roms");
+        fs::create_dir_all(&roms).unwrap();
+        fs::write(roms.join("Game (Track 1).bin"), b"data").unwrap();
+        fs::write(roms.join("Game (Track 2).bin"), b"audio").unwrap();
+        let cue = roms.join("Game.cue");
+        fs::write(&cue, "FILE \"Game (Track 1).bin\" BINARY\n  TRACK 01 MODE2/2352\nFILE \"Game (Track 2).bin\" BINARY\n  TRACK 02 AUDIO\n").unwrap();
+        let gdi = roms.join("Game.gdi");
+        fs::write(roms.join("track01.bin"), b"x").unwrap();
+        fs::write(&gdi, "1\n1 0 4 2352 track01.bin 0\n").unwrap();
+        assert_eq!(sheet_files(&cue).len(), 2);
+        assert_eq!(sheet_files(&gdi), vec![roms.join("track01.bin")]);
+        // Placed with another name: the tracks go beside it with theirs.
+        let install = root.path().join("game");
+        put_in_folder(&install.to_string_lossy(), "disc", Some("game.cue".into()), false, false, &cue).unwrap();
+        assert!(install.join("disc").join("game.cue").is_file());
+        assert_eq!(fs::read(install.join("disc").join("Game (Track 2).bin")).unwrap(), b"audio");
+        // A sheet can't reach outside its folder.
+        let evil = roms.join("evil.cue");
+        fs::write(&evil, "FILE \"..\\\\secret.bin\" BINARY\n").unwrap();
+        assert!(sheet_files(&evil).is_empty());
+    }
+
+    #[test]
+    fn an_interrupted_folder_fill_is_not_ready_and_the_old_one_stays() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("game").join("dvd");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("old.bin"), b"chosen before").unwrap();
+        // Fails half-way: the folder chosen before is untouched, nothing half is left.
+        let failed = fill_folder(&dir, |part| {
+            fs::write(part.join("a.bin"), b"1").unwrap();
+            Err("disk full".into())
+        });
+        assert!(failed.is_err());
+        assert_eq!(fs::read(dir.join("old.bin")).unwrap(), b"chosen before");
+        assert!(!dir.join("a.bin").exists());
+        assert!(!root.path().join("game").join("dvd.cerberus-part").exists());
+        // Succeeds: the new content replaces the old one whole.
+        fill_folder(&dir, |part| fs::write(part.join("new.bin"), b"2").map_err(|e| e.to_string())).unwrap();
+        assert!(dir.join("new.bin").exists() && !dir.join("old.bin").exists());
+        // A first fill that fails leaves no folder at all (so it never counts as there).
+        let fresh = root.path().join("game").join("other");
+        assert!(fill_folder(&fresh, |_| Err("stopped".into())).is_err());
+        assert!(!fresh.exists());
+    }
+
+    #[test]
+    fn a_new_install_never_lands_in_someone_elses_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(root.path(), None);
+        let theirs = folders.install_dir("zelda");
+        fs::create_dir_all(&theirs).unwrap();
+        fs::write(theirs.join("texture-pack.zip"), b"mine").unwrap();
+        let picked = free_install_dir(&folders, "zelda");
+        assert_ne!(picked, theirs);
+        assert!(picked.ends_with("zelda-2"));
+        // Ours (marked) or empty: used as is.
+        fs::write(theirs.join(MARKER), "zelda").unwrap();
+        assert_eq!(free_install_dir(&folders, "zelda"), theirs);
+    }
+
+    #[test]
+    fn uninstalling_refuses_a_folder_cerberus_didnt_make_and_a_leftover_never_blocks() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(root.path(), None);
+        // A folder the player made: refused (the screen then offers to keep it).
+        let theirs = root.path().join("MyGame");
+        fs::create_dir_all(&theirs).unwrap();
+        fs::write(theirs.join("save.dat"), b"mine").unwrap();
+        assert!(check_install_folder_pub(&folders, "x", &theirs).is_err());
+        assert!(delete_files(&folders, "x", &theirs).is_err());
+        assert!(theirs.join("save.dat").exists());
+        // Ours, with a leftover from an earlier try beside it: removed, leftover too.
+        let ours = root.path().join("ours");
+        fs::create_dir_all(&ours).unwrap();
+        fs::write(ours.join(MARKER), "x").unwrap();
+        let leftover = root.path().join(format!("{REMOVING}x"));
+        fs::create_dir_all(&leftover).unwrap();
+        delete_files(&folders, "x", &ours).unwrap();
+        assert!(!ours.exists() && !leftover.exists());
+        // A folder already gone is fine.
+        assert!(check_install_folder_pub(&folders, "x", &ours).is_ok());
+    }
+
     fn recomp_at(dir: &Path, copy: Option<&Path>) -> Game {
         let exe = dir.join("Game.exe");
         fs::write(&exe, b"MZ").unwrap();
@@ -1350,6 +2039,25 @@ mod tests {
         game.source = Source::Recomp { recomp_id: "x".into(), version: "1".into(), exe: exe.to_string_lossy().into(), generation: Default::default() };
         game.game_copy = copy.map(|c| c.to_string_lossy().into_owned());
         game
+    }
+
+    #[test]
+    fn an_uninstall_sets_the_folder_aside_before_deleting() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(root.path(), None);
+        let dir = folders.install_dir("x");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(MARKER), "x").unwrap();
+        fs::write(dir.join("Game.exe"), b"MZ").unwrap();
+        delete_files(&folders, "x", &dir).unwrap();
+        assert!(!dir.exists());
+        assert!(!removing_name(&dir, "x").exists());
+
+        // A leftover from an interrupted removal is cleared at start.
+        let left = removing_name(&dir, "y");
+        fs::create_dir_all(&left).unwrap();
+        sweep_removed(&folders);
+        assert!(!left.exists());
     }
 
     #[test]
@@ -1501,6 +2209,52 @@ mod tests {
     }
 
     #[test]
+    fn saves_changed_on_both_pcs_are_a_conflict_and_nothing_is_replaced() {
+        let root = temp("cloud-conflict");
+        let cloud = root.join("OneDrive");
+        let (desktop, desktop_game) = pc(&root.join("desktop"), &cloud, "level 1");
+        backup_saves(&desktop, "shipwright", &desktop_game, "Depois de jogar").unwrap();
+        let (laptop, laptop_game) = pc(&root.join("laptop"), &cloud, "nothing");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        // Both start from the same saves.
+        assert!(pull_from_cloud(&laptop, "shipwright", &laptop_game).unwrap().is_some());
+        // Each plays without syncing; the laptop sends first.
+        fs::write(desktop_game.join("Save/file1.sav"), "desktop level 7").unwrap();
+        fs::write(laptop_game.join("Save/file1.sav"), "laptop level 9").unwrap();
+        backup_saves(&laptop, "shipwright", &laptop_game, "Depois de jogar").unwrap();
+        // The desktop opens the game: changed here and there, so nothing is replaced...
+        let told = pull_from_cloud(&desktop, "shipwright", &desktop_game).unwrap();
+        assert!(told.is_some_and(|m| m.contains("Nada foi trocado")));
+        assert_eq!(fs::read_to_string(desktop_game.join("Save/file1.sav")).unwrap(), "desktop level 7");
+        // ...and the laptop's copy is here, ready to restore.
+        let laptops = list_backups(&desktop, "shipwright").into_iter().find(|b| {
+            let probe = root.join("probe");
+            fs::create_dir_all(probe.join("Save")).unwrap();
+            saves::restore(&desktop.backups_dir("shipwright"), &b.name, &probe).is_ok()
+                && fs::read_to_string(probe.join("Save/file1.sav")).is_ok_and(|t| t == "laptop level 9")
+        });
+        assert!(laptops.is_some(), "the other PC's saves can be restored here");
+    }
+
+    #[test]
+    fn a_safety_copy_outlives_twelve_sessions() {
+        let root = tempfile::tempdir().unwrap();
+        let folders = Folders::new(&root.path().join("data"), None);
+        let install = root.path().join("game");
+        fs::create_dir_all(install.join("Save")).unwrap();
+        let slot = install.join("Save/file1.sav");
+        fs::write(&slot, "before the cloud").unwrap();
+        backup_saves_to(&folders, "shipwright", &install, saves::BEFORE_CLOUD, false).unwrap();
+        for round in 0..12 {
+            fs::write(&slot, format!("session {round}")).unwrap();
+            backup_saves(&folders, "shipwright", &install, "Depois de jogar").unwrap();
+        }
+        let kept = list_backups(&folders, "shipwright");
+        assert!(kept.iter().any(|b| b.reason == saves::BEFORE_CLOUD), "the safety copy is still there");
+        assert_eq!(kept.iter().filter(|b| b.reason == "Depois de jogar").count(), 10);
+    }
+
+    #[test]
     fn can_restore_the_oldest_backup_while_saving_current_progress() {
         let root = tempfile::tempdir().unwrap();
         let folders = Folders::new(&root.path().join("data"), None);
@@ -1518,10 +2272,27 @@ mod tests {
         restore_backup(&folders, "shipwright", &install, &backups.last().unwrap().name).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "0");
         let current = list_backups(&folders, "shipwright");
-        assert_eq!(current.len(), 10);
+        assert_eq!(current.len(), 11, "ten regular copies, plus the safety copy kept apart");
         let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
         saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");
+    }
+
+    #[test]
+    fn each_backup_says_whether_it_is_in_the_cloud_folder_or_waiting() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let (desktop, game) = pc(&root.path().join("desktop"), &sync, "first");
+        backup_saves(&desktop, "shipwright", &game, "Depois de jogar").unwrap().unwrap();
+        // The synced folder gone (a drive unplugged): the next one waits.
+        fs::remove_dir_all(&sync).unwrap();
+        fs::write(game.join("Save/file1.sav"), "second").unwrap();
+        backup_saves(&desktop, "shipwright", &game, "Depois de jogar").unwrap().unwrap();
+        let listed = list_backups(&desktop, "shipwright");
+        assert_eq!((listed[0].in_cloud, listed[0].waiting), (Some(false), true), "newest: waiting");
+        assert_eq!(listed[1].in_cloud, Some(false), "the folder is gone, so the first isn't there either");
+        desktop.set_cloud(None);
+        assert_eq!(list_backups(&desktop, "shipwright")[0].in_cloud, None, "no cloud folder: nothing to say");
     }
 
     #[test]
@@ -1664,6 +2435,216 @@ mod tests {
     }
 
     #[test]
+    fn direct_source_download_does_not_need_a_project_or_checksum() {
+        let entry = CatalogEntry {
+            id: "hydra-game".into(),
+            tag: Some("2026-11-25".into()),
+            size_text: "10 MB".into(),
+            files: std::collections::HashMap::from([("windows".into(), catalog::DirectFile {
+                name: "Game.zip".into(),
+                sha256: String::new(),
+                url: "https://example.org/Game.zip".into(),
+                hoster: String::new(),
+            })]),
+            ..Default::default()
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let folders = Folders::new(temp.path(), None);
+        let client = Client::new();
+        let (source, version) = tauri::async_runtime::block_on(choose_download(&client, &folders, &entry)).unwrap();
+        let FileSource::Direct { name, url, size, identity, .. } = source else { panic!("a source link is not a release") };
+        assert_eq!(url, "https://example.org/Game.zip");
+        assert_eq!(name, "Game.zip");
+        assert_eq!(identity, "https://example.org/Game.zip");
+        assert_eq!(size, 0, "the source's rounded display size is not authoritative");
+        assert_eq!(version, "2026-11-25");
+        let shown = to_entry(&entry, &[], &HashMap::new());
+        assert_eq!(shown.latest.map(|r| r.size), Some(catalog::bytes_of(&entry.size_text)));
+    }
+
+    #[test]
+    fn installs_a_hydra_direct_link_end_to_end() {
+        use std::io::Write;
+        use std::net::TcpListener;
+
+        // A zip holding a fake game, served over HTTP like a list's download link.
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            zip.start_file("HydraGame.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"MZ-fake-exe").unwrap();
+            zip.finish().unwrap();
+        }
+        let bytes = buf.into_inner();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        let body = bytes.clone();
+        let server = std::thread::spawn(move || {
+            // Read the request first: closing a socket with unread bytes still in
+            // its receive buffer makes Windows answer with RST, which discards the reply.
+            let (socket, _) = listener.accept().unwrap();
+            {
+                use std::io::BufRead;
+                let mut buf = std::io::BufReader::new(&socket);
+                let mut line = String::new();
+                while buf.read_line(&mut line).unwrap() > 0 && !line.trim().is_empty() {
+                    line.clear();
+                }
+            }
+            let mut socket = &socket;
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: {}\r\n\r\n", body.len()).unwrap();
+            socket.write_all(&body).unwrap();
+        });
+
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        let library = LocalLibrary::load(data.path());
+        let entry = CatalogEntry {
+            id: "hydra-e2e".into(),
+            title: "hydra-e2e".into(),
+            name: "Hydra End to End".into(),
+            game: "Hydra End to End".into(),
+            console: "PC".into(),
+            origin: "pc".into(),
+            tag: Some("1".into()),
+            from_source: true,
+            systems: vec!["windows".into()],
+            kind: "portable".into(),
+            files: std::collections::HashMap::from([("windows".into(), catalog::DirectFile {
+                name: "game.zip".into(),
+                sha256: String::new(),
+                url: url.clone(),
+                hoster: String::new(),
+            })]),
+            ..Default::default()
+        };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let cancel = install::Halt::default();
+        let report = |_step: InstallStep| {};
+        let game = tauri::async_runtime::block_on(install_now(&client, &folders, &library, &entry, &cancel, &report)).unwrap();
+        server.join().unwrap();
+
+        assert_eq!(game.id, "recomp:hydra-e2e");
+        let installed_exe = Path::new(&game.install_dir).join("HydraGame.exe");
+        assert!(installed_exe.is_file(), "the list's archive unpacks to the game's exe");
+        assert!(Path::new(&game.install_dir).join(MARKER).is_file(), "the install folder stays ours");
+        assert!(library.games().unwrap().iter().any(|g| g.id == game.id), "registered in the library");
+    }
+
+    #[test]
+    fn repairing_a_recomp_whose_folder_is_gone_installs_it_again_in_place() {
+        use std::io::{BufRead, Write};
+        use std::net::TcpListener;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            zip.start_file("Game.exe", zip::write::SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"MZ-fake-exe").unwrap();
+            zip.finish().unwrap();
+        }
+        let body = buf.into_inner();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (socket, _) = listener.accept().unwrap();
+                let mut reader = std::io::BufReader::new(&socket);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap() > 0 && !line.trim().is_empty() {
+                    line.clear();
+                }
+                let mut socket = &socket;
+                write!(socket, "HTTP/1.1 200 OK
+Content-Length: {}
+
+", body.len()).unwrap();
+                socket.write_all(&body).unwrap();
+            }
+        });
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        let library = LocalLibrary::load(data.path());
+        let entry = CatalogEntry {
+            id: "gone".into(),
+            title: "gone".into(),
+            name: "Gone".into(),
+            game: "Gone".into(),
+            console: "PC".into(),
+            origin: "pc".into(),
+            tag: Some("1".into()),
+            from_source: true,
+            systems: vec!["windows".into()],
+            kind: "portable".into(),
+            files: std::collections::HashMap::from([("windows".into(), catalog::DirectFile { name: "game.zip".into(), sha256: String::new(), url, hoster: String::new() })]),
+            ..Default::default()
+        };
+        let client = Client::builder().no_proxy().build().unwrap();
+        let cancel = install::Halt::default();
+        let first = tauri::async_runtime::block_on(install_now(&client, &folders, &library, &entry, &cancel, &|_| {})).unwrap();
+        // Deleted by hand (or quarantined): Repair must not refuse the folder.
+        fs::remove_dir_all(&first.install_dir).unwrap();
+        let again = tauri::async_runtime::block_on(install_now(&client, &folders, &library, &entry, &cancel, &|_| {})).unwrap();
+        server.join().unwrap();
+        assert_eq!((again.id.as_str(), again.install_dir.as_str()), (first.id.as_str(), first.install_dir.as_str()));
+        assert!(Path::new(&again.install_dir).join("Game.exe").is_file());
+        assert!(Path::new(&again.install_dir).join(MARKER).is_file());
+        assert_eq!(library.games().unwrap().iter().filter(|g| g.id == again.id).count(), 1);
+    }
+
+    #[test]
+    fn a_recomp_that_left_the_catalog_keeps_its_entry_in_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let entry = CatalogEntry { id: "left".into(), name: "Left".into(), saves: vec!["{install}/saves".into()], ..Default::default() };
+        fs::write(dir.path().join(MARKER), "left").unwrap();
+        keep_entry(dir.path(), &entry);
+        let back = entry_at("left", dir.path()).expect("found from the folder");
+        assert_eq!((back.name.as_str(), back.saves.clone()), ("Left", vec!["{install}/saves".to_string()]));
+        // Another recomp's folder can't answer for this one.
+        assert!(kept_entry(dir.path(), "other").is_none());
+    }
+
+    #[test]
+    fn a_folder_copy_counts_every_file_below() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("a").join("b")).unwrap();
+        fs::write(dir.path().join("x.bin"), [0u8; 10]).unwrap();
+        fs::write(dir.path().join("a").join("b").join("y.bin"), [0u8; 5]).unwrap();
+        assert_eq!(tree_size(dir.path()), 15);
+    }
+
+    #[test]
+    fn old_half_written_save_copies_go_and_new_ones_and_backups_stay() {
+        let root = tempfile::tempdir().unwrap();
+        let game = root.path().join("game");
+        fs::create_dir_all(&game).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 3600);
+        for (name, aged) in [("1-a.part", true), (".tmpAB12", true), ("2-b.part", false), ("3-c.zip", true)] {
+            let file = fs::File::create(game.join(name)).unwrap();
+            if aged {
+                file.set_modified(old).unwrap();
+            }
+        }
+        sweep_old_partials(&[root.path().to_path_buf()], std::time::Duration::from_secs(24 * 3600));
+        assert!(!game.join("1-a.part").exists() && !game.join(".tmpAB12").exists());
+        assert!(game.join("2-b.part").exists(), "a recent one may still be being written");
+        assert!(game.join("3-c.zip").exists(), "a backup is never touched");
+    }
+
+    #[test]
+    fn leftovers_of_a_first_install_cut_short_go_at_start() {
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        let installs = folders.installs();
+        for d in ["game.cerberus-part/sub", ".staging-game/x", "game2"] {
+            fs::create_dir_all(installs.join(d)).unwrap();
+        }
+        sweep_unfinished_installs(&folders);
+        assert!(!installs.join("game.cerberus-part").exists());
+        assert!(!installs.join(".staging-game").exists());
+        assert!(installs.join("game2").exists(), "an install is left alone");
+    }
+
+    #[test]
     fn staging_sits_beside_the_install() {
         let target = Path::new(r"D:\Recomps\zelda64recomp");
         assert_eq!(staging_for(target, "zelda64recomp"), Path::new(r"D:\Recomps\.staging-zelda64recomp"));
@@ -1682,10 +2663,12 @@ fn real_downloads_resolve_on_every_server() {
     tauri::async_runtime::block_on(async {
         for id in ["mariokart64recomp-2", "commander-genius", "fe3h-recomp-2", "longshot", "hookshot", "zelda64recomp"] {
             let entry = find(id).unwrap_or_else(|| panic!("{id} not in the catalog"));
-            let (asset, version) = choose_download(&client, &folders, &entry).await.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let (source, version) = choose_download(&client, &folders, &entry).await.unwrap_or_else(|e| panic!("{id}: {e}"));
+            let FileSource::Asset(asset) = source else { panic!("{id} is not a release") };
             let reply = client.get(&asset.url).header("Range", "bytes=0-0").send().await.unwrap();
             println!("{id} {version} {} -> {} {}", asset.name, reply.status(), reply.url().host_str().unwrap_or_default());
             assert!(reply.status().is_success(), "{id}: {}", reply.status());
         }
     });
 }
+

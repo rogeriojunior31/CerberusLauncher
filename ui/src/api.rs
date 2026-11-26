@@ -48,6 +48,49 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// Calls `handler` for every `event` while the component that asked is on
+/// screen: the listener goes when it does (one per visit otherwise, each
+/// reading the component's state after it was gone).
+fn on_event_here<T: DeserializeOwned + 'static>(event: &'static str, mut handler: impl FnMut(T) + 'static) {
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+    let closure = Rc::new(Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
+        let payload = js_sys::Reflect::get(&event, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
+        if let Ok(value) = serde_wasm_bindgen::from_value(payload) {
+            handler(value);
+        }
+    }));
+    let stop: Rc<RefCell<Option<js_sys::Function>>> = Rc::new(RefCell::new(None));
+    let gone = Rc::new(Cell::new(false));
+    {
+        let (closure, stop, gone) = (closure.clone(), stop.clone(), gone.clone());
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(unlisten) = listen(event, &closure).await {
+                let unlisten: js_sys::Function = unlisten.unchecked_into();
+                if gone.get() {
+                    let _ = unlisten.call0(&JsValue::NULL);
+                } else {
+                    *stop.borrow_mut() = Some(unlisten);
+                }
+            }
+        });
+    }
+    let held = send_wrapper::SendWrapper::new((closure, stop, gone));
+    leptos::prelude::on_cleanup(move || {
+        let (closure, stop, gone) = held.take();
+        gone.set(true);
+        if let Some(unlisten) = stop.borrow_mut().take() {
+            let _ = unlisten.call0(&JsValue::NULL);
+        }
+        drop(closure);
+    });
+}
+
+/// A picture was taken, while the asking component is on screen.
+pub fn on_screenshot_here(handler: impl FnMut(String) + 'static) {
+    on_event_here("screenshot-taken", handler);
+}
+
 /// The menu over a game was opened again (its window is kept between uses).
 pub fn on_overlay_opened(mut handler: impl FnMut() + 'static) {
     on_event("overlay-opened", move |_: ()| handler());
@@ -251,7 +294,20 @@ pub async fn pick_cover(id: &str) -> Result<Option<Game>, String> {
 }
 
 pub async fn remove_game(id: &str) -> Result<(), String> {
-    call("remove_game", &Id { id }).await
+    remove_game_with(id, false, false).await
+}
+
+/// Uninstalls with the player's answer to what stopped it before: without the
+/// saves backup, or keeping a folder Cerberus didn't make (only the entry goes).
+pub async fn remove_game_with(id: &str, without_backup: bool, keep_folder: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Arg<'a> {
+        id: &'a str,
+        without_backup: bool,
+        keep_folder: bool,
+    }
+    call("remove_game", &Arg { id, without_backup, keep_folder }).await
 }
 
 pub async fn list_recomps() -> Result<Vec<RecompEntry>, String> {
@@ -730,6 +786,27 @@ pub async fn open_store_link(app_id: u32, kind: &str) -> Result<(), String> {
 }
 
 /// A Steam game's store page: description, pictures, trailers, requirements, languages.
+/// An Epic or Xbox game's store page (Steam's when sold there, else the Microsoft Store's).
+pub async fn store_page(name: &str, product: &str) -> Result<cerberus_shared::StoreDetails, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        name: &'a str,
+        product: &'a str,
+    }
+    call::<_, Option<cerberus_shared::StoreDetails>>("store_page", &Arg { name, product }).await?.ok_or_default()
+}
+
+trait OkOrDefault<T> {
+    fn ok_or_default(self) -> Result<T, String>;
+}
+
+impl<T> OkOrDefault<T> for Option<T> {
+    /// No page: an empty error (the page shows nothing in its place).
+    fn ok_or_default(self) -> Result<T, String> {
+        self.ok_or_else(String::new)
+    }
+}
+
 pub async fn steam_details(app_id: u32) -> Result<cerberus_shared::StoreDetails, String> {
     #[derive(serde::Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -815,9 +892,11 @@ pub async fn install_retroarch() -> Result<cerberus_shared::EmulationView, Strin
     call("install_retroarch", &()).await
 }
 
-pub fn on_emu_progress(handler: impl FnMut((u64, u64)) + 'static) {
-    on_event("emu-progress", handler);
+/// Emulator download progress, while the asking component is on screen.
+pub fn on_emu_progress_here(handler: impl FnMut((u64, u64)) + 'static) {
+    on_event_here("emu-progress", handler);
 }
+
 
 pub async fn pick_retroarch() -> Result<cerberus_shared::EmulationView, String> {
     call("pick_retroarch", &()).await
@@ -1224,4 +1303,57 @@ pub async fn standalone_bios(id: &str) -> Result<(cerberus_shared::StandaloneSta
 /// Every RetroArch core not installed yet; how many came.
 pub async fn install_all_cores() -> Result<(cerberus_shared::EmulationView, usize), String> {
     call("install_all_cores", &()).await
+}
+
+
+pub async fn emulator_backups() -> Result<Vec<cerberus_shared::EmulatorBackups>, String> {
+    call("emulator_backups", &()).await
+}
+
+pub async fn backup_emulator_saves(id: &str) -> Result<Option<cerberus_shared::Backup>, String> {
+    call("backup_emulator_saves", &Id { id }).await
+}
+
+pub async fn restore_emulator_backup(id: &str, name: &str) -> Result<u32, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+        name: &'a str,
+    }
+    call("restore_emulator_backup", &Arg { id, name }).await
+}
+
+pub async fn open_emulator_backups(id: &str) -> Result<(), String> {
+    call("open_emulator_backups", &Id { id }).await
+}
+
+
+pub async fn set_game_pass(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_game_pass", &Arg { on }).await
+}
+
+pub async fn xbox_open() -> Result<(), String> {
+    call("xbox_open", &()).await
+}
+
+
+pub async fn epic_login() -> Result<(), String> {
+    call("epic_login", &()).await
+}
+
+pub async fn epic_logout() -> Result<SettingsView, String> {
+    call("epic_logout", &()).await
+}
+
+
+pub async fn xbox_login() -> Result<(), String> {
+    call("xbox_login", &()).await
+}
+
+pub async fn xbox_logout() -> Result<SettingsView, String> {
+    call("xbox_logout", &()).await
 }

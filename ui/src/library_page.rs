@@ -34,9 +34,19 @@ impl Category {
             Category::Favorites => tr!("Favoritos"),
             Category::Collections => tr!("Coleções"),
             Category::Hidden => tr!("Ocultos"),
-            Category::Recomps => tr!("Recomps"),
+            Category::Recomps => tr!("Nativos"),
             Category::Pc => "PC",
             Category::Classics => tr!("Clássicos"),
+        }
+    }
+
+    /// What the tab holds, in a sentence: the words the whole app uses.
+    fn meaning(self) -> Option<&'static str> {
+        match self {
+            Category::Recomps => Some(tr!("Versões nativas para PC de jogos de console (recomps, decomps e ports): rodam sem emulador, quase sempre com a sua cópia original do jogo.")),
+            Category::Pc => Some(tr!("Jogos de PC: da Steam, da Epic, do app Xbox e os que você adicionou.")),
+            Category::Classics => Some(tr!("Seus jogos originais (ROMs e discos) das suas pastas, abertos num emulador. Os que têm versão nativa instalada ficam juntos dela.")),
+            _ => None,
         }
     }
 
@@ -63,37 +73,32 @@ impl Category {
 #[derive(Clone, Copy, PartialEq)]
 enum Filter {
     All,
-    /// Recomps and decomps (with any merged classic inside).
-    Recomps,
     Steam,
     Epic,
+    Xbox,
     Added,
-    /// The classics in the ROM folders.
-    Roms,
 }
 
 impl Filter {
     /// Where a game comes from.
-    const STORES: [Filter; 6] = [Filter::All, Filter::Recomps, Filter::Steam, Filter::Epic, Filter::Added, Filter::Roms];
+    const STORES: [Filter; 5] = [Filter::All, Filter::Steam, Filter::Epic, Filter::Xbox, Filter::Added];
 
     fn label(self) -> &'static str {
         match self {
-            Filter::All => tr!("Todas as origens"),
-            Filter::Recomps => "Recomps",
-            Filter::Steam => tr!("Steam"),
-            Filter::Epic => tr!("Epic"),
+            Filter::All => tr!("Todas"),
+            Filter::Steam => "Steam",
+            Filter::Epic => "Epic",
+            Filter::Xbox => "Xbox",
             Filter::Added => tr!("Adicionados"),
-            // The classics no installed recomp plays: the others count with their recomp.
-            Filter::Roms => tr!("Só ROM"),
         }
     }
 
     fn keeps(self, game: &Game) -> bool {
         match (self, &game.source) {
             (Filter::All, _) => true,
-            (Filter::Recomps, Source::Recomp { .. }) => true,
             (Filter::Steam, Source::Steam { .. }) => true,
             (Filter::Epic, Source::Epic { .. }) => true,
+            (Filter::Xbox, Source::Xbox { .. }) => true,
             (Filter::Added, Source::Local { .. }) => true,
             _ => false,
         }
@@ -120,7 +125,8 @@ pub struct LibraryView {
     /// The collection open under Coleções.
     shelf: RwSignal<Option<String>>,
     /// Installed games, or the account's games this PC doesn't have.
-    absent: RwSignal<bool>,
+    /// `None`: every game; `Some(true)`: only the ones not on this PC.
+    absent: RwSignal<Option<bool>>,
     /// Only games the player marked with this status.
     status: RwSignal<Option<GameStatus>>,
 }
@@ -134,7 +140,7 @@ impl Default for LibraryView {
             sort: RwSignal::new(Sort::Name),
             compact: RwSignal::new(false),
             shelf: RwSignal::new(None),
-            absent: RwSignal::new(false),
+            absent: RwSignal::new(None),
             status: RwSignal::new(None),
         }
     }
@@ -265,6 +271,39 @@ fn navigate_rows(event: web_sys::KeyboardEvent) {
     }
 }
 
+/// Arrows move between the covers of the grid as they sit on screen (up and
+/// down by a whole row), Home and End to the first and last.
+fn navigate_grid(event: web_sys::KeyboardEvent) {
+    if event.alt_key() || event.ctrl_key() || event.meta_key() || event.shift_key() {
+        return;
+    }
+    let Some(grid) = event.current_target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else { return };
+    let Ok(found) = grid.query_selector_all(".tile-b") else { return };
+    let tiles: Vec<web_sys::HtmlElement> = (0..found.length()).filter_map(|i| found.item(i)).filter_map(|n| n.dyn_into::<web_sys::HtmlElement>().ok()).collect();
+    let Some(active) = document().active_element() else { return };
+    let Some(at) = tiles.iter().position(|t| wasm_bindgen::JsValue::from(t.clone()) == wasm_bindgen::JsValue::from(active.clone())) else { return };
+    // Covers in the first row: the grid's width in columns.
+    // Measured on screen (each cover's own offset is inside its tile).
+    let row_of = |t: &web_sys::HtmlElement| t.get_bounding_client_rect().top().round() as i64;
+    let top = row_of(&tiles[0]);
+    let columns = tiles.iter().take_while(|t| (row_of(t) - top).abs() < 4).count().max(1) as i64;
+    let last = tiles.len() as i64 - 1;
+    let to = match event.key().as_str() {
+        "ArrowRight" => at as i64 + 1,
+        "ArrowLeft" => at as i64 - 1,
+        "ArrowDown" => at as i64 + columns,
+        "ArrowUp" => at as i64 - columns,
+        "Home" => 0,
+        "End" => last,
+        _ => return,
+    };
+    event.prevent_default();
+    if let Some(tile) = tiles.get(to.clamp(0, last) as usize) {
+        let _ = tile.focus();
+        tile.scroll_into_view_with_bool(false);
+    }
+}
+
 #[component]
 pub fn LibraryPage() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -313,7 +352,7 @@ pub fn LibraryPage() -> impl IntoView {
         search.set(String::new());
         filter.set(Filter::All);
         status.set(None);
-        absent.set(false);
+        absent.set(None);
         if let Some(input) = input.get_untracked() {
             let _ = input.focus();
         }
@@ -321,7 +360,7 @@ pub fn LibraryPage() -> impl IntoView {
     let tabs = move || Category::ALL.into_iter().filter(|which| *which != Category::Hidden || any_hidden() || category.get() == Category::Hidden).map(|which| {
         let active = move || category.get() == which;
         view! {
-            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string()
+            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string() title=which.meaning()
                 on:click=move |_| { category.set(which); filter.set(Filter::All); }>{which.label()}</button>
         }
     }).collect_view();
@@ -339,32 +378,34 @@ pub fn LibraryPage() -> impl IntoView {
                 .filter(|g| kind.keeps(g, None) || kind == Category::Collections)
                 .filter(|g| found(library, g, &needle))
                 .collect();
-            let mut stores = Filter::STORES.map(|f| in_tab.iter().filter(|g| f.keeps(g) && is_absent(g) == away).count());
+            let mut stores = Filter::STORES.map(|f| in_tab.iter().filter(|g| f.keeps(g) && away.is_none_or(|a| is_absent(g) == a)).count());
             // The classics are in the ROM folders: counted as here, never as not installed.
-            if !away {
+            if away != Some(true) {
                 stores[0] += roms;
             }
-            stores[5] = if away { 0 } else { roms };
             let missing = in_tab.iter().filter(|g| is_absent(g)).count();
             (stores, in_tab.len() - missing + roms, missing)
         })
     });
-    let chips = Filter::STORES.into_iter().enumerate().map(|(i, which)| {
-        let active = move || filter.get() == which;
-        // ROMs only where classics are listed (Todos), and only with some.
-        let shown = move || {
-            active()
-                || which == Filter::All
-                || (counts.get().0[i] > 0 && (which != Filter::Roms || category.get() == Category::All))
-        };
-        view! {
-            <button type="button" class="chip-btn" class:on=active class:hidden=move || !shown() aria-pressed=move || active().to_string()
-                title=(which == Filter::Roms).then(|| tr!("Clássicos que nenhum recomp instalado joga; os outros contam junto com o recomp."))
-                on:click=move |_| filter.set(which)>
-                {which.label()}<span class="chip-n">{move || counts.get().0[i]}</span>
-            </button>
-        }
-    }).collect_view();
+    // Where the games come from: Steam, Epic, Xbox or added by hand, with how many.
+    let platforms = move || {
+        let (stores, _, _) = counts.get();
+        let chips = Filter::STORES
+            .into_iter()
+            .enumerate()
+            .filter(|(i, which)| *which == Filter::All || stores[*i] > 0 || filter.get() == *which)
+            .map(|(i, which)| {
+                let active = move || filter.get() == which;
+                view! {
+                    <button type="button" class="chip-btn" class:on=active aria-pressed=move || active().to_string()
+                        on:click=move |_| filter.set(which)>
+                        {which.label()}<span class="chip-n">{stores[i]}</span>
+                    </button>
+                }
+            })
+            .collect_view();
+        view! { <div class="chips" role="group" aria-label=tr!("Plataforma")><span class="chips-h">{tr!("Plataforma")}</span>{chips}</div> }
+    };
     // Status chips: only the statuses some game in view has, with how many.
     let statuses = move || {
         let kind = category.get();
@@ -372,7 +413,7 @@ pub fn LibraryPage() -> impl IntoView {
         let counts: Vec<(GameStatus, usize)> = library.games.with(|all| {
             let needle = search.get().trim().to_lowercase();
             let all: Vec<&Game> = all.as_ref().and_then(|r| r.as_ref().ok()).into_iter().flatten()
-                .filter(|g| kind.keeps(g, None) && is_absent(g) == away && found(library, g, &needle)).collect();
+                .filter(|g| kind.keeps(g, None) && away.is_none_or(|a| is_absent(g) == a) && found(library, g, &needle)).collect();
             GameStatus::ALL.into_iter().map(|s| (s, all.iter().filter(|g| g.status == Some(s)).count())).filter(|(_, n)| *n > 0).collect()
         });
         (!counts.is_empty()).then(|| {
@@ -388,19 +429,24 @@ pub fn LibraryPage() -> impl IntoView {
                     }
                 })
                 .collect_view();
-            view! { <div class="chips" role="group" aria-label=tr!("Situação")>{chips}</div> }
+            view! { <div class="chips" role="group" aria-label=tr!("Situação")><span class="chips-h">{tr!("Situação")}</span>{chips}</div> }
         })
     };
     let presence = move || {
+        // Always drawn, so the row never jumps; "Não instalados 0" just can't be picked.
         let (_, here, missing) = counts.get();
-        (missing > 0).then(|| view! {
+        view! {
             <div class="segs" role="group" aria-label=tr!("Instalação")>
-                <button type="button" class="seg" class:on=move || !absent.get() aria-pressed=move || (!absent.get()).to_string()
-                    on:click=move |_| absent.set(false)>{tr!("Instalados")}<span class="chip-n">{here}</span></button>
-                <button type="button" class="seg" class:on=move || absent.get() aria-pressed=move || absent.get().to_string()
-                    on:click=move |_| absent.set(true)>{tr!("Não instalados")}<span class="chip-n">{missing}</span></button>
+                <button type="button" class="seg" class:on=move || absent.get().is_none() aria-pressed=move || absent.get().is_none().to_string()
+                    title=tr!("Instalados e não instalados juntos: os que não estão neste PC aparecem apagados e instalam por ali.")
+                    on:click=move |_| absent.set(None)>{tr!("Todos")}<span class="chip-n">{here + missing}</span></button>
+                <button type="button" class="seg" class:on=move || absent.get() == Some(false) aria-pressed=move || (absent.get() == Some(false)).to_string()
+                    on:click=move |_| absent.set(Some(false))>{tr!("Instalados")}<span class="chip-n">{here}</span></button>
+                <button type="button" class="seg" class:on=move || absent.get() == Some(true) aria-pressed=move || (absent.get() == Some(true)).to_string()
+                    disabled=missing == 0 && absent.get_untracked() != Some(true)
+                    on:click=move |_| absent.set(Some(true))>{tr!("Não instalados")}<span class="chip-n">{missing}</span></button>
             </div>
-        })
+        }
     };
 
     let results = move || {
@@ -450,14 +496,13 @@ pub fn LibraryPage() -> impl IntoView {
         // Todos is every game, the classics in the ROM folders among the others
         // (those an installed recomp plays are that game), unless a filter they
         // can't match (a store, a status, not installed) is on.
-        let with_classics = kind == Category::All && matches!(source, Filter::All | Filter::Roms) && !away && only.is_none();
+        let with_classics = kind == Category::All && source == Filter::All && away != Some(true) && only.is_none();
         let classic_rows: Vec<RomView> =
             if with_classics { crate::classics::matching(crate::classics::standalone(library), &needle) } else { Vec::new() };
         games.retain(|g| {
             kind.keeps(g, open.as_deref())
-                && source != Filter::Roms
                 && source.keeps(g)
-                && is_absent(g) == away
+                && away.is_none_or(|a| is_absent(g) == a)
                 && only.is_none_or(|s| g.status == Some(s))
                 && found(library, g, &needle)
         });
@@ -494,7 +539,7 @@ pub fn LibraryPage() -> impl IntoView {
                 let all = library.recomps.get().and_then(Result::ok).unwrap_or_default();
                 crate::versions::one_each(&all).into_iter().filter(|(e, _)| crate::discover::matches_search(e, &needle)).count()
             };
-            let elsewhere = if needle.is_empty() || away { 0 } else {
+            let elsewhere = if needle.is_empty() || away != Some(false) { 0 } else {
                 library.games.with(|all| all.as_ref().and_then(|r| r.as_ref().ok()).map_or(0, |all| all.iter().filter(|g| is_absent(g) && found(library, g, &needle)).count()))
             };
             let query = search.get_untracked();
@@ -510,7 +555,7 @@ pub fn LibraryPage() -> impl IntoView {
                             </button> }
                         })}
                         {(elsewhere > 0).then(|| view! {
-                            <button type="button" class="btn" on:click=move |_| absent.set(true)>
+                            <button type="button" class="btn" on:click=move |_| absent.set(Some(true))>
                                 {if elsewhere == 1 { tr!("1 em Não instalados").to_string() } else { tr!("{} em Não instalados", elsewhere) }}
                             </button>
                         })}
@@ -606,14 +651,14 @@ pub fn LibraryPage() -> impl IntoView {
             <section class="catalog-results">
                 <h2>{if count == 1 { tr!("1 jogo").into() } else { tr!("{} jogos", count) }}</h2>
                 <div class=if list { "library-list" } else { "grid" }
-                    on:keydown=move |e| { if list { navigate_rows(e); } }>{items}</div>
+                    on:keydown=move |e| { if list { navigate_rows(e) } else { navigate_grid(e) } }>{items}</div>
             </section>
         }.into_any()
     };
 
     // Origin, install state and status fold under "Filtros"; the button counts the ones on.
     let filters_open = RwSignal::new(false);
-    let active_filters = move || (filter.get() != Filter::All) as usize + absent.get() as usize + status.get().is_some() as usize;
+    let active_filters = move || status.get().is_some() as usize + (filter.get() != Filter::All) as usize;
     let mode = move |list, icon, label: &'static str| {
         let active = move || compact.get() == list;
         view! {
@@ -648,6 +693,7 @@ pub fn LibraryPage() -> impl IntoView {
                         <Svg icon=Icon::Search size=18 />
                         <input node_ref=input type="search" placeholder=tr!("Buscar na biblioteca") aria-label=tr!("Buscar na biblioteca")
                             prop:value=move || search.get() on:input=move |e| search.set(event_target_value(&e)) />
+                        <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                     </label>
                     <select class="select" aria-label=tr!("Ordenar biblioteca")
                         on:change=move |e| sort.set(match event_target_value(&e).as_str() {
@@ -671,18 +717,21 @@ pub fn LibraryPage() -> impl IntoView {
                 </div>
                 <div class="lib-tabs">
                     <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
+                    // Always in sight: a search never hides the games that aren't installed without saying so.
+                    <Show when=move || !matches!(category.get(), Category::Classics | Category::Hidden)>
+                        <div class="lib-presence">{presence}</div>
+                    </Show>
                     <Show when=move || category.get() == Category::Collections>
                         <ShelfBar shelves open=Signal::derive(open_shelf) shelf />
                     </Show>
                 </div>
                 <div class="lib-filters" class:hidden=move || !filters_open.get()>
-                    <Show when=move || matches!(category.get(), Category::All | Category::Pc)>
-                        <div class="chips" role="group" aria-label=tr!("Origem do jogo")>{chips.clone()}</div>
-                        {presence}
+                    <Show when=move || matches!(category.get(), Category::All | Category::Pc | Category::Favorites | Category::Collections)>
+                        {platforms}
                     </Show>
                     {statuses}
                     <Show when=move || { active_filters() > 0 }>
-                        <button type="button" class="link" on:click=move |_| { filter.set(Filter::All); absent.set(false); status.set(None); }>{tr!("Limpar filtros")}</button>
+                        <button type="button" class="link" on:click=move |_| { status.set(None); filter.set(Filter::All); }>{tr!("Limpar filtros")}</button>
                     </Show>
                 </div>
             </section>

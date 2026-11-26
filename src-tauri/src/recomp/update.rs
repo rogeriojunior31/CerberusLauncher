@@ -102,8 +102,20 @@ impl Update {
     }
 
     pub(super) fn publish(&self) -> Result<(), String> {
-        preserve(&self.target, &self.candidate())
+        // The developer's file describes one release: the old one isn't carried
+        // into a new release that dropped or moved it.
+        let own_file = self.candidate().join(super::manifest::FILE);
+        let new_has_it = own_file.exists();
+        // What this release ships, and what the one installed shipped: a file the
+        // player changed since (a setting, a mod, a swapped DLL) is kept.
+        let shipped = release_files(&self.candidate());
+        let installed = read_release_files(&self.target);
+        preserve(&self.target, &self.candidate(), Path::new(""), installed.as_ref())
             .map_err(|e| tr!("Falha ao preparar a atualização: {}", e))?;
+        write_release_files(&self.candidate(), &shipped);
+        if !new_has_it {
+            let _ = fs::remove_file(&own_file);
+        }
         // An antivirus checking the new files (or the old ones) may hold them a moment.
         super::throttle::rename_patiently(&self.target, &self.work.join("previous"), 20)
             .map_err(|e| tr!("Falha ao reservar a versão anterior: {}", e))?;
@@ -209,9 +221,9 @@ pub(crate) fn recover(game: &Game) -> Result<(), String> {
 
 fn ordinary_file_type(path: &Path) -> io::Result<fs::FileType> {
     let metadata = fs::symlink_metadata(path)?;
-    #[cfg(windows)]
-    let linked = std::os::windows::fs::MetadataExt::file_attributes(&metadata) & 0x400 != 0;
-    #[cfg(not(windows))]
+    // Links and junctions only. Other reparse points are ordinary files to us:
+    // OneDrive keeps every file of a synced folder as one (Files On-Demand), and
+    // refusing them made every update of a game installed there fail.
     let linked = metadata.file_type().is_symlink();
     if linked || !(metadata.is_dir() || metadata.is_file()) {
         return Err(io::Error::other(tr!("Arquivo especial na instalação: {}", path.display())));
@@ -219,26 +231,83 @@ fn ordinary_file_type(path: &Path) -> io::Result<fs::FileType> {
     Ok(metadata.file_type())
 }
 
+/// Files a release ships, by path inside the game's folder, with their hash
+/// (files up to this size: settings and DLLs are small; ROMs and packs aren't hashed).
+const RELEASE_FILES: &str = ".cerberus-files.json";
+const HASHED_UP_TO: u64 = 16 * 1024 * 1024;
+
+fn hash_of(file: &Path) -> Option<String> {
+    if fs::metadata(file).ok()?.len() > HASHED_UP_TO {
+        return None;
+    }
+    Some(format!("{:x}", Sha256::digest(fs::read(file).ok()?)))
+}
+
+/// What's in a freshly unpacked release.
+pub(super) fn release_files(dir: &Path) -> std::collections::BTreeMap<String, String> {
+    let mut found = std::collections::BTreeMap::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(here) = pending.pop() {
+        for entry in fs::read_dir(&here).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if let (Ok(rel), Some(hash)) = (path.strip_prefix(dir), hash_of(&path)) {
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                if !rel.starts_with(".cerberus") {
+                    found.insert(rel, hash);
+                }
+            }
+        }
+    }
+    found
+}
+
+pub(super) fn write_release_files(dir: &Path, files: &std::collections::BTreeMap<String, String>) {
+    let _ = crate::state_file::save(&dir.join(RELEASE_FILES), files);
+}
+
+fn read_release_files(dir: &Path) -> Option<std::collections::BTreeMap<String, String>> {
+    match crate::state_file::read(&dir.join(RELEASE_FILES)) {
+        crate::state_file::Read::Found(files) => Some(files),
+        _ => None,
+    }
+}
+
 // The new release supplies replacements. Carry everything else forward without writing into
 // the live directory. A hard link avoids duplicating large ROMs; copying also works on exFAT.
-fn preserve(from: &Path, to: &Path) -> io::Result<()> {
+// A file both have that the player changed since the installed release shipped it stays the
+// player's; the new release's copy is kept beside it as `<name>.cerberus-new`.
+fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collections::BTreeMap<String, String>>) -> io::Result<()> {
     ordinary_file_type(from)?;
     ordinary_file_type(to)?;
     for entry in fs::read_dir(from)? {
         let entry = entry?;
         let src = entry.path();
         let dest = to.join(entry.file_name());
+        let here = rel.join(entry.file_name());
         let ty = ordinary_file_type(&src)?;
         if exists(&dest)? {
             let new = ordinary_file_type(&dest)?;
             if ty.is_dir() && new.is_dir() {
-                preserve(&src, &dest)?;
+                preserve(&src, &dest, &here, installed)?;
             } else if !(ty.is_file() && new.is_file()) {
                 return Err(io::Error::other(tr!("Tipo de arquivo incompatível: {}", src.display())));
+            } else {
+                let key = here.to_string_lossy().replace('\\', "/");
+                let changed = installed
+                    .and_then(|files| files.get(&key))
+                    .is_some_and(|shipped| hash_of(&src).is_some_and(|now| &now != shipped));
+                if changed {
+                    let mut aside = dest.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+                    aside.push(".cerberus-new");
+                    fs::rename(&dest, dest.with_file_name(aside))?;
+                    fs::copy(&src, &dest)?;
+                }
             }
         } else if ty.is_dir() {
             fs::create_dir(&dest)?;
-            preserve(&src, &dest)?;
+            preserve(&src, &dest, &here, installed)?;
         } else if fs::hard_link(&src, &dest).is_err() {
             fs::copy(src, dest)?;
         }
@@ -273,7 +342,7 @@ mod tests {
                 ..Default::default()
             };
             make_zip(&release, &[("Game.exe", "old")]);
-            let (exe, _) = prepare_release(&release, &target, &entry, None).unwrap();
+            let (exe, _) = prepare_release(&release, &target, &entry, None, &entry.id).unwrap();
             let original = register(&library, &entry, None, "v1", &exe, &target, false).unwrap();
             fs::write(target.join("slot.sav"), "level 3").unwrap();
             fs::write(target.join("settings.ini"), "language=pt").unwrap();
@@ -297,6 +366,7 @@ mod tests {
                 &self.target,
                 &self.entry,
                 Some(&self.original),
+                &self.entry.id,
             )
             .unwrap();
             (exe, tx.unwrap())
@@ -398,6 +468,27 @@ mod tests {
     }
 
     #[test]
+    fn an_update_keeps_settings_the_player_changed_and_updates_the_rest() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("game");
+        let release = root.path().join("release.zip");
+        let library = LocalLibrary::load(root.path());
+        let entry = CatalogEntry { id: "demo".into(), start: Some("Game.exe".into()), ..Default::default() };
+        make_zip(&release, &[("Game.exe", "v1"), ("config.ini", "A"), ("readme.txt", "r1")]);
+        let (exe, _) = prepare_release(&release, &target, &entry, None, &entry.id).unwrap();
+        let original = register(&library, &entry, None, "v1", &exe, &target, false).unwrap();
+        // The player changes a setting the release ships.
+        fs::write(target.join("config.ini"), "B").unwrap();
+        make_zip(&release, &[("Game.exe", "v2"), ("config.ini", "A2"), ("readme.txt", "r2")]);
+        let (exe, tx) = prepare_release(&release, &target, &entry, Some(&original), &entry.id).unwrap();
+        tx.unwrap().finish(register(&library, &entry, Some(&original), "v2", &exe, &target, false)).unwrap();
+        assert_eq!(fs::read_to_string(target.join("config.ini")).unwrap(), "B", "the player's setting stays");
+        assert_eq!(fs::read_to_string(target.join("config.ini.cerberus-new")).unwrap(), "A2", "the new default is beside it");
+        assert_eq!(fs::read_to_string(target.join("readme.txt")).unwrap(), "r2", "untouched files take the new version");
+        assert_eq!(fs::read_to_string(target.join("Game.exe")).unwrap(), "v2");
+    }
+
+    #[test]
     fn conflicting_file_types_abort_before_switch() {
         let install = Installation::new();
         fs::write(install.target.join("assets"), "custom data").unwrap();
@@ -406,7 +497,8 @@ mod tests {
                 &install.release,
                 &install.target,
                 &install.entry,
-                Some(&install.original)
+                Some(&install.original),
+                &install.entry.id,
             )
             .is_err()
         );

@@ -888,13 +888,23 @@ pub fn still_fits(input: &Input, copy: &Path) -> bool {
 pub fn place(input: &Input, install: &Path, copy: &Path) -> Result<(), String> {
     let Some(target) = placed_at(input, install, Some(copy)) else { return Ok(()) };
     if copy.is_dir() {
-        return super::copy_tree(copy, &target).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e));
+        crate::disk::require(target.parent().unwrap_or(install), super::tree_size(copy))?;
+        if target == install {
+            return super::copy_tree(copy, &target).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e));
+        }
+        // Copied whole or not at all: a half folder would count as present.
+        if let Some(dir) = target.parent() {
+            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        return super::fill_folder(&target, |part| super::copy_tree(copy, part).map_err(|e| tr!("Não foi possível copiar os arquivos: {}", e)));
     }
     if let Some(dir) = target.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     crate::disk::require(target.parent().unwrap_or(install), fs::metadata(copy).map_err(|e| e.to_string())?.len())?;
-    fs::copy(copy, &target).map(|_| ()).map_err(|e| tr!("Não foi possível copiar o arquivo: {}", e))
+    super::copy_whole(copy, &target).map_err(|e| tr!("Não foi possível copiar o arquivo: {}", e))?;
+    // A disc sheet (.cue, .gdi, .m3u) brings its tracks, with their names.
+    super::copy_sheet_files_pub(copy, target.parent().unwrap_or(install))
 }
 
 #[cfg(test)]

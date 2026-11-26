@@ -214,6 +214,10 @@ pub struct ConfigFile {
     format: String,
     lines: Vec<String>,
     json: Map<String, Value>,
+    /// The file exists but couldn't be read as it is (in use, another
+    /// encoding, JSON with comments): it is never written, so the game's own
+    /// settings are never replaced by only the ones Cerberus knows.
+    unreadable: Option<String>,
 }
 
 /// Where a key's value sits on an INI or TOML line: the text before the value
@@ -229,7 +233,15 @@ fn value_span(line: &str, format: &str) -> Option<(String, usize, usize)> {
     let start = eq + 1 + (after.len() - after.trim_start().len());
     let rest = &line[start..];
     let end = if format == "ini" {
-        rest.find([';', '#']).unwrap_or(rest.len())
+        // A comment is a `;` or `#` standing alone (spaces around it, as in
+        // `60 ; the cap`): `D:\Jogos #2\zelda.iso` and `C:\a#b.iso` are values
+        // whole. The value ends before the spaces.
+        let bytes = rest.as_bytes();
+        let spaced = |i: usize| bytes.get(i).is_none_or(|b| b.is_ascii_whitespace());
+        let cut = (0..bytes.len())
+            .find(|&i| matches!(bytes[i], b';' | b'#') && (i == 0 || bytes[i - 1].is_ascii_whitespace()) && spaced(i + 1))
+            .unwrap_or(rest.len());
+        rest[..cut].trim_end().len()
     } else {
         // TOML: a `#` inside a quoted string isn't a comment.
         let mut quoted = None;
@@ -258,14 +270,26 @@ fn header(line: &str) -> Option<&str> {
 
 impl ConfigFile {
     pub fn open(path: PathBuf, format: &str) -> Self {
-        let text = fs::read_to_string(&path).unwrap_or_default();
+        let (text, mut unreadable) = match fs::read_to_string(&path) {
+            Ok(text) => (text, None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (String::new(), None),
+            Err(e) => (String::new(), Some(e.to_string())),
+        };
+        let text = text.trim_start_matches('\u{feff}').to_string();
         let json = if format == "json" {
-            serde_json::from_str::<Value>(&text).ok().and_then(|v| v.as_object().cloned()).unwrap_or_default()
+            match serde_json::from_str::<Value>(&text) {
+                Ok(v) => v.as_object().cloned().unwrap_or_default(),
+                Err(_) if text.trim().is_empty() => Map::new(),
+                Err(e) => {
+                    unreadable.get_or_insert(e.to_string());
+                    Map::new()
+                }
+            }
         } else {
             Map::new()
         };
         let lines = text.lines().map(|l| l.trim_end_matches('\r').to_string()).collect();
-        Self { path, format: format.to_string(), lines, json }
+        Self { path, format: format.to_string(), lines, json, unreadable }
     }
 
     /// `Graphics/Fullscreen`: `Fullscreen` under `[Graphics]`. A plain key is looked for anywhere.
@@ -369,6 +393,14 @@ impl ConfigFile {
     /// Written to a temporary file first, then put in place, so a crash never
     /// leaves the game a half-written settings file.
     pub fn save(&self) -> Result<(), String> {
+        if let Some(why) = &self.unreadable {
+            return Err(tr!("Não foi possível ler {0} ({1}); o arquivo ficou como estava. Mude essa opção pelo próprio jogo.", self.path.display(), why));
+        }
+        // The game's own file, as it was before Cerberus first changed it.
+        let original = self.path.with_extension(format!("{}.cerberus-orig", self.path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default()));
+        if self.path.is_file() && !original.exists() {
+            let _ = fs::copy(&self.path, &original);
+        }
         let text = if self.format == "json" {
             serde_json::to_string_pretty(&self.json).map_err(|e| e.to_string())? + "\n"
         } else {
@@ -571,6 +603,45 @@ impl Offer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_path_with_a_hash_survives_the_ini() {
+        let span = |line: &str| value_span(line, "ini").map(|(_, a, b)| line[a..b].to_string());
+        assert_eq!(span(r"iso=D:\Jogos #2\zelda.iso").as_deref(), Some(r"D:\Jogos #2\zelda.iso"));
+        assert_eq!(span(r"iso=C:\a#b.iso").as_deref(), Some(r"C:\a#b.iso"));
+        assert_eq!(span("fps = 60 ; the cap").as_deref(), Some("60"));
+        assert_eq!(span("fps=60;cap").as_deref(), Some("60;cap"));
+        assert_eq!(span("fps =").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn a_settings_file_that_cant_be_read_is_never_written() {
+        let dir = tempfile::tempdir().unwrap();
+        // UTF-16 (BOM FF FE), as some games save it.
+        let ini = dir.path().join("game.ini");
+        let mut utf16: Vec<u8> = vec![0xFF, 0xFE];
+        utf16.extend("[Graphics]\r\nFullscreen=1\r\nResolution=4k\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()));
+        fs::write(&ini, &utf16).unwrap();
+        let mut file = ConfigFile::open(ini.clone(), "ini");
+        file.set("Graphics/Fullscreen", "0");
+        assert!(file.save().is_err());
+        assert_eq!(fs::read(&ini).unwrap(), utf16, "untouched");
+        // JSON with a comment: not valid JSON, so not rewritten without the comment and the rest.
+        let json = dir.path().join("p.json");
+        fs::write(&json, "{ // the player's note\n \"fps\": 60, \"lang\": \"pt\" }").unwrap();
+        let mut file = ConfigFile::open(json.clone(), "json");
+        file.set("fps", "30");
+        assert!(file.save().is_err());
+        assert!(fs::read_to_string(&json).unwrap().contains("player's note"));
+        // A JSON file with a BOM still reads, and the first change keeps the original beside it.
+        fs::write(&json, "\u{feff}{\"fps\": 60, \"lang\": \"pt\"}").unwrap();
+        let mut file = ConfigFile::open(json.clone(), "json");
+        file.set("fps", "30");
+        file.save().unwrap();
+        let saved: Value = serde_json::from_str(&fs::read_to_string(&json).unwrap()).unwrap();
+        assert_eq!((saved["lang"].as_str(), saved["fps"].to_string().trim_matches('"').to_string()), (Some("pt"), "30".to_string()));
+        assert!(dir.path().join("p.json.cerberus-orig").exists());
+    }
     use serde_json::json;
 
     #[test]

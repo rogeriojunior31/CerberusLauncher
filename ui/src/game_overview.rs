@@ -94,9 +94,9 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
             if total == 0 && last.is_none() { tr!("Nunca jogado").to_string() } else { format::playtime(total) }),
             (Icon::Play, tr!("Última vez").to_string(), last.map(format::ago).unwrap_or_else(|| "—".into())),
             (Icon::List, tr!("Esta semana").to_string(), if week == 0 { "—".into() } else { format::playtime(week) }),
-            (Icon::List, tr!("Este mês").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),
-            (Icon::Saves, tr!("Sessões").to_string(), if list.is_empty() { "—".into() } else { list.len().to_string() }),
-            (Icon::Trophy, tr!("Mais longa").to_string(), if longest == 0 { "—".into() } else { format::playtime(longest) }),
+            (Icon::Layers, tr!("Este mês").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),
+            (Icon::Gamepad, tr!("Sessões").to_string(), if list.is_empty() { "—".into() } else { list.len().to_string() }),
+            (Icon::Star, tr!("Mais longa").to_string(), if longest == 0 { "—".into() } else { format::playtime(longest) }),
         ]
         .into_iter()
         .collect();
@@ -109,20 +109,18 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
         let older = (total > logged + 60).then(|| view! {
             <p class="muted small pc-older">{tr!("O total inclui partidas mais antigas, de antes do registro por sessão.")}</p>
         });
-        // Nothing in two weeks: the numbers alone, in one row, instead of an empty chart.
-        if !any_recent {
-            return view! {
-                <section class="card pc compact">
-                    <div class="pc-h">
-                        <h3>{title}</h3>
-                        <small class="muted">{tr!("Não jogou nas últimas duas semanas.")}</small>
-                    </div>
-                    <ul class="pc-list row">{rows}</ul>
-                    {older}
-                </section>
-            }
-            .into_any();
-        }
+        // One shape for every game. With no sessions written down in two weeks, the
+        // chart says why, and doesn't contradict a recent "Última vez" (a Steam game
+        // played outside Cerberus counts only in the total).
+        let played_lately = last.is_some_and(|t| now - (t as f64 * 1000.0) <= 14.0 * DAY);
+        let empty_note = (!any_recent).then(|| {
+            let text = if played_lately {
+                tr!("Jogou nesses dias, mas fora do Cerberus: só o total conta essas partidas.")
+            } else {
+                tr!("Não jogou nas últimas duas semanas.")
+            };
+            view! { <p class="pc-empty muted small">{text}</p> }
+        });
         view! {
             <section class="card pc">
                 <div class="pc-h">
@@ -130,7 +128,7 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
                     <small class="muted">{tr!("Últimas duas semanas")}</small>
                 </div>
                 <div class="pc-body">
-                    <div class="pc-chart"><div class="pc-bars">{bars}</div></div>
+                    <div class="pc-chart" class:empty=!any_recent><div class="pc-bars">{bars}</div>{empty_note}</div>
                     <ul class="pc-list">{rows}</ul>
                 </div>
                 {older}
@@ -140,16 +138,38 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
     }
 }
 
-/// Loads hls.js once (bundled with the app) and plays an HLS stream in `video`.
+/// Loads hls.js once (bundled with the app) and plays an HLS stream in `video`,
+/// through `vendor/hls-play.js` (no code built from text, so the page's CSP
+/// needs no 'unsafe-eval').
 fn play_hls(video: &web_sys::HtmlElement, url: &str) {
-    let script = js_sys::Function::new_with_args(
-        "video,url",
-        "const go=()=>{if(window.Hls&&Hls.isSupported()){if(video.__hls)video.__hls.destroy();const h=new Hls({capLevelToPlayerSize:true});h.loadSource(url);h.attachMedia(video);video.__hls=h;video.play().catch(()=>{});}else{video.src=url;video.play().catch(()=>{});}};\
-         if(window.Hls){go();return;}let s=document.querySelector('script[data-hls]');\
-         if(!s){s=document.createElement('script');s.src='vendor/hls.light.min.js';s.dataset.hls='1';document.head.appendChild(s);}\
-         s.addEventListener('load',go,{once:true});",
-    );
-    let _ = script.call2(&wasm_bindgen::JsValue::NULL, video, &url.into());
+    use wasm_bindgen::JsCast;
+    let Some(window) = web_sys::window() else { return };
+    let call = move |window: &web_sys::Window| {
+        if let Ok(f) = js_sys::Reflect::get(window, &"cerberusPlayHls".into()).and_then(|f| f.dyn_into::<js_sys::Function>()) {
+            let _ = f.call2(&wasm_bindgen::JsValue::NULL, video, &url.into());
+            return true;
+        }
+        false
+    };
+    if call(&window) {
+        return;
+    }
+    // First trailer: the helper comes in, then plays.
+    let Some(document) = window.document() else { return };
+    let Ok(script) = document.create_element("script") else { return };
+    let _ = script.set_attribute("src", "vendor/hls-play.js");
+    let (video, url) = (video.clone(), url.to_string());
+    let loaded = wasm_bindgen::closure::Closure::once_into_js(move || {
+        if let Some(window) = web_sys::window() {
+            if let Ok(f) = js_sys::Reflect::get(&window, &"cerberusPlayHls".into()).and_then(|f| f.dyn_into::<js_sys::Function>()) {
+                let _ = f.call2(&wasm_bindgen::JsValue::NULL, &video, &url.into());
+            }
+        }
+    });
+    let _ = script.add_event_listener_with_callback("load", loaded.unchecked_ref());
+    if let Some(head) = document.head() {
+        let _ = head.append_child(&script);
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -409,7 +429,8 @@ pub fn AchievementsCard(data: LocalResource<Result<cerberus_shared::GameAchievem
 pub fn StoreFacts(details: StoreDetails, #[prop(optional)] extra: Vec<(String, String)>) -> impl IntoView {
     let mut rows: Vec<(String, String)> = Vec::new();
     if !details.released.is_empty() {
-        rows.push((tr!("Lançamento").to_string(), if details.coming_soon { tr!("{} (em breve)", details.released) } else { details.released.clone() }));
+        let released = store_day(&details.released);
+        rows.push((tr!("Lançamento").to_string(), if details.coming_soon { tr!("{} (em breve)", released) } else { released }));
     }
     if !details.developers.is_empty() {
         rows.push((tr!("Desenvolvedora").to_string(), details.developers.iter().take(3).cloned().collect::<Vec<_>>().join(", ")));
@@ -574,23 +595,63 @@ pub fn StoreSkeleton() -> impl IntoView {
 /// screen readers, and after a while a note that it's still going.
 #[component]
 pub fn Waiting(text: &'static str, #[prop(default = 3)] rows: usize, #[prop(optional)] retry: Option<Callback<()>>) -> impl IntoView {
-    let slow = RwSignal::new(false);
-    let timer = set_timeout_with_handle(move || slow.set(true), std::time::Duration::from_secs(10)).ok();
+    // Seconds since this read (or its retry) began: slow at 8, given up at 30.
+    let elapsed = RwSignal::new(0u32);
+    let tick = set_interval_with_handle(move || elapsed.set(elapsed.get_untracked() + 1), std::time::Duration::from_secs(1)).ok();
     on_cleanup(move || {
-        if let Some(t) = timer {
+        if let Some(t) = tick {
             t.clear();
         }
     });
+    let stuck = move || elapsed.get() >= 30;
+    let again = move || {
+        elapsed.set(0);
+        if let Some(r) = retry {
+            r.run(());
+        }
+    };
     view! {
         <div class="waiting" role="status">
             <span class="vh">{text}</span>
-            {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
-            <Show when=move || slow.get()>
-                <p class="muted small">{tr!("Demorando mais que o normal. Na primeira vez pode levar alguns segundos.")}</p>
-                {retry.map(|again| view! {
-                    <button type="button" class="btn sm" on:click=move |_| { slow.set(false); again.run(()); }>{tr!("Tentar de novo")}</button>
-                })}
+            <Show when=move || !stuck()>
+                {(0..rows).map(|_| view! { <div class="sk sk-row"></div> }).collect_view()}
+            </Show>
+            <Show when=move || { elapsed.get() >= 8 }>
+                <div class="wait-note">
+                    <p class="muted small">{move || if stuck() {
+                        tr!("Não deu para ler agora. A pasta do jogo pode estar ocupada (uma atualização, o próprio jogo aberto).")
+                    } else {
+                        tr!("Está demorando mais que o normal.")
+                    }}</p>
+                    {retry.is_some().then(|| view! { <button type="button" class="btn sm" on:click=move |_| again()>{tr!("Tentar de novo")}</button> })}
+                </div>
             </Show>
         </div>
+    }
+}
+
+
+/// The store's date ("10/set./2019", "10 Sep, 2019") in the same numbers as the
+/// rest of the app ("10/09/2019"); anything else ("Em breve") as the store wrote it.
+fn store_day(text: &str) -> String {
+    const MONTHS: [[&str; 2]; 12] = [
+        ["jan", "jan"], ["fev", "feb"], ["mar", "mar"], ["abr", "apr"], ["mai", "may"], ["jun", "jun"],
+        ["jul", "jul"], ["ago", "aug"], ["set", "sep"], ["out", "oct"], ["nov", "nov"], ["dez", "dec"],
+    ];
+    let words: Vec<String> = text
+        .split(|c: char| c == '/' || c == ' ' || c == ',' || c == '.')
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let month_of = |w: &str| MONTHS.iter().position(|m| m.iter().any(|n| w.starts_with(n))).map(|i| i + 1);
+    let (day, month, year) = match words.as_slice() {
+        [d, m, y] if d.parse::<u32>().is_ok() => (d.clone(), month_of(m), y.clone()),
+        [m, d, y] if d.parse::<u32>().is_ok() => (d.clone(), month_of(m), y.clone()),
+        _ => return text.to_string(),
+    };
+    match (day.parse::<u32>(), month, year.len() == 4 && year.parse::<u32>().is_ok()) {
+        (Ok(d), Some(m), true) if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::En => format!("{m:02}/{d:02}/{year}"),
+        (Ok(d), Some(m), true) => format!("{d:02}/{m:02}/{year}"),
+        _ => text.to_string(),
     }
 }

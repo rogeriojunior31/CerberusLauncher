@@ -7,7 +7,6 @@
 use cerberus_shared::tk;
 use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -26,21 +25,26 @@ fn file(data: &Path) -> PathBuf {
     data.join("store-playtime.json")
 }
 
+/// Store games (Steam, Epic, Xbox) seen running right now.
+static STORE_PLAYING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A store game is open now (Cerberus counts its time, so it must stay open too).
+pub fn store_playing() -> bool {
+    STORE_PLAYING.load(std::sync::atomic::Ordering::SeqCst) > 0
+}
+
 pub fn load(data: &Path) -> HashMap<String, Played> {
-    fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::state_file::load_or_default(&file(data))
 }
 
 fn add(data: &Path, id: &str, seconds: u64, now: u64) -> Result<(), String> {
-    let mut all = load(data);
-    let entry = all.entry(id.to_string()).or_default();
-    entry.seconds += seconds;
-    entry.last = now;
-    entry.last_session = seconds;
-    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    let target = file(data);
-    let temp = target.with_extension("json.tmp");
-    fs::write(&temp, text).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &target).map_err(|e| e.to_string())
+    // A file that can't be read is left alone (the minute is lost, never the total).
+    crate::state_file::update(&file(data), |all: &mut HashMap<String, Played>| {
+        let entry = all.entry(id.to_string()).or_default();
+        entry.seconds += seconds;
+        entry.last = now;
+        entry.last_session = seconds;
+    })
 }
 
 /// Puts the kept time on Steam and Epic games as they are listed.
@@ -56,7 +60,7 @@ pub fn apply(data: &Path, games: &mut [Game]) {
 }
 
 fn is_store(game: &Game) -> bool {
-    matches!(game.source, Source::Steam { .. } | Source::Epic { .. })
+    matches!(game.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. })
 }
 
 /// A folder as compared: lower case, backslashes, ending in one.
@@ -124,6 +128,9 @@ pub fn watch(app: AppHandle) {
         let mut games: Vec<(String, String, String)> = Vec::new();
         let mut scanned = Instant::now() - Duration::from_secs(3600);
         let mut playing: HashMap<String, Instant> = HashMap::new();
+        // Seconds already written for each open game, and when: every minute, so
+        // closing Cerberus (or Windows) mid-game keeps all but the last minute.
+        let mut credited: HashMap<String, (u64, Instant)> = HashMap::new();
         let mut live = crate::achievements::live::Live::default();
         let steam_app = |id: &str| id.strip_prefix("steam:").and_then(|n| n.parse::<u32>().ok());
         loop {
@@ -131,6 +138,7 @@ pub fn watch(app: AppHandle) {
             if scanned.elapsed() >= Duration::from_secs(60) {
                 let mut found = crate::steam::installed_games();
                 found.extend(crate::epic::installed_games());
+                found.extend(crate::xbox::installed_games());
                 let before: HashSet<String> = games.iter().map(|(id, _, _)| id.clone()).collect();
                 games = found.into_iter().map(|g| (g.id, g.install_dir, g.name)).collect();
                 // A game finished installing (or was removed) in its store: the library shows it.
@@ -152,6 +160,18 @@ pub fn watch(app: AppHandle) {
                     }
                 }
             }
+            if let Ok(data) = app.path().app_data_dir() {
+                for (id, started) in &playing {
+                    let so_far = started.elapsed().as_secs();
+                    let (done, at) = credited.get(id).copied().unwrap_or((0, *started));
+                    if so_far >= 30 && at.elapsed() >= Duration::from_secs(60) {
+                        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+                        if add(&data, id, so_far - done, now).is_ok() {
+                            credited.insert(id.clone(), (so_far, Instant::now()));
+                        }
+                    }
+                }
+            }
             let ended: Vec<String> = playing.keys().filter(|id| !now_running.contains(*id)).cloned().collect();
             for id in ended {
                 let Some(started) = playing.remove(&id) else { continue };
@@ -161,6 +181,7 @@ pub fn watch(app: AppHandle) {
                     live.stop(n);
                 }
                 let seconds = started.elapsed().as_secs();
+                let already = credited.remove(&id).map_or(0, |(done, _)| done);
                 crate::in_game::session(&app, false);
                 let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: false });
                 // A blink (a launcher checking for updates) isn't a session.
@@ -169,7 +190,7 @@ pub fn watch(app: AppHandle) {
                 }
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };
-                let saved = add(&data, &id, seconds, now);
+                let saved = add(&data, &id, seconds.saturating_sub(already), now);
                 crate::play_log::record(&data, &id, seconds, now);
                 let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { crate::sessions::played_text(seconds / 60 * 60) };
                 crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
@@ -179,6 +200,7 @@ pub fn watch(app: AppHandle) {
             // Downloads slow down while any game is open (store games or ones Cerberus started).
             let ours = !app.state::<crate::sessions::Sessions>().running().is_empty();
             crate::recomp::throttle::set_playing(ours || !playing.is_empty());
+            STORE_PLAYING.store(playing.len(), std::sync::atomic::Ordering::SeqCst);
             std::thread::sleep(Duration::from_secs(5));
         }
     });

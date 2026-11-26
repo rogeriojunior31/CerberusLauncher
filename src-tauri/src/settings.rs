@@ -36,6 +36,16 @@ pub struct Settings {
     /// The player's RetroAchievements account: username and their own Web API key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_user: Option<String>,
+    /// The Epic Games account signed in: its name, and the refresh token (never a password).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epic_user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epic_refresh: Option<String>,
+    /// The Microsoft account behind the Xbox app: its gamertag and Live refresh token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xbox_user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xbox_refresh: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ra_key: Option<String>,
     /// RetroAchievements' connect token, traded once for the password (which is
@@ -86,6 +96,9 @@ pub struct Settings {
     /// The folders the emulators already list games from are looked through too.
     #[serde(default = "yes")]
     pub emulator_folders: bool,
+    /// PC Game Pass's games listed in the library (not installed until the Xbox app installs them).
+    #[serde(default = "yes")]
+    pub game_pass: bool,
     /// What happens while a game is open.
     #[serde(default)]
     pub in_game: cerberus_shared::InGame,
@@ -107,21 +120,46 @@ impl Default for Settings {
 }
 
 pub fn load(data_dir: &Path) -> Settings {
-    let Ok(text) = fs::read_to_string(file(data_dir)) else {
+    match crate::state_file::read(&file(data_dir)) {
+        crate::state_file::Read::Found(settings) => settings,
         // No file yet: a new player, who gets the first-run setup.
-        return Settings::default();
-    };
-    // A broken file just means the defaults; never refuse to start over it.
-    serde_json::from_str(&text).unwrap_or(Settings { setup_done: true, ..Settings::default() })
+        crate::state_file::Read::Missing => Settings::default(),
+        // A damaged file with no good copy: kept aside, and the app starts with
+        // the defaults (never refusing to start over it, never asking the setup again).
+        crate::state_file::Read::Unreadable(_) => Settings { setup_done: true, ..crate::state_file::load_or_default(&file(data_dir)) },
+    }
 }
 
 pub fn save(data_dir: &Path, settings: &Settings) -> Result<(), String> {
-    fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
-    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    let target = file(data_dir);
-    let temp = target.with_extension("json.tmp");
-    fs::write(&temp, json).map_err(|e| e.to_string())?;
-    fs::rename(&temp, &target).map_err(|e| e.to_string())
+    crate::state_file::save(&file(data_dir), settings)
+}
+
+/// Which store account a renewed token belongs to.
+#[derive(Clone, Copy)]
+pub enum Account {
+    Epic,
+    Xbox,
+}
+
+/// Keeps a store's renewed refresh token, but only if the account is still the
+/// one the renewal started from: a sign-out (or another sign-in) in the
+/// meantime wins, and the account doesn't come back.
+pub fn renew_token(data_dir: &Path, account: Account, started_with: &str, renewed: &str) {
+    let _ = update(data_dir, |s| {
+        let slot = match account {
+            Account::Epic => &mut s.epic_refresh,
+            Account::Xbox => &mut s.xbox_refresh,
+        };
+        if slot.as_deref() == Some(started_with) {
+            *slot = Some(renewed.to_string());
+        }
+    });
+}
+
+/// Reads, changes and saves the settings with no other change in between (two
+/// tasks saving at once can't undo each other).
+pub fn update<R>(data_dir: &Path, change: impl FnOnce(&mut Settings) -> R) -> Result<R, String> {
+    crate::state_file::update(&file(data_dir), change)
 }
 
 fn file(data_dir: &Path) -> PathBuf {
@@ -147,6 +185,41 @@ mod tests {
         assert!(old.site_catalog);
         let off: Settings = serde_json::from_str(r#"{"site_catalog": false}"#).unwrap();
         assert!(!off.site_catalog);
+    }
+
+    #[test]
+    fn a_renewal_that_finishes_after_sign_out_doesnt_bring_the_account_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Settings::default();
+        s.epic_user = Some("Me".into());
+        s.epic_refresh = Some("OLD".into());
+        save(dir.path(), &s).unwrap();
+        // Signed in: the renewal keeps the new token.
+        renew_token(dir.path(), Account::Epic, "OLD", "NEW");
+        assert_eq!(load(dir.path()).epic_refresh.as_deref(), Some("NEW"));
+        // Signed out while a renewal (started with NEW) was asking.
+        update(dir.path(), |s| {
+            s.epic_user = None;
+            s.epic_refresh = None;
+        })
+        .unwrap();
+        renew_token(dir.path(), Account::Epic, "NEW", "NEWER");
+        assert!(load(dir.path()).epic_refresh.is_none(), "the account stays signed out");
+    }
+
+    #[test]
+    fn a_damaged_settings_file_is_kept_and_its_last_good_copy_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Settings::default();
+        s.rom_dirs = vec!["D:/ROMS".into()];
+        s.setup_done = true;
+        save(dir.path(), &s).unwrap();
+        s.start_page = "library".into();
+        save(dir.path(), &s).unwrap();
+        fs::write(file(dir.path()), "{ cut in hal").unwrap();
+        let back = load(dir.path());
+        assert_eq!(back.rom_dirs, vec![std::path::PathBuf::from("D:/ROMS")], "the folders survive");
+        assert!(back.setup_done);
     }
 
     #[test]

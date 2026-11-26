@@ -133,7 +133,8 @@ fn ChoiceSheet(sheet: Sheet) -> impl IntoView {
                         library.games.refetch();
                         library.recomps.refetch();
                         library.toast(tr!("Removido. Os backups de saves continuam guardados."));
-                        if tv.view.get_untracked() == View::Game(gid.clone()) && !tv.back() {
+                        // The TV may have closed while the files were deleted.
+                        if tv.view.try_get_untracked() == Some(View::Game(gid.clone())) && !tv.back() {
                             tv.tab(Tab::Home);
                         }
                     }
@@ -224,8 +225,9 @@ fn Keyboard() -> impl IntoView {
     rows.push(EXTRA.len());
     let rows = StoredValue::new(rows);
     let close = move || tv.sheet.set(None);
-    let typed = move |c: char| tv.search.update(|s| s.push(c.to_ascii_lowercase()));
-    let erase = move || tv.search.update(|s| {
+    let target = move || if tv.kb_lib.get_untracked() { tv.lib_search } else { tv.search };
+    let typed = move |c: char| target().update(|s| s.push(c.to_ascii_lowercase()));
+    let erase = move || target().update(|s| {
         s.pop();
     });
     tv.sheet_hints.set(vec![(Btn::A, tr!("Digitar")), (Btn::Y, tr!("Espaço")), (Btn::X, tr!("Apagar")), (Btn::B, tr!("Pronto"))]);
@@ -248,7 +250,7 @@ fn Keyboard() -> impl IntoView {
                     match c {
                         0 => typed(' '),
                         1 => erase(),
-                        2 => tv.search.set(String::new()),
+                        2 => target().set(String::new()),
                         _ => {
                             play(Sound::Select);
                             close();
@@ -284,7 +286,7 @@ fn Keyboard() -> impl IntoView {
         <div class="tv-scrim">
             <aside class="tv-sheet keyboard">
                 <h2>{tr!("Buscar")}</h2>
-                <div class="tv-field">{move || { let q = tv.search.get(); if q.is_empty() { view! { <span class="ph">{tr!("Nome do jogo")}</span> }.into_any() } else { view! { <span>{q}</span> }.into_any() } }}<i class="caret"></i></div>
+                <div class="tv-field">{move || { let q = target().get(); if q.is_empty() { view! { <span class="ph">{tr!("Nome do jogo")}</span> }.into_any() } else { view! { <span>{q}</span> }.into_any() } }}<i class="caret"></i></div>
                 <div class="tv-keys">{grid}</div>
                 <div class="tv-keys extra">{extra}</div>
             </aside>

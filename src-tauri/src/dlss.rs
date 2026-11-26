@@ -129,9 +129,18 @@ fn swap_with(data: &Path, game_id: &str, game_dir: &Path, relative: &str, new_fi
         return Err(tr!("Esse já é o arquivo do jogo.").into());
     }
     let backup = kept(data, game_id, &relative);
-    if !backup.is_file() {
+    if !whole_copy(&backup) {
+        // Copied beside it and checked before it takes the name: an interrupted
+        // copy never becomes "the original".
         fs::create_dir_all(backup.parent().unwrap_or(data)).map_err(|e| e.to_string())?;
-        fs::copy(&here, &backup).map_err(|e| tr!("Não foi possível guardar o arquivo do jogo: {}", e))?;
+        let part = backup.with_extension("dll.part");
+        let copied = fs::copy(&here, &part).map_err(|e| tr!("Não foi possível guardar o arquivo do jogo: {}", e))?;
+        let size = fs::metadata(&here).map(|m| m.len()).unwrap_or(0);
+        if copied != size || !whole_copy(&part) {
+            let _ = fs::remove_file(&part);
+            return Err(tr!("Não foi possível guardar o arquivo do jogo: a cópia não ficou inteira.").into());
+        }
+        fs::rename(&part, &backup).map_err(|e| tr!("Não foi possível guardar o arquivo do jogo: {}", e))?;
     }
     // Copied beside it first, then swapped in one step.
     let fresh = here.with_extension("dll.cerberus-new");
@@ -143,12 +152,21 @@ fn swap_with(data: &Path, game_id: &str, game_dir: &Path, relative: &str, new_fi
     Ok(new_version)
 }
 
+/// A DLL that is all there: not empty, and Windows can read its version.
+fn whole_copy(file: &Path) -> bool {
+    fs::metadata(file).is_ok_and(|m| m.len() > 0) && version_of(file).is_some()
+}
+
 /// Puts the game's own file back.
 pub fn restore(data: &Path, game_id: &str, game_dir: &Path, relative: &str) -> Result<(), String> {
     let (here, relative) = target(game_dir, relative)?;
     let backup = kept(data, game_id, &relative);
     if !backup.is_file() {
         return Err(tr!("O arquivo original não está guardado.").into());
+    }
+    // A damaged copy is never put in the game (and is kept, not deleted).
+    if !whole_copy(&backup) {
+        return Err(tr!("A cópia guardada do arquivo original está danificada; o arquivo do jogo ficou como estava.").into());
     }
     let fresh = here.with_extension("dll.cerberus-new");
     fs::copy(&backup, &fresh).map_err(locked)?;
@@ -251,6 +269,22 @@ mod tests {
 
     /// With a real versioned DLL from Windows standing in for DLSS files.
     #[cfg(windows)]
+    #[test]
+    fn a_partial_backup_is_never_restored() {
+        let system = PathBuf::from(std::env::var("SystemRoot").unwrap_or(r"C:\Windows".into())).join("System32");
+        let dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let game_file = dir.path().join("nvngx_dlss.dll");
+        fs::copy(system.join("user32.dll"), &game_file).unwrap();
+        // A copy cut short by a closed app or a full disk.
+        let backup = kept(data.path(), "steam:1", Path::new("nvngx_dlss.dll"));
+        fs::create_dir_all(backup.parent().unwrap()).unwrap();
+        fs::write(&backup, b"MZ").unwrap();
+        assert!(restore(data.path(), "steam:1", dir.path(), "nvngx_dlss.dll").is_err());
+        assert_eq!(fs::read(&game_file).unwrap(), fs::read(system.join("user32.dll")).unwrap(), "the game keeps its file");
+        assert!(backup.exists(), "the damaged copy isn't deleted either");
+    }
+
     #[test]
     fn swapping_keeps_the_original_and_restoring_brings_it_back() {
         let system = PathBuf::from(std::env::var("SystemRoot").unwrap_or(r"C:\Windows".into())).join("System32");

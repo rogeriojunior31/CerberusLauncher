@@ -22,13 +22,69 @@ pub fn classic_started() {
     CLASSICS.fetch_add(1, Ordering::SeqCst);
 }
 
+/// A classic is open in an emulator right now.
+pub fn classic_running() -> bool {
+    CLASSICS.load(Ordering::SeqCst) > 0
+}
+
 pub fn classic_ended(app: &AppHandle) {
     let _ = CLASSICS.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1));
     game_ended(app);
 }
 
+/// What would be lost if Cerberus quit now, in the player's words; `None` when nothing.
+pub fn busy(app: &AppHandle) -> Option<String> {
+    if CLASSICS.load(Ordering::SeqCst) > 0 || !app.state::<crate::sessions::Sessions>().running().is_empty() {
+        return Some(tr!("Um jogo aberto pelo Cerberus ainda está rodando: o tempo de jogo e o backup dos saves do fim da partida dependem dele.").into());
+    }
+    if crate::store_time::store_playing() {
+        return Some(tr!("Um jogo da Steam, Epic ou Xbox está aberto e o Cerberus está contando o tempo dele.").into());
+    }
+    if app.state::<crate::recomp::Installing>().any_active() {
+        return Some(tr!("Um download ou instalação está em andamento e seria interrompido.").into());
+    }
+    None
+}
+
 fn playing(app: &AppHandle) -> bool {
-    CLASSICS.load(Ordering::SeqCst) > 0 || !app.state::<crate::sessions::Sessions>().running().is_empty()
+    busy(app).is_some()
+}
+
+/// While the window is hidden only to finish something, checks every few
+/// seconds and quits once nothing is left (a download ending, a store game closing).
+fn watch_until_idle(app: &AppHandle) {
+    static WATCHING: AtomicBool = AtomicBool::new(false);
+    if WATCHING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        while HIDDEN_FOR_GAME.load(Ordering::SeqCst) {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            game_ended(&app);
+        }
+        WATCHING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// "Sair" in the tray: at once when nothing is going on; otherwise the player is asked first.
+fn quit_asked(app: &AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let Some(why) = busy(app) else {
+        app.exit(0);
+        return;
+    };
+    let handle = app.clone();
+    app.dialog()
+        .message(tr!("{}\n\nSair mesmo assim?", why))
+        .title(tr!("Sair do Cerberus"))
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(tr!("Sair").into(), tr!("Continuar").into()))
+        .show(move |quit| {
+            if quit {
+                handle.exit(0);
+            }
+        });
 }
 
 fn keep_in_tray(app: &AppHandle) -> bool {
@@ -44,6 +100,14 @@ pub fn on_close<R: Runtime>(window: &Window<R>, app: &AppHandle) -> bool {
     }
     HIDDEN_FOR_GAME.store(!in_tray, Ordering::SeqCst);
     let _ = window.hide();
+    if !in_tray {
+        // Hidden only to finish something that isn't a game: the player is told where it went.
+        let working = app.state::<crate::recomp::Installing>().any_active() && CLASSICS.load(Ordering::SeqCst) == 0 && app.state::<crate::sessions::Sessions>().running().is_empty();
+        if working {
+            crate::notify::tell(app, crate::notify::Kind::Reply, &tr!("O Cerberus continua aberto"), &tr!("Ele fecha sozinho quando o download terminar. Para abrir de novo, use o ícone na bandeja."));
+        }
+        watch_until_idle(app);
+    }
     true
 }
 
@@ -128,7 +192,7 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show(app),
-            "quit" => app.exit(0),
+            "quit" => quit_asked(app),
             id => {
                 if let Some(i) = id.strip_prefix("play:").and_then(|i| i.parse().ok()) {
                     play_recent(app, i);

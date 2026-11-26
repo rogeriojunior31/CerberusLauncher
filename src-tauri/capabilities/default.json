@@ -1,14 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the main window",
-  "windows": ["main", "overlay", "unlock"],
+  "description": "Permissions for the main window: every app command (main-window is written by build.rs).",
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
-    "core:window:allow-set-fullscreen"
+    "core:window:allow-set-fullscreen",
+    "main-window"
   ]
 }

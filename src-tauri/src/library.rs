@@ -30,8 +30,15 @@ impl LocalLibrary {
                 if let Some(text) = notice {
                     let _ = self.recovery_notice.set(text);
                 }
-                for game in &games {
-                    crate::recomp::update::recover(game)?;
+                // One game's interrupted update that can't be put right yet (a
+                // file held by the antivirus) mustn't keep the whole library from
+                // opening: it is said, and tried again on the next start.
+                let stuck: Vec<String> = games
+                    .iter()
+                    .filter_map(|game| crate::recomp::update::recover(game).err().map(|e| format!("{}: {}", game.name, e)))
+                    .collect();
+                if !stuck.is_empty() {
+                    let _ = self.recovery_notice.set(tr!("Uma atualização interrompida não pôde ser desfeita agora; o Cerberus tenta de novo na próxima vez que abrir. {}", stuck.join(" · ")));
                 }
                 cache.insert(games)
             }
@@ -71,15 +78,26 @@ impl LocalLibrary {
         Ok(all)
     }
 
-    pub fn add(&self, game: Game) -> Result<(), String> {
+    pub fn add(&self, mut game: Game) -> Result<(), String> {
         self.access(|games| {
             if games.iter().any(|known| known.id == game.id) {
                 return Ok(());
+            }
+            // Played before and removed: its time comes back.
+            let kept: std::collections::BTreeMap<String, (u64, Option<u64>)> = crate::state_file::load_or_default(&self.kept_time());
+            if let Some((seconds, last)) = kept.get(&game.id) {
+                game.playtime_secs = game.playtime_secs.max(*seconds);
+                game.last_played = game.last_played.max(*last);
             }
             let mut next = games.clone();
             next.push(game);
             self.commit(games, next)
         })
+    }
+
+    /// Where the time of removed games waits, for when they come back.
+    fn kept_time(&self) -> PathBuf {
+        self.file.with_file_name("played-kept.json")
     }
 
     pub fn update(&self, id: &str, change: impl FnOnce(&mut Game)) -> Result<Game, String> {
@@ -128,6 +146,15 @@ impl LocalLibrary {
             let Some(index) = index else { return Ok(None) };
             let mut next = games.clone();
             let removed = next.remove(index);
+            // The time played stays, for a reinstall (saves stay too).
+            if removed.playtime_secs > 0 || removed.last_played.is_some() {
+                let (id, seconds, last) = (removed.id.clone(), removed.playtime_secs, removed.last_played);
+                crate::state_file::update(&self.kept_time(), |kept: &mut std::collections::BTreeMap<String, (u64, Option<u64>)>| {
+                    let entry = kept.entry(id).or_insert((0, None));
+                    entry.0 = entry.0.max(seconds);
+                    entry.1 = entry.1.max(last);
+                })?;
+            }
             self.commit(games, next)?;
             Ok(Some(removed))
         })
@@ -146,6 +173,15 @@ fn part_in(games: &[Game], id: &str) -> Option<(usize, crate::recomp::catalog::C
     let index = games.iter().position(|g| g.id == release)?;
     let found = crate::recomp::parts_of(&games[index]).into_iter().find(|p| p.id == part)?;
     Some((index, found))
+}
+
+/// A game with nothing filled in yet, for the stores' importers to complete.
+pub fn blank_game() -> Game {
+    let mut game = game_from_exe(Path::new(""));
+    game.id = String::new();
+    game.name = String::new();
+    game.install_dir = String::new();
+    game
 }
 
 pub fn game_from_exe(exe: &Path) -> Game {
@@ -262,14 +298,30 @@ fn save(file: &Path, games: &[Game]) -> Result<(), String> {
     let json = serde_json::to_string_pretty(games).map_err(|e| e.to_string())?;
     // Write a temp file and rename it over the old one, so a crash mid-write
     // cannot leave a half-written library behind.
-    let temp = file.with_extension("json.tmp");
-    fs::write(&temp, json).map_err(|e| e.to_string())?;
-    fs::rename(&temp, file).map_err(|e| e.to_string())
+    // Flushed to the disk before the rename: a power cut can't leave an empty library.
+    crate::state_file::write_bytes_through(file, &file.with_extension("json.tmp"), json.as_bytes())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_game_removed_and_added_again_keeps_its_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = LocalLibrary::load(dir.path());
+        let mut game = blank_game();
+        game.id = "recomp:zelda".into();
+        game.name = "Zelda".into();
+        game.playtime_secs = 36_000;
+        game.last_played = Some(1_700_000_000);
+        library.add(game.clone()).unwrap();
+        library.remove(&game.id).unwrap();
+        let fresh = Game { playtime_secs: 0, last_played: None, ..game.clone() };
+        library.add(fresh).unwrap();
+        let back = library.get(&game.id).unwrap().unwrap();
+        assert_eq!((back.playtime_secs, back.last_played), (36_000, Some(1_700_000_000)));
+    }
 
     fn empty_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cerberus-test-{name}-{}", std::process::id()));

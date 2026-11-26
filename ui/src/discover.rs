@@ -145,6 +145,14 @@ enum Sort {
 /// few enough that the page stays quick with 1500 games.
 const PAGE: usize = 60;
 
+fn matches_source_kind(from_source: bool, filter: &str) -> bool {
+    match filter {
+        "recomp" => !from_source,
+        "list" => from_source,
+        _ => true,
+    }
+}
+
 fn sort_games(games: &mut [(RecompEntry, usize)], sort: Sort) {
     match sort {
         Sort::Popular => games.sort_by_key(|(e, _)| std::cmp::Reverse(e.downloads)),
@@ -242,6 +250,7 @@ pub fn DiscoverPage() -> impl IntoView {
     // Platform, feature and genre fold under "Filtros", which counts the ones on.
     let filters_open = RwSignal::new(false);
     let console = RwSignal::new(String::new());
+    let source_kind = RwSignal::new(String::new());
     let sort = RwSignal::new(Sort::Popular);
     let only_owned = RwSignal::new(false);
     let genre = RwSignal::new(String::new());
@@ -253,6 +262,7 @@ pub fn DiscoverPage() -> impl IntoView {
     Effect::new(move |_| {
         search.track();
         console.track();
+        source_kind.track();
         sort.track();
         only_owned.track();
         genre.track();
@@ -300,6 +310,7 @@ pub fn DiscoverPage() -> impl IntoView {
         let mut games: Vec<(RecompEntry, usize)> = one_each(&all)
             .into_iter()
             .filter(|(e, _)| wanted_console.is_empty() || e.origin == wanted_console)
+            .filter(|(e, _)| matches_source_kind(e.from_source, &source_kind.get()))
             .filter(|(e, _)| !only_owned.get() || e.owned_copy.is_some())
             .filter(|(e, _)| genre.with(|g| g.is_empty() || e.genre == *g))
             .filter(|(e, _)| feature.with(|f| f.is_empty() || has_feature(e, f)))
@@ -318,13 +329,14 @@ pub fn DiscoverPage() -> impl IntoView {
         games
     };
 
-    let active_filters = move || (!console.get().is_empty()) as usize + (!feature.get().is_empty()) as usize + (!genre.get().is_empty()) as usize;
+    let active_filters = move || (!console.get().is_empty()) as usize + (!source_kind.get().is_empty()) as usize + (!feature.get().is_empty()) as usize + (!genre.get().is_empty()) as usize;
     // How many catalog games the player already has a copy of: the reason to be here.
     let owned_count = move || one_each(&entries()).into_iter().filter(|(e, _)| e.owned_copy.is_some()).count();
-    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || only_owned.get() || !genre.get().is_empty() || !feature.get().is_empty();
+    let has_filters = move || !search.get().is_empty() || !console.get().is_empty() || !source_kind.get().is_empty() || only_owned.get() || !genre.get().is_empty() || !feature.get().is_empty();
     let clear = move |_| {
         search.set(String::new());
         console.set(String::new());
+        source_kind.set(String::new());
         only_owned.set(false);
         genre.set(String::new());
         feature.set(String::new());
@@ -344,7 +356,12 @@ pub fn DiscoverPage() -> impl IntoView {
                 <div class="empty">
                     <Svg icon=Icon::Search size=32 />
                     <h2>{tr!("Nenhum jogo encontrado")}</h2>
-                    <p class="muted">{tr!("Tente outro nome ou tire os filtros.")}</p>
+                    <p class="muted">{tr!("Tente outro nome ou tire os filtros. Não existe ainda? Dá para pedir.")}</p>
+                    <div class="row">
+                        <button type="button" class="btn" on:click=move |_| spawn_local(async move { library.report(api::open_recomp_request().await); })>
+                            <Svg icon=Icon::Plus size=18 />{tr!("Pedir um recomp")}
+                        </button>
+                    </div>
                 </div>
             }
             .into_any();
@@ -366,6 +383,9 @@ pub fn DiscoverPage() -> impl IntoView {
                 };
                 if entry.owned_copy.is_some() && info.badge.is_none() {
                     info.badge = Some(tr!("Você tem").to_string());
+                }
+                if entry.from_source && info.badge.is_none() {
+                    info.badge = Some(tr!("Lista").to_string());
                 }
                 view! { <Tile info /> }
             })
@@ -394,7 +414,7 @@ pub fn DiscoverPage() -> impl IntoView {
                 <div>
                     <h1>{tr!("Descobrir")}</h1>
                     <p class="muted">
-                        {tr!("Versões nativas para PC, sem emulador: recomps de jogos de console, que usam a sua cópia original, e ports de jogos de código aberto. Catálogo de recomplauncher.com.")}
+                        {tr!("Recomps, ports e jogos das fontes que você adicionou. Downloads só começam quando você clica em Instalar.")}
                     </p>
                 </div>
                 <div class="row">
@@ -419,6 +439,7 @@ pub fn DiscoverPage() -> impl IntoView {
                             prop:value=move || search.get()
                             on:input=move |e| search.set(event_target_value(&e))
                         />
+                        <kbd class="search-key" aria-hidden="true" title=tr!("Atalho: /")>"/"</kbd>
                     </label>
 
                     <select
@@ -460,6 +481,13 @@ pub fn DiscoverPage() -> impl IntoView {
                     </div>
                 </div>
                 <div class="catalog-platform">
+                    <label for="catalog-source">{tr!("Origem")}</label>
+                    <select id="catalog-source" class="select" prop:value=move || source_kind.get()
+                        on:change=move |e| source_kind.set(event_target_value(&e))>
+                        <option value="">{tr!("Todas as origens")}</option>
+                        <option value="recomp">{tr!("Recomps")}</option>
+                        <option value="list">{tr!("Listas adicionadas")}</option>
+                    </select>
                     <label for="catalog-console">{tr!("Plataforma")}</label>
                     <select id="catalog-console" class="select" prop:value=move || console.get()
                         on:change=move |e| console.set(event_target_value(&e))>
@@ -497,5 +525,19 @@ pub fn DiscoverPage() -> impl IntoView {
             </section>
             {grid}
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_origin_filter_separates_recomps_from_added_lists() {
+        assert!(matches_source_kind(false, "recomp"));
+        assert!(!matches_source_kind(true, "recomp"));
+        assert!(matches_source_kind(true, "list"));
+        assert!(!matches_source_kind(false, "list"));
+        assert!(matches_source_kind(true, "") && matches_source_kind(false, ""));
     }
 }

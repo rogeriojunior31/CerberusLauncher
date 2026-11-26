@@ -93,11 +93,18 @@ async fn run_microsoft_installer(http: &reqwest::Client, downloads: &Path, what:
     let installer = downloads.join(file);
     std::fs::write(&installer, &bytes).map_err(|e| e.to_string())?;
     let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
-    let status = tauri::async_runtime::spawn_blocking(move || std::process::Command::new(&installer).args(&args).status())
+    // Windows' permission prompt when the installer asks for administrator rights.
+    let code = tauri::async_runtime::spawn_blocking(move || match std::process::Command::new(&installer).args(&args).status() {
+        Ok(status) => Ok(status.code()),
+        Err(e) if crate::elevated::needs_admin(&e) => {
+            let dir = installer.parent().map(Path::to_path_buf).unwrap_or_default();
+            crate::elevated::run_and_wait(&installer, &args.join(" "), &dir).map_err(crate::elevated::failure)
+        }
+        Err(e) => Err(tr!("Não foi possível abrir o instalador: {}", e)),
+    })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))?;
-    match status.code() {
+    .map_err(|e| e.to_string())??;
+    match code {
         // Done; already newer; done but a restart is due.
         Some(0 | 1638 | 3010) => Ok(()),
         Some(1602) => Err(tr!("Instalação cancelada.").into()),

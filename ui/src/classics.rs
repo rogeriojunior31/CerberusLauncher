@@ -28,13 +28,34 @@ pub fn console_of(rom: &RomView) -> &'static str {
         "32x" => "32x",
         "sms" => "sms",
         "gg" => "gg",
+        // Read from the disc itself by the scan (SYSTEM.CNF, the GameCube/Wii
+        // header): surer than the folder's name.
+        "ps1" => "ps1",
+        "ps2" => "ps2",
+        "psp" => "psp",
+        "gc" => "gc",
+        "wii" => "wii",
+        "xbox" => "xbox",
+        "x360" => "x360",
         _ => "",
     };
     if !by_system.is_empty() {
         return by_system;
     }
     let path = rom.path.to_lowercase().replace('\\', "/");
-    let has = |w: &str| path.split('/').any(|part| part.contains(w));
+    // Folder names only (not the file's), as whole words: "PCSX2 e PSX" says
+    // psx, not ps2; "Playstation 2" is the two words in a row.
+    let folders: Vec<Vec<&str>> = path
+        .rsplit_once('/')
+        .map(|(dirs, _)| dirs)
+        .unwrap_or("")
+        .split('/')
+        .map(|part| part.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect())
+        .collect();
+    let has = |phrase: &str| {
+        let wanted: Vec<&str> = phrase.split(' ').collect();
+        folders.iter().any(|words| words.windows(wanted.len()).any(|run| run == wanted.as_slice()))
+    };
     if has("xbox 360") || has("x360") {
         "x360"
     } else if has("xbox") {
@@ -143,7 +164,7 @@ pub fn resolve(rom: &RomView, players: &[ClassicPlayer], games: &[cerberus_share
     let recomp = recomp_game
         .as_ref()
         .and_then(|g| match &g.source {
-            cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).cloned(),
+            cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)).cloned(),
             _ => None,
         })
         .or_else(|| recomp_of(recomps, rom).cloned());
@@ -177,7 +198,22 @@ pub fn tile(rom: &RomView, players: &[ClassicPlayer], recomps: &[RecompEntry], g
     };
     let mut art = box_art(rom, console);
     art.extend(how.recomp.as_ref().map(crate::art::recomp_covers).unwrap_or_default());
-    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable())
+    // The chip's reason, in the page's own words.
+    let hint = (!how.playable()).then(|| how.problem.clone()).filter(|p| !p.is_empty());
+    // The emulator that opens it and its console; "Nativo" when a recomp plays it too.
+    use crate::tiles::{Mark, SourceMark};
+    let mut marks = Vec::new();
+    if let Some(emu) = &how.emulator {
+        let id: String = emu.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase();
+        if let Some(src) = crate::settings_page::emulator_icon(&id) {
+            marks.push(SourceMark { mark: Mark::Image(src), label: tr!("Abre no {}", emu) });
+        }
+    }
+    marks.push(SourceMark { mark: Mark::Text(console_short(console)), label: console_name(console).to_string() });
+    if how.recomp_game.is_some() {
+        marks.push(SourceMark { mark: Mark::Text("Recomp".to_string()), label: tr!("Recomp: versão nativa para PC").to_string() });
+    }
+    crate::tiles::classic_tile(display_name(rom), sub, art, rom.path.clone(), badge, how.playable(), hint, marks)
 }
 
 /// The classic is a version of an installed recomp (the recomp was given this
@@ -243,11 +279,34 @@ fn system_of(path: &str) -> &'static str {
 
 /// Starts the original game in RetroArch.
 pub fn play_original(library: Library, path: String, console: String) {
+    // The recomp page this copy is merged into remembers it was played this way.
+    let merged = {
+        let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        library.roms.get_untracked().unwrap_or_default().iter().find(|r| r.path == path).and_then(|r| recomp_game(r, &games, &recomps)).map(|g| g.id.clone())
+    };
+    if let Some(id) = merged {
+        remember_way(&id, Way::Original);
+    }
     leptos::task::spawn_local(async move {
         if library.report(crate::api::play_classic(path, console).await).is_some() {
             library.toast(tr!("Abrindo o jogo..."));
         }
     });
+}
+
+/// A console in a few letters, for the cover's corner.
+pub fn console_short(console: &str) -> String {
+    match console {
+        "gc" => "GC".into(),
+        "dc" => "DC".into(),
+        "genesis" => "MD".into(),
+        "x360" => "360".into(),
+        "wiiu" => "Wii U".into(),
+        "wii" => "Wii".into(),
+        "xbox" => "Xbox".into(),
+        other => other.to_uppercase(),
+    }
 }
 
 pub fn console_name(console: &str) -> &'static str {
@@ -319,7 +378,23 @@ fn file_name(rom: &RomView) -> String {
 pub fn display_name(rom: &RomView) -> String {
     let name = file_name(rom);
     let cut = name.find(" (").unwrap_or(name.len());
-    name[..cut].trim().to_string()
+    title_of(name[..cut].trim())
+}
+
+/// A ROM set's name as the game is titled: file names can't hold ":", so sets
+/// write " - " ("Dragon Ball Z - Budokai Tenkaichi 3"), and an article goes to
+/// the end ("Legend of Zelda, The").
+fn title_of(name: &str) -> String {
+    let mut parts = name.splitn(2, " - ");
+    let head = parts.next().unwrap_or_default();
+    let head = match head.strip_suffix(", The") {
+        Some(rest) => format!("The {rest}"),
+        None => head.to_string(),
+    };
+    match parts.next() {
+        Some(rest) => format!("{head}: {rest}"),
+        None => head,
+    }
 }
 
 pub fn box_art(rom: &RomView, console: &str) -> Vec<String> {
@@ -394,7 +469,13 @@ mod tests {
         assert_eq!(console_of(&rom("D:/ROMS/x/Mario.z64", "n64")), "n64");
         assert_eq!(console_of(&rom("D:\\ROMS\\Xbox 360\\FIFA Street.iso", "")), "x360");
         assert_eq!(console_of(&rom("D:\\ROMS\\Playstation\\Crash\\Crash Bandicoot (USA).cue", "")), "ps1");
+        assert_eq!(console_of(&rom("D:\\Jogos\\God of War (USA).iso", "ps2")), "ps2", "read from the disc");
+        assert_eq!(console_of(&rom("D:\\PCSX2 e PSX\\Crash (USA).cue", "")), "ps1", "psx, not the ps2 in PCSX2");
+        assert_eq!(console_of(&rom("D:\\ROMS\\Playstation 2\\Okami (USA).iso", "")), "ps2");
+        assert_eq!(console_of(&rom("D:\\ROMS\\Wii U\\x.wua", "")), "wiiu");
         assert_eq!(display_name(&rom("D:/x/Monster Hunter Generations (USA).3ds", "3ds")), "Monster Hunter Generations");
+        assert_eq!(display_name(&rom("D:/x/Dragon Ball Z - Budokai Tenkaichi 3 (USA).iso", "ps2")), "Dragon Ball Z: Budokai Tenkaichi 3");
+        assert_eq!(display_name(&rom("D:/x/Legend of Zelda, The - Ocarina of Time (USA).z64", "n64")), "The Legend of Zelda: Ocarina of Time");
     }
 }
 
@@ -459,7 +540,13 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     </button>
                 }.into_any()
             }
-            (None, None) => ().into_any(),
+            // Can't open here: said where Play would be, not a lone heart.
+            (None, None) => view! {
+                <span class="gp-blocked" role="status">
+                    <crate::icons::Svg icon=crate::icons::Icon::Info size=18 />
+                    {tr!("Ainda não abre aqui: sem emulador para {}", console_name(console))}
+                </span>
+            }.into_any(),
         };
         let to_recomp = how.recomp.clone().map(|e| {
             let route = how.recomp_game.as_ref().map(|g| Route::Game(g.id.clone())).unwrap_or_else(|| Route::Game(format!("recomp:{}", e.id)));
@@ -502,7 +589,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
             let series = title.split([':', '-']).next().unwrap_or(&title).split_whitespace().take(2).collect::<Vec<_>>().join(" ").to_lowercase();
             // By the recomp's name or by its game's ("MHGU Recomp" is Monster Hunter Generations Ultimate).
             let game_of = |g: &cerberus_shared::Game| match &g.source {
-                cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).map(|e| e.game.clone()).unwrap_or_default(),
+                cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)).map(|e| e.game.clone()).unwrap_or_default(),
                 _ => String::new(),
             };
             let related: Vec<(cerberus_shared::Game, String)> = games.iter()
@@ -516,7 +603,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     let id = g.id.clone();
                     let ready = g.next_step == cerberus_shared::NextStep::Play;
                     let console = match &g.source {
-                        cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).map(|e| e.console.clone()).unwrap_or_default(),
+                        cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)).map(|e| e.console.clone()).unwrap_or_default(),
                         _ => String::new(),
                     };
                     let text = if ready {
@@ -648,11 +735,12 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                 <div class="ov-main">
                     {blocked}
                     {has_played.then(|| view! { <crate::game_overview::PlayCard id=history_id.clone() total=rom.playtime_secs last=rom.last_played /> })}
-                    <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
                     <AboutCard title=title.clone() />
                     <crate::game::History id=history_id.clone() />
                 </div>
+                // "Seu jogo" in the rail, where every other game page has it.
                 <aside class="ov-rail">
+                    <crate::game_notes::NoteCardFor id=id.clone() status=player_note.status rating=player_note.rating notes=player_note.notes.clone() />
                     <crate::game_overview::AchievementsCard data=achievements on_all />
                     <section class="card rail-card"><h2>{tr!("Detalhes")}</h2><dl class="facts">{facts}</dl></section>
                 </aside>
@@ -662,7 +750,11 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         Some(
             view! {
                 <div class="gp-hero cl-hero">
-                    {console_bg.map(|src| view! { <img class="cl-console" src=src alt="" /> })}
+                    // The console's art, or (a console without it) the box art, blurred.
+                    {match console_bg {
+                        Some(src) => view! { <img class="cl-console" src=src alt="" /> }.into_any(),
+                        None => view! { <crate::art::Backdrop sources=art.clone() soft=true /> }.into_any(),
+                    }}
                     <div class="gp-shade"></div>
                 </div>
                 <div class="page gp-page">
@@ -711,16 +803,9 @@ pub fn OriginalTab(rom: RomView) -> impl IntoView {
     let emulator = ready_player(&players, console);
     let problem = player_for(&players, console).and_then(|p| p.problem.clone())
         .unwrap_or_else(|| tr!("O Cerberus ainda não tem emulador para {}.", console_name(console)));
-    let (path, console_id) = (rom.path.clone(), console.to_string());
     let console_pick = console.to_string();
-    let play = match emulator.clone() {
-        Some(name) => view! {
-            <button type="button" class="btn main" on:click=move |_| play_original(library, path.clone(), console_id.clone())>
-                <crate::icons::Svg icon=crate::icons::Icon::Play size=18 />{tr!("Jogar o original no {}", name)}
-            </button>
-        }.into_any(),
-        None => view! { <p class="muted small">{problem.clone()}</p> }.into_any(),
-    };
+    // Playing is the header's "Original" button: here, only what stops it, if anything.
+    let play = emulator.is_none().then(|| view! { <p class="muted small">{problem.clone()}</p> });
     let id = format!("classic:{}", rom.path);
     let (ach_path, ach_console) = (rom.path.clone(), console.to_string());
     let achievements = LocalResource::new(move || {
@@ -748,7 +833,7 @@ pub fn OriginalTab(rom: RomView) -> impl IntoView {
                             <h3>{tr!("A sua cópia de {}", console_name(console))}</h3>
                             <p class="muted small">{match &emulator {
                                 Some(name) => tr!("{} abre o jogo original, como ele era. O recomp é a versão nativa para PC.", name),
-                                None => tr!("O jogo original, como ele era. Por enquanto só pelo recomp.").to_string(),
+                                None => tr!("O jogo original, como ele era. Este console ainda não abre aqui: por enquanto, você joga pelo recomp.").to_string(),
                             }}</p>
                         </div>
                         <div class="row">
@@ -804,6 +889,8 @@ fn file_card(library: Library, rom: &RomView, emulator: Option<String>) -> AnyVi
             </div>
             {files}
             <p class="muted small">{note}</p>
+            // Said plainly: the emulator keeps these saves, Cerberus doesn't back them up (yet).
+            <p class="muted small">{tr!("Os saves e os memory cards ficam na pasta do emulador; o Cerberus copia essa pasta sempre que você fecha o jogo (veja em Saves).")}</p>
         </section>
     }
     .into_any()
@@ -832,5 +919,31 @@ fn AboutCard(title: String) -> impl IntoView {
                 }><crate::icons::Svg icon=crate::icons::Icon::External size=14 />{tr!("Ler na Wikipedia")}</button>
             </section>
         })
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Way {
+    Native,
+    Original,
+}
+
+fn way_key(id: &str) -> String {
+    format!("cerberus.way.{id}")
+}
+
+/// How this game was last played (native or the original), so that way leads next time.
+pub fn last_way(id: &str) -> Option<Way> {
+    let store = web_sys::window()?.local_storage().ok()??;
+    match store.get_item(&way_key(id)).ok()??.as_str() {
+        "original" => Some(Way::Original),
+        "native" => Some(Way::Native),
+        _ => None,
+    }
+}
+
+pub fn remember_way(id: &str, way: Way) {
+    if let Some(store) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = store.set_item(&way_key(id), if way == Way::Original { "original" } else { "native" });
     }
 }

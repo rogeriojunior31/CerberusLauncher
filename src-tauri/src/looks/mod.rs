@@ -59,9 +59,14 @@ pub enum Route {
     Unsupported(String),
 }
 
+/// `hay` already in lowercase; `needle` given in lowercase.
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
-    hay.windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle))
+    memchr::memmem::find(hay, needle).is_some()
 }
+
+/// What a program was found to draw with, by its path, size and date: reading
+/// it means up to 96 MB, so once per build of the game, not once per visit.
+static ROUTES: std::sync::Mutex<Option<std::collections::HashMap<(PathBuf, u64, Option<std::time::SystemTime>), Route>>> = std::sync::Mutex::new(None);
 
 /// 64-bit or not, from the program's header.
 fn is_64bit(bytes: &[u8]) -> Option<bool> {
@@ -77,6 +82,20 @@ pub fn route(exe: &Path) -> Route {
     if !cfg!(windows) {
         return Route::Unsupported(tr!("Por enquanto, filtros só funcionam no Windows.").into());
     }
+    let key = fs::metadata(exe).ok().map(|m| (exe.to_path_buf(), m.len(), m.modified().ok()));
+    if let Some(key) = &key {
+        if let Some(known) = ROUTES.lock().ok().and_then(|m| m.as_ref().and_then(|m| m.get(key).cloned())) {
+            return known;
+        }
+    }
+    let found = read_route(exe);
+    if let (Some(key), Ok(mut cache)) = (key, ROUTES.lock()) {
+        cache.get_or_insert_with(Default::default).insert(key, found.clone());
+    }
+    found
+}
+
+fn read_route(exe: &Path) -> Route {
     let mut bytes = Vec::new();
     let Ok(file) = fs::File::open(exe) else {
         return Route::Unsupported(tr!("O programa do jogo não foi encontrado.").into());
@@ -86,6 +105,8 @@ pub fn route(exe: &Path) -> Route {
         return Route::Unsupported(tr!("Esse programa não é um jogo de Windows.").into());
     }
     let x64 = is_64bit(&bytes).unwrap_or(true);
+    // Names appear in any case ("D3D11.dll"): lowercase once, then fast searches.
+    bytes.make_ascii_lowercase();
     if [&b"d3d12.dll"[..], b"d3d11.dll", b"dxgi.dll", b"d3d10.dll"].iter().any(|n| contains(&bytes, n)) {
         return Route::Dxgi { x64 };
     }
@@ -157,22 +178,22 @@ pub async fn ensure(http: &reqwest::Client, data: &Path) -> Result<(), String> {
     }
     let version = latest(http).await?;
     let url = format!("https://reshade.me/downloads/ReShade_Setup_{version}.exe");
-    let setup = http
+    let reply = http
         .get(&url)
         .timeout(Duration::from_secs(120))
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?
-        .bytes()
-        .await
-        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?;
+        .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e.without_url()))?;
+    let setup = crate::net::read_limited(reply, 256 << 20).await.map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?;
     let (x64, x86) = dlls_from_setup(&setup)?;
     let dir = reshade_dir(data);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    fs::write(dir.join("ReShade64.dll"), x64).map_err(|e| e.to_string())?;
-    fs::write(dir.join("ReShade32.dll"), x86).map_err(|e| e.to_string())?;
-    fs::write(dir.join("version.txt"), &version).map_err(|e| e.to_string())
+    // Each DLL whole or not at all, and the version noted last: an interrupted
+    // download is never taken as ready (a cut DLL would crash the game).
+    crate::state_file::write_bytes(&dir.join("ReShade64.dll"), &x64)?;
+    crate::state_file::write_bytes(&dir.join("ReShade32.dll"), &x86)?;
+    crate::state_file::write_bytes(&dir.join("version.txt"), version.as_bytes())
 }
 
 /// What a game start with a look needs: the environment for ReShade. The file
@@ -249,8 +270,20 @@ pub fn take_back(data: &Path, game_id: &str) {
     let Ok(text) = fs::read_to_string(&note) else { return };
     let Some(path) = text.lines().next().map(PathBuf::from) else { return };
     if placed_by_us(&note, &path) {
-        // Still loaded by a game that hasn't quite closed: the next look start or app start retries.
-        if fs::remove_file(&path).is_err() {
+        // A game closing lets go of it a moment later: a few tries over some
+        // seconds; still held, the next start (with or without a filter) or
+        // the next app start tries again.
+        let mut removed = false;
+        for attempt in 0..10 {
+            if fs::remove_file(&path).is_ok() || !path.exists() {
+                removed = true;
+                break;
+            }
+            if attempt < 9 {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+        }
+        if !removed {
             return;
         }
     }
@@ -275,6 +308,31 @@ pub fn take_back_all(data: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn a_filter_held_for_a_moment_is_still_taken_back() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let data = tempfile::tempdir().unwrap();
+        let game = tempfile::tempdir().unwrap();
+        let dll = game.path().join(PROXY);
+        fs::write(&dll, b"reshade").unwrap();
+        let note = note_file(data.path(), "g");
+        fs::create_dir_all(note.parent().unwrap()).unwrap();
+        fs::write(&note, format!("{}
+{}
+", dll.display(), sha256(b"reshade"))).unwrap();
+        // A game still closing: readable, not deletable, for 600 ms.
+        let held = fs::OpenOptions::new().read(true).share_mode(1).open(&dll).unwrap();
+        let letting_go = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            drop(held);
+        });
+        take_back(data.path(), "g");
+        letting_go.join().unwrap();
+        assert!(!dll.exists(), "taken back once the game let go");
+        assert!(!note.exists());
+    }
 
     /// A tiny 64-bit program that names Direct3D 11.
     fn program(dir: &Path, names: &[u8]) -> PathBuf {

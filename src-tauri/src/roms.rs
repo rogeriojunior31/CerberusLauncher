@@ -167,9 +167,63 @@ fn region_from_name(name: &str) -> String {
     region.to_string()
 }
 
+/// Windows' marks for a file whose contents are in the cloud, fetched when read
+/// (RECALL_ON_DATA_ACCESS, RECALL_ON_OPEN, OFFLINE).
+fn only_in_cloud(attributes: u32) -> bool {
+    attributes & (0x0040_0000 | 0x0004_0000 | 0x0000_1000) != 0
+}
+
+#[cfg(windows)]
+fn attributes(meta: &fs::Metadata) -> u32 {
+    use std::os::windows::fs::MetadataExt;
+    meta.file_attributes()
+}
+
+#[cfg(not(windows))]
+fn attributes(_: &fs::Metadata) -> u32 {
+    0
+}
+
+/// What a file is by its name and folder alone (nothing is read from it).
+fn identify_by_name(path: &Path) -> Option<RomFile> {
+    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    let stem = path.file_stem()?.to_string_lossy().into_owned();
+    let system = if N64.contains(&ext.as_str()) {
+        "n64".to_string()
+    } else if let Some(system) = cartridge_system(&ext) {
+        system.to_string()
+    } else if ext == "m3u" || ext == "zip" || ext == "7z" || DISC.contains(&ext.as_str()) {
+        crate::disc_console::console_by_folder(path).unwrap_or_default().to_string()
+    } else {
+        return None;
+    };
+    Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
+}
+
+/// The console of a zipped ROM, by the first ROM inside (only the zip's list
+/// of files is read, nothing is extracted). RetroArch opens zips as they are.
+fn zipped_system(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let zip = zip::ZipArchive::new(file).ok()?;
+    zip.file_names().find_map(|name| {
+        let ext = Path::new(name).extension()?.to_string_lossy().to_lowercase();
+        if N64.contains(&ext.as_str()) {
+            Some("n64".to_string())
+        } else {
+            cartridge_system(&ext).map(str::to_string)
+        }
+    })
+}
+
 fn identify(path: &Path) -> Option<RomFile> {
     let ext = path.extension()?.to_string_lossy().to_lowercase();
     let stem = path.file_stem()?.to_string_lossy().into_owned();
+    // Zipped (the usual way No-Intro sets come) or 7z (known by its folder, as nothing lists it here).
+    if ext == "zip" || ext == "7z" {
+        let system = if ext == "zip" { zipped_system(path) } else { None }
+            .or_else(|| crate::disc_console::console_by_folder(path).map(str::to_string))?;
+        return Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() });
+    }
     if N64.contains(&ext.as_str()) {
         let header = n64_header(path)?;
         let region = if header.region.is_empty() { region_from_name(&stem) } else { header.region };
@@ -177,16 +231,26 @@ fn identify(path: &Path) -> Option<RomFile> {
     }
     let system = match cartridge_system(&ext) {
         Some(system) => system.to_string(),
-        // A disc says which console it's from (or its folder does); a list of discs, by its first.
+        // A list of discs is its first disc's console.
+        None if ext == "m3u" => listed_discs(path).first().and_then(|disc| crate::disc_console::console_of(disc)).or_else(|| crate::disc_console::console_of(path)).unwrap_or_default().to_string(),
+        // A disc says which console it's from (or its folder does).
         None if DISC.contains(&ext.as_str()) => crate::disc_console::console_of(path).unwrap_or_default().to_string(),
         None => return None,
     };
     Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
 }
 
+/// A disc's file name without its disc tag: "Final Fantasy VII (USA) (Disc 1)"
+/// is "Final Fantasy VII (USA)", the game's name for all its discs.
+pub fn without_disc_tag(stem: &str) -> String {
+    disc_tag(stem).map_or_else(|| stem.to_string(), |(_, base)| base)
+}
+
 /// "(Disc 2)", "(Disk 2 of 3)", "(CD2)": the disc's number, and the name without the tag.
 fn disc_tag(stem: &str) -> Option<(u32, String)> {
-    let lower = stem.to_lowercase();
+    // ASCII-only lowercase keeps every byte where it was, so the positions found
+    // here cut `stem` at the same places ("İ" would not, and could panic).
+    let lower = stem.to_ascii_lowercase();
     for word in ["(disc", "(disk", "(cd"] {
         let Some(start) = lower.find(word) else { continue };
         let rest = &lower[start + word.len()..];
@@ -284,8 +348,80 @@ pub fn join_discs(found: Vec<RomFile>) -> Vec<RomFile> {
     out
 }
 
-/// Every game file under `dirs`, folders included.
+/// Folders that never hold the player's games.
+const SKIPPED_DIRS: [&str; 6] = ["windows", "node_modules", "$recycle.bin", "system volume information", "program files", "program files (x86)"];
+
+/// A folder too wide to look through as a ROM folder when it comes from an
+/// emulator's settings (the last folder browsed can be a whole drive): a drive's
+/// root or the user's own folder.
+pub fn too_wide(dir: &Path) -> bool {
+    too_wide_under(dir, std::env::var_os("USERPROFILE").map(PathBuf::from).as_deref())
+}
+
+/// A drive's root, the user's folder, or one of Windows' everyday folders
+/// (Downloads, Documents, Desktop, OneDrive's root and its own copies of them):
+/// an emulator's "last folder browsed" there isn't a ROM folder.
+fn too_wide_under(dir: &Path, home: Option<&Path>) -> bool {
+    let parts = dir.components().filter(|c| matches!(c, std::path::Component::Normal(_))).count();
+    if parts == 0 {
+        return true;
+    }
+    let Some(home) = home else { return false };
+    let plain = |p: &Path| p.to_string_lossy().to_lowercase().trim_end_matches(['\\', '/']).replace('/', "\\");
+    let here = plain(&dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()));
+    let home = dunce::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let everyday = ["Downloads", "Documents", "Documentos", "Desktop", "Área de Trabalho", "Pictures", "Imagens", "Videos", "Vídeos", "Music", "Músicas"];
+    let mut wide = vec![home.clone()];
+    for base in [home.clone(), home.join("OneDrive")] {
+        if base != home {
+            wide.push(base.clone());
+        }
+        wide.extend(everyday.iter().map(|d| base.join(d)));
+    }
+    wide.iter().any(|w| plain(w) == here)
+}
+
+/// What the last scan found in each file, with the size and date it had: a
+/// file that hasn't changed isn't opened again (a disc's console is read from
+/// inside it, which for a few thousand discs takes a while).
+pub type ScanCache = HashMap<PathBuf, Seen>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Seen {
+    size: u64,
+    modified: u64,
+    found: Option<RomFile>,
+}
+
+fn stamp(meta: &fs::Metadata) -> (u64, u64) {
+    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    (meta.len(), modified)
+}
+
+pub fn load_cache(file: &Path) -> ScanCache {
+    fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Vec<(PathBuf, Seen)>>(&t).ok()).map(|v| v.into_iter().collect()).unwrap_or_default()
+}
+
+pub fn save_cache(file: &Path, cache: &ScanCache) {
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let list: Vec<(&PathBuf, &Seen)> = cache.iter().collect();
+    if let Ok(json) = serde_json::to_string(&list) {
+        let _ = fs::write(file, json);
+    }
+}
+
+/// Every game file under `dirs`, folders included (with no cache: the tests).
+#[cfg(test)]
 pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
+    scan_cached(dirs, &mut ScanCache::new())
+}
+
+/// The same, reusing what `cache` knows of files that haven't changed; the
+/// cache is left holding only the files seen this time.
+pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
+    let before = std::mem::take(cache);
     let mut found = Vec::new();
     let mut seen_dirs = HashSet::new();
     let mut looked = 0usize;
@@ -301,17 +437,32 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
         for entry in entries.flatten() {
             looked += 1;
             if looked > MOST_ENTRIES {
-                return found;
+                // Stop looking, but what was found still gets its discs put together.
+                pending.clear();
+                break;
             }
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_lowercase();
-            if path.is_dir() {
-                if !name.starts_with('.') && name != "windows" && name != "node_modules" {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                if !name.starts_with('.') && !SKIPPED_DIRS.contains(&name.as_str()) {
                     pending.push(path);
                 }
                 continue;
             }
-            if let Some(rom) = identify(&path) {
+            // A file kept only in the cloud (OneDrive "online only") is known by its
+            // name and folder: opening it would make the sync app download it.
+            let meta = entry.metadata().ok();
+            let cloud_only = meta.as_ref().is_some_and(|m| only_in_cloud(attributes(m)));
+            let (size, modified) = meta.as_ref().map(stamp).unwrap_or_default();
+            let rom = match before.get(&path) {
+                Some(seen) if seen.size == size && seen.modified == modified && !cloud_only => seen.found.clone(),
+                _ if cloud_only => identify_by_name(&path),
+                _ => identify(&path),
+            };
+            if !cloud_only {
+                cache.insert(path.clone(), Seen { size, modified, found: rom.clone() });
+            }
+            if let Some(rom) = rom {
                 found.push(rom);
             }
         }
@@ -354,10 +505,22 @@ fn same_game(game: &str, rom: &RomFile) -> bool {
     let covers = |pool: &[String]| {
         let has_all = !pool.is_empty() && wanted.iter().all(|w| pool.iter().any(|h| hit(w, h)));
         let mostly_game = pool.iter().filter(|h| wanted.iter().any(|w| hit(w, h))).count() * 2 >= pool.len();
-        has_all && mostly_game
+        // A number the game's name doesn't have is another game of the series:
+        // "God of War II" isn't "God of War", "Crackdown 2" isn't "Crackdown".
+        let another_number = pool.iter().any(|h| is_number_word(h) && !wanted.contains(h));
+        has_all && mostly_game && !another_number
     };
     let from_file = rom.path.file_stem().map(|s| words(&s.to_string_lossy())).unwrap_or_default();
     covers(&words(&rom.title)) || covers(&from_file) || header_fits(game, rom)
+}
+
+/// "2", "64", "ii", "2nd": a word that numbers a game in its series.
+fn is_number_word(word: &str) -> bool {
+    const ROMAN: [&str; 11] = ["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii"];
+    let digits = word.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let suffix = &word[digits.len()..];
+    (!digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) && matches!(suffix, "" | "st" | "nd" | "rd" | "th"))
+        || ROMAN.contains(&word)
 }
 
 /// N64 headers squeeze names into 20 letters, often without spaces
@@ -466,12 +629,95 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_second_scan_reuses_what_it_knew_of_unchanged_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let ps2 = dir.path().join("PS2");
+        fs::create_dir_all(&ps2).unwrap();
+        fs::write(ps2.join("Game (USA).iso"), b"not really a disc").unwrap();
+        let mut cache = ScanCache::new();
+        let first = scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert_eq!(first.len(), 1);
+        // What the cache says wins for an unchanged file: it isn't read again.
+        let key = ps2.join("Game (USA).iso");
+        cache.get_mut(&key).unwrap().found.as_mut().unwrap().title = "from the cache".into();
+        let again = scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert_eq!(again[0].title, "from the cache");
+        // A changed file is read again.
+        fs::write(&key, b"a different size now").unwrap();
+        let changed = scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert_eq!(changed[0].title, "Game (USA)");
+        // A file gone leaves the cache.
+        fs::remove_file(&key).unwrap();
+        scan_cached(&[dir.path().to_path_buf()], &mut cache);
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn everyday_windows_folders_are_too_wide_for_a_last_browsed_folder() {
+        let home = tempfile::tempdir().unwrap();
+        for d in ["Downloads", "OneDrive/Documentos", "Games/ROMs"] {
+            fs::create_dir_all(home.path().join(d)).unwrap();
+        }
+        assert!(too_wide_under(&home.path().join("Downloads"), Some(home.path())));
+        assert!(too_wide_under(&home.path().join("OneDrive").join("Documentos"), Some(home.path())));
+        assert!(too_wide_under(home.path(), Some(home.path())));
+        assert!(!too_wide_under(&home.path().join("Games").join("ROMs"), Some(home.path())));
+        assert!(too_wide_under(Path::new(r"C:\"), None));
+    }
+
+    #[test]
+    fn a_zipped_rom_is_known_by_the_rom_inside() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let zipped = dir.path().join("Mario (USA).zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&zipped).unwrap());
+        zip.start_file("Mario (USA).sfc", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"rom").unwrap();
+        zip.finish().unwrap();
+        let rom = identify(&zipped).unwrap();
+        assert_eq!((rom.system.as_str(), rom.title.as_str(), rom.region.as_str()), ("snes", "Mario (USA)", "US"));
+        // A zip with no ROM inside, in a folder that says nothing: not a classic.
+        let other = dir.path().join("photos.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&other).unwrap());
+        zip.start_file("a.jpg", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.finish().unwrap();
+        assert!(identify(&other).is_none());
+    }
+
+    #[test]
+    fn a_file_only_in_the_cloud_is_known_by_name_without_being_opened() {
+        assert!(only_in_cloud(0x0040_0000 | 0x20), "OneDrive online-only");
+        assert!(only_in_cloud(0x1000), "offline");
+        assert!(!only_in_cloud(0x20), "a plain file");
+        let dir = tempfile::tempdir().unwrap();
+        let ps2 = dir.path().join("PS2");
+        fs::create_dir_all(&ps2).unwrap();
+        // Not even there to open: known by name and folder all the same.
+        let rom = identify_by_name(&ps2.join("Shadow of the Colossus (USA).iso")).unwrap();
+        assert_eq!((rom.system.as_str(), rom.title.as_str()), ("ps2", "Shadow of the Colossus (USA)"));
+        assert_eq!(identify_by_name(&dir.path().join("Mario Kart 64 (USA).z64")).unwrap().system, "n64");
+        assert!(identify_by_name(&dir.path().join("readme.txt")).is_none());
+    }
+
+    #[test]
+    fn a_sequel_is_not_the_first_game() {
+        let disc = |name: &str| RomFile { path: PathBuf::from(format!(r"D:\ps2\{name}.iso")), system: "ps2".into(), title: name.into(), region: "US".into(), n64: None, discs: Vec::new() };
+        assert!(same_game("God of War", &disc("God of War (USA)")));
+        assert!(!same_game("God of War", &disc("God of War II (USA)")));
+        assert!(!same_game("Crackdown", &disc("Crackdown 2 (USA)")));
+        assert!(!same_game("Zone of the Enders", &disc("Zone of the Enders - The 2nd Runner (USA)")));
+        assert!(same_game("Mario Kart 64", &disc("Mario Kart 64 (USA)")));
+        assert!(same_game("Final Fantasy VII", &disc("Final Fantasy VII (USA) (Disc 1)")));
+    }
+
+    #[test]
     fn reads_the_disc_tag() {
         assert_eq!(disc_tag("Final Fantasy VII (USA) (Disc 2)"), Some((2, "Final Fantasy VII (USA)".into())));
         assert_eq!(disc_tag("Metal Gear Solid (Europe) (Disk 1 of 2) (En)"), Some((1, "Metal Gear Solid (Europe) (En)".into())));
         assert_eq!(disc_tag("Game (CD3)"), Some((3, "Game".into())));
         assert_eq!(disc_tag("Discworld (USA)"), None);
         assert_eq!(disc_tag("Game (Disc Edition)"), None);
+        assert_eq!(disc_tag("İstanbul (Disc 2)"), Some((2, "İstanbul".into())), "letters that change size in lowercase");
     }
 
     #[test]

@@ -35,6 +35,18 @@ thread_local! {
     static NEXT_TAB: std::cell::Cell<Option<Tab>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// Opened to remove the game (from the cover's menu): the danger zone comes into view.
+    static SHOW_REMOVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Opens a game's Gerenciar tab at its "Desinstalar" / "Remover da biblioteca".
+pub fn open_to_remove(library: Library, id: String) {
+    NEXT_TAB.with(|n| n.set(Some(Tab::Manage)));
+    SHOW_REMOVE.with(|s| s.set(true));
+    library.go(crate::Route::Game(id));
+}
+
 /// A recomp's page, where a merged classic lives: on its Original tab when an
 /// emulator here opens the copy, on the overview (Play is the recomp) when not.
 pub fn open_original(library: Library, id: String, playable: bool) {
@@ -143,7 +155,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let original = game.as_ref().and_then(|g| {
         let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
         let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
-        library.roms.get().unwrap_or_default().into_iter()
+        library.roms.get_untracked().unwrap_or_default().into_iter()
             .find(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
     });
     let played = game.as_ref().map(|g| {
@@ -157,7 +169,7 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             (t, None) => tr!("Jogou por {}", format::playtime(t)),
         };
         if extra > 0 && g.playtime_secs > 0 {
-            text = tr!("{} ({} no PC, {} no original)", text, format::playtime(g.playtime_secs), format::playtime(extra));
+            text = tr!("{} ({} nativo, {} no original)", text, format::playtime(g.playtime_secs), format::playtime(extra));
         }
         view! { <span class="gp-played"><Svg icon=Icon::Clock size=15 />{text}</span> }
     });
@@ -167,22 +179,59 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let manageable = game.is_some() || entry.is_some();
     // F12 takes pictures of the games Cerberus opens itself.
     let photos = matches!(game.as_ref().map(|g| &g.source), Some(Source::Recomp { .. } | Source::Local { .. }));
-    // Steam games: their achievements, as the hub reads them.
-    let steam_app = game.as_ref().and_then(|g| g.id.strip_prefix("steam:")).map(str::to_string);
-    let has_achievements = steam_app.is_some();
-    // Read once for the tab's count, the rail card and the tab itself.
-    let achievements = steam_app.clone().map(|app| {
+    // Mods and Fotos only when there is something there: a mod source for the
+    // game, pictures already taken. Seven tabs where two are empty was noise.
+    let page_id = game.as_ref().map(|g| g.id.clone()).unwrap_or_default();
+    let mods_here = {
+        let id = page_id.clone();
         LocalResource::new(move || {
-            let app = app.clone();
-            async move { api::game_achievements("steam", &app).await }
+            let id = id.clone();
+            async move { if has_saves { api::list_mods(&id).await.ok().flatten().is_some() } else { false } }
+        })
+    };
+    let photos_here = {
+        let id = page_id.clone();
+        LocalResource::new(move || {
+            let id = id.clone();
+            async move { photos && api::list_screenshots(&id).await.is_ok_and(|l| !l.is_empty()) }
+        })
+    };
+    // Store games: their achievements, as the hub reads them (Steam always has
+    // the tab; Epic and Xbox when the account's list has the game).
+    let store_key: Option<(&'static str, String)> = game.as_ref().and_then(|g| match &g.source {
+        Source::Steam { app_id } => Some(("steam", app_id.to_string())),
+        Source::Epic { namespace, .. } if !namespace.is_empty() => Some(("epic", namespace.clone())),
+        Source::Xbox { family, .. } if !family.is_empty() => Some(("xbox", format!("pfn:{family}"))),
+        _ => None,
+    });
+    let steam_app = store_key.as_ref().filter(|(s, _)| *s == "steam").map(|(_, k)| k.clone());
+    // The player's original (RetroAchievements) has its own list: a Conquistas
+    // tab too, as a Steam game has, not only a card inside the Original tab.
+    let original_achievements = original.clone().filter(|_| store_key.is_none()).map(|rom| {
+        let (path, console) = (rom.path.clone(), crate::classics::console_of(&rom).to_string());
+        LocalResource::new(move || {
+            let (path, console) = (path.clone(), console.clone());
+            async move { api::classic_achievements(&path, &console).await.ok().flatten().filter(|d| d.game.total > 0) }
         })
     });
+    let retro = move || original_achievements.and_then(|r| r.get()).flatten();
+    // Read once for the tab's count, the rail card and the tab itself.
+    let achievements = store_key.clone().map(|(source, key)| {
+        LocalResource::new(move || {
+            let key = key.clone();
+            async move { api::game_achievements(source, &key).await }
+        })
+    });
+    let has_achievements = move || {
+        steam_app.is_some() || achievements.and_then(|r| r.get()).and_then(Result::ok).is_some_and(|d| d.game.total > 0)
+    };
+    let tab_key = store_key.clone();
     provide_context(GameAchievementsData(achievements));
 
     if matches!(tab.get_untracked(), Tab::Saves | Tab::Mods) && !has_saves
         || tab.get_untracked() == Tab::Settings && !has_settings
         || tab.get_untracked() == Tab::Manage && !manageable
-        || tab.get_untracked() == Tab::Achievements && !has_achievements
+        || tab.get_untracked() == Tab::Achievements && store_key.is_none() && original_achievements.is_none()
     {
         tab.set(Tab::Overview);
     }
@@ -213,7 +262,12 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     });
     let count = move |which: Tab| -> Option<String> {
         match which {
-            Tab::Achievements => achievements.and_then(|r| r.get()).and_then(Result::ok).filter(|d| d.game.total > 0).map(|d| format!("{}/{}", d.game.unlocked, d.game.total)),
+            Tab::Achievements => achievements
+                .and_then(|r| r.get())
+                .and_then(Result::ok)
+                .or_else(retro)
+                .filter(|d| d.game.total > 0)
+                .map(|d| format!("{}/{}", d.game.unlocked, d.game.total)),
             _ => None,
         }
     };
@@ -258,9 +312,9 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
             {tab_button(Tab::Overview, tr!("Visão geral"))}
             {has_saves.then(|| tab_button(Tab::Saves, tr!("Saves")))}
             {has_settings.then(|| tab_button(Tab::Settings, tr!("Ajustes")))}
-            {has_saves.then(|| tab_button(Tab::Mods, "Mods"))}
-            {has_achievements.then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
-            {photos.then(|| tab_button(Tab::Photos, tr!("Fotos")))}
+            {move || (mods_here.get() == Some(true) || tab.get() == Tab::Mods).then(|| tab_button(Tab::Mods, "Mods"))}
+            {move || (has_achievements() || retro().is_some()).then(|| tab_button(Tab::Achievements, tr!("Conquistas")))}
+            {move || (photos_here.get() == Some(true) || tab.get() == Tab::Photos).then(|| tab_button(Tab::Photos, tr!("Fotos")))}
             {original.is_some().then(|| tab_button(Tab::Original, tr!("Original")))}
             {manageable.then(|| tab_button(Tab::Manage, tr!("Gerenciar")))}
         </nav>
@@ -271,9 +325,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let body_original = original.clone();
     let tab_body = move |which: Tab| match which {
         Tab::Overview => view! { <Overview game=body_game.clone() entry=body_entry.clone() tab /> }.into_any(),
-        Tab::Achievements => match &steam_app {
-            Some(app) => view! { <crate::achievements::AchievementsTab source="steam".to_string() key=app.clone() /> }.into_any(),
-            None => ().into_any(),
+        Tab::Achievements => match (&tab_key, retro()) {
+            (Some((source, key)), _) => view! { <crate::achievements::AchievementsTab source=source.to_string() key=key.clone() /> }.into_any(),
+            (None, Some(d)) => view! { <crate::achievements::AchievementsTab source="retro".to_string() key=d.game.key.clone() /> }.into_any(),
+            _ => ().into_any(),
         },
         Tab::Saves => match &body_game {
             Some(g) => view! { <Backups game_id=g.id.clone() /> }.into_any(),
@@ -293,9 +348,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
                 let catalog = body_entry.as_ref().is_some_and(|e| e.settings_count > 0);
                 view! {
                     <div class="settings-tab">
-                        <crate::looks::LooksCard game_id=g.id.clone() preview />
+                        // What works first: the game's own settings, its actions, then the filters.
                         {catalog.then(|| view! { <crate::game_settings::GameSettingsTab game_id=g.id.clone() /> })}
                         <GameActions game_id=g.id.clone() />
+                        <crate::looks::LooksCard game_id=g.id.clone() preview />
                     </div>
                 }
                 .into_any()
@@ -361,14 +417,12 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
         if let Some(game) = game.clone() {
             let running = library.running.with(|all| all.contains(&game.id));
             // Installed outside Cerberus: its updates are the player's.
-            let update = entry.as_ref().filter(|_| !game.external).and_then(|e| {
-                let newest = e.latest.as_ref()?;
-                (e.installed.as_ref() != Some(&newest.version)).then(|| newest.version.clone())
-            });
+            let update = entry.as_ref().filter(|_| !game.external).and_then(|e| e.update_to()).map(|newest| newest.version.clone());
             let update_button = update.zip(recomp_id.clone()).map(|(version, rid)| {
                 view! {
-                    <button type="button" class="btn big" on:click=move |_| start_install(library, rid.clone())>
-                        {tr!("Atualizar para {}", version)}
+                    // Secondary to Play: a small note after it, not a second big button before it.
+                    <button type="button" class="btn sm glass upd-btn" title=tr!("Baixa a versão nova; saves, configurações e mods ficam") on:click=move |_| start_install(library, rid.clone())>
+                        <Svg icon=Icon::Download size=15 />{tr!("Atualizar para {}", version)}
                     </button>
                 }
             });
@@ -384,7 +438,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             let game_id = game.id.clone();
             let original_first = original.as_ref().is_some_and(|(_, console)| {
                 crate::classics::ready_player(&library.players.get_untracked().unwrap_or_default(), console).is_some()
-            }) && last_way(&game_id) == Some(Way::Original);
+            }) && crate::classics::last_way(&game_id) == Some(crate::classics::Way::Original);
             let play = view! {
                 <button type="button" class=if original_first { "btn glass big" } else { "btn main big play" } disabled=running on:click=move |_| play_game(library, game.clone())>
                     <Svg icon size=20 />{label}
@@ -393,7 +447,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             // With the player's own copy, two named ways to play side by side. The one
             // used last leads; the other stays one click away.
             let Some((copy, console)) = original else {
-                return view! { {update_button}{play} }.into_any();
+                return view! { {play}{update_button} }.into_any();
             };
             let players = library.players.get_untracked().unwrap_or_default();
             let emulator = crate::classics::ready_player(&players, &console);
@@ -402,13 +456,11 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
                 Some(name) => tr!("A sua cópia do jogo, no {}", name),
                 None => tr!("A sua cópia do jogo: veja o que falta para abrir").to_string(),
             };
-            let (way_id, native_id) = (game_id.clone(), game_id.clone());
             let ready = emulator.is_some();
             let original_button = view! {
                 <button type="button" class=if original_first { "btn main big play" } else { "btn glass big" } title=original_title
                     disabled=running on:click=move |_| {
                         if ready {
-                            remember_way(&way_id, Way::Original);
                             crate::classics::play_original(library, copy.clone(), console.clone());
                         } else {
                             tab.set(Tab::Original);
@@ -417,29 +469,36 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
                     <Svg icon=Icon::Disc size=20 />{original_label}
                 </button>
             };
-            let native = view! {
-                <span class="way-native" on:click=move |_| remember_way(&native_id, Way::Native)>{play}</span>
-            };
+            let native = play;
             return if original_first {
-                view! { {update_button}<div class="ways">{original_button}{native}</div> }.into_any()
+                view! { <div class="ways">{original_button}{native}</div>{update_button} }.into_any()
             } else {
-                view! { {update_button}<div class="ways">{native}{original_button}</div> }.into_any()
+                view! { <div class="ways">{native}{original_button}</div>{update_button} }.into_any()
             };
         }
         let Some(entry) = entry.clone() else {
             return ().into_any();
         };
+        let install_button = |label: String, rid: String| view! {
+            <AlreadyInstalled recomp_id=entry.id.clone() />
+            <button type="button" class="btn main big play" on:click=move |_| start_install(library, rid.clone())>
+                <Svg icon=Icon::Download size=20 />{label}
+            </button>
+        };
         match entry.latest.clone() {
             Some(release) => {
-                let rid = entry.id.clone();
-                view! {
-                    <AlreadyInstalled recomp_id=entry.id.clone() />
-                    <button type="button" class="btn main big play" on:click=move |_| start_install(library, rid.clone())>
-                        <Svg icon=Icon::Download size=20 />{if several { tr!("Instalar {} · {}", entry.name, megabytes(release.size)) } else { tr!("Instalar · {}", megabytes(release.size)) }}
-                    </button>
-                }
-                .into_any()
+                let label = if several {
+                    tr!("Instalar {} · {}", entry.name, megabytes(release.size))
+                } else if release.size > 0 {
+                    tr!("Instalar · {}", megabytes(release.size))
+                } else {
+                    tr!("Instalar").to_string()
+                };
+                install_button(label, entry.id.clone()).into_any()
             }
+            // A source whose version is only known from its repository once the
+            // download starts is still installable: offer it without a size.
+            None if entry.problem.is_none() => install_button(tr!("Instalar").to_string(), entry.id.clone()).into_any(),
             None => view! { <button type="button" class="btn big" disabled=true>{tr!("Indisponível")}</button> }.into_any(),
         }
     }
@@ -494,7 +553,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         let recomps = lib.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
         lib.roms.get_untracked().unwrap_or_default().iter().any(|r| crate::classics::recomp_game(r, &games, &recomps).is_some_and(|m| m.id == g.id))
     });
-    let play_title = if merged { tr!("Sua jogatina no PC") } else { tr!("Sua jogatina") };
+    let play_title = if merged { tr!("Sua jogatina nativa") } else { tr!("Sua jogatina") };
     let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played title=play_title /> }.into_any());
     let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {
@@ -502,7 +561,21 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
         _ => None,
     });
     if let Some(app) = steam_app {
-        return view! { <SteamOverview app play_card note_card tab /> }.into_any();
+        let details = LocalResource::new(move || async move { api::steam_details(app).await });
+        return view! { <StoreOverview details links=Some(app) play_card note_card tab /> }.into_any();
+    }
+    // Epic and Xbox games: their store page from Steam or the Microsoft Store.
+    if let Some(g) = game.as_ref().filter(|g| matches!(g.source, Source::Epic { .. } | Source::Xbox { .. })) {
+        let name = g.name.clone();
+        let product = match &g.source {
+            Source::Xbox { product, .. } => product.clone(),
+            _ => String::new(),
+        };
+        let details = LocalResource::new(move || {
+            let (name, product) = (name.clone(), product.clone());
+            async move { api::store_page(&name, &product).await }
+        });
+        return view! { <StoreOverview details links=None play_card note_card tab /> }.into_any();
     }
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
@@ -577,7 +650,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             <aside class="card ready">
                 <h3>{tr!("Antes de jogar")}</h3>
                 {copy}
-                <p class="muted small">{tr!("O Cerberus nunca baixa arquivos de jogo. Ele procura sua cópia nas suas pastas de ROMs.")}</p>
+                <p class="muted small">{tr!("Este recomp precisa da sua cópia. O Cerberus procura o arquivo nas suas pastas de ROMs.")}</p>
                 <button type="button" class="link" on:click=move |_| crate::settings_page::open_rom_folders(lib)>{tr!("Escolher pastas de ROMs")}</button>
             </aside>
         }
@@ -634,12 +707,18 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
 pub struct GameAchievementsData(pub Option<LocalResource<Result<cerberus_shared::GameAchievements, String>>>);
 
 #[component]
-fn SteamOverview(app: u32, play_card: Option<AnyView>, note_card: Option<AnyView>, tab: RwSignal<Tab>) -> impl IntoView {
-    let details = LocalResource::new(move || async move { api::steam_details(app).await });
+fn StoreOverview(
+    details: LocalResource<Result<cerberus_shared::StoreDetails, String>>,
+    /// The Steam app whose links (store, community) the rail offers: only for Steam games.
+    links: Option<u32>,
+    play_card: Option<AnyView>,
+    note_card: Option<AnyView>,
+    tab: RwSignal<Tab>,
+) -> impl IntoView {
     let on_all = Callback::new(move |_| tab.set(Tab::Achievements));
     let store = move || match details.get() {
         None => view! { <crate::game_overview::StoreSkeleton /> }.into_any(),
-        Some(Err(e)) => view! { <p class="muted small">{e}</p> }.into_any(),
+        Some(Err(e)) => (!e.is_empty()).then(|| view! { <p class="muted small">{e}</p> }).into_any(),
         Some(Ok(d)) => view! {
             <crate::game_overview::Gallery details=d.clone() />
             <crate::game_overview::About details=d />
@@ -654,12 +733,12 @@ fn SteamOverview(app: u32, play_card: Option<AnyView>, note_card: Option<AnyView
                 <crate::game_overview::Controller details=d.clone() />
                 <crate::game_overview::Requirements details=d.clone() />
                 <crate::game_overview::Languages details=d />
-                <crate::game_overview::Links app has_site=site />
+                {links.map(|app| view! { <crate::game_overview::Links app has_site=site /> })}
             }
             .into_any()
         }
         None => view! { <div class="sk sk-card"></div> }.into_any(),
-        Some(Err(_)) => view! { <crate::game_overview::Links app has_site=false /> }.into_any(),
+        Some(Err(_)) => links.map(|app| view! { <crate::game_overview::Links app has_site=false /> }).into_any(),
     };
     view! {
         <div class="ov">
@@ -919,7 +998,7 @@ fn PrepareStatus(game_id: String) -> impl IntoView {
                     <span class="ver-label">{tr!("Falta preparar")}</span>
                     <div class="act-row">
                         <button type="button" class="btn sm" on:click=start>{tr!("Preparar agora")}</button>
-                        <small class="muted">{tr!("Roda uma vez só. Se preferir, ela roda sozinha no primeiro Jogar.")}</small>
+                        <small class="muted">{tr!("Roda uma vez a cada versão nova do recomp. Se preferir, ela roda sozinha no primeiro Jogar.")}</small>
                     </div>
                 </div>
             })
@@ -1319,10 +1398,14 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             move || library.progress.with(|all| all.contains_key(&rid))
         };
         let version = e.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default();
+        // Repair installs the newest release: "de novo" only when that's the one already here.
+        let same = e.installed.as_deref() == Some(version.as_str());
         let detail = if version.is_empty() {
             tr!("Baixa o jogo de novo por cima; saves, configurações e mods ficam").to_string()
-        } else {
+        } else if same {
             tr!("Baixa a versão {} de novo por cima; saves, configurações e mods ficam", version)
+        } else {
+            tr!("Baixa a versão mais nova ({}) por cima; saves, configurações e mods ficam", version)
         };
         view! {
             <button type="button" class="row-btn" disabled=downloading on:click=move |_| crate::discover::start_install(library, rid.clone())>
@@ -1331,24 +1414,57 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    // What stopped the last try, when the player can decide: (code, why).
+    let stopped = RwSignal::new(None::<(&'static str, String)>);
     let remove = game.clone().filter(|_| editable).map(|g| {
-        let id = g.id.clone();
+        let id = StoredValue::new(g.id.clone());
+        let run = move |without_backup: bool, keep_folder: bool| {
+            busy.set(true);
+            spawn_local(async move {
+                let result = api::remove_game_with(&id.get_value(), without_backup, keep_folder).await;
+                let _ = busy.try_set(false);
+                match result {
+                    Ok(()) => {
+                        library.games.refetch();
+                        library.recomps.refetch();
+                        library.toast(if keep_folder { tr!("Tirado da biblioteca. A pasta continua no PC.") } else { tr!("Desinstalado.") });
+                        library.go(crate::Route::Library);
+                    }
+                    Err(e) => match cerberus_shared::uninstall::split(&e) {
+                        (Some(code), why) => {
+                            let _ = stopped.try_set(Some((code, why.to_string())));
+                        }
+                        (None, _) => {
+                            library.report::<()>(Err(e));
+                        }
+                    },
+                }
+            });
+        };
         let on_remove = move |_| {
             if !armed.get_untracked() {
                 armed.set(true);
                 return;
             }
-            busy.set(true);
-            let id = id.clone();
-            spawn_local(async move {
-                let removed = library.report(api::remove_game(&id).await);
-                busy.set(false);
-                if removed.is_some() {
-                    library.games.refetch();
-                    library.recomps.refetch();
-                    library.go(crate::Route::Library);
+            run(false, false);
+        };
+        // The way on after a stop: without the backup, or keeping the folder.
+        let follow_up = move || {
+            stopped.get().map(|(code, why)| {
+                let no_backup = code == cerberus_shared::uninstall::NO_BACKUP;
+                let (title, detail) = if no_backup {
+                    (tr!("Desinstalar sem backup dos saves"), tr!("Os saves que estiverem na pasta do jogo serão apagados junto."))
+                } else {
+                    (tr!("Tirar da biblioteca e manter a pasta"), tr!("A pasta não foi instalada pelo Cerberus: ela fica no PC, só o jogo sai da lista."))
+                };
+                view! {
+                    <p class="problem small" role="alert">{why}</p>
+                    <button type="button" class="row-btn danger" disabled=move || busy.get() on:click=move |_| run(no_backup, !no_backup)>
+                        <Svg icon=Icon::Trash />
+                        <span><b>{title}</b><small>{detail}</small></span>
+                    </button>
                 }
-            });
+            })
         };
         let external = g.external;
         let (title, detail) = if external {
@@ -1364,8 +1480,41 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
                 <Svg icon=Icon::Trash />
                 <span><b>{label}</b><small>{detail}</small></span>
             </button>
+            {follow_up}
         }
     });
+    // This version isn't the one installed: point to the installed one's removal.
+    let other_version = game.is_none().then(|| entry.clone()).flatten().and_then(|e| {
+        let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
+        let ids: Vec<String> = recomps.iter().filter(|r| r.title == e.title).map(|r| format!("recomp:{}", r.id)).collect();
+        let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+        games.into_iter().find(|g| ids.contains(&g.id))
+    });
+    let remove = remove.map(|v| v.into_any()).or_else(|| {
+        other_version.map(|g| {
+            let id = g.id.clone();
+            let name = g.name.clone();
+            view! {
+                <button type="button" class="row-btn danger" on:click=move |_| open_to_remove(library, id.clone())>
+                    <Svg icon=Icon::Trash />
+                    <span><b>{tr!("Desinstalar a versão instalada")}</b><small>{tr!("{} está instalado: abre o Gerenciar dele.", name)}</small></span>
+                </button>
+            }
+            .into_any()
+        })
+    });
+    // Opened to remove it: the danger zone comes into view.
+    if SHOW_REMOVE.with(|s| s.take()) {
+        // After the tab has laid out (pictures and cards above take a moment).
+        set_timeout(
+            || {
+                if let Some(el) = document().query_selector(".mg-h.danger").ok().flatten() {
+                    el.scroll_into_view();
+                }
+            },
+            std::time::Duration::from_millis(400),
+        );
+    }
 
     let options = game.clone().filter(|g| g.is_tracked()).map(|g| view! { <LaunchOptions game=g /> });
 
@@ -1494,8 +1643,8 @@ fn Photos(game_id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(game_id);
     let shots = LocalResource::new(move || async move { api::list_screenshots(&id.get_value()).await });
-    api::on_screenshot(move |taken: String| {
-        if taken == id.get_value() {
+    api::on_screenshot_here(move |taken: String| {
+        if id.try_get_value().is_some_and(|id| id == taken) {
             shots.refetch();
         }
     });
@@ -1809,28 +1958,3 @@ fn SimilarGames(entry: RecompEntry) -> impl IntoView {
 }
 
 
-#[derive(Clone, Copy, PartialEq)]
-enum Way {
-    Native,
-    Original,
-}
-
-fn way_key(id: &str) -> String {
-    format!("cerberus.way.{id}")
-}
-
-/// How this game was last played (native or the original), so that way leads next time.
-fn last_way(id: &str) -> Option<Way> {
-    let store = web_sys::window()?.local_storage().ok()??;
-    match store.get_item(&way_key(id)).ok()??.as_str() {
-        "original" => Some(Way::Original),
-        "native" => Some(Way::Native),
-        _ => None,
-    }
-}
-
-fn remember_way(id: &str, way: Way) {
-    if let Some(store) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
-        let _ = store.set_item(&way_key(id), if way == Way::Original { "original" } else { "native" });
-    }
-}

@@ -6,7 +6,7 @@ Yes. It's free and open source, under the [MIT license](../../LICENSE).
 
 ## Is it legal? Where do the games come from?
 
-Cerberus doesn't host or download any game. Recomps are open-source projects that their developers publish on GitHub, GitLab or Forgejo, and Cerberus installs those official releases. Each recomp needs data from **a copy of the game you own**. Cerberus hands it over on your PC, and nothing is uploaded.
+Cerberus doesn't host games. Recomps are open-source projects published by their developers on GitHub, GitLab or Forgejo, and each one needs data from **a copy of the game you own**. Direct downloads from Hydra sources you add are optional and only happen when you click Install. Your own game copy is handed over on your PC, and nothing is uploaded.
 
 ## Does Cerberus download BIOS files or ROMs?
 
