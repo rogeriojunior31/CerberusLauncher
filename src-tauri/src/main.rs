@@ -3355,7 +3355,7 @@ fn in_steam(id: String) -> bool {
 
 fn pc_now() -> cerberus_shared::PcStatus {
     let vc_version = runtimes::vc_version();
-    let vc_ok = vc_version.as_deref().is_some_and(runtimes::recent_enough);
+    let vc_ok = runtimes::vc_ok();
     cerberus_shared::PcStatus { vc_version, vc_ok, dx_missing: runtimes::dx_missing() }
 }
 
