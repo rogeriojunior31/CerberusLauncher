@@ -1195,6 +1195,7 @@
   "O GitHub não respondeu como esperado ({}). Tente de novo em alguns minutos.": "GitHub didn't answer as expected ({}). Try again in a few minutes.",
   "O GitHub respondeu algo inesperado.": "GitHub replied with something unexpected.",
   "O PlayStation 2 precisa da BIOS do seu console. Adicione em Configurações › Emulação › BIOS.": "PlayStation 2 needs the BIOS from your console. Add it in Settings › Emulation › BIOS.",
+  "O PowerShell não rodou neste PC (pode estar bloqueado). O Cerberus continua aberto; instale a versão nova pelo instalador em {}.": "PowerShell didn't run on this PC (it may be blocked). Cerberus stays open; install the new version with the installer at {}.",
   "O RPCS3 abriu para instalar o firmware. Quando ele terminar, feche a janela dele.": "RPCS3 opened to install the firmware. When it's done, close its window.",
   "O ReShade ainda não foi baixado. Escolha o filtro de novo na aba Ajustes.": "ReShade hasn't been downloaded yet. Choose the filter again in the Settings tab.",
   "O RetroAchievements não aceitou esse usuário e chave.": "RetroAchievements didn't accept that username and key.",
