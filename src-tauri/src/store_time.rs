@@ -8,7 +8,9 @@ use cerberus_shared::tk;
 use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+// Hours the PC slept with the game open aren't played.
+use crate::awake_time::AwakeInstant as Instant;
 
 use cerberus_shared::{Game, Source};
 use tauri::{AppHandle, Emitter, Manager};

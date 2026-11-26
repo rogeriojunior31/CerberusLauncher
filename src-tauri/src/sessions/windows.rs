@@ -10,7 +10,8 @@ use std::os::windows::process::{ChildExt, CommandExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::ptr::{null, null_mut};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use crate::awake_time::AwakeInstant as Instant;
 
 use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, FILETIME, WAIT_OBJECT_0};
 use windows_sys::Win32::System::JobObjects::*;
@@ -135,9 +136,13 @@ impl GameProcess {
             }
             if let Some(runtime) = &self.runtime {
                 if let Some(game) = members.iter().find_map(|&pid| self.playable(pid as u32, runtime)) {
-                    report(Observation::Started(Instant::now()));
+                    let (begun, wall) = (Instant::now(), std::time::SystemTime::now());
+                    report(Observation::Started(begun));
                     let watch = WindowWatch::start(self.job.as_raw_handle() as usize);
-                    let (played, code) = runtime_duration(game)?;
+                    let (ran, code) = runtime_duration(game)?;
+                    // The process's own times are wall time: the PC sleeping meanwhile
+                    // (wall clock moved, the awake one didn't) comes off.
+                    let played = crate::awake_time::without_sleep(ran, wall.elapsed().unwrap_or_default(), begun.elapsed());
                     if watch.closed_first() {
                         report(Observation::WindowsClosedFirst);
                     }

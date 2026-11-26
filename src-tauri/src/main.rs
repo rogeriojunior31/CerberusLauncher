@@ -23,6 +23,7 @@ mod roms;
 mod settings;
 mod setup_runner;
 mod awake;
+mod awake_time;
 mod background;
 mod favorites;
 mod game_notes;
@@ -690,7 +691,8 @@ fn play_classic(app: AppHandle, path: String, console: String, disc: Option<usiz
 fn watch_classic(app: AppHandle, path: String, mut child: std::process::Child, session: cheevos::Session, emulator: (&'static str, PathBuf)) {
     let data = app.state::<DataDir>().0.clone();
     let id = format!("classic:{path}");
-    let started = std::time::Instant::now();
+    // The awake clock: the PC sleeping with the classic open isn't play time.
+    let started = awake_time::AwakeInstant::now();
     background::classic_started();
     std::thread::spawn(move || {
         let mut at = session.from;

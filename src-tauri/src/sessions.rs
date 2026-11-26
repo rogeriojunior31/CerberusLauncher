@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// Play time leaves out the hours the PC slept with the game open.
+use crate::awake_time::AwakeInstant as Instant;
 
 use cerberus_shared::{Game, SessionEvent, Source};
 use tauri::{AppHandle, Emitter, Manager};
