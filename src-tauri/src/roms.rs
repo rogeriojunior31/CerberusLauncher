@@ -145,6 +145,7 @@ fn n64_header(path: &Path) -> Option<N64Header> {
         b'E' | b'N' => "US",
         b'J' => "Japan",
         b'P' | b'D' | b'F' | b'I' | b'S' | b'U' | b'X' | b'Y' => "Europe",
+        b'B' => "Brazil",
         _ => "",
     };
     // 0x3B is the media letter, then the game's two-letter id, its region and revision.
@@ -153,18 +154,42 @@ fn n64_header(path: &Path) -> Option<N64Header> {
     Some(N64Header { name: name.trim().to_string(), region: region.to_string(), code })
 }
 
+/// No-Intro's region names (and the old one-letter tags), as Cerberus keeps them.
+fn region_word(word: &str) -> Option<&'static str> {
+    Some(match word.trim().to_lowercase().as_str() {
+        "usa" | "us" | "u" | "america" | "canada" => "US",
+        "europe" | "e" | "uk" | "germany" | "france" | "spain" | "italy" | "netherlands" | "sweden" | "scandinavia" | "australia" | "a" => "Europe",
+        "japan" | "j" => "Japan",
+        "world" | "w" => "World",
+        "brazil" | "b" => "Brazil",
+        "korea" | "k" => "Korea",
+        "asia" | "china" | "taiwan" | "hong kong" => "Asia",
+        _ => return None,
+    })
+}
+
+/// The regions in a name's tags: "(Japan, USA)" -> "US, Japan" (the US one
+/// first, the version picked when there are several). Empty when none is named.
 fn region_from_name(name: &str) -> String {
-    let lower = name.to_lowercase();
-    let region = if lower.contains("(usa") || lower.contains("(us)") || lower.contains("(u)") {
-        "US"
-    } else if lower.contains("(europe") || lower.contains("(e)") {
-        "Europe"
-    } else if lower.contains("(japan") || lower.contains("(j)") {
-        "Japan"
-    } else {
-        ""
-    };
-    region.to_string()
+    let mut found: Vec<&'static str> = Vec::new();
+    for group in name.split('(').skip(1).filter_map(|g| g.split_once(')').map(|(inside, _)| inside)) {
+        let words: Vec<Option<&'static str>> = group.split(',').map(region_word).collect();
+        // A tag of regions only ("Disc 1", "Rev 2" are not).
+        if words.iter().all(Option::is_some) {
+            for r in words.into_iter().flatten() {
+                if !found.contains(&r) {
+                    found.push(r);
+                }
+            }
+        }
+    }
+    found.sort_by_key(|r| *r != "US");
+    found.join(", ")
+}
+
+/// Whether a ROM's regions include the US one.
+fn is_us(region: &str) -> bool {
+    region.split(", ").any(|r| r == "US")
 }
 
 /// Windows' marks for a file whose contents are in the cloud, fetched when read
@@ -610,7 +635,7 @@ pub fn match_catalog(entries: &[CatalogEntry], roms: &[RomFile]) -> HashMap<Stri
         };
         let candidates = roms.iter().filter(|rom| fits(rom, &entry.origin) && same_game(&entry.game, rom)).filter(same_id);
         // The exact version the recomp was built against first, then a US copy.
-        let best = candidates.max_by_key(|rom| (right_version(rom), rom.region == "US"));
+        let best = candidates.max_by_key(|rom| (right_version(rom), is_us(&rom.region)));
         if let Some(rom) = best {
             owned.insert(entry.id.clone(), rom.path.to_string_lossy().into_owned());
         }
@@ -670,6 +695,24 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regions_are_read_from_the_no_intro_tags() {
+        for (name, region) in [
+            ("Super Mario World (USA)", "US"),
+            ("Chrono Trigger (Japan, USA)", "US, Japan"),
+            ("Tetris (World)", "World"),
+            ("Mônica no Castelo do Dragão (Brazil)", "Brazil"),
+            ("Pokemon Gold (Korea)", "Korea"),
+            ("Sonic (Europe) (Rev 1)", "Europe"),
+            ("Final Fantasy VII (Disc 1)", ""),
+            ("Zelda (U) [!]", "US"),
+            ("Doom (Germany)", "Europe"),
+        ] {
+            assert_eq!(region_from_name(name), region, "{name}");
+        }
+        assert!(is_us("US, Japan") && !is_us("Europe"));
+    }
 
     #[test]
     fn a_rom_folder_moved_to_another_drive_is_followed() {

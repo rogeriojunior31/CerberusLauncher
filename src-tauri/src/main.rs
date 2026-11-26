@@ -98,8 +98,11 @@ impl DataDir {
 
     /// What each file held at the last scan (see `roms::ScanCache`).
     fn rom_cache(&self) -> PathBuf {
-        // v2: `.md` needs the SEGA header now; what v1 said of each file is read again once.
-        self.cache().join("rom-cache-v2.json")
+        // v3: regions are read from every name tag now; what v2 said of each file is read again once.
+        for old in ["rom-cache.json", "rom-cache-v2.json"] {
+            let _ = std::fs::remove_file(self.cache().join(old));
+        }
+        self.cache().join("rom-cache-v3.json")
     }
 }
 

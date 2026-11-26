@@ -410,6 +410,24 @@ fn file_name(rom: &RomView) -> String {
     base.rsplit_once('.').map_or(base, |(stem, _)| stem).to_string()
 }
 
+/// "US, Japan" as the player reads it.
+fn region_names(regions: &str) -> String {
+    regions
+        .split(", ")
+        .map(|r| match r {
+            "US" => tr!("EUA"),
+            "Europe" => tr!("Europa"),
+            "Japan" => tr!("Japão"),
+            "World" => tr!("Mundo"),
+            "Brazil" => tr!("Brasil"),
+            "Korea" => tr!("Coreia"),
+            "Asia" => tr!("Ásia"),
+            other => other,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The name shown: without the region and revision tags.
 pub fn display_name(rom: &RomView) -> String {
     let name = file_name(rom);
@@ -699,7 +717,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
         });
         let facts = [
             (tr!("Console"), console_name(console).to_string()),
-            (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { rom.region.clone() }),
+            (tr!("Região"), if rom.region.is_empty() { "—".to_string() } else { region_names(&rom.region) }),
         ]
         .into_iter()
         .chain((rom.discs.len() > 1).then(|| (tr!("Discos"), rom.discs.len().to_string())))
