@@ -390,6 +390,35 @@ pub fn disc_list(data: &Path, rom: &Path, discs: &[PathBuf], console: &str) -> R
     Ok(list)
 }
 
+/// RetroArch names a game's save after the file it opened. Someone who played
+/// "FF7 (USA) (Disc 1).cue" there has "FF7 (USA) (Disc 1).srm"; opened through
+/// the disc list "FF7 (USA).m3u" the game would start on an empty card. The
+/// old save is copied to the list's name (never moved, never over one that's
+/// there). Returns the copies made.
+pub fn carry_disc_saves(exe: &Path, first_disc: &Path, list: &Path) -> Vec<PathBuf> {
+    let (Some(old), Some(new)) = (first_disc.file_stem(), list.file_stem()) else { return Vec::new() };
+    if old == new {
+        return Vec::new();
+    }
+    let saves = retroarch_dir(exe, "savefile_directory", "saves");
+    // With "sort saves by core" on, each core has its own folder inside.
+    let mut dirs = vec![saves.clone()];
+    if let Ok(entries) = fs::read_dir(&saves) {
+        dirs.extend(entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path()));
+    }
+    let mut copied = Vec::new();
+    for dir in dirs {
+        for ext in ["srm", "mcd"] {
+            let from = dir.join(format!("{}.{ext}", old.to_string_lossy()));
+            let to = dir.join(format!("{}.{ext}", new.to_string_lossy()));
+            if from.is_file() && !to.exists() && fs::copy(&from, &to).is_ok() {
+                copied.push(to);
+            }
+        }
+    }
+    copied
+}
+
 /// Starts a classic in RetroArch with its console's core. With `log`, RetroArch
 /// writes what happens (achievements unlocked among it) to that file.
 pub fn launch(exe: &Path, rom: &Path, console: &str, log: Option<&Path>) -> Result<std::process::Child, String> {
@@ -588,6 +617,23 @@ mod tests {
         assert_eq!(system_dir(&exe), PathBuf::from(r"D:\BIOS"));
         fs::write(config_file(&exe), "system_directory = \"default\"\n").unwrap();
         assert_eq!(system_dir(&exe), dir.path().join("system"));
+    }
+
+    #[test]
+    fn a_save_made_from_disc_one_follows_the_game_to_its_disc_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        let by_core = dir.path().join("saves").join("PCSX-ReARMed");
+        fs::create_dir_all(&by_core).unwrap();
+        fs::write(by_core.join("FF7 (USA) (Disc 1).srm"), b"card").unwrap();
+        let copied = carry_disc_saves(&exe, Path::new(r"D:\ps1\FF7 (USA) (Disc 1).cue"), Path::new(r"C:\x\FF7 (USA).m3u"));
+        assert_eq!(copied, vec![by_core.join("FF7 (USA).srm")]);
+        assert_eq!(fs::read(by_core.join("FF7 (USA).srm")).unwrap(), b"card");
+        assert!(by_core.join("FF7 (USA) (Disc 1).srm").exists(), "the old one stays");
+        // One already there is never replaced.
+        fs::write(by_core.join("FF7 (USA).srm"), b"newer").unwrap();
+        assert!(carry_disc_saves(&exe, Path::new(r"D:\ps1\FF7 (USA) (Disc 1).cue"), Path::new(r"C:\x\FF7 (USA).m3u")).is_empty());
+        assert_eq!(fs::read(by_core.join("FF7 (USA).srm")).unwrap(), b"newer");
     }
 
     #[test]

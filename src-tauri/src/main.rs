@@ -651,8 +651,16 @@ fn play_classic(app: AppHandle, path: String, console: String) -> Result<(), Str
     connect_retroarch(&data, &exe);
     let mut session = cheevos::prepare(&data, "retroarch", &exe, None, Some(&log));
     session.from = 0;
-    let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| emulation::launch(&exe, &opened, &console, Some(&log)));
     let id = format!("classic:{path}");
+    let result = emulation::disc_list(&data, &rom, &known.discs, &console).and_then(|opened| {
+        // A save made from disc 1 on its own comes along to the disc list's name.
+        if let Some(first) = known.discs.first().filter(|_| opened != rom) {
+            for copy in emulation::carry_disc_saves(&exe, first, &opened) {
+                trail::note(&app, &id, tk!("Saves"), &Ok(tr!("Save do disco 1 copiado para {}", copy.display())));
+            }
+        }
+        emulation::launch(&exe, &opened, &console, Some(&log))
+    });
     trail::note(&app, &id, tk!("Jogar clássico"), &result.as_ref().map(|_| tr!("Aberto no RetroArch").to_string()).map_err(Clone::clone));
     let child = match result {
         Ok(child) => child,
