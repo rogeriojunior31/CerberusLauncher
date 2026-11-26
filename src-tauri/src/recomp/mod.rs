@@ -1697,6 +1697,35 @@ pub(super) const REMOVING: &str = ".cerberus-removing-";
 
 /// Half-downloaded files nobody came back for in two weeks (a pause before a
 /// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
+/// Half-written save copies a crash left (`.part`, and `.tmp*` from a copy
+/// being staged) in the saves folder and the cloud folder. Only ones over a
+/// day old: in the shared cloud folder another PC may be writing one now.
+pub fn sweep_save_leftovers(folders: &Folders) {
+    let mut roots = vec![folders.saves.clone()];
+    if let Some(cloud) = folders.cloud.read().unwrap_or_else(|p| p.into_inner()).clone() {
+        roots.push(cloud.join("Cerberus Saves"));
+    }
+    sweep_old_partials(&roots, std::time::Duration::from_secs(24 * 3600));
+}
+
+fn sweep_old_partials(roots: &[PathBuf], older_than: std::time::Duration) {
+    for root in roots {
+        let Ok(games) = fs::read_dir(root) else { continue };
+        let dirs = games.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path());
+        for dir in std::iter::once(root.clone()).chain(dirs) {
+            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let partial = name.ends_with(".part") || name.starts_with(".tmp");
+                let old = entry.metadata().ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > older_than);
+                if partial && old {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+    }
+}
+
 /// What a first install cut short left beside the installs: its half-unpacked
 /// folder (`<id>.cerberus-part`) and its extraction folder (`.staging-<id>`).
 /// Gone at start, so the space comes back; nothing else is touched.
@@ -2507,6 +2536,24 @@ Content-Length: {}
         fs::write(dir.path().join("x.bin"), [0u8; 10]).unwrap();
         fs::write(dir.path().join("a").join("b").join("y.bin"), [0u8; 5]).unwrap();
         assert_eq!(tree_size(dir.path()), 15);
+    }
+
+    #[test]
+    fn old_half_written_save_copies_go_and_new_ones_and_backups_stay() {
+        let root = tempfile::tempdir().unwrap();
+        let game = root.path().join("game");
+        fs::create_dir_all(&game).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 3600);
+        for (name, aged) in [("1-a.part", true), (".tmpAB12", true), ("2-b.part", false), ("3-c.zip", true)] {
+            let file = fs::File::create(game.join(name)).unwrap();
+            if aged {
+                file.set_modified(old).unwrap();
+            }
+        }
+        sweep_old_partials(&[root.path().to_path_buf()], std::time::Duration::from_secs(24 * 3600));
+        assert!(!game.join("1-a.part").exists() && !game.join(".tmpAB12").exists());
+        assert!(game.join("2-b.part").exists(), "a recent one may still be being written");
+        assert!(game.join("3-c.zip").exists(), "a backup is never touched");
     }
 
     #[test]
