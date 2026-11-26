@@ -98,7 +98,8 @@ impl DataDir {
 
     /// What each file held at the last scan (see `roms::ScanCache`).
     fn rom_cache(&self) -> PathBuf {
-        self.cache().join("rom-cache.json")
+        // v2: `.md` needs the SEGA header now; what v1 said of each file is read again once.
+        self.cache().join("rom-cache-v2.json")
     }
 }
 
@@ -350,6 +351,7 @@ async fn rescan_roms(app: &AppHandle) {
     let mine = LATEST.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let data = app.state::<DataDir>().0.clone();
     let cache_file = app.state::<DataDir>().rom_cache();
+    let before = app.state::<RomIndex>().get();
     // The folders (settings, and paths that may be on a drive that's away) and
     // the scan itself touch the disk: both off the async runtime.
     let scan = tauri::async_runtime::spawn_blocking(move || {
@@ -358,7 +360,8 @@ async fn rescan_roms(app: &AppHandle) {
         let mut cache = roms::load_cache(&cache_file);
         let found = roms::scan_cached(&dirs, &mut cache);
         roms::save_cache(&cache_file, &cache);
-        found
+        // A drive unplugged now doesn't take its classics off the list.
+        roms::keep_unreachable(found, &before, &dirs)
     });
     // A scan that fell over keeps the list from before, instead of an empty one.
     let Ok(found) = scan.await else {
@@ -1008,7 +1011,7 @@ async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Cl
     settings::save(&data, &chosen)?;
     // RetroArch gets it now when it's there, or at the next game otherwise.
     if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
-        emulation::write_token(&exe, &name, &token)?;
+        emulation::write_token(&exe, &name, &token, true)?;
     }
     Ok(emulation::status(&data, picked.as_deref()))
 }
@@ -1018,7 +1021,7 @@ async fn link_retroarch_achievements(app: AppHandle, http: State<'_, reqwest::Cl
 fn connect_retroarch(data: &Path, exe: &Path) {
     let chosen = settings::load(data);
     if let (Some(user), Some(token)) = (chosen.ra_user, chosen.ra_token) {
-        let _ = emulation::write_token(exe, &user, &token);
+        let _ = emulation::write_token(exe, &user, &token, false);
     }
 }
 
@@ -1415,7 +1418,7 @@ async fn ra_connect(app: AppHandle, http: State<'_, reqwest::Client>, user: Stri
     if let Some((name, token)) = &token {
         chosen.ra_token = Some(token.clone());
         if let Some(exe) = emulation::retroarch(&data, picked.as_deref()) {
-            let _ = emulation::write_token(&exe, name, token);
+            let _ = emulation::write_token(&exe, name, token, true);
         }
     }
     settings::save(&data, &chosen)?;

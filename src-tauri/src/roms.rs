@@ -230,6 +230,8 @@ fn identify(path: &Path) -> Option<RomFile> {
         return Some(RomFile { path: path.to_path_buf(), system: "n64".into(), title: header.name, region, n64: Some(header.code), discs: Vec::new() });
     }
     let system = match cartridge_system(&ext) {
+        // `.md` is also Markdown: a Mega Drive cartridge says SEGA at 0x100.
+        Some("genesis") if (ext == "md" || ext == "gen") && !sega_header(path) => return None,
         Some(system) => system.to_string(),
         // A list of discs is its first disc's console.
         None if ext == "m3u" => listed_discs(path).first().and_then(|disc| crate::disc_console::console_of(disc)).or_else(|| crate::disc_console::console_of(path)).unwrap_or_default().to_string(),
@@ -238,6 +240,13 @@ fn identify(path: &Path) -> Option<RomFile> {
         None => return None,
     };
     Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
+}
+
+/// A Mega Drive / Genesis cartridge: "SEGA" at 0x100 (the plain, not
+/// interleaved, dumps that `.md` and `.gen` are).
+fn sega_header(path: &Path) -> bool {
+    let mut head = [0u8; 0x110];
+    fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok() && head[0x100..0x110].windows(4).any(|w| w == b"SEGA")
 }
 
 /// A disc's file name without its disc tag: "Final Fantasy VII (USA) (Disc 1)"
@@ -609,6 +618,23 @@ pub fn match_catalog(entries: &[CatalogEntry], roms: &[RomFile]) -> HashMap<Stri
     owned
 }
 
+/// The classics found last time in folders that can't be read now (an external
+/// drive unplugged, a network share away): kept, so opening Cerberus without
+/// the drive doesn't wipe them; they come back up to date once it's there.
+pub fn keep_unreachable(found: Vec<RomFile>, before: &[RomFile], dirs: &[PathBuf]) -> Vec<RomFile> {
+    let away: Vec<&PathBuf> = dirs.iter().filter(|d| fs::read_dir(d).is_err()).collect();
+    if away.is_empty() {
+        return found;
+    }
+    let mut all = found;
+    for rom in before {
+        if away.iter().any(|d| rom.path.starts_with(d)) && !all.iter().any(|r| r.path == rom.path) {
+            all.push(rom.clone());
+        }
+    }
+    all
+}
+
 /// The last scan, kept on disk so the matches show at start without walking the folders again.
 pub fn load_index(file: &Path) -> Vec<RomFile> {
     let text = fs::read_to_string(file).unwrap_or_default();
@@ -627,6 +653,34 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_markdown_file_is_not_a_mega_drive_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let readme = dir.path().join("README.md");
+        fs::write(&readme, "# My ROMs\n\nNotes about the collection, long enough to pass 0x110 bytes. ".repeat(8)).unwrap();
+        assert!(identify(&readme).is_none());
+        let mut cart = vec![0u8; 0x200];
+        cart[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        let sonic = dir.path().join("Sonic (USA).md");
+        fs::write(&sonic, &cart).unwrap();
+        assert_eq!(identify(&sonic).unwrap().system, "genesis");
+    }
+
+    #[test]
+    fn a_drive_that_is_away_keeps_its_classics() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("here");
+        fs::create_dir_all(&here).unwrap();
+        let away = dir.path().join("unplugged");
+        let rom = |p: &Path| RomFile { path: p.to_path_buf(), system: "snes".into(), title: "x".into(), region: String::new(), n64: None, discs: Vec::new() };
+        let before = vec![rom(&away.join("a.sfc")), rom(&away.join("b.sfc")), rom(&here.join("gone.sfc"))];
+        let found = vec![rom(&here.join("new.sfc"))];
+        let kept = keep_unreachable(found, &before, &[here.clone(), away.clone()]);
+        // The two on the drive that's away stay; the one deleted from a folder that answers goes.
+        assert_eq!(kept.len(), 3);
+        assert!(kept.iter().any(|r| r.path == away.join("a.sfc")) && !kept.iter().any(|r| r.path == here.join("gone.sfc")));
+    }
 
     #[test]
     fn a_second_scan_reuses_what_it_knew_of_unchanged_files() {

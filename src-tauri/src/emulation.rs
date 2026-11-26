@@ -436,7 +436,10 @@ pub async fn connect_token(http: &reqwest::Client, user: &str, password: &str) -
 
 /// Puts the account in RetroArch's settings when they don't have it already
 /// (backed up first). Nothing is written when it's already there.
-pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
+/// `asked`: the player linked it just now in Cerberus. Otherwise (before a
+/// game) RetroArch signed in to another account, or with achievements turned
+/// off there, is left as the player set it.
+pub fn write_token(exe: &Path, name: &str, token: &str, asked: bool) -> Result<(), String> {
     let cfg = config_file(exe);
     // A settings file that's there but can't be read is left alone: writing
     // ours in its place would wipe the player's RetroArch settings.
@@ -449,6 +452,12 @@ pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
         && config_value(&text, "cheevos_username").as_deref() == Some(name)
         && config_value(&text, "cheevos_token").as_deref() == Some(token);
     if same {
+        return Ok(());
+    }
+    let theirs = config_value(&text, "cheevos_username").filter(|u| !u.is_empty());
+    let another_account = theirs.as_deref().is_some_and(|u| !u.eq_ignore_ascii_case(name));
+    let turned_off = config_value(&text, "cheevos_enable").as_deref() == Some("false") && theirs.is_some();
+    if !asked && (another_account || turned_off) {
         return Ok(());
     }
     // The player's own settings, kept once: a second link mustn't replace them with ours.
@@ -584,8 +593,8 @@ mod tests {
         let exe = dir.path().join("retroarch.exe");
         fs::write(config_file(&exe), "video_fullscreen = \"true\"
 ").unwrap();
-        write_token(&exe, "me", "abc").unwrap();
-        write_token(&exe, "me", "def").unwrap();
+        write_token(&exe, "me", "abc", true).unwrap();
+        write_token(&exe, "me", "def", true).unwrap();
         // The player's original settings are the backup, not our first edit.
         assert!(!fs::read_to_string(config_file(&exe).with_extension("cfg.cerberus-bak")).unwrap().contains("cheevos_token"));
         forget_token(&exe, "other");
@@ -594,6 +603,22 @@ mod tests {
         let text = fs::read_to_string(config_file(&exe)).unwrap();
         assert_eq!(config_value(&text, "cheevos_token").as_deref(), Some(""));
         assert_eq!(config_value(&text, "video_fullscreen").as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn before_a_game_retroarch_keeps_the_account_and_switch_the_player_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        fs::write(config_file(&exe), "cheevos_enable = \"true\"\ncheevos_username = \"Outro\"\ncheevos_token = \"theirs\"\n").unwrap();
+        write_token(&exe, "me", "ours", false).unwrap();
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_username").as_deref(), Some("Outro"));
+        // Turned off for a hack, with our own account: stays off.
+        fs::write(config_file(&exe), "cheevos_enable = \"false\"\ncheevos_username = \"me\"\ncheevos_token = \"ours\"\n").unwrap();
+        write_token(&exe, "me", "ours", false).unwrap();
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_enable").as_deref(), Some("false"));
+        // Linked by the player in Cerberus: written.
+        write_token(&exe, "me", "new", true).unwrap();
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_token").as_deref(), Some("new"));
     }
 
     #[test]
