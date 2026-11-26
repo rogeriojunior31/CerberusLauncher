@@ -273,13 +273,22 @@ fn bring_down(folders: &Folders, recomp_id: &str, install_dir: &Path, cloud: &Pa
     Ok(Some(tr!("Saves mais novos de outro PC foram trazidos da nuvem; os deste PC ficaram num backup.").into()))
 }
 
+/// A game's backups, each saying whether it is in the cloud folder or still
+/// waiting to go there (read from the folder itself, not assumed).
 pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
-    saves::list(&folders.backups_dir(recomp_id))
+    let local = folders.backups_dir(recomp_id);
+    let mut list = saves::list(&local);
+    if let Some(cloud) = folders.cloud_dir(recomp_id) {
+        for backup in &mut list {
+            backup.in_cloud = Some(cloud.join(&backup.name).is_file());
+            backup.waiting = local.join(&backup.name).with_extension("upload").is_file();
+        }
+    }
+    list
 }
 
 /// Puts a backup back, after keeping a copy of the saves as they are now, so
-/// restoring the wrong one can be undone.
-/// Restores a backup; with it, a warning when the restored saves couldn't be
+/// restoring the wrong one can be undone; with it, a warning when the restored saves couldn't be
 /// copied as the newest (to the cloud too): the other PC would keep its older ones.
 pub fn restore_backup(folders: &Folders, recomp_id: &str, install_dir: &Path, name: &str) -> Result<(u32, Option<String>), String> {
     // Creating the safety copy can rotate the selected backup out of the ten kept on disk.
@@ -2223,6 +2232,23 @@ mod tests {
         let safety_copy = current.iter().find(|b| b.reason == "Antes de restaurar").unwrap();
         saves::restore(&folders.backups_dir("shipwright"), &safety_copy.name, &install).unwrap();
         assert_eq!(fs::read_to_string(&slot).unwrap(), "latest progress");
+    }
+
+    #[test]
+    fn each_backup_says_whether_it_is_in_the_cloud_folder_or_waiting() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let (desktop, game) = pc(&root.path().join("desktop"), &sync, "first");
+        backup_saves(&desktop, "shipwright", &game, "Depois de jogar").unwrap().unwrap();
+        // The synced folder gone (a drive unplugged): the next one waits.
+        fs::remove_dir_all(&sync).unwrap();
+        fs::write(game.join("Save/file1.sav"), "second").unwrap();
+        backup_saves(&desktop, "shipwright", &game, "Depois de jogar").unwrap().unwrap();
+        let listed = list_backups(&desktop, "shipwright");
+        assert_eq!((listed[0].in_cloud, listed[0].waiting), (Some(false), true), "newest: waiting");
+        assert_eq!(listed[1].in_cloud, Some(false), "the folder is gone, so the first isn't there either");
+        desktop.set_cloud(None);
+        assert_eq!(list_backups(&desktop, "shipwright")[0].in_cloud, None, "no cloud folder: nothing to say");
     }
 
     #[test]

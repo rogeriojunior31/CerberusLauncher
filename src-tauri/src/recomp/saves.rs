@@ -255,7 +255,7 @@ pub fn backup(backups: &Path, templates: &[String], install: &Path, reason: &str
     temp.persist_noclobber(&target).map_err(|e| e.to_string())?;
     prune(backups, &name);
     queued.map_err(|e| tr!("Backup local guardado. Falha ao agendar o envio: {}", e))?;
-    Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes }))
+    Ok(Some(Backup { name, created, reason: manifest.reason, files: manifest.files, bytes, in_cloud: None, waiting: false }))
 }
 
 fn write_zip(file: &fs::File, found: &[Found], manifest: &Manifest) -> io::Result<()> {
@@ -301,7 +301,7 @@ pub fn list(backups: &Path) -> Vec<Backup> {
 fn describe(path: &Path) -> Option<Backup> {
     let manifest = read_manifest(path).ok()?;
     let name = path.file_name()?.to_string_lossy().into_owned();
-    Some(Backup { name, created: manifest.created, reason: manifest.reason, files: manifest.files, bytes: manifest.bytes })
+    Some(Backup { name, created: manifest.created, reason: manifest.reason, files: manifest.files, bytes: manifest.bytes, in_cloud: None, waiting: false })
 }
 
 /// The fingerprint a backup made now would have; `None` when there are no saves yet.

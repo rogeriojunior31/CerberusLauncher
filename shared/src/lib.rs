@@ -364,6 +364,12 @@ pub struct Backup {
     pub reason: String,
     pub files: u32,
     pub bytes: u64,
+    /// With a cloud folder set: whether this copy is in it (`None` without one).
+    #[serde(default)]
+    pub in_cloud: Option<bool>,
+    /// Made to go to the cloud folder and not there yet.
+    #[serde(default)]
+    pub waiting: bool,
 }
 
 /// One step the launcher took for a game (a session, a backup, an install), kept

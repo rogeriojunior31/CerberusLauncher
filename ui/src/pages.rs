@@ -399,7 +399,7 @@ pub fn SavesPage() -> impl IntoView {
                         <b>{tr!("Na nuvem")}</b>
                         <p class="muted small path">{dir.clone()}</p>
                     </div>
-                    <span class="pill ok">{tr!("Tudo enviado")}</span>
+                    <span class="pill ok" title=tr!("Copiado para a pasta sincronizada; o aplicativo dela (OneDrive, Google Drive, Dropbox) leva para a internet.")>{tr!("Tudo copiado para a pasta")}</span>
                 </div>
             }
             .into_any(),
@@ -501,8 +501,13 @@ fn SaveRow(game: Game, open: RwSignal<Option<String>>, cloud_on: bool) -> impl I
             Some(newest) => {
                 let bytes: u64 = list.iter().map(|b| b.bytes).sum();
                 let count = if list.len() == 1 { tr!("1 cópia").to_string() } else { tr!("{} cópias", list.len()) };
-                let where_ = if cloud_on { tr!("Na nuvem") } else { tr!("Só neste PC") };
-                (tr!("{} · última {}", where_, format::ago(newest.created)), if cloud_on { "ok" } else { "local" }, format!("{count} · {}", megabytes(bytes)))
+                // What the newest copy really is, as the backend found it.
+                let (where_, tone) = match (cloud_on, newest.in_cloud, newest.waiting) {
+                    (true, Some(true), _) => (tr!("Na pasta da nuvem"), "ok"),
+                    (true, _, true) => (tr!("Esperando a pasta da nuvem"), "wait"),
+                    _ => (tr!("Só neste PC"), "local"),
+                };
+                (tr!("{} · última {}", where_, format::ago(newest.created)), tone, format!("{count} · {}", megabytes(bytes)))
             }
         },
     };
