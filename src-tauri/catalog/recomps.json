@@ -42,7 +42,7 @@
       }
     },
     "size_text": "28 MB",
-    "stars": 7768
+    "stars": 7774
   },
   {
     "id": "starfox64recomp",
@@ -87,7 +87,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 412
+    "stars": 413
   },
   {
     "id": "mariokart64recomp",
@@ -133,7 +133,7 @@
       }
     },
     "size_text": "23 MB",
-    "stars": 644
+    "stars": 643
   },
   {
     "id": "banjorecomp",
@@ -178,7 +178,7 @@
       }
     },
     "size_text": "18 MB",
-    "stars": 2152
+    "stars": 2154
   },
   {
     "id": "goemon64recomp",
@@ -268,7 +268,7 @@
       }
     },
     "size_text": "70 MB",
-    "stars": 6166
+    "stars": 6173
   },
   {
     "id": "2ship2harkinian",
@@ -311,7 +311,7 @@
       }
     },
     "size_text": "43 MB",
-    "stars": 2528
+    "stars": 2534
   },
   {
     "id": "starship",
@@ -382,7 +382,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 2513
+    "stars": 2514
   },
   {
     "id": "unleashedrecomp",
@@ -411,7 +411,7 @@
     },
     "files": {},
     "size_text": "51 MB",
-    "stars": 5421
+    "stars": 5425
   },
   {
     "id": "symphonyrecomp",
@@ -456,7 +456,7 @@
       }
     },
     "size_text": "61 MB",
-    "stars": 1177,
+    "stars": 1180,
     "license": ""
   },
   {
@@ -502,7 +502,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 1097,
+    "stars": 1100,
     "license": "BSD-3-Clause"
   },
   {
@@ -542,7 +542,7 @@
       }
     },
     "size_text": "148 MB",
-    "stars": 1048,
+    "stars": 1053,
     "license": "GPL-3.0"
   },
   {
@@ -576,7 +576,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 956,
+    "stars": 963,
     "license": ""
   },
   {
@@ -610,7 +610,7 @@
       }
     },
     "size_text": "102 MB",
-    "stars": 729,
+    "stars": 730,
     "license": "MIT"
   },
   {
@@ -690,7 +690,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 596,
+    "stars": 597,
     "license": "GPL-3.0"
   },
   {
@@ -730,7 +730,7 @@
       }
     },
     "size_text": "34 MB",
-    "stars": 582,
+    "stars": 585,
     "license": "NOASSERTION"
   },
   {
@@ -770,7 +770,7 @@
       }
     },
     "size_text": "184 MB",
-    "stars": 529,
+    "stars": 530,
     "license": "BSD-3-Clause"
   },
   {
@@ -804,7 +804,7 @@
       }
     },
     "size_text": "125 MB",
-    "stars": 571,
+    "stars": 599,
     "license": "MIT"
   },
   {
@@ -844,7 +844,7 @@
       }
     },
     "size_text": "379 MB",
-    "stars": 448,
+    "stars": 451,
     "license": "GPL-3.0"
   },
   {
@@ -884,7 +884,7 @@
       }
     },
     "size_text": "7 MB",
-    "stars": 453,
+    "stars": 454,
     "license": "NOASSERTION"
   },
   {
@@ -1017,8 +1017,8 @@
     "needs": "Sua cópia de Ninja Gaiden Black (Xbox).",
     "saves": [],
     "start": "NinjaGaidenBlack.exe",
-    "tag": "v1.0.1",
-    "released": "2026-11-25",
+    "tag": "v1.0.3",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -1030,15 +1030,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaidenBlack-windows-x64.zip",
-        "sha256": "aada7a47cabaa5c37fc361388b0c2744d9e108bc0327dc2106483ec63079eb48"
+        "sha256": "a596bb866f0376246d7638ccf734adfbb6cf8410344d73e5611183023edd7bb8"
       },
       "linux": {
         "name": "NinjaGaidenBlack-x86_64.AppImage",
-        "sha256": "f419a48df6111d0f5d46b34f094cff00e327a526595bc91d16fa60bdf1af54cf"
+        "sha256": "d6fcc6865f2d153214a0d0623c143036d78596790c57fd4650f9ed02809f54b2"
       }
     },
     "size_text": "20 MB",
-    "stars": 389,
+    "stars": 401,
     "license": "GPL-3.0"
   },
   {
@@ -1084,7 +1084,7 @@
       }
     },
     "size_text": "22 MB",
-    "stars": 350,
+    "stars": 351,
     "license": "MIT"
   },
   {
@@ -1124,7 +1124,7 @@
       }
     },
     "size_text": "17 MB",
-    "stars": 344,
+    "stars": 346,
     "license": "MIT"
   },
   {
@@ -1244,7 +1244,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 289,
+    "stars": 291,
     "license": "GPL-3.0"
   },
   {
@@ -1262,8 +1262,8 @@
     "adds": "",
     "needs": "Sua cópia de Def Jam: Fight for NY (Xbox).",
     "saves": [],
-    "tag": "v1.2.3",
-    "released": "2026-11-25",
+    "tag": "v1.2.4",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -1274,16 +1274,16 @@
     },
     "files": {
       "windows": {
-        "name": "DefJamRecompiled-1.2.3-windows-x64.exe",
-        "sha256": "fa8ecf194820a2c5c925a228f8a190cc90f8e5a28e0ca8f84a10bb5e288e6b0e"
+        "name": "DefJamRecompiled-1.2.4-windows-x64.exe",
+        "sha256": "00e0dd09c2c6de0ac370f01bac39bb111b845ac840d69555fa9ac21bed8ca554"
       },
       "linux": {
-        "name": "DefJamRecompiled-1.2.3-linux-x86_64.AppImage",
-        "sha256": "1cf51f131de74e66257898211080cf1d5c36ee8e1936f1161e7f1e07fc8aef3f"
+        "name": "DefJamRecompiled-1.2.4-linux-x86_64.AppImage",
+        "sha256": "ae1c6f730177799c8f445f51c2f34744e429e02f4235781202c1074fdf089ee7"
       }
     },
     "size_text": "64 MB",
-    "stars": 288,
+    "stars": 289,
     "license": "NOASSERTION"
   },
   {
@@ -1369,7 +1369,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 282,
+    "stars": 285,
     "license": "GPL-3.0"
   },
   {
@@ -1403,7 +1403,7 @@
       }
     },
     "size_text": "55 MB",
-    "stars": 252,
+    "stars": 253,
     "license": "GPL-3.0"
   },
   {
@@ -1443,7 +1443,7 @@
       }
     },
     "size_text": "193 MB",
-    "stars": 245,
+    "stars": 247,
     "license": ""
   },
   {
@@ -1483,7 +1483,7 @@
       }
     },
     "size_text": "10 MB",
-    "stars": 237,
+    "stars": 238,
     "license": "MIT"
   },
   {
@@ -1529,7 +1529,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 248,
+    "stars": 252,
     "license": "GPL-3.0"
   },
   {
@@ -1609,7 +1609,7 @@
       }
     },
     "size_text": "49 MB",
-    "stars": 229,
+    "stars": 230,
     "license": "GPL-3.0"
   },
   {
@@ -1662,28 +1662,28 @@
     "needs": "Sua cópia de Call of Duty: Modern Warfare 2 (Xbox 360).",
     "saves": [],
     "start": "mw2-launcher.exe",
-    "tag": "v0.9.0",
-    "released": "2026-11-24",
+    "tag": "v0.9.1",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
     ],
     "assets": {
-      "windows": "mw2-*-windows-lan.zip",
-      "linux": "mw2-*-linux-lan.tar.gz"
+      "windows": "mw2-*-windows.zip",
+      "linux": "mw2-*-linux.tar.gz"
     },
     "files": {
       "windows": {
-        "name": "mw2-v0.9.0-windows-lan.zip",
-        "sha256": "e3be0efccf65084ca2a4bccecc06dc216768cacc75e2f1694a80c7bcccbb8cfb"
+        "name": "mw2-v0.9.1-windows.zip",
+        "sha256": "d0177b677bc71d0d82c8b0c7d8c33706f44eab603754c3734df87a85e028b51c"
       },
       "linux": {
-        "name": "mw2-v0.9.0-linux-lan.tar.gz",
-        "sha256": "f899b1d5bcc3267ccb8e69bc71cef5898be27f97c6a0ae03caf14a20dae474ad"
+        "name": "mw2-v0.9.1-linux.tar.gz",
+        "sha256": "d70713329a24f6e70ee5c4ecdf951fba5d7dac5a3a9387b097a13120cc2fa229"
       }
     },
     "size_text": "17 MB",
-    "stars": 217,
+    "stars": 220,
     "license": "GPL-3.0"
   },
   {
@@ -1729,7 +1729,7 @@
       }
     },
     "size_text": "166 MB",
-    "stars": 217,
+    "stars": 219,
     "license": "GPL-3.0"
   },
   {
@@ -1763,7 +1763,7 @@
       }
     },
     "size_text": "26 MB",
-    "stars": 214,
+    "stars": 216,
     "license": "MIT"
   },
   {
@@ -1803,7 +1803,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 200,
+    "stars": 201,
     "license": "MIT"
   },
   {
@@ -1822,8 +1822,8 @@
     "needs": "Sua cópia de Gears of War 2 (Xbox 360).",
     "saves": [],
     "start": "gow2.exe",
-    "tag": "v0.4.8",
-    "released": "2026-11-23",
+    "tag": "v0.4.10",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -1834,16 +1834,16 @@
     },
     "files": {
       "windows": {
-        "name": "gow2-recomp-0.4.8-win64.zip",
-        "sha256": "af858040f87fa8f996d8347387db88b45c6032b33fd8958d2ee75a56b084ac42"
+        "name": "gow2-recomp-0.4.10-win64.zip",
+        "sha256": "8ccf20ad276a8b8ab0f834581c217ef7f03641a4ff819488f6991abf69682e8f"
       },
       "linux": {
-        "name": "gow2-recomp-0.4.8-linux-x86_64.tar.gz",
-        "sha256": "4c03e8a37fb457ef54ab72eb7813935634a6e55381ae4f9d8a88191b81a98bf1"
+        "name": "gow2-recomp-0.4.10-linux-x86_64.tar.gz",
+        "sha256": "1da369aa090b031342416e9be7f6013832fb2a7ae6cd55d292536e75e5fcb32c"
       }
     },
     "size_text": "110 MB",
-    "stars": 196,
+    "stars": 195,
     "license": "BSD-3-Clause"
   },
   {
@@ -1877,7 +1877,7 @@
       }
     },
     "size_text": "45 MB",
-    "stars": 190,
+    "stars": 191,
     "license": "MIT"
   },
   {
@@ -1911,7 +1911,7 @@
       }
     },
     "size_text": "353 MB",
-    "stars": 193,
+    "stars": 196,
     "license": "NOASSERTION"
   },
   {
@@ -1997,7 +1997,7 @@
       }
     },
     "size_text": "42 MB",
-    "stars": 140,
+    "stars": 142,
     "license": "GPL-2.0"
   },
   {
@@ -2016,8 +2016,8 @@
     "needs": "Sua cópia de Dragon Ball Z: Burst Limit (Xbox 360).",
     "saves": [],
     "start": "burstlimit.exe",
-    "tag": "v0.8.1",
-    "released": "2026-11-18",
+    "tag": "v0.8.2",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -2028,12 +2028,12 @@
     },
     "files": {
       "windows": {
-        "name": "DBZ-Burst-Limit-Recompiled-v0.8.1.zip",
-        "sha256": "ca7718939c2d2e08b6a6fb13cb6baf326d66b83cfab2d8cf2dfef2a4b35548c1"
+        "name": "DBZ-Burst-Limit-Recompiled-v0.8.2.zip",
+        "sha256": "f165fd980121ad6578b6d79bf589c31df853ac78105dab4c4a34a5ddee2745fa"
       },
       "linux": {
-        "name": "DBZ-Burst-Limit-Recompiled-v0.8.1-linux.zip",
-        "sha256": "5e2d5e03bf61fdd898bd02c03664fb9776d8bdf329f20bd6c879de30e4b14180"
+        "name": "DBZ-Burst-Limit-Recompiled-v0.8.2-linux.zip",
+        "sha256": "d61d0df5010dd74316548023ba7fcb710d4b517129bbdbbedf7d79b09ecf2d2b"
       }
     },
     "size_text": "68 MB",
@@ -2117,7 +2117,7 @@
       }
     },
     "size_text": "117 MB",
-    "stars": 130,
+    "stars": 131,
     "license": ""
   },
   {
@@ -2237,7 +2237,7 @@
       }
     },
     "size_text": "85 MB",
-    "stars": 117,
+    "stars": 119,
     "license": ""
   },
   {
@@ -2311,7 +2311,7 @@
       }
     },
     "size_text": "48 MB",
-    "stars": 109,
+    "stars": 110,
     "license": "BSD-3-Clause"
   },
   {
@@ -2397,7 +2397,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 86,
+    "stars": 87,
     "license": "GPL-2.0"
   },
   {
@@ -2551,7 +2551,7 @@
       }
     },
     "size_text": "42 MB",
-    "stars": 76,
+    "stars": 77,
     "license": "GPL-3.0"
   },
   {
@@ -2797,7 +2797,7 @@
       }
     },
     "size_text": "27 MB",
-    "stars": 45,
+    "stars": 46,
     "license": "GPL-3.0"
   },
   {
@@ -2911,7 +2911,7 @@
       }
     },
     "size_text": "161 MB",
-    "stars": 8281,
+    "stars": 8333,
     "license": "MIT"
   },
   {
@@ -2950,7 +2950,7 @@
       }
     },
     "size_text": "212 MB",
-    "stars": 1805,
+    "stars": 1825,
     "license": "MIT"
   },
   {
@@ -3023,7 +3023,7 @@
       }
     },
     "size_text": "126 MB",
-    "stars": 1428,
+    "stars": 1438,
     "license": "GPL-3.0"
   },
   {
@@ -3063,7 +3063,7 @@
       }
     },
     "size_text": "160 MB",
-    "stars": 1080,
+    "stars": 1088,
     "license": "GPL-2.0"
   },
   {
@@ -3102,7 +3102,7 @@
       }
     },
     "size_text": "154 MB",
-    "stars": 972,
+    "stars": 974,
     "license": "GPL-3.0"
   },
   {
@@ -3141,7 +3141,7 @@
       }
     },
     "size_text": "185 MB",
-    "stars": 1035,
+    "stars": 1045,
     "license": "GPL-3.0"
   },
   {
@@ -3215,7 +3215,7 @@
       }
     },
     "size_text": "146 MB",
-    "stars": 480,
+    "stars": 483,
     "license": "Apache-2.0"
   },
   {
@@ -3254,7 +3254,7 @@
       }
     },
     "size_text": "221 MB",
-    "stars": 636,
+    "stars": 659,
     "license": "NOASSERTION"
   },
   {
@@ -3288,7 +3288,7 @@
       }
     },
     "size_text": "142 MB",
-    "stars": 404,
+    "stars": 405,
     "license": "MIT"
   },
   {
@@ -3322,7 +3322,7 @@
       }
     },
     "size_text": "88 MB",
-    "stars": 327,
+    "stars": 328,
     "license": "NOASSERTION"
   },
   {
@@ -3361,7 +3361,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 295,
+    "stars": 299,
     "license": "MIT"
   },
   {
@@ -3428,7 +3428,7 @@
       }
     },
     "size_text": "150 MB",
-    "stars": 197,
+    "stars": 201,
     "license": "NOASSERTION"
   },
   {
@@ -3473,7 +3473,7 @@
       }
     },
     "size_text": "38 MB",
-    "stars": 4214,
+    "stars": 4215,
     "license": "NOASSERTION"
   },
   {
@@ -3551,7 +3551,7 @@
       }
     },
     "size_text": "37 MB",
-    "stars": 1000,
+    "stars": 1001,
     "license": "GPL-3.0"
   },
   {
@@ -3590,7 +3590,7 @@
       }
     },
     "size_text": "81 MB",
-    "stars": 766,
+    "stars": 767,
     "license": "GPL-3.0"
   },
   {
@@ -3674,7 +3674,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 458,
+    "stars": 459,
     "license": "GPL-3.0"
   },
   {
@@ -3725,8 +3725,8 @@
     "adds": "",
     "needs": "Sua cópia de Ninja Gaiden II (Xbox 360).",
     "saves": [],
-    "tag": "v0.8.0",
-    "released": "2026-11-25",
+    "tag": "v0.8.1",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -3738,15 +3738,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaiden2-windows-x64.zip",
-        "sha256": "78c61849c727c49fa950b4bb6a89fbd19a2e2902b2ad1fc18ce26e4de50fa26e"
+        "sha256": "2f6cbac94d2787e90d366c0ed9b56ce98d0384d8194ebeba6f79ae39ceb9e227"
       },
       "linux": {
         "name": "NinjaGaiden2-x86_64.AppImage",
-        "sha256": "75798d2ebd527fd00111d943963c5f5782128cc82b36fc7ccda5bb1f58f35ab6"
+        "sha256": "26b0385362ce0ea9489e56385e9e3820fb1e9d7233d5d67363690c9d477f2515"
       }
     },
     "size_text": "155 MB",
-    "stars": 338,
+    "stars": 350,
     "license": "GPL-3.0"
   },
   {
@@ -3785,7 +3785,7 @@
       }
     },
     "size_text": "19 MB",
-    "stars": 240,
+    "stars": 241,
     "license": "MIT"
   },
   {
@@ -3818,7 +3818,7 @@
       }
     },
     "size_text": "36 MB",
-    "stars": 191,
+    "stars": 192,
     "license": "MIT"
   },
   {
@@ -3857,7 +3857,7 @@
       }
     },
     "size_text": "133 MB",
-    "stars": 189,
+    "stars": 192,
     "license": "GPL-3.0"
   },
   {
@@ -3902,7 +3902,7 @@
       }
     },
     "size_text": "52 MB",
-    "stars": 137,
+    "stars": 138,
     "license": "GPL-3.0"
   },
   {
@@ -3974,7 +3974,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 97,
+    "stars": 98,
     "license": "GPL-3.0"
   },
   {
@@ -4052,7 +4052,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 77,
+    "stars": 78,
     "license": "NOASSERTION"
   },
   {
@@ -4124,7 +4124,7 @@
       }
     },
     "size_text": "56 MB",
-    "stars": 56,
+    "stars": 57,
     "license": "GPL-3.0"
   },
   {
@@ -4235,7 +4235,7 @@
       }
     },
     "size_text": "131 MB",
-    "stars": 46,
+    "stars": 47,
     "license": "GPL-3.0"
   },
   {
@@ -4268,7 +4268,7 @@
       }
     },
     "size_text": "22 MB",
-    "stars": 51,
+    "stars": 53,
     "license": "NOASSERTION"
   },
   {
@@ -4307,7 +4307,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 33,
+    "stars": 32,
     "license": "MIT"
   },
   {
@@ -4380,7 +4380,7 @@
       }
     },
     "size_text": "149 MB",
-    "stars": 496
+    "stars": 502
   },
   {
     "id": "yfm-redecomp",
@@ -4418,7 +4418,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 334
+    "stars": 336
   },
   {
     "id": "khdays-port",
@@ -4451,7 +4451,7 @@
       }
     },
     "size_text": "31 MB",
-    "stars": 249
+    "stars": 250
   },
   {
     "id": "rayman3-hd-recompiled",
@@ -4500,8 +4500,8 @@
     "adds": "",
     "needs": "Sua cópia de Monster Hunter Generations Ultimate (Nintendo Switch), versão 1.4.0, já extraída nas pastas exefs e romfs.",
     "saves": [],
-    "tag": "0.20.3",
-    "released": "2026-11-25",
+    "tag": "0.20.4",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -4512,16 +4512,16 @@
     },
     "files": {
       "windows": {
-        "name": "Windows-MHGURecomp.0.20.3.zip",
-        "sha256": "816bc9f4444db83dcc02a2de1372a3e0d35ae7dd932a7c46b16e77081f1414e2"
+        "name": "Windows-MHGURecomp.0.20.4.zip",
+        "sha256": "d8bd74cef1b989c459bbd908f9d7c6c6b4b381856d76de1f8b90bd7cd69c1d7c"
       },
       "linux": {
-        "name": "Linux-MHGURecomp.0.20.3.tar.gz",
-        "sha256": "205132f5343736a2e331622e5fd0e643f39dea60b9049e0122c0dc947543bc4c"
+        "name": "Linux-MHGURecomp.0.20.4.tar.gz",
+        "sha256": "00d0d25cfe0532740e7d2a1b1c7b8027b7f33669501b9b7c1c8127adb1ab9814"
       }
     },
-    "size_text": "45 MB",
-    "stars": 758,
+    "size_text": "44 MB",
+    "stars": 770,
     "handoff": {
       "kind": "folder",
       "folder": "data"
@@ -4570,6 +4570,6 @@
       }
     },
     "size_text": "71 MB",
-    "stars": 136
+    "stars": 138
   }
 ]
