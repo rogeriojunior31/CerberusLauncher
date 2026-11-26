@@ -3462,6 +3462,7 @@ fn main() {
             // An uninstall that couldn't finish deleting left its folder aside.
             recomp::sweep_removed(&folders);
             recomp::sweep_stale_downloads(&folders);
+            recomp::sweep_unfinished_installs(&folders);
             app.manage(folders);
             app.manage(recomp::Installing::default());
             awake::start(app.handle().clone());

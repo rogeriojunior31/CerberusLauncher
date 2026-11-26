@@ -1427,6 +1427,24 @@ fn prepare_release(
     installed: Option<&Game>,
     marker: &str,
 ) -> Result<(PathBuf, Option<update::Update>), String> {
+    // A first install is unpacked beside the game's folder and takes its name
+    // only when complete: Cerberus closed half-way leaves no half game there.
+    if installed.is_none() {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let staging = staging_for(target, &entry.id);
+        let mut relative = None;
+        fill_folder(target, |part| {
+            let program = install::unpack_over(file, &staging, part, entry)?;
+            relative = Some(program.strip_prefix(part).map_err(|e| e.to_string())?.to_path_buf());
+            put_marker(part, marker)?;
+            // What the release shipped, so a later update knows what the player changed.
+            update::write_release_files(part, &update::release_files(part));
+            Ok(())
+        })?;
+        return Ok((target.join(relative.unwrap_or_default()), None));
+    }
     let transaction = installed.map(update::Update::begin).transpose()?;
     let (destination, staging) = match &transaction {
         Some(tx) => (tx.candidate(), tx.candidate().with_file_name("extract")),
@@ -1435,17 +1453,9 @@ fn prepare_release(
     let prepare = || {
         let program = install::unpack_over(file, &staging, &destination, entry)?;
         let relative = program.strip_prefix(&destination).map_err(|e| e.to_string())?;
-        let marker_path = destination.join(MARKER);
-        // Replace an archive-supplied marker without following a link.
-        if let Err(e) = fs::remove_file(&marker_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string());
-            }
-        }
-        fs::write(marker_path, marker).map_err(|e| e.to_string())?;
+        put_marker(&destination, marker)?;
         match &transaction {
             Some(tx) => tx.publish()?,
-            // A first install: what the release shipped, so a later update knows what the player changed.
             None => update::write_release_files(&destination, &update::release_files(&destination)),
         }
         Ok(target.join(relative))
@@ -1456,6 +1466,20 @@ fn prepare_release(
             Some(tx) => tx.finish(Err(error)),
             None => Err(error),
         },
+    }
+}
+
+/// Our marker in an install folder, naming the recomp.
+fn put_marker(dir: &Path, marker: &str) -> Result<(), String> {
+    {
+        let marker_path = dir.join(MARKER);
+        // Replace an archive-supplied marker without following a link.
+        if let Err(e) = fs::remove_file(&marker_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+        fs::write(marker_path, marker).map_err(|e| e.to_string())
     }
 }
 
@@ -1673,6 +1697,23 @@ pub(super) const REMOVING: &str = ".cerberus-removing-";
 
 /// Half-downloaded files nobody came back for in two weeks (a pause before a
 /// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
+/// What a first install cut short left beside the installs: its half-unpacked
+/// folder (`<id>.cerberus-part`) and its extraction folder (`.staging-<id>`).
+/// Gone at start, so the space comes back; nothing else is touched.
+pub fn sweep_unfinished_installs(folders: &Folders) {
+    for root in [folders.installs(), folders.default_installs.clone()] {
+        let Ok(entries) = fs::read_dir(&root) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // (A `.cerberus-old` stays: after a crash mid-swap it can be the only copy.)
+            let leftover = name.ends_with(".cerberus-part") || name.starts_with(".staging-");
+            if leftover && entry.file_type().is_ok_and(|t| t.is_dir()) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+}
+
 pub fn sweep_stale_downloads(folders: &Folders) {
     let two_weeks = std::time::Duration::from_secs(14 * 24 * 3600);
     let mut pending = vec![folders.downloads.clone()];
@@ -1692,9 +1733,6 @@ pub fn sweep_stale_downloads(folders: &Folders) {
     }
 }
 
-/// Copies a file under a temporary name and renames it when complete: a copy
-/// cut short (Cerberus closed, the disk full) never sits under the real name,
-/// where the game would take it for the whole thing.
 /// The files a disc sheet points at, beside it: a `.cue`'s `FILE` tracks, a
 /// `.gdi`'s tracks, a `.m3u`'s discs (and their own tracks). Other files: none.
 pub(crate) fn sheet_files(sheet: &Path) -> Vec<PathBuf> {
@@ -1753,6 +1791,9 @@ fn copy_sheet_files(sheet: &Path, into: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Copies a file under a temporary name and renames it when complete: a copy
+/// cut short (Cerberus closed, the disk full) never sits under the real name,
+/// where the game would take it for the whole thing.
 pub(crate) fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut partial = to.as_os_str().to_owned();
     partial.push(".part");
@@ -2466,6 +2507,20 @@ Content-Length: {}
         fs::write(dir.path().join("x.bin"), [0u8; 10]).unwrap();
         fs::write(dir.path().join("a").join("b").join("y.bin"), [0u8; 5]).unwrap();
         assert_eq!(tree_size(dir.path()), 15);
+    }
+
+    #[test]
+    fn leftovers_of_a_first_install_cut_short_go_at_start() {
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        let installs = folders.installs();
+        for d in ["game.cerberus-part/sub", ".staging-game/x", "game2"] {
+            fs::create_dir_all(installs.join(d)).unwrap();
+        }
+        sweep_unfinished_installs(&folders);
+        assert!(!installs.join("game.cerberus-part").exists());
+        assert!(!installs.join(".staging-game").exists());
+        assert!(installs.join("game2").exists(), "an install is left alone");
     }
 
     #[test]
