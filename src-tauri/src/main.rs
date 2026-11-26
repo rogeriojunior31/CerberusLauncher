@@ -1706,15 +1706,12 @@ async fn list_games(
         };
         game.next_step = recomp::next_step(game, found);
     }
-    games.extend(store_games(&app, &http).await);
-    gamepass::drop_owned_elsewhere(&mut games);
-    games.sort_by_key(|game| game.name.to_lowercase());
-    // Pictures over TLS only: the window's CSP doesn't load http ones.
-    for game in &mut games {
-        for url in [&mut game.cover_url, &mut game.hero_url].into_iter().flatten() {
-            *url = net::secure(url);
-        }
-    }
+    let stores = store_games(&app, &http).await;
+    // Steam counts its games' time on every PC; that beats what Cerberus saw here.
+    let steam_id = settings::load(&app.state::<DataDir>().0).steam_id;
+    let data_dir = app.state::<DataDir>().0.clone();
+    let steam_time = tauri::async_runtime::spawn_blocking(move || achievements::steam_playtimes(&data_dir, steam_id.as_deref())).await.unwrap_or_default();
+    let mut games = assemble(&app.state::<DataDir>().0, games, stores, &steam_time);
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
     // A cover picked for a game added by hand, kept by full path: after the data
@@ -1728,24 +1725,6 @@ async fn list_games(
     // The player's own pictures win over every other art.
     let custom = app.state::<art_custom::CustomArt>();
     games.iter_mut().for_each(|game| custom.apply(game));
-    store_time::apply(&app.state::<DataDir>().0, &mut games);
-    // Steam counts its games' time on every PC; that beats what Cerberus saw here.
-    let steam_id = settings::load(&app.state::<DataDir>().0).steam_id;
-    let data_dir = app.state::<DataDir>().0.clone();
-    let steam_time = tauri::async_runtime::spawn_blocking(move || achievements::steam_playtimes(&data_dir, steam_id.as_deref())).await.unwrap_or_default();
-    for game in games.iter_mut() {
-        let Source::Steam { app_id } = &game.source else { continue };
-        if let Some((secs, last)) = steam_time.get(app_id) {
-            game.playtime_secs = game.playtime_secs.max(*secs);
-            game.last_played = match (game.last_played, *last) {
-                (Some(a), Some(b)) => Some(a.max(b)),
-                (a, b) => a.or(b),
-            };
-        }
-    }
-    // The Xbox and Epic accounts count their games' time too: kept in the
-    // achievements store, brought up to date in the background when due.
-    achievements::account_times(&app.state::<DataDir>().0, &mut games);
     {
         static SYNCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if !SYNCING.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -1759,14 +1738,45 @@ async fn list_games(
             });
         }
     }
-    let favorite = favorites::load(&app.state::<DataDir>().0);
-    games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
-    collections::apply(&app.state::<DataDir>().0, &mut games);
-    game_notes::apply(&app.state::<DataDir>().0, &mut games);
-    let paused = settings::load(&app.state::<DataDir>().0).paused_updates;
-    games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     art.fetch_later(http.inner().clone(), missing);
     Ok(games)
+}
+
+/// The library as the window gets it, from what was read: the games here
+/// (library file, recomps), the stores', and Steam's own play times. Sorted
+/// by name, pictures over TLS (the window's CSP loads no http ones), with the
+/// player's time, favorites, collections, notes and paused updates on each.
+fn assemble(data: &Path, mut games: Vec<Game>, stores: Vec<Game>, steam_time: &std::collections::HashMap<u32, (u64, Option<u64>)>) -> Vec<Game> {
+    games.extend(stores);
+    gamepass::drop_owned_elsewhere(&mut games);
+    games.sort_by_key(|game| game.name.to_lowercase());
+    for game in &mut games {
+        for url in [&mut game.cover_url, &mut game.hero_url].into_iter().flatten() {
+            *url = net::secure(url);
+        }
+    }
+    store_time::apply(data, &mut games);
+    // Steam counts its games' time on every PC; that beats what Cerberus saw here.
+    for game in games.iter_mut() {
+        let Source::Steam { app_id } = &game.source else { continue };
+        if let Some((secs, last)) = steam_time.get(app_id) {
+            game.playtime_secs = game.playtime_secs.max(*secs);
+            game.last_played = match (game.last_played, *last) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (a, b) => a.or(b),
+            };
+        }
+    }
+    // The Xbox and Epic accounts count their games' time too: kept in the
+    // achievements store, brought up to date in the background when due.
+    achievements::account_times(data, &mut games);
+    let favorite = favorites::load(data);
+    games.iter_mut().for_each(|game| game.favorite = favorite.contains(&game.id));
+    collections::apply(data, &mut games);
+    game_notes::apply(data, &mut games);
+    let paused = settings::load(data).paused_updates;
+    games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
+    games
 }
 
 /// The stores' games, as last listed: a heart or a page change doesn't read
@@ -4022,6 +4032,28 @@ fn main() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) { sessions::checkpoint(app); }
         });
+}
+
+#[cfg(test)]
+#[test]
+fn the_library_is_put_together_with_the_players_data_on_each_game() {
+    let data = tempfile::tempdir().unwrap();
+    let added = library::game_from_exe(Path::new(r"D:\Games\Zeta\zeta.exe"));
+    let mut steam = steam::not_installed(10, "alpha", None);
+    steam.cover_url = Some("http://cdn.example.com/a.jpg".into());
+    let other = steam::not_installed(20, "Beta", None);
+    // The player's own data, as their files hold it.
+    favorites::set(data.path(), &steam.id, true).unwrap();
+    let steam_time = std::collections::HashMap::from([(10u32, (3600u64, Some(1_700_000_000u64)))]);
+    let games = assemble(data.path(), vec![added.clone()], vec![steam.clone(), other], &steam_time);
+    let ids: Vec<&str> = games.iter().map(|g| g.id.as_str()).collect();
+    assert_eq!(ids, ["steam:10", "steam:20", added.id.as_str()], "by name, any case");
+    let unique: std::collections::HashSet<&str> = ids.iter().copied().collect();
+    assert_eq!(unique.len(), ids.len(), "each game once");
+    let alpha = &games[0];
+    assert!(alpha.favorite && !games[1].favorite);
+    assert_eq!(alpha.cover_url.as_deref(), Some("https://cdn.example.com/a.jpg"));
+    assert_eq!((alpha.playtime_secs, alpha.last_played), (3600, Some(1_700_000_000)), "Steam's own time");
 }
 
 #[cfg(test)]
