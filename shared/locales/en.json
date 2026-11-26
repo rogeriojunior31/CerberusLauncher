@@ -594,6 +594,7 @@
   "Essa pasta não pode ser esvaziada daqui.": "That folder can't be emptied from here.",
   "Essa pasta não tem {0}. Escolha a pasta do jogo{1}.": "This folder doesn't have {0}. Choose the game's folder{1}.",
   "Essa pasta não tem {0}. Escolha: {1}.": "This folder doesn't have {0}. Pick: {1}.",
+  "Essa pasta se mistura com a de {} ({}). Escolha o programa na pasta própria deste jogo.": "That folder overlaps {}'s ({}). Choose the program in this game's own folder.",
   "Essa pasta é sua: mova pelo Windows e use \"Já tenho instalado\" de novo.": "This folder is yours: move it in Windows and use \"I already have it installed\" again.",
   "Esse CD tem faixas de áudio, que uma ISO não guarda; use o jogo em BIN/CUE.": "This CD has audio tracks, which an ISO doesn't keep; use the game as BIN/CUE.",
   "Esse CD tem setores Mode 2 Form 2 (vídeos e áudio XA do PlayStation), que uma ISO não guarda; use o jogo em BIN/CUE.": "This CD has Mode 2 Form 2 sectors (PlayStation videos and XA audio), which an ISO doesn't keep; use the game as BIN/CUE.",

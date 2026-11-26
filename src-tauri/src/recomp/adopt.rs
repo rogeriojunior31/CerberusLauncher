@@ -135,6 +135,13 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// The release's own folder: a program in `bin\` (or a little deeper) belongs to
+/// the folder above that holds the release's `recomplauncher.json`, where its
+/// saves and settings are looked for.
+fn release_root(dir: &Path) -> PathBuf {
+    dir.ancestors().take(4).find(|d| d.join("recomplauncher.json").is_file()).unwrap_or(dir).to_path_buf()
+}
+
 /// Puts a recomp the player installed into the library, linked to its catalog
 /// entry. Bringing the same program twice keeps one game; a game added by hand
 /// with that program becomes the recomp, keeping its play time.
@@ -144,8 +151,21 @@ pub fn adopt(library: &LocalLibrary, entry: &CatalogEntry, program: &Path) -> Re
     }
     let program = dunce::canonicalize(program).map_err(|e| format!("{}: {e}", program.display()))?;
     let dir = program.parent().ok_or(tr!("O programa precisa estar numa pasta."))?.to_path_buf();
+    let dir = release_root(&dir);
     let exe = program.to_string_lossy().into_owned();
     let install_dir = dir.to_string_lossy().into_owned();
+    // Inside (or around) another recomp's folder: uninstalling that one would
+    // take this one with it.
+    for other in library.games()? {
+        let Source::Recomp { recomp_id, .. } = &other.source else { continue };
+        if *recomp_id == entry.id || other.install_dir.is_empty() {
+            continue;
+        }
+        let theirs = dunce::canonicalize(&other.install_dir).unwrap_or_else(|_| PathBuf::from(&other.install_dir));
+        if dir.starts_with(&theirs) || theirs.starts_with(&dir) {
+            return Err(tr!("Essa pasta se mistura com a de {} ({}). Escolha o programa na pasta própria deste jogo.", other.name, other.install_dir));
+        }
+    }
 
     if let Some(existing) = installed_game(library, entry)? {
         let Source::Recomp { exe: current, .. } = &existing.source else {
@@ -275,6 +295,36 @@ mod tests {
         fs::write(theirs.join("Spaghettify.exe"), b"MZ").unwrap();
         let error = adopt(&library, &catalog()[0], &theirs.join("Spaghettify.exe")).unwrap_err();
         assert!(error.contains("já está instalado pelo Cerberus"));
+    }
+
+    #[test]
+    fn adopting_inside_another_install_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = LocalLibrary::load(&dir.path().join("data"));
+        let kart = dunce::canonicalize(dir.path()).unwrap().join("kart");
+        fs::create_dir_all(kart.join("extra")).unwrap();
+        fs::write(kart.join("Spaghettify.exe"), b"MZ").unwrap();
+        let mut installed = crate::library::game_from_exe(&kart.join("Spaghettify.exe"));
+        installed.id = library_id("spaghettikart");
+        installed.install_dir = kart.to_string_lossy().into();
+        installed.source = Source::Recomp { recomp_id: "spaghettikart".into(), version: "1.0".into(), exe: kart.join("Spaghettify.exe").to_string_lossy().into(), generation: 0 };
+        library.add(installed).unwrap();
+        // Another recomp's program inside the kart's folder.
+        let other = catalog().into_iter().find(|e| e.id != "spaghettikart").unwrap();
+        fs::write(kart.join("extra").join("game.exe"), b"MZ").unwrap();
+        let error = adopt(&library, &other, &kart.join("extra").join("game.exe")).unwrap_err();
+        assert!(error.contains("se mistura"), "{error}");
+        assert_eq!(library.games().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_program_in_bin_belongs_to_the_release_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let release = dir.path().join("game");
+        fs::create_dir_all(release.join("bin")).unwrap();
+        fs::write(release.join("recomplauncher.json"), b"{}").unwrap();
+        assert_eq!(release_root(&release.join("bin")), release);
+        assert_eq!(release_root(&dir.path().join("plain")), dir.path().join("plain"));
     }
 }
 
