@@ -384,6 +384,8 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
     }
     let app = app.clone();
     std::thread::spawn(move || {
+        // A build can take many minutes: the PC doesn't sleep in the middle of it.
+        let _awake = crate::awake::hold();
         let started = Instant::now();
         let outcome = loop {
             match child.try_wait() {

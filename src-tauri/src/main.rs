@@ -2426,7 +2426,10 @@ async fn set_game_copy(app: AppHandle, library: State<'_, LocalLibrary>, id: Str
     }
     let handle = app.clone();
     let game_id = id.clone();
-    let setup = tauri::async_runtime::spawn_blocking(move || recomp::use_game_copy(&handle.state::<LocalLibrary>(), &game_id, &copy));
+    let setup = tauri::async_runtime::spawn_blocking(move || {
+        let _awake = awake::hold();
+        recomp::use_game_copy(&handle.state::<LocalLibrary>(), &game_id, &copy)
+    });
     let result = setup.await.map_err(|e| e.to_string());
     done.store(true, std::sync::atomic::Ordering::SeqCst);
     copying::finish();

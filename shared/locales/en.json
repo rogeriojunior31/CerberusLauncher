@@ -661,10 +661,8 @@
   "Esse usuário não existe no RetroAchievements.": "That user doesn't exist on RetroAchievements.",
   "Esse valor não é um número.": "This value isn't a number.",
   "Esta lista": "This list",
-  "Esta semana": "This week",
   "Esta versão": "This version",
   "Este PC": "This PC",
-  "Este mês": "This month",
   "Este recomp precisa da sua cópia. O Cerberus procura o arquivo nas suas pastas de ROMs.": "This recomp needs your copy. Cerberus looks for the file in your ROM folders.",
   "Estratégia": "Strategy",
   "Estratégia em tempo real": "Real-time strategy",
@@ -1908,6 +1906,8 @@
   "Últimas conquistas": "Latest achievements",
   "Últimas duas semanas": "Last two weeks",
   "Últimas fotos": "Latest screenshots",
+  "Últimos 30 dias": "Last 30 days",
+  "Últimos 7 dias": "Last 7 days",
   "última sessão de {}": "last session of {}",
   "✓ Você já tem o jogo": "✓ You already have the game"
 }

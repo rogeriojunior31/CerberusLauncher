@@ -66,9 +66,21 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
                 month += s.seconds;
             }
             longest = longest.max(s.seconds);
-            let back = ((today - day_start(at)) / DAY).round() as i64;
-            if (0..14).contains(&back) {
-                days[13 - back as usize] += s.seconds;
+            // A session past midnight counts on each day it was played (23 h to 3 h: 1 h and 3 h).
+            let mut end = at;
+            let mut left = s.seconds as f64 * 1000.0;
+            while left > 0.0 {
+                let day = day_start(end - 1.0);
+                let here = (end - day).min(left);
+                let back = ((today - day) / DAY).round() as i64;
+                if back >= 14 {
+                    break;
+                }
+                if back >= 0 {
+                    days[13 - back as usize] += (here / 1000.0).round() as u64;
+                }
+                end -= here;
+                left -= here;
             }
         }
         let busiest = days.iter().copied().max().unwrap_or(0).max(60);
@@ -93,8 +105,8 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
             (Icon::Clock, tr!("Total").to_string(), // Zero with a last time: played, just under a minute (Steam counts whole minutes).
             if total == 0 && last.is_none() { tr!("Nunca jogado").to_string() } else { format::playtime(total) }),
             (Icon::Play, tr!("Última vez").to_string(), last.map(format::ago).unwrap_or_else(|| "—".into())),
-            (Icon::List, tr!("Esta semana").to_string(), if week == 0 { "—".into() } else { format::playtime(week) }),
-            (Icon::Layers, tr!("Este mês").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),
+            (Icon::List, tr!("Últimos 7 dias").to_string(), if week == 0 { "—".into() } else { format::playtime(week) }),
+            (Icon::Layers, tr!("Últimos 30 dias").to_string(), if month == 0 { "—".into() } else { format::playtime(month) }),
             (Icon::Gamepad, tr!("Sessões").to_string(), if list.is_empty() { "—".into() } else { list.len().to_string() }),
             (Icon::Star, tr!("Mais longa").to_string(), if longest == 0 { "—".into() } else { format::playtime(longest) }),
         ]
