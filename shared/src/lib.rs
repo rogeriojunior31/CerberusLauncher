@@ -1062,6 +1062,9 @@ pub enum Source {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecompEntry {
     pub id: String,
+    /// Other ids this recomp was known by: a game installed under one of them is this one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     /// Which game this is; recomps sharing it are versions of the same game.
     pub title: String,
     pub name: String,
@@ -1234,4 +1237,76 @@ pub struct PlayerNote {
     pub rating: u8,
     pub notes: String,
     pub favorite: bool,
+}
+
+
+impl RecompEntry {
+    /// Whether a recomp installed as `id` is this one (its id now, or one it had before).
+    pub fn is(&self, id: &str) -> bool {
+        self.id == id || self.aliases.iter().any(|a| a == id)
+    }
+
+    /// The release to update to, when it is newer than the one installed.
+    pub fn update_to(&self) -> Option<&Release> {
+        let installed = self.installed.as_deref()?;
+        self.latest.as_ref().filter(|latest| is_update(installed, &latest.version))
+    }
+}
+
+/// The numbers a version is made of: "v1.2.0-beta" is 1, 2, 0; "2026-11-25" is
+/// 2026, 11, 25. `None` when it has none (a commit, a name).
+/// With them, what follows ("R3", "beta"), lower case.
+fn version_numbers(text: &str) -> Option<(Vec<u64>, String)> {
+    let text = text.trim().trim_start_matches(|c: char| !c.is_ascii_digit());
+    let mut numbers = Vec::new();
+    let mut rest = "";
+    for (i, part) in text.split(['.', '-', '_']).enumerate() {
+        match part.parse::<u64>() {
+            Ok(n) => numbers.push(n),
+            Err(_) => {
+                // What's left from this part on (its place in the text).
+                let start = text.split(['.', '-', '_']).take(i).map(|p| p.len() + 1).sum::<usize>().min(text.len());
+                rest = &text[start..];
+                break;
+            }
+        }
+    }
+    (!numbers.is_empty()).then(|| (numbers, rest.to_lowercase()))
+}
+
+/// Whether `latest` is an update over `installed`: by their numbers when both
+/// have them (so the catalog being behind never offers an older version, and
+/// "v1.3" isn't an update over "1.3.0"); otherwise only when they differ.
+pub fn is_update(installed: &str, latest: &str) -> bool {
+    match (version_numbers(installed), version_numbers(latest)) {
+        (Some((mut have, have_rest)), Some((mut new, new_rest))) => {
+            let len = have.len().max(new.len());
+            have.resize(len, 0);
+            new.resize(len, 0);
+            // Same numbers: a different ending ("R3" to "R4", "beta" to none) is a new build.
+            new > have || (new == have && new_rest != have_rest)
+        }
+        _ => installed.trim() != latest.trim(),
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::is_update;
+
+    #[test]
+    fn updates_are_newer_versions_only() {
+        assert!(is_update("v1.2", "1.3.0"));
+        assert!(!is_update("v1.3", "1.3.0"), "the same version written two ways");
+        assert!(!is_update("v1.3", "v1.2"), "the catalog behind never offers an older one");
+        assert!(is_update("1.9", "1.10"));
+        assert!(is_update("2026-11-01", "2026-11-25"));
+        assert!(!is_update("2026-11-25", "2026-11-25"));
+        assert!(is_update("abc123", "def456"), "no numbers: different is all there is");
+        assert!(is_update("v0.1.39.6-R3", "v0.1.39.6-R4"));
+        assert!(is_update("1.0-beta", "1.0"));
+        assert!(!is_update("windows-v3.2.1", "windows-v3.2.1"));
+        assert!(!is_update("0.20.3", "0.20.0"));
+        assert!(!is_update("nightly", "nightly"));
+    }
 }

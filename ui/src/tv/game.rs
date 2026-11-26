@@ -106,10 +106,7 @@ pub fn GamePage(id: String) -> impl IntoView {
                         });
                     list.extend(original);
                 }
-                let update = e.as_ref().filter(|_| !g.external && !downloading).and_then(|e| {
-                    let newest = e.latest.as_ref()?;
-                    (e.installed.as_ref() != Some(&newest.version)).then(|| e.id.clone())
-                });
+                let update = e.as_ref().filter(|_| !g.external && !downloading).and_then(|e| e.update_to().map(|_| e.id.clone()));
                 if let Some(u) = update {
                     list.push(Act::Update(u));
                 }

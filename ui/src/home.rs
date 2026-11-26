@@ -56,7 +56,7 @@ fn game_feature(game: &Game, recomps: &[RecompEntry]) -> Feature {
         steam_app.map(|id| format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png"))
     });
     let entry = match &game.source {
-        Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id),
+        Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)),
         _ => None,
     };
     let (title, version) = crate::tiles::names_of(&game.name, entry);

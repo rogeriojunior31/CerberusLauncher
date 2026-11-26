@@ -109,8 +109,8 @@ fn has_update(game: &Game, library: Library) -> bool {
         let Some(Ok(entries)) = list else {
             return false;
         };
-        let entry = entries.iter().find(|e| e.id == *recomp_id);
-        entry.and_then(|e| e.latest.as_ref()).is_some_and(|latest| latest.version != *version)
+        let entry = entries.iter().find(|e| e.is(recomp_id));
+        entry.and_then(|e| e.latest.as_ref()).is_some_and(|latest| cerberus_shared::is_update(version, &latest.version))
     })
 }
 
@@ -147,7 +147,7 @@ pub fn game_names(game: &Game, library: Library) -> (String, Option<String>) {
     let Source::Recomp { recomp_id, .. } = &game.source else { return (game.name.clone(), None) };
     // Tracked: lists drawn before the catalog arrives show the game's name once it does.
     library.recomps.with(|r| {
-        let entry = r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == *recomp_id));
+        let entry = r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.is(recomp_id)));
         names_of(&game.name, entry)
     })
 }
@@ -231,10 +231,7 @@ impl Tone {
 }
 
 pub fn recomp_tile(entry: &RecompEntry) -> TileInfo {
-    let update = match (&entry.installed, &entry.latest) {
-        (Some(have), Some(newest)) => *have != newest.version,
-        _ => false,
-    };
+    let update = entry.update_to().is_some();
     let (badge, tone) = if update {
         (Some(tr!("Atualização").to_string()), Tone::Accent)
     } else if entry.installed.is_some() {
@@ -442,7 +439,7 @@ fn step_hint(game: &Game, library: Library) -> Option<String> {
         cerberus_shared::NextStep::ChooseCopy { found: None } => {
             let Source::Recomp { recomp_id, .. } = &game.source else { return None };
             let needs = library.recomps.with_untracked(|r| {
-                r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.id == *recomp_id).map(|e| e.needs.clone()))
+                r.as_ref().and_then(|r| r.as_ref().ok()).and_then(|all| all.iter().find(|e| e.is(recomp_id)).map(|e| e.needs.clone()))
             });
             Some(match needs.filter(|n| !n.is_empty()) {
                 Some(needs) => tr!("{} Abra o jogo para escolher onde ela está.", needs),

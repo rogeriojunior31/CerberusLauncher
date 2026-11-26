@@ -1243,6 +1243,7 @@ fn to_entry(entry: &CatalogEntry, installed: &[(String, String)], owned: &HashMa
     let parts = if parts.len() >= 2 { parts } else { Vec::new() };
     let entry = entry.clone();
     RecompEntry {
+        aliases: entry.aliases.clone(),
         parts,
         system_needs,
         system_problem,

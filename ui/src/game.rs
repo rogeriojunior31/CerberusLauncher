@@ -417,10 +417,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
         if let Some(game) = game.clone() {
             let running = library.running.with(|all| all.contains(&game.id));
             // Installed outside Cerberus: its updates are the player's.
-            let update = entry.as_ref().filter(|_| !game.external).and_then(|e| {
-                let newest = e.latest.as_ref()?;
-                (e.installed.as_ref() != Some(&newest.version)).then(|| newest.version.clone())
-            });
+            let update = entry.as_ref().filter(|_| !game.external).and_then(|e| e.update_to()).map(|newest| newest.version.clone());
             let update_button = update.zip(recomp_id.clone()).map(|(version, rid)| {
                 view! {
                     // Secondary to Play: a small note after it, not a second big button before it.

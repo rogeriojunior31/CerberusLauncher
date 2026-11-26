@@ -755,7 +755,7 @@ pub fn Downloads() -> impl IntoView {
         let games = library_games(library);
         entries.with(|all| {
             all.iter()
-                .filter(|e| e.installed.is_some() && e.latest.as_ref().is_some_and(|l| Some(&l.version) != e.installed.as_ref()))
+                .filter(|e| e.update_to().is_some())
                 .filter(|e| !games.iter().any(|g| g.external && matches!(&g.source, Source::Recomp { recomp_id, .. } if *recomp_id == e.id)))
                 .filter(|e| !library.progress.with(|p| p.contains_key(&e.id)))
                 .cloned()

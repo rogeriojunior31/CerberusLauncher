@@ -164,7 +164,7 @@ pub fn resolve(rom: &RomView, players: &[ClassicPlayer], games: &[cerberus_share
     let recomp = recomp_game
         .as_ref()
         .and_then(|g| match &g.source {
-            cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).cloned(),
+            cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)).cloned(),
             _ => None,
         })
         .or_else(|| recomp_of(recomps, rom).cloned());
@@ -589,7 +589,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
             let series = title.split([':', '-']).next().unwrap_or(&title).split_whitespace().take(2).collect::<Vec<_>>().join(" ").to_lowercase();
             // By the recomp's name or by its game's ("MHGU Recomp" is Monster Hunter Generations Ultimate).
             let game_of = |g: &cerberus_shared::Game| match &g.source {
-                cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).map(|e| e.game.clone()).unwrap_or_default(),
+                cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)).map(|e| e.game.clone()).unwrap_or_default(),
                 _ => String::new(),
             };
             let related: Vec<(cerberus_shared::Game, String)> = games.iter()
@@ -603,7 +603,7 @@ pub fn ClassicPage(path: String) -> impl IntoView {
                     let id = g.id.clone();
                     let ready = g.next_step == cerberus_shared::NextStep::Play;
                     let console = match &g.source {
-                        cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.id == *recomp_id).map(|e| e.console.clone()).unwrap_or_default(),
+                        cerberus_shared::Source::Recomp { recomp_id, .. } => recomps.iter().find(|e| e.is(recomp_id)).map(|e| e.console.clone()).unwrap_or_default(),
                         _ => String::new(),
                     };
                     let text = if ready {

@@ -179,8 +179,8 @@ pub fn DownloadsPage() -> impl IntoView {
             if g.external || busy.contains_key(recomp_id) {
                 continue;
             }
-            let Some(entry) = entries.iter().find(|e| &e.id == recomp_id) else { continue };
-            let Some(latest) = entry.latest.as_ref().filter(|l| &l.version != version) else { continue };
+            let Some(entry) = entries.iter().find(|e| e.is(recomp_id)) else { continue };
+            let Some(latest) = entry.latest.as_ref().filter(|l| cerberus_shared::is_update(version, &l.version)) else { continue };
             let row = (g.clone(), entry.clone(), version.clone(), latest.clone());
             if g.updates_paused { held.push(row) } else { ready.push(row) }
         }
