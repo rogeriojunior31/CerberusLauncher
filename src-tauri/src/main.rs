@@ -2122,14 +2122,8 @@ fn owned_not_installed(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<
     let (Some(key), Some(id)) = (chosen.steam_key, chosen.steam_id) else { return };
     let file = data.join("cache").join("achievements").join("steam-api").join(format!("owned-{id}.json"));
     let owned: Vec<achievements::steam_api::Owned> = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let installed: std::collections::HashSet<String> = games.iter().map(|g| g.id.clone()).collect();
     let covers = steam::root().map(|r| steam::cover_cache_dir(&r));
-    for o in &owned {
-        let game_id = format!("steam:{}", o.app);
-        if !installed.contains(&game_id) && !o.name.trim().is_empty() {
-            games.push(steam::not_installed(o.app, &o.name, covers.as_deref()));
-        }
-    }
+    add_owned(games, &owned, covers.as_deref());
     let old = fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|age| age > Duration::from_secs(3600));
     static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if old && !ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -2143,6 +2137,19 @@ fn owned_not_installed(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<
             }
             ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
         });
+    }
+}
+
+/// The account's Steam games this PC hasn't installed, added once each: one
+/// installed already isn't shown again as not installed.
+fn add_owned(games: &mut Vec<Game>, owned: &[achievements::steam_api::Owned], covers: Option<&Path>) {
+    let installed: std::collections::HashSet<String> = games.iter().map(|g| g.id.clone()).collect();
+    let mut added = std::collections::HashSet::new();
+    for o in owned {
+        let game_id = format!("steam:{}", o.app);
+        if !installed.contains(&game_id) && !o.name.trim().is_empty() && added.insert(game_id) {
+            games.push(steam::not_installed(o.app, &o.name, covers));
+        }
     }
 }
 
@@ -3995,6 +4002,18 @@ fn a_stores_own_program_is_known_as_its_game() {
     assert!(store_copy_of(Path::new(r"D:\Steam\steamapps\common\Hades II\Hades2.exe"), &stores).is_none(), "a folder with a longer name");
     steam.install_dir.clear();
     assert!(store_copy_of(Path::new(r"D:\Games\Hades.exe"), &[steam]).is_none(), "owned, not installed");
+}
+
+#[cfg(test)]
+#[test]
+fn an_owned_steam_game_installed_here_isnt_added_again() {
+    let one = |app: u32, name: &str| achievements::steam_api::Owned { app, name: name.into(), minutes: 0, last_played: 0, stats: false };
+    let owned = vec![one(1, "Installed"), one(2, "Not here"), one(2, "Not here"), one(3, " ")];
+    let mut games = vec![steam::not_installed(1, "Installed", None)];
+    games[0].install_dir = r"D:\Steam\common\Installed".into();
+    add_owned(&mut games, &owned, None);
+    let ids: Vec<&str> = games.iter().map(|g| g.id.as_str()).collect();
+    assert_eq!(ids, ["steam:1", "steam:2"], "no copy of the installed one, one of a repeated one, none without a name");
 }
 
 #[cfg(test)]

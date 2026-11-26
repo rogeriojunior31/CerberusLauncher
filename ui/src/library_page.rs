@@ -754,3 +754,37 @@ pub fn LibraryPage() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn game(id: &str, source: serde_json::Value, extra: serde_json::Value) -> Game {
+        let mut value = serde_json::json!({"id": id, "name": id, "source": source, "install_dir": ""});
+        if let (Some(v), Some(e)) = (value.as_object_mut(), extra.as_object()) {
+            v.extend(e.clone());
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn each_tab_and_store_chip_keeps_its_games() {
+        let steam = game("steam:1", serde_json::json!({"kind": "steam", "app_id": 1}), serde_json::json!({"favorite": true, "collections": ["RPG"]}));
+        let added = game("local:x", serde_json::json!({"kind": "local", "exe": "C:/x.exe"}), serde_json::json!({}));
+        let hidden = game("local:h", serde_json::json!({"kind": "local", "exe": "C:/h.exe"}), serde_json::json!({"hidden": true}));
+        let recomp = game("recomp:z", serde_json::json!({"kind": "recomp", "recomp_id": "z", "version": "1", "exe": "C:/z.exe"}), serde_json::json!({}));
+        let release = game("recomp:r", serde_json::json!({"kind": "recomp", "recomp_id": "r", "version": "1", "exe": "C:/r.exe"}), serde_json::json!({"part_ids": ["recomp:r#a"]}));
+        let all = [&steam, &added, &hidden, &recomp, &release];
+        let ids = |c: Category, shelf: Option<&str>| all.iter().filter(|g| c.keeps(g, shelf)).map(|g| g.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids(Category::All, None), ["steam:1", "local:x", "recomp:z"], "hidden and a multi-game release stay out");
+        assert_eq!(ids(Category::Hidden, None), ["local:h"]);
+        assert_eq!(ids(Category::Favorites, None), ["steam:1"]);
+        assert_eq!(ids(Category::Collections, Some("RPG")), ["steam:1"]);
+        assert_eq!(ids(Category::Recomps, None), ["recomp:z"]);
+        assert_eq!(ids(Category::Pc, None), ["steam:1", "local:x"]);
+        assert!(ids(Category::Classics, None).is_empty());
+        assert!(Filter::Steam.keeps(&steam) && !Filter::Steam.keeps(&added));
+        assert!(Filter::Added.keeps(&added) && !Filter::Added.keeps(&steam));
+        assert!(Filter::All.keeps(&recomp));
+    }
+}
