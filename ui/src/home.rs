@@ -97,7 +97,8 @@ fn recomp_feature(entry: &RecompEntry) -> Feature {
 /// Up to five: the player's own games played lately (up to four), then one
 /// recomp they don't have yet, so the top of Home is their collection.
 fn features(games: &[Game], recomps: &[RecompEntry]) -> Vec<Feature> {
-    let mut played: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some()).collect();
+    // As on the shelves: nothing the player hid, and a release with several games by its games.
+    let mut played: Vec<&Game> = games.iter().filter(|g| g.last_played.is_some() && !g.hidden && g.part_ids.is_empty()).collect();
     played.sort_by_key(|g| std::cmp::Reverse(g.last_played));
     let with_art = played.into_iter().filter(|g| !hero_sources(g).is_empty());
     let mut list: Vec<Feature> = with_art.take(4).map(|g| game_feature(g, recomps)).collect();

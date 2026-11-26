@@ -991,7 +991,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 
 ### Lote G — Funciona como promete (por área)
 
-- Biblioteca: ~~B F3~~ (25/11/2026: `library.json` ilegível tira só os jogos dele; as lojas continuam e a Biblioteca explica), F7–F11, F13–F20.
+- Biblioteca: ~~B F3~~ (25/11/2026: `library.json` ilegível tira só os jogos dele; as lojas continuam e a Biblioteca explica), ~~B F8, F9, F10~~ (26/11/2026: ocultos fora do "Adicionar todos à Steam" e do destaque do Início; anotação gravada 800 ms depois de digitar e mantida quando a página é refeita, conferido no app), F7, F11, F13–F20.
 - Clássicos: ~~C F5~~ (25/11/2026: `.zip` pelo cartucho dentro, `.7z` pela pasta), F6, F9–F17, F19–F22, F24–F26.
 - Durante o jogo e app: ~~J F3~~ (25/11/2026: fechar a janela de vez encerra o app, com as janelas escondidas do menu e do aviso), F6–F9, F11–F13, F15–F24.
 - Big Picture: ~~BP F2, BP F3~~ (25/11/2026: botões só contam depois de vistos soltos, Menu precisa ser solto depois de sair, F11 sem repetição, controle só com o Cerberus em foco; o controle real ainda precisa ser conferido à mão), ~~BP F4~~ (25/11/2026: chip Buscar na Biblioteca com busca própria e sem acento; LT/RT (Home/End) saltam de letra em A a Z com a letra grande, ou uma página; conferido no app), F6, F7, F9–F19.

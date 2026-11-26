@@ -3306,6 +3306,9 @@ async fn add_all_to_steam(app: AppHandle, http: State<'_, reqwest::Client>) -> R
     }
     let mut games = app.state::<LocalLibrary>().games()?;
     games.extend(epic::installed_games());
+    // Hidden is the player's choice, kept apart from the library: applied here,
+    // or every hidden game would go to Steam.
+    collections::apply(&app.state::<DataDir>().0, &mut games);
     let already = |id: &str| configs.iter().any(|c| steam_shortcuts::load(c).is_ok_and(|list| steam_shortcuts::contains(&list, id)));
     let mut added = 0;
     for game in games {

@@ -59,10 +59,20 @@ pub fn NoteCardFor(id: String, status: Option<GameStatus>, rating: u8, notes: St
     let saved_notes = StoredValue::new(notes.clone());
     let notes = RwSignal::new(notes);
     let hover = RwSignal::new(0u8);
+    let typing = StoredValue::new(None::<leptos::prelude::TimeoutHandle>);
     let save = move || {
         CHANGED.store(true, Ordering::Relaxed);
+        let (Some(game_id), Some(now_status), Some(now_rating), Some(now_notes)) = (id.try_get_value(), status.try_get_untracked(), rating.try_get_untracked(), notes.try_get_untracked()) else {
+            return;
+        };
+        // The game as listed carries it too: a page drawn again shows what was typed.
+        library.patch_game(&game_id, |g| {
+            g.status = now_status;
+            g.rating = now_rating;
+            g.notes = now_notes.clone();
+        });
         spawn_local(async move {
-            library.report(api::set_game_note(&id.get_value(), status.get_untracked(), rating.get_untracked(), notes.get_untracked()).await);
+            library.report(api::set_game_note(&game_id, now_status, now_rating, now_notes).await);
         });
     };
     let options = GameStatus::ALL
@@ -104,7 +114,26 @@ pub fn NoteCardFor(id: String, status: Option<GameStatus>, rating: u8, notes: St
             <label class="st-row"><span>{tr!("Situação")}</span>{chips}</label>
             <div class="stars" role="group" aria-label=tr!("Sua nota")>{stars}</div>
             <textarea class="input note-text" rows="3" placeholder=tr!("Anotações: onde parou, o que falta, dicas...") maxlength="4000"
-                prop:value=move || notes.get() on:input=move |e| notes.set(event_target_value(&e))
+                prop:value=move || notes.get() on:input=move |e| {
+                    notes.set(event_target_value(&e));
+                    // Kept 800 ms after the last key too, not only when leaving the box.
+                    if let Some(Some(old)) = typing.try_get_value() {
+                        old.clear();
+                    }
+                    let handle = leptos::prelude::set_timeout_with_handle(
+                        move || {
+                            if notes.try_get_untracked().is_some_and(|n| Some(n) != saved_notes.try_get_value()) {
+                                if let Some(n) = notes.try_get_untracked() {
+                                    let _ = saved_notes.try_set_value(n);
+                                }
+                                save();
+                            }
+                        },
+                        std::time::Duration::from_millis(800),
+                    )
+                    .ok();
+                    let _ = typing.try_set_value(handle);
+                }
                 on:blur=move |_| {
                     if notes.get_untracked() != saved_notes.get_value() {
                         saved_notes.set_value(notes.get_untracked());
