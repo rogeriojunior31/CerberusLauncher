@@ -11,6 +11,7 @@
 
 use cerberus_shared::tk;
 use cerberus_shared::tr;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -43,7 +44,7 @@ const NOT_SAVE_DIRS: &[&str] = &[
     "screenshots", "texture_packs", "textures", "packs", "temp", "assets", "yamls", "meta",
 ];
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Manifest {
     places: Vec<String>,
     created: u64,
@@ -319,7 +320,58 @@ pub fn newest_with_fingerprint(dir: &Path) -> Option<(Backup, String)> {
     Some((newest, manifest.fingerprint))
 }
 
+/// What each backup's manifest says, by file, size and date. A backup is
+/// written once under a name of its own and never changed, so its manifest is
+/// read once: listing a cloud folder of 20 copies on every Play doesn't open
+/// (and, with OneDrive's "free up space", download) all 20 again. Kept on this
+/// PC only, never in the shared folder.
+type ManifestKey = (PathBuf, u64, u64);
+static MANIFESTS: std::sync::Mutex<Option<HashMap<ManifestKey, Manifest>>> = std::sync::Mutex::new(None);
+static MANIFEST_FILE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// Where the manifests already read are kept between runs.
+pub fn keep_manifests_in(file: PathBuf) {
+    *MANIFEST_FILE.lock().unwrap_or_else(|p| p.into_inner()) = Some(file);
+}
+
+#[cfg(test)]
+thread_local! {
+    static OPENED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn read_manifest(path: &Path) -> Result<Manifest, String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let key = (path.to_path_buf(), meta.len(), modified);
+    let file = MANIFEST_FILE.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    {
+        let mut known = MANIFESTS.lock().unwrap_or_else(|p| p.into_inner());
+        let known = known.get_or_insert_with(|| {
+            let kept: Vec<(ManifestKey, Manifest)> = file.as_deref().and_then(|f| fs::read(f).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+            kept.into_iter().collect()
+        });
+        if let Some(manifest) = known.get(&key) {
+            return Ok(manifest.clone());
+        }
+    }
+    let manifest = read_manifest_from_zip(path)?;
+    let mut known = MANIFESTS.lock().unwrap_or_else(|p| p.into_inner());
+    let known = known.get_or_insert_with(HashMap::new);
+    // Backups that are gone leave the index too.
+    known.retain(|(p, _, _), _| p.exists());
+    known.insert(key, manifest.clone());
+    if let Some(file) = file {
+        let list: Vec<(&ManifestKey, &Manifest)> = known.iter().collect();
+        if let Ok(bytes) = serde_json::to_vec(&list) {
+            let _ = crate::state_file::write_bytes(&file, &bytes);
+        }
+    }
+    Ok(manifest)
+}
+
+fn read_manifest_from_zip(path: &Path) -> Result<Manifest, String> {
+    #[cfg(test)]
+    OPENED.with(|n| n.set(n.get() + 1));
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     manifest_in(&mut zip)
@@ -591,6 +643,24 @@ mod tests {
 
     fn install_saves() -> Vec<String> {
         vec!["{install}/Save".to_string()]
+    }
+
+    #[test]
+    fn each_backup_is_opened_once_to_be_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        let backups = dir.path().join("backups");
+        for n in 0..5 {
+            write(&install.join("Save/slot.sav"), &format!("progress {n}"));
+            backup(&backups, &install_saves(), &install, "Manual", None).unwrap();
+        }
+        let before = OPENED.with(std::cell::Cell::get);
+        assert_eq!(list(&backups).len(), 5);
+        assert!(newest_with_fingerprint(&backups).is_some());
+        let first = OPENED.with(std::cell::Cell::get) - before;
+        assert_eq!(list(&backups).len(), 5);
+        assert!(newest_with_fingerprint(&backups).is_some());
+        assert_eq!(OPENED.with(std::cell::Cell::get) - before, first, "a second listing opens no zip");
     }
 
     #[test]

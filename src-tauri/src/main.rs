@@ -3474,6 +3474,7 @@ fn main() {
             recomp::sweep_stale_downloads(&folders);
             recomp::sweep_unfinished_installs(&folders);
             recomp::sweep_save_leftovers(&folders);
+            recomp::saves::keep_manifests_in(data_dir.join("cache").join("backup-manifests.json"));
             app.manage(folders);
             app.manage(recomp::Installing::default());
             awake::start(app.handle().clone());
