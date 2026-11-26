@@ -618,6 +618,23 @@ pub fn match_catalog(entries: &[CatalogEntry], roms: &[RomFile]) -> HashMap<Stri
     owned
 }
 
+/// Classics that moved (a ROM folder moved to another drive, a drive with a
+/// new letter): gone from one path and found at another with the same file
+/// name and console, when exactly one matches. Old path, new path.
+pub fn moved(before: &[RomFile], now: &[RomFile]) -> Vec<(PathBuf, PathBuf)> {
+    let gone: Vec<&RomFile> = before.iter().filter(|b| !now.iter().any(|n| n.path == b.path)).collect();
+    let new: Vec<&RomFile> = now.iter().filter(|n| !before.iter().any(|b| b.path == n.path)).collect();
+    gone.iter()
+        .filter_map(|old| {
+            let same = |r: &&&RomFile| r.path.file_name() == old.path.file_name() && r.system == old.system;
+            let mut matches = new.iter().filter(same);
+            let one = matches.next()?;
+            // Two candidates: not sure which it is, so nothing moves.
+            matches.next().is_none().then(|| (old.path.clone(), one.path.clone()))
+        })
+        .collect()
+}
+
 /// The classics found last time in folders that can't be read now (an external
 /// drive unplugged, a network share away): kept, so opening Cerberus without
 /// the drive doesn't wipe them; they come back up to date once it's there.
@@ -653,6 +670,15 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rom_folder_moved_to_another_drive_is_followed() {
+        let rom = |p: &str, system: &str| RomFile { path: PathBuf::from(p), system: system.into(), title: "x".into(), region: String::new(), n64: None, discs: Vec::new() };
+        let before = vec![rom(r"D:\ROMS\Crash (USA).cue", "ps1"), rom(r"D:\ROMS\Twice.sfc", "snes")];
+        let now = vec![rom(r"E:\ROMS\Crash (USA).cue", "ps1"), rom(r"E:\A\Twice.sfc", "snes"), rom(r"E:\B\Twice.sfc", "snes")];
+        // Crash followed; "Twice" has two candidates, so it stays put.
+        assert_eq!(moved(&before, &now), vec![(PathBuf::from(r"D:\ROMS\Crash (USA).cue"), PathBuf::from(r"E:\ROMS\Crash (USA).cue"))]);
+    }
 
     #[test]
     fn a_markdown_file_is_not_a_mega_drive_game() {

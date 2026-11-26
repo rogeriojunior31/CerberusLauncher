@@ -524,6 +524,22 @@ pub fn played(data: &Path) -> std::collections::HashMap<String, Played> {
     crate::state_file::load_or_default(&data.join("classics.json"))
 }
 
+/// A classic's file moved: its play time, sessions, note and favorite follow it.
+pub fn follow_moved(data: &Path, old: &Path, new: &Path) {
+    let (old, new) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
+    let _ = crate::state_file::update(&data.join("classics.json"), |all: &mut std::collections::HashMap<String, Played>| {
+        if let Some(time) = all.remove(&old) {
+            let entry = all.entry(new.clone()).or_default();
+            entry.seconds += time.seconds;
+            entry.last = entry.last.max(time.last);
+        }
+    });
+    let (old_id, new_id) = (format!("classic:{old}"), format!("classic:{new}"));
+    crate::play_log::rename(data, &old_id, &new_id);
+    crate::game_notes::rename(data, &old_id, &new_id);
+    crate::favorites::rename(data, &old_id, &new_id);
+}
+
 /// Adds a session; two classics closing at once both count, and a file that
 /// can't be read is never replaced by this one session.
 pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), String> {
@@ -634,6 +650,20 @@ mod tests {
         fs::write(by_core.join("FF7 (USA).srm"), b"newer").unwrap();
         assert!(carry_disc_saves(&exe, Path::new(r"D:\ps1\FF7 (USA) (Disc 1).cue"), Path::new(r"C:\x\FF7 (USA).m3u")).is_empty());
         assert_eq!(fs::read(by_core.join("FF7 (USA).srm")).unwrap(), b"newer");
+    }
+
+    #[test]
+    fn a_moved_classic_keeps_its_time_sessions_and_note() {
+        let data = tempfile::tempdir().unwrap();
+        let (old, new) = (Path::new(r"D:\ROMS\Crash.cue"), Path::new(r"E:\ROMS\Crash.cue"));
+        add_played(data.path(), &old.to_string_lossy(), 600, 100).unwrap();
+        crate::play_log::record(data.path(), &format!("classic:{}", old.display()), 600, 100);
+        let note = crate::game_notes::Note { rating: 4, ..Default::default() };
+        crate::game_notes::set(data.path(), &format!("classic:{}", old.display()), note).unwrap();
+        follow_moved(data.path(), old, new);
+        assert_eq!(played(data.path())[&new.to_string_lossy().into_owned()].seconds, 600);
+        assert_eq!(crate::play_log::of_game(data.path(), &format!("classic:{}", new.display())).len(), 1);
+        assert_eq!(crate::game_notes::load(data.path())[&format!("classic:{}", new.display())].rating, 4);
     }
 
     #[test]

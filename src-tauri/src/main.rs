@@ -361,7 +361,12 @@ async fn rescan_roms(app: &AppHandle) {
         let found = roms::scan_cached(&dirs, &mut cache);
         roms::save_cache(&cache_file, &cache);
         // A drive unplugged now doesn't take its classics off the list.
-        roms::keep_unreachable(found, &before, &dirs)
+        let found = roms::keep_unreachable(found, &before, &dirs);
+        // One that moved (a folder to another drive) keeps its time, sessions and note.
+        for (old, new) in roms::moved(&before, &found) {
+            emulation::follow_moved(&data, &old, &new);
+        }
+        found
     });
     // A scan that fell over keeps the list from before, instead of an empty one.
     let Ok(found) = scan.await else {

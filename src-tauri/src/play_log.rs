@@ -31,6 +31,26 @@ struct Open {
     seconds: u64,
 }
 
+/// A game's sessions under another id (a classic whose file moved).
+pub fn rename(data_dir: &Path, old: &str, new: &str) {
+    let _guard = WRITE.lock().unwrap_or_else(|p| p.into_inner());
+    let all: Vec<PlaySession> = crate::state_file::json_lines(&file(data_dir));
+    if !all.iter().any(|s| s.game_id == old) {
+        return;
+    }
+    let mut text = String::new();
+    for mut s in all {
+        if s.game_id == old {
+            s.game_id = new.to_string();
+        }
+        if let Ok(line) = serde_json::to_string(&s) {
+            text.push_str(&line);
+            text.push('\n');
+        }
+    }
+    let _ = crate::state_file::write_bytes(&file(data_dir), text.as_bytes());
+}
+
 /// Notes how long a session that is still going has lasted.
 pub fn still_going(data_dir: &Path, game_id: &str, seconds: u64, now: u64) {
     let _ = crate::state_file::update(&open_file(data_dir), |open: &mut std::collections::HashMap<String, Open>| {

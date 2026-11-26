@@ -13,6 +13,15 @@ pub fn load(data: &Path) -> BTreeSet<String> {
     crate::state_file::load_or_default(&file(data))
 }
 
+/// A favorite under another id (a classic whose file moved).
+pub fn rename(data: &Path, old: &str, new: &str) {
+    let _ = crate::state_file::update(&file(data), |all: &mut BTreeSet<String>| {
+        if all.remove(old) {
+            all.insert(new.to_string());
+        }
+    });
+}
+
 pub fn set(data: &Path, id: &str, on: bool) -> Result<(), String> {
     crate::state_file::update(&file(data), |all: &mut BTreeSet<String>| {
         if on {
