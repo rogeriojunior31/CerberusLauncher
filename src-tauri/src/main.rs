@@ -1123,7 +1123,7 @@ fn retro_account(app: &AppHandle) -> Option<(String, String)> {
 #[tauri::command]
 async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>, online: Option<bool>) -> Result<cerberus_shared::AchievementsHub, String> {
     let data = app.state::<DataDir>().0.clone();
-    Ok(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app), online.unwrap_or(true)).await)
+    Ok(net::secure_all(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app), online.unwrap_or(true)).await))
 }
 
 /// Opens a page about a Steam game: the store, SteamDB, PCGamingWiki, or the
@@ -1289,7 +1289,7 @@ fn open_news(app: AppHandle, url: String) -> Result<(), String> {
 async fn game_achievements(app: AppHandle, http: State<'_, reqwest::Client>, source: String, key: String) -> Result<cerberus_shared::GameAchievements, String> {
     let source = cerberus_shared::AchievementSource::from_code(&source).ok_or(tr!("Jogo inválido."))?;
     let data = app.state::<DataDir>().0.clone();
-    achievements::game(&http, &data, source, &key, retro_account(&app), steam_api_account(&app)).await
+    achievements::game(&http, &data, source, &key, retro_account(&app), steam_api_account(&app)).await.map(net::secure_all)
 }
 
 /// The monitors plugged in.
@@ -1666,6 +1666,12 @@ async fn list_games(
     games.extend(store_games(&app, &http).await);
     gamepass::drop_owned_elsewhere(&mut games);
     games.sort_by_key(|game| game.name.to_lowercase());
+    // Pictures over TLS only: the window's CSP doesn't load http ones.
+    for game in &mut games {
+        for url in [&mut game.cover_url, &mut game.hero_url].into_iter().flatten() {
+            *url = net::secure(url);
+        }
+    }
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
     // The player's own pictures win over every other art.
@@ -3801,4 +3807,20 @@ fn days_are_named_as_on_the_calendar() {
     assert_eq!(day_of(0), "1970-01-01");
     assert_eq!(day_of(951_782_400), "2000-02-29");
     assert_eq!(day_of(1_795_392_000), "2026-11-23");
+}
+
+#[cfg(test)]
+#[test]
+fn windows_get_no_wildcard_or_remote_permissions_and_the_csp_stays_on() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for entry in fs::read_dir(dir.join("capabilities")).unwrap().flatten() {
+        let text = fs::read_to_string(entry.path()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(value.get("remote").is_none(), "{}: a capability for remote pages", entry.path().display());
+        let permissions = value["permissions"].as_array().cloned().unwrap_or_default();
+        assert!(!permissions.iter().any(|p| p.as_str().is_some_and(|p| p.contains('*'))), "{}: a wildcard permission", entry.path().display());
+    }
+    let conf: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("tauri.conf.json")).unwrap()).unwrap();
+    let csp = conf["app"]["security"]["csp"].as_str().unwrap_or_default();
+    assert!(csp.contains("default-src 'self'") && !csp.contains("'unsafe-eval'") && csp.contains("object-src 'none'"), "the CSP: {csp}");
 }

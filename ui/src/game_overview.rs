@@ -138,16 +138,38 @@ pub fn PlayCard(id: String, total: u64, last: Option<u64>, #[prop(optional)] tit
     }
 }
 
-/// Loads hls.js once (bundled with the app) and plays an HLS stream in `video`.
+/// Loads hls.js once (bundled with the app) and plays an HLS stream in `video`,
+/// through `vendor/hls-play.js` (no code built from text, so the page's CSP
+/// needs no 'unsafe-eval').
 fn play_hls(video: &web_sys::HtmlElement, url: &str) {
-    let script = js_sys::Function::new_with_args(
-        "video,url",
-        "const go=()=>{if(window.Hls&&Hls.isSupported()){if(video.__hls)video.__hls.destroy();const h=new Hls({capLevelToPlayerSize:true});h.loadSource(url);h.attachMedia(video);video.__hls=h;video.play().catch(()=>{});}else{video.src=url;video.play().catch(()=>{});}};\
-         if(window.Hls){go();return;}let s=document.querySelector('script[data-hls]');\
-         if(!s){s=document.createElement('script');s.src='vendor/hls.light.min.js';s.dataset.hls='1';document.head.appendChild(s);}\
-         s.addEventListener('load',go,{once:true});",
-    );
-    let _ = script.call2(&wasm_bindgen::JsValue::NULL, video, &url.into());
+    use wasm_bindgen::JsCast;
+    let Some(window) = web_sys::window() else { return };
+    let call = move |window: &web_sys::Window| {
+        if let Ok(f) = js_sys::Reflect::get(window, &"cerberusPlayHls".into()).and_then(|f| f.dyn_into::<js_sys::Function>()) {
+            let _ = f.call2(&wasm_bindgen::JsValue::NULL, video, &url.into());
+            return true;
+        }
+        false
+    };
+    if call(&window) {
+        return;
+    }
+    // First trailer: the helper comes in, then plays.
+    let Some(document) = window.document() else { return };
+    let Ok(script) = document.create_element("script") else { return };
+    let _ = script.set_attribute("src", "vendor/hls-play.js");
+    let (video, url) = (video.clone(), url.to_string());
+    let loaded = wasm_bindgen::closure::Closure::once_into_js(move || {
+        if let Some(window) = web_sys::window() {
+            if let Ok(f) = js_sys::Reflect::get(&window, &"cerberusPlayHls".into()).and_then(|f| f.dyn_into::<js_sys::Function>()) {
+                let _ = f.call2(&wasm_bindgen::JsValue::NULL, &video, &url.into());
+            }
+        }
+    });
+    let _ = script.add_event_listener_with_callback("load", loaded.unchecked_ref());
+    if let Some(head) = document.head() {
+        let _ = head.append_child(&script);
+    }
 }
 
 #[derive(Clone, PartialEq)]

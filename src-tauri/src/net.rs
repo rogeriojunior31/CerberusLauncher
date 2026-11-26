@@ -33,6 +33,30 @@ pub async fn read_limited(reply: Response, max: u64) -> Result<Vec<u8>, String> 
     Ok(body)
 }
 
+/// An address over TLS: some stores still hand out `http://` pictures (the
+/// Xbox's store-images), which the window's CSP doesn't load.
+pub fn secure(url: &str) -> String {
+    match url.strip_prefix("http://") {
+        Some(rest) => format!("https://{rest}"),
+        None => url.to_string(),
+    }
+}
+
+/// The same for every address in a value sent to the window.
+pub fn secure_all<T: serde::Serialize + serde::de::DeserializeOwned>(value: T) -> T {
+    fn walk(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::String(s) if s.starts_with("http://") => *s = secure(s),
+            serde_json::Value::Array(items) => items.iter_mut().for_each(walk),
+            serde_json::Value::Object(map) => map.values_mut().for_each(walk),
+            _ => {}
+        }
+    }
+    let Ok(mut json) = serde_json::to_value(&value) else { return value };
+    walk(&mut json);
+    serde_json::from_value(json).unwrap_or(value)
+}
+
 /// Follows redirects (up to 10) but never from https to plain http: a
 /// download (a recomp, a core) never comes in without TLS halfway.
 pub fn redirects() -> reqwest::redirect::Policy {
@@ -153,6 +177,17 @@ pub async fn send(request: RequestBuilder) -> Result<Response, Failed> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pictures_are_asked_for_over_tls() {
+        assert_eq!(secure("http://store-images.s-microsoft.com/a"), "https://store-images.s-microsoft.com/a");
+        assert_eq!(secure("https://x/a"), "https://x/a");
+        let nested = serde_json::json!({"art": ["http://a/1"], "inner": {"icon": "http://b/2", "name": "http is a word"}});
+        let out = secure_all(nested);
+        assert_eq!(out["art"][0], "https://a/1");
+        assert_eq!(out["inner"]["icon"], "https://b/2");
+        assert_eq!(out["inner"]["name"], "http is a word");
+    }
 
     fn serve(reply: String) -> String {
         use std::io::{BufRead, BufReader, Write};

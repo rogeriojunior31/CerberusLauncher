@@ -132,7 +132,7 @@ fn read_games(v: &Value) -> Vec<AchievementGame> {
             source: AchievementSource::Xbox,
             key: id.to_string(),
             name: t.get("name").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
-            art: t.get("displayImage").and_then(Value::as_str).map(|u| vec![u.to_string()]).unwrap_or_default(),
+            art: t.get("displayImage").and_then(Value::as_str).map(|u| vec![crate::net::secure(u)]).unwrap_or_default(),
             platform: if pc { "Xbox · PC".into() } else { "Xbox".into() },
             total,
             unlocked: if total > 0 { unlocked.min(total) } else { unlocked },
@@ -152,7 +152,7 @@ fn read_games(v: &Value) -> Vec<AchievementGame> {
 /// One achievement as Xbox Live gives it.
 fn read_achievement(a: &Value) -> Option<Achievement> {
     let unlocked = a.get("progressState").and_then(Value::as_str) == Some("Achieved");
-    let icon = a.get("mediaAssets").and_then(Value::as_array).and_then(|m| m.iter().find_map(|x| x.get("url").and_then(Value::as_str))).map(str::to_string);
+    let icon = a.get("mediaAssets").and_then(Value::as_array).and_then(|m| m.iter().find_map(|x| x.get("url").and_then(Value::as_str))).map(crate::net::secure);
     let secret = a.get("isSecret").and_then(Value::as_bool).unwrap_or(false);
     let description = if unlocked || !secret {
         a.get(if unlocked { "description" } else { "lockedDescription" }).and_then(Value::as_str).filter(|d| !d.is_empty()).or_else(|| a.get("description").and_then(Value::as_str)).unwrap_or_default()

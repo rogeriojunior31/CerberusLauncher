@@ -208,7 +208,7 @@ fn pc_games(history: History) -> Vec<Owned> {
         .filter(|t| t.kind == "Game" && t.devices.iter().any(|d| d == "PC"))
         .filter_map(|t| {
             let family = t.pfn.filter(|p| !p.is_empty())?;
-            Some(Owned { name: t.name.trim().to_string(), family, product: String::new(), cover: t.display_image, hero: None })
+            Some(Owned { name: t.name.trim().to_string(), family, product: String::new(), cover: t.display_image.as_deref().map(crate::net::secure), hero: None })
         })
         .collect();
     owned.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
