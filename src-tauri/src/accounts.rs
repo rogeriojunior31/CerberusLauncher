@@ -7,6 +7,20 @@
 //! different refresh token (signed out, another account) never gets the old one.
 
 use std::future::Future;
+
+use cerberus_shared::tr;
+
+/// Why a store didn't hand a session, by its answer: only a token taken back
+/// or out of date (400, 401, 403) asks the player to sign in again; a pause
+/// asked (429) or the store down (5xx) is a wait, and the account stays.
+/// `store` is the store's name, `where_` where to sign in again.
+pub fn refusal(store: &str, where_: &str, status: u16) -> String {
+    match status {
+        429 => tr!("A {} pediu uma pausa. O Cerberus tenta de novo mais tarde, sem sair da conta.", store),
+        500..=599 => tr!("A {} está fora do ar agora ({}). O Cerberus tenta de novo mais tarde, sem sair da conta.", store, status),
+        _ => crate::achievements::needs_login(&tr!("A {} recusou o acesso: entre de novo em {}.", store, where_)),
+    }
+}
 use std::time::{Duration, Instant};
 
 /// A session kept for a while, renewed by one caller at a time.
@@ -57,6 +71,19 @@ mod tests {
     use super::Kept;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::Duration;
+
+    #[test]
+    fn only_a_token_taken_back_asks_to_sign_in_again() {
+        use crate::achievements::needs_login;
+        let again = |status| super::refusal("Epic", "Configurações", status);
+        for status in [400, 401, 403] {
+            assert!(again(status).starts_with(&needs_login("")), "{status}: sign in again");
+        }
+        for status in [429, 500, 503] {
+            assert!(!again(status).starts_with(&needs_login("")), "{status}: a wait, the account stays");
+        }
+        assert!(again(503).contains("503"));
+    }
 
     #[test]
     fn five_at_once_renew_once() {

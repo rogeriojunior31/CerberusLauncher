@@ -815,7 +815,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 
 ### 8.1 Contas e lojas — [revisão completa](docs/roadmap/lojas-e-contas.md)
 
-- [ ] Token revogado ou vencido vira "entre de novo" visível; erros distintos para 400/401/429/5xx (L3). — M
+- [ ] Token revogado ou vencido vira "entre de novo" visível; erros distintos para 400/401/429/5xx (L3). — M (27/11/2026, parte: renovar o token da Epic e da Microsoft separa os casos: 400, 401 e 403 pedem para entrar de novo; 429 é uma pausa e 5xx é a loja fora do ar, os dois esperam sem tirar a conta; no Xbox, o 401 do perfil continua "crie um perfil Xbox"; teste; falta o cartão da conta mostrar o estado, junto com a L8)
 - [ ] Conta identificada pelo id (xuid, account id, steamid), não pelo nome; Sair sem apagar conquistas (L4; conquistas L3). — M
 - [ ] Resposta parcial, limites de uso e custo de cada sincronização (L5). — M
 - [ ] Tokens fora do texto puro (Cofre de credenciais do Windows) (L6). — M
