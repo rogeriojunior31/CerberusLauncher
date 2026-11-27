@@ -398,10 +398,29 @@ impl Misses {
     }
 }
 
-/// How a sync went, in the store: synced, or refused (the wait grows).
+/// Put before an error that means "sign in again" (a session the store
+/// refused): it isn't the store being busy, so it doesn't grow the wait.
+pub(crate) const NEEDS_LOGIN: char = '\u{2063}';
+
+/// The error marked as needing a new sign-in.
+pub(crate) fn needs_login(message: &str) -> String {
+    format!("{NEEDS_LOGIN}{message}")
+}
+
+/// The error as the player reads it (without the mark).
+pub(crate) fn shown(error: &str) -> &str {
+    error.trim_start_matches(NEEDS_LOGIN)
+}
+
+/// A refused sign-in is asked about again in a few minutes, not hours.
+const LOGIN_WAIT: u64 = 300;
+
+/// How a sync went, in the store: synced; refused (the wait grows, the store
+/// was busy or away); or signed out (a short wait, the wait doesn't grow).
 fn stamp(db: &mut Store, scope: &Scope, result: &Result<(), String>) {
     match result {
         Ok(()) => db.synced(scope),
+        Err(e) if e.starts_with(NEEDS_LOGIN) => db.set_stamp(scope, "wait_until", store::now() + LOGIN_WAIT),
         Err(_) => db.refused(scope),
     }
 }
@@ -692,7 +711,7 @@ pub async fn hub(
         let scope = Scope::new(AchievementSource::Xbox, &user);
         if online && db.due(&scope) {
             if let Err(e) = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
-                hub.problems.push(tr!("Xbox: {}", e));
+                hub.problems.push(tr!("Xbox: {}", shown(&e)));
             }
         }
         scopes.push(scope);
@@ -703,7 +722,7 @@ pub async fn hub(
         let scope = Scope::new(AchievementSource::Epic, &user);
         if online && db.due(&scope) {
             if let Err(e) = sync_epic(http, data_dir, &mut db, &scope).await {
-                hub.problems.push(tr!("Epic: {}", e));
+                hub.problems.push(tr!("Epic: {}", shown(&e)));
             }
         }
         scopes.push(scope);
@@ -930,6 +949,23 @@ mod tests {
         misses.game_answered();
         assert!(!misses.game_failed(&db, &scope, "other", now), "an answer in between: still one");
         assert!(misses.game_failed(&db, &scope, "third", now), "two in a row: the account");
+    }
+
+    #[test]
+    fn a_refused_sign_in_waits_minutes_and_says_sign_in_again() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Epic, "player");
+        let error = needs_login("Sign in again.");
+        stamp(&mut db, &scope, &Err(error.clone()));
+        let wait = db.stamp(&scope, "wait_until").unwrap() - store::now();
+        assert!(wait <= LOGIN_WAIT, "minutes, not up to 6 h");
+        assert!(db.stamp(&scope, "failures").unwrap_or(0) == 0, "the store's wait doesn't grow");
+        assert_eq!(shown(&error), "Sign in again.");
+        // A busy store still grows it.
+        stamp(&mut db, &scope, &Err("busy".into()));
+        assert_eq!(db.stamp(&scope, "failures"), Some(1));
     }
 
     #[test]
