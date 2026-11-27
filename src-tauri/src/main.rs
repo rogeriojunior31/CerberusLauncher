@@ -1710,10 +1710,8 @@ async fn list_games(
         }
     };
     games.iter_mut().for_each(recomp::apply_art);
-    // Only the recomps listed here are matched with the player's ROMs, not the whole catalog.
-    let listed: std::collections::HashSet<&str> = games.iter().filter_map(|g| match &g.source { Source::Recomp { recomp_id, .. } => Some(recomp_id.as_str()), _ => None }).collect();
-    let wanted: Vec<recomp::catalog::CatalogEntry> = recomp::catalog::all().iter().filter(|e| listed.contains(e.id.as_str())).cloned().collect();
-    let owned = roms::match_catalog(&wanted, &app.state::<RomIndex>().get());
+    // Each recomp is matched on its own, so the kept matches of the whole catalog serve here.
+    let owned = owned_games(&app);
     for game in &mut games {
         let found = match &game.source {
             Source::Recomp { recomp_id, .. } => owned.get(recomp_id),
@@ -2315,6 +2313,7 @@ async fn pick_cover(
 /// anything else stays on disk, since it belongs to the user or another launcher.
 #[tauri::command(async)]
 fn remove_game(
+    app: AppHandle,
     library: State<'_, LocalLibrary>,
     folder: State<'_, CoverFolder>,
     recomps: State<'_, recomp::Folders>,
@@ -2356,8 +2355,12 @@ fn remove_game(
             }
             library.remove(&id)
         })?;
+        // Said in the game's history, as every install and update is.
+        let what = if !game.external && !keep_folder { tr!("Desinstalado: a pasta do jogo foi apagada") } else { tr!("Tirado da biblioteca: a pasta do jogo ficou onde estava") };
+        trail::note(&app, &id, tk!("Desinstalar"), &Ok(what.to_string()));
     } else {
         library.remove(&id)?;
+        trail::note(&app, &id, tk!("Desinstalar"), &Ok(tr!("Tirado da biblioteca").to_string()));
     }
     forget_cover(&folder.0, game.cover_path);
     Ok(())
