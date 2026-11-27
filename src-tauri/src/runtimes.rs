@@ -186,8 +186,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn checks_directx_by_its_files() {
-        // Every name it reports is one it checks.
-        assert!(dx_missing().iter().all(|m| DX_PARTS.iter().any(|(_, n)| n == m)));
+        // Every name it reports is one it checks, the 64-bit one or its 32-bit copy.
+        let names: Vec<String> = DX_PARTS.iter().flat_map(|(_, n)| [n.to_string(), tr!("{} (32 bits)", n)]).collect();
+        assert!(dx_missing().iter().all(|m| names.contains(m)), "{:?}", dx_missing());
     }
 
     #[cfg(windows)]
