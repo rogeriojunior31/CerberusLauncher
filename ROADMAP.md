@@ -608,7 +608,7 @@ Nada aqui precisa de servidor próprio, salvo onde está marcado.
 - [ ] **Achar jogos fora das lojas** [P][H]: atalhos do Menu Iniciar (ignorando desinstaladores, setup, vc_redist,
       crash handlers), uma pasta escolhida, `C:\Games`/`D:\Games`/"GOG Games", e apps da Microsoft Store/Xbox
       (`shell:AppsFolder`). Jogo apagado entra numa lista de exclusão e não volta na próxima busca [P]. — M
-- [ ] O mesmo jogo na Steam e na Epic aparece como um só [H]. — M
+- [x] O mesmo jogo na Steam e na Epic aparece como um só [H]. — M (27/11/2026, pedido do usuário: o mesmo jogo na Steam, no Xbox e na Epic é um card só, com o logo de cada loja; a cópia mostrada é a instalada, senão a jogada por último, senão Steam, Xbox, Epic; na página, "Steam | Xbox" ao lado de Jogar ou Instalar escolhe por qual loja; o filtro de uma loja mostra a cópia dela; cada cópia guarda seus dados; agrupa pela chave de nome, nunca duas cópias da mesma loja nem jogos adicionados à mão; testes; conferido no app: 16 jogos agrupados, Todos foi de 934 para 916, e Cyberpunk 2077 troca entre Steam e Xbox; a TV ainda lista as cópias separadas)
 - [ ] Ordem pelo nome sem "The"/"A" e com algarismos romanos na ordem certa [P]. — P
 - [ ] Tamanho instalado de cada jogo, agrupar por disco e mover um jogo de PC para outro disco [P][H]. — M
 - [x] **Página do jogo com dados da loja** [H]: descrição, requisitos mínimo e recomendado, idiomas, suporte a controle,

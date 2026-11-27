@@ -433,6 +433,42 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     }
 }
 
+/// The same game in several stores: one button per store, this copy's
+/// pressed; another shows that copy's page, whose button installs or plays
+/// through that store.
+fn store_choice(library: Library, id: &str) -> Option<impl IntoView + use<>> {
+    let ids = library.copies_of(id);
+    if ids.len() < 2 {
+        return None;
+    }
+    let copies: Vec<Game> = library.games.with_untracked(|listed| {
+        let all = listed.as_ref().and_then(|r| r.as_ref().ok());
+        ids.iter().filter_map(|i| all.and_then(|all| all.iter().find(|g| &g.id == i)).cloned()).collect()
+    });
+    let here = id.to_string();
+    let buttons = copies
+        .into_iter()
+        .map(|g| {
+            let on = g.id == here;
+            let store = crate::tiles::source_name(&g.source);
+            let state = if g.next_step == cerberus_shared::NextStep::Install { tr!("não instalado") } else { tr!("instalado") };
+            let title = tr!("{} · {}", store, state);
+            let logo = crate::tiles::source_marks(&g.source).into_iter().next().and_then(|m| match m.mark {
+                crate::tiles::Mark::Store(name) => Some(view! { <i class=format!("store-logo {name}") aria-hidden="true"></i> }),
+                _ => None,
+            });
+            let id = g.id.clone();
+            view! {
+                <button type="button" class="seg copy-store" role="radio" class:on=on aria-checked=on.to_string() title=title
+                    on:click=move |_| if !on { library.replace(crate::Route::Game(id.clone())) }>
+                    {logo}<span>{store}</span>
+                </button>
+            }
+        })
+        .collect_view();
+    Some(view! { <div class="segs copy-stores" role="radiogroup" aria-label=tr!("Jogar por qual loja")>{buttons}</div> })
+}
+
 /// Play, Playing, Install with its size, the install's progress, or Update.
 fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool, tab: RwSignal<Tab>) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -475,7 +511,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             // With the player's own copy, two named ways to play side by side. The one
             // used last leads; the other stays one click away.
             let Some((copy, console)) = original else {
-                return view! { {play}{update_button} }.into_any();
+                return view! { {play}{update_button}{store_choice(library, &game_id)} }.into_any();
             };
             let players = library.players.get_untracked().unwrap_or_default();
             let emulator = crate::classics::ready_player(&players, &console);

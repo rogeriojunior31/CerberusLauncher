@@ -384,8 +384,9 @@ pub fn LibraryPage() -> impl IntoView {
             if away != Some(true) {
                 stores[0] += roms;
             }
-            let missing = in_tab.iter().filter(|g| is_absent(g)).count();
-            (stores, in_tab.len() - missing + roms, missing)
+            let one_each: Vec<&&Game> = in_tab.iter().filter(|g| !library.is_extra_copy(&g.id)).collect();
+            let missing = one_each.iter().filter(|g| is_absent(g)).count();
+            (stores, one_each.len() - missing + roms, missing)
         })
     });
     // Where the games come from: Steam, Epic, Xbox or added by hand, with how many.
@@ -503,6 +504,8 @@ pub fn LibraryPage() -> impl IntoView {
             if with_classics { crate::classics::matching(crate::classics::standalone(library), &needle) } else { Vec::new() };
         games.retain(|g| {
             kind.keeps(g, open.as_deref())
+                // The same game in two stores is one tile; a store's filter shows that store's copy.
+                && (source != Filter::All || !library.is_extra_copy(&g.id))
                 && source.keeps(g)
                 && away.is_none_or(|a| is_absent(g) == a)
                 && only.is_none_or(|s| g.status == Some(s))

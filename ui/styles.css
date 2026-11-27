@@ -2286,3 +2286,7 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .tv-ach-sync { color: var(--muted); font-size: calc(20 * var(--u)); margin: 0 0 calc(6 * var(--u)); }
 .tv-ach-sync:empty { display: none; }
 .tv-ach-problem { color: var(--warn); font-size: calc(20 * var(--u)); margin: 0 0 calc(6 * var(--u)); }
+
+.copy-stores { margin-left: 4px; }
+.copy-store { display: inline-flex; align-items: center; gap: 6px; }
+.copy-store .store-logo { width: 16px; height: 16px; }

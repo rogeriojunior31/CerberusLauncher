@@ -97,3 +97,73 @@ mod tests {
         assert_eq!(key("Mass Effect Legendary Edition"), "masseffectlegendaryedition");
     }
 }
+
+/// The same game owned in several stores: groups of library ids, the copy to
+/// show first leading (installed, then the one played last, then Steam, Xbox,
+/// Epic). Games alone, hidden, or of one store twice are left out.
+pub fn copies(games: &[crate::Game]) -> Vec<Vec<String>> {
+    use crate::{NextStep, Source};
+    let store = |g: &crate::Game| match g.source {
+        Source::Steam { .. } => Some(0),
+        Source::Xbox { .. } => Some(1),
+        Source::Epic { .. } => Some(2),
+        _ => None,
+    };
+    let mut by_key: std::collections::HashMap<String, Vec<&crate::Game>> = std::collections::HashMap::new();
+    for g in games.iter().filter(|g| !g.hidden && g.part_of.is_none() && store(g).is_some()) {
+        let k = key(&g.name);
+        if !k.is_empty() {
+            by_key.entry(k).or_default().push(g);
+        }
+    }
+    let mut groups: Vec<Vec<String>> = by_key
+        .into_values()
+        .filter_map(|mut list| {
+            list.sort_by_key(|g| (g.next_step == NextStep::Install, std::cmp::Reverse(g.last_played.unwrap_or(0)), store(g)));
+            // One copy per store: two of the same store are two games.
+            let mut seen = std::collections::HashSet::new();
+            list.retain(|g| seen.insert(store(g)));
+            (list.len() > 1).then(|| list.into_iter().map(|g| g.id.clone()).collect())
+        })
+        .collect();
+    groups.sort();
+    groups
+}
+
+#[cfg(test)]
+mod copies_tests {
+    use super::copies;
+    use crate::{Game, NextStep, Source};
+
+    fn game(id: &str, name: &str, source: Source, installed: bool, played: Option<u64>) -> Game {
+        let mut g: Game = serde_json::from_value(serde_json::json!({"id": id, "name": name, "install_dir": "", "source": {"kind": "local", "exe": ""}})).unwrap();
+        g.source = source;
+        g.next_step = if installed { NextStep::Play } else { NextStep::Install };
+        g.last_played = played;
+        g
+    }
+
+    #[test]
+    fn one_game_in_two_stores_leads_with_the_installed_copy() {
+        let xbox = Source::Xbox { family: "f".into(), app: "Game".into(), product: "p".into(), game_pass: false };
+        let games = vec![
+            game("steam:1", "DOOM Eternal", Source::Steam { app_id: 1 }, false, Some(900)),
+            game("xbox:f", "DOOM Eternal (PC)", xbox.clone(), true, None),
+            game("steam:2", "Hotline Miami", Source::Steam { app_id: 2 }, true, None),
+            game("local:x", "Hotline Miami", Source::Local { exe: "x.exe".into() }, true, None),
+            game("steam:3", "Halo", Source::Steam { app_id: 3 }, true, None),
+            game("steam:4", "Halo", Source::Steam { app_id: 4 }, true, None),
+        ];
+        assert_eq!(copies(&games), vec![vec!["xbox:f".to_string(), "steam:1".to_string()]], "installed first; a game added by hand or a second Steam copy is not grouped");
+    }
+
+    #[test]
+    fn neither_installed_the_one_played_last_leads() {
+        let epic = Source::Epic { app_name: "a".into(), namespace: "n".into(), item_id: "i".into() };
+        let games = vec![
+            game("epic:a", "Control", epic, false, Some(500)),
+            game("steam:9", "Control", Source::Steam { app_id: 9 }, false, Some(100)),
+        ];
+        assert_eq!(copies(&games), vec![vec!["epic:a".to_string(), "steam:9".to_string()]]);
+    }
+}

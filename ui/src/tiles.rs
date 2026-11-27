@@ -195,8 +195,23 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
         recomp_id: None,
         absent: game.next_step == cerberus_shared::NextStep::Install,
         progress: None,
-        marks: source_marks(&game.source),
+        marks: copies_marks(game, library),
     }
+}
+
+/// Every store's logo for a game owned in several: the tile's own first.
+fn copies_marks(game: &Game, library: Library) -> Vec<SourceMark> {
+    let ids = library.copies_of(&game.id);
+    if ids.is_empty() {
+        return source_marks(&game.source);
+    }
+    library.games.with_untracked(|listed| {
+        let all = listed.as_ref().and_then(|r| r.as_ref().ok());
+        ids.iter()
+            .filter_map(|id| all.and_then(|all| all.iter().find(|g| &g.id == id)))
+            .flat_map(|g| source_marks(&g.source))
+            .collect()
+    })
 }
 
 /// A classic from the ROM folders, as a tile: it opens its own page.
