@@ -357,12 +357,29 @@ const XBOX_LISTS_PER_SYNC: usize = 8;
 /// The Xbox account into the store: every game's progress in one question; the
 /// first time, every list (a page per thousand achievements); after that, only
 /// the lists of games played since they were read.
+/// Syncs the Xbox account when due, and stamps how it went (synced, or
+/// refused with a longer wait) while still holding the lock: the hub and the
+/// library may both ask at once, and the one that finds it not due leaves
+/// the stamp alone (it used to write "synced" over a refusal, and the wait was lost).
 async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
-    // The hub and the library may both ask at once: one goes, the other finds it done.
     let _one = SYNCING.lock().await;
     if !db.due(scope) {
         return Ok(());
     }
+    let result = sync_xbox_now(http, data_dir, db, scope, refresh).await;
+    stamp(db, scope, &result);
+    result
+}
+
+/// How a sync went, in the store: synced, or refused (the wait grows).
+fn stamp(db: &mut Store, scope: &Scope, result: &Result<(), String>) {
+    match result {
+        Ok(()) => db.synced(scope),
+        Err(_) => db.refused(scope),
+    }
+}
+
+async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
     let session = xbox::session(http, refresh, |r| save_xbox_refresh(data_dir, refresh, r)).await?;
     let (games, last_played) = xbox::games(http, &session).await?;
     // Minutes played too: a hundred titles per question.
@@ -438,12 +455,18 @@ const EPIC_GAMES_PER_SYNC: usize = 40;
 
 /// The Epic account into the store: play time of every game in one question;
 /// then each game new to the store, or played since its list was read.
+/// The Epic account's sync, stamped as `sync_xbox` is.
 async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
-    // The hub and the library may both ask at once: one goes, the other finds it done.
     let _one = SYNCING.lock().await;
     if !db.due(scope) {
         return Ok(());
     }
+    let result = sync_epic_now(http, data_dir, db, scope).await;
+    stamp(db, scope, &result);
+    result
+}
+
+async fn sync_epic_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
     let (access, account) = epic_session(http, data_dir).await?;
     let owned = crate::epic_account::cached(data_dir);
     let played = epic::playtimes(http, &access, &account).await.unwrap_or_default();
@@ -505,20 +528,14 @@ pub async fn sync_accounts(http: &reqwest::Client, data_dir: &Path) -> bool {
         let scope = Scope::new(AchievementSource::Xbox, &user);
         if db.due(&scope) {
             asked = true;
-            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
-                Ok(()) => db.synced(&scope),
-                Err(_) => db.refused(&scope),
-            }
+            let _ = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await;
         }
     }
     if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
         let scope = Scope::new(AchievementSource::Epic, &user);
         if db.due(&scope) {
             asked = true;
-            match sync_epic(http, data_dir, &mut db, &scope).await {
-                Ok(()) => db.synced(&scope),
-                Err(_) => db.refused(&scope),
-            }
+            let _ = sync_epic(http, data_dir, &mut db, &scope).await;
         }
     }
     asked
@@ -611,12 +628,8 @@ pub async fn hub(
         hub.xbox = true;
         let scope = Scope::new(AchievementSource::Xbox, &user);
         if online && db.due(&scope) {
-            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
-                Ok(()) => db.synced(&scope),
-                Err(e) => {
-                    db.refused(&scope);
-                    hub.problems.push(tr!("Xbox: {}", e));
-                }
+            if let Err(e) = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
+                hub.problems.push(tr!("Xbox: {}", e));
             }
         }
         scopes.push(scope);
@@ -626,12 +639,8 @@ pub async fn hub(
         hub.epic = true;
         let scope = Scope::new(AchievementSource::Epic, &user);
         if online && db.due(&scope) {
-            match sync_epic(http, data_dir, &mut db, &scope).await {
-                Ok(()) => db.synced(&scope),
-                Err(e) => {
-                    db.refused(&scope);
-                    hub.problems.push(tr!("Epic: {}", e));
-                }
+            if let Err(e) = sync_epic(http, data_dir, &mut db, &scope).await {
+                hub.problems.push(tr!("Epic: {}", e));
             }
         }
         scopes.push(scope);
@@ -843,6 +852,22 @@ pub async fn game(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn skipped_sync_keeps_the_wait() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Xbox, "player");
+        // The hub's sync was just refused: it waits.
+        db.refused(&scope);
+        let (wait, failures) = (db.stamp(&scope, "wait_until"), db.stamp(&scope, "failures"));
+        // The library asks meanwhile: not due, so it goes nowhere and stamps nothing.
+        let http = reqwest::Client::new();
+        assert!(tauri::async_runtime::block_on(sync_xbox(&http, dir.path(), &mut db, &scope, "token")).is_ok());
+        assert_eq!((db.stamp(&scope, "wait_until"), db.stamp(&scope, "failures")), (wait, failures), "the wait is kept");
+        assert!(db.stamp(&scope, "synced").is_none(), "not stamped as synced");
+    }
+
     /// Reads the Steam of the PC running the tests (read only): `cargo test -- --ignored real_steam`.
     #[test]
     #[ignore = "reads this PC's Steam"]

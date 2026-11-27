@@ -808,7 +808,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
       Feito em 25/11/2026: a renovação só grava se a conta ainda é a mesma; entrar e sair por `settings::update` e zerando as sessões guardadas da Epic e do Xbox. Testado.
 - [ ] Um dono só da sessão de cada conta; a sessão da Epic de 30 min não é zerada ao sair nem presa à conta — [lojas L2](docs/roadmap/lojas-e-contas.md), [conquistas L3](docs/roadmap/conquistas-e-tempo.md). — P/M
 - [ ] Um jogo que falha derruba a sincronização da conta inteira e volta primeiro sempre — [conquistas L1](docs/roadmap/conquistas-e-tempo.md). — M
-- [ ] Sincronização pulada conta como sucesso e apaga a espera depois de uma recusa — [conquistas L2](docs/roadmap/conquistas-e-tempo.md). — P
+- [x] Sincronização pulada conta como sucesso e apaga a espera depois de uma recusa (27/11/2026: "sincronizado" ou "recusado" é gravado dentro da sincronização, com a trava na mão; quem encontra "ainda não é hora" não mexe na espera; teste; o hub daqui carrega os 571 jogos sem problemas) — [conquistas L2](docs/roadmap/conquistas-e-tempo.md). — P
 - [x] Restaurar saves com o emulador aberto por fora (27/11/2026: restaurar recusa com o programa do emulador rodando, aberto de qualquer jeito, com "Feche o DuckStation antes"; teste) — [emulação L3](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
 - [x] Backup do Dolphin leva a BIOS do GameCube e deixa de fora os saves do Wii (27/11/2026: arquivos do console, IPL.bin, dsp_*.bin, font_*.bin, keys.bin, otp.bin, seeprom.bin, nunca entram num backup; o Dolphin copia também Wii/title/00010000 e 00010004, sem a memória do sistema; teste; sem Dolphin aqui) — [emulação L2](docs/roadmap/emulacao-e-saves-dos-emuladores.md). — P
 
