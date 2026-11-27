@@ -2151,7 +2151,14 @@ fn game_pass(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
     if !settings::load(&data).game_pass {
         return;
     }
-    gamepass::merge(games, &gamepass::cached(&data));
+    let catalog = gamepass::cached(&data);
+    // Installed now under its package's id: favorite, note and collections follow it.
+    for (old, new) in gamepass::moved_ids(games, &catalog) {
+        favorites::rename(&data, &old, &new);
+        game_notes::rename(&data, &old, &new);
+        collections::move_game(&data, &old, &new);
+    }
+    gamepass::merge(games, &catalog);
     if !gamepass::stale(&data) {
         return;
     }

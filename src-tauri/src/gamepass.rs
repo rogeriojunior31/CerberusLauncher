@@ -227,6 +227,22 @@ pub fn drop_owned_elsewhere(games: &mut Vec<Game>) {
     games.retain(|g| !catalog_only(g) || !elsewhere.contains(&plain(&g.name)));
 }
 
+/// Game Pass games listed without a package family are `xbox:<product>`;
+/// installed, the Xbox app gives them `xbox:<family>`. The pairs (old id, new
+/// id) for those installed now, matched by name, so the player's data follows.
+pub fn moved_ids(games: &[Game], catalog: &[Product]) -> Vec<(String, String)> {
+    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    games
+        .iter()
+        .filter(|g| matches!(g.source, Source::Xbox { .. }) && !g.install_dir.is_empty())
+        .filter_map(|g| {
+            let p = catalog.iter().find(|p| p.family.is_empty() && plain(&p.title) == plain(&g.name))?;
+            let old = format!("xbox:{}", p.id);
+            (old != g.id).then(|| (old, g.id.clone()))
+        })
+        .collect()
+}
+
 pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
     // Package families compared without case (the app and the catalog may write them differently).
     let by_family: HashMap<String, &Product> = catalog.iter().filter(|p| !p.family.is_empty()).map(|p| (p.family.to_lowercase(), p)).collect();
@@ -273,6 +289,20 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_game_pass_game_installed_keeps_its_old_id_for_the_players_data() {
+        let product = |id: &str, title: &str, family: &str| Product { id: id.into(), title: title.into(), family: family.into(), ..Default::default() };
+        let catalog = vec![product("9P1", "Anno 1800", ""), product("9P2", "Halo", "Microsoft.Halo_8wekyb")];
+        let mut installed = crate::library::blank_game();
+        installed.id = "xbox:Ubisoft.Anno1800_abc".into();
+        installed.name = "Anno 1800".into();
+        installed.install_dir = r"C:\XboxGames\Anno".into();
+        installed.source = Source::Xbox { family: "Ubisoft.Anno1800_abc".into(), app: "Game".into(), product: String::new(), game_pass: false };
+        assert_eq!(moved_ids(&[installed.clone()], &catalog), vec![("xbox:9P1".to_string(), "xbox:Ubisoft.Anno1800_abc".to_string())]);
+        installed.install_dir.clear();
+        assert!(moved_ids(&[installed], &catalog).is_empty(), "not installed: nothing moved");
+    }
 
     #[test]
     fn the_market_is_the_windows_region_and_the_texts_the_apps_language() {
