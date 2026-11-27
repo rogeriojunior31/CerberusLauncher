@@ -252,7 +252,9 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
         here.insert(family.to_lowercase());
         if let Some(p) = by_family.get(&family.to_lowercase()) {
             *product = p.id.clone();
-            *game_pass = true;
+            // The account's own copy, not installed, stays the player's (not "Game Pass").
+            let owned_by_account = game.install_dir.is_empty();
+            *game_pass = *game_pass || !owned_by_account;
             if p.poster.is_some() {
                 game.cover_url = p.poster.clone();
                 game.cover_path = None;
@@ -289,6 +291,19 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_game_the_account_owns_isnt_marked_game_pass() {
+        let catalog = vec![Product { id: "9P".into(), title: "Halo".into(), family: "Microsoft.Halo_8wekyb".into(), ..Default::default() }];
+        let mut owned = crate::library::blank_game();
+        owned.id = "xbox:Microsoft.Halo_8wekyb".into();
+        owned.name = "Halo".into();
+        owned.source = Source::Xbox { family: "microsoft.halo_8wekyb".into(), app: "Game".into(), product: String::new(), game_pass: false };
+        let mut games = vec![owned];
+        merge(&mut games, &catalog);
+        assert_eq!(games.len(), 1, "not listed twice (the family matched without case)");
+        assert!(matches!(&games[0].source, Source::Xbox { game_pass: false, product, .. } if product == "9P"), "the player's, with the store's product");
+    }
 
     #[test]
     fn a_game_pass_game_installed_keeps_its_old_id_for_the_players_data() {
@@ -353,6 +368,8 @@ mod tests {
         let mut games = vec![Game {
             id: "xbox:Pub.Here_abc".into(),
             name: "Here".into(),
+            // Installed by the Xbox app (it gives a folder).
+            install_dir: r"C:\XboxGames\Here".into(),
             source: Source::Xbox { family: "Pub.Here_abc".into(), app: "Game".into(), product: String::new(), game_pass: false },
             ..crate::library::blank_game()
         }];
