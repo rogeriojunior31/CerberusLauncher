@@ -840,7 +840,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [ ] ~~Banco fora do backup (L12)~~ (27/11/2026: a cópia de dados leva o banco de conquistas, copiado com VACUUM INTO; restaurar junta, não troca: desbloqueios e jogos de um e de outro ficam, o tempo fica no maior, e as esperas seguem as deste PC; o banco daqui vai antes para before-restore; teste; a exportação real daqui leva o banco, 3,4 MB no total) e órfãos acumulando. — P/M
 - [ ] Menos consultas por sincronização (L13; tabela de orçamento no documento). — M (27/11/2026, parte: Epic guarda as definições por jogo e idioma por 30 dias, inclusive "sem conquistas", e um jogo jogado de novo só pergunta o progresso; a sincronização pula os jogos nunca jogados, que a página lê quando aberta; o 429 ou 5xx do tempo jogado do Xbox vira recusa com espera em vez de ser engolido; a Steam guarda por 3 dias os apps sem nome na loja; falta o contador de consultas no trail e o teste com servidor falso)
 - [ ] Aviso ao vivo e releitura ao fechar o jogo também para Xbox e Epic (L14). — M/G
-- [ ] DLC, Xbox 360 e totais (L15). — P
+- [ ] DLC, Xbox 360 e totais (L15). — P (27/11/2026, parte: o jogo guarda quando chegou a 100% pela primeira vez; um DLC que acrescenta conquistas não o tira de Platinados, que mostra "Platinado antes do DLC" e 50/55; estatísticas zeradas tiram a marca; na Epic, o jogo e seus DLCs com o mesmo namespace viram uma entrada só, a do jogo base; teste merge_keeps_first_platinum_when_total_grows; aqui os 4 platinados seguem os mesmos, agora marcados; falta o Xbox 360 com conta real e o setId da Epic)
 - [ ] Testes que faltam (L16). — M
 
 ### 8.3 Emulação e saves dos emuladores — [revisão completa](docs/roadmap/emulacao-e-saves-dos-emuladores.md)

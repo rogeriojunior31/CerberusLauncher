@@ -173,7 +173,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let library = expect_context::<Library>();
     let unlocked: u32 = hub.games.iter().map(|g| g.unlocked).sum();
     let total: u32 = hub.games.iter().map(|g| g.total).sum();
-    let complete = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+    let complete = hub.games.iter().filter(|g| g.platinum()).count();
     let beaten = hub.games.iter().filter(|g| g.award.is_some_and(|a| !a.full())).count();
     let hardcore_awards = hub.games.iter().filter(|g| g.award.is_some_and(GameAward::hardcore)).count();
 
@@ -223,7 +223,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         }
         let got: u32 = mine.iter().map(|g| g.unlocked).sum();
         let all: u32 = mine.iter().map(|g| g.total).sum();
-        let done = mine.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+        let done = mine.iter().filter(|g| g.platinum()).count();
         by_source.push((p, src, mine.len(), got, all, done));
     }
     // When each account last synced, or until when its store asked to wait.
@@ -281,7 +281,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     };
 
     // Every achievement unlocked: the trophy shelf, newest platinum first.
-    let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).cloned().collect();
+    let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.platinum()).cloned().collect();
     plats.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
     let plats = (!plats.is_empty()).then(|| {
         let n = plats.len();
@@ -501,7 +501,7 @@ fn in_state(g: &AchievementGame, s: State) -> bool {
         State::All => true,
         State::Started => g.unlocked > 0 && g.unlocked < g.total,
         State::Beaten => g.award.is_some(),
-        State::Done => g.total > 0 && g.unlocked == g.total,
+        State::Done => g.platinum(),
         State::NotStarted => g.unlocked == 0,
     }
 }
@@ -549,7 +549,7 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
     let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
     let hard = g.award.is_some_and(GameAward::hardcore);
     let pct = g.percent();
-    let done = g.total > 0 && g.unlocked == g.total;
+    let done = g.platinum();
     let mut meta = vec![g.platform.clone()];
     if let Some(t) = g.playtime_secs {
         meta.push(tr!("{} jogados", format::playtime(t)));
@@ -562,7 +562,11 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
                 <span class="ach-line-h">
                     <b>{g.name.clone()}</b>
                     {award_badge(g.award, g.award_at)}
-                    {(done && g.award.is_none()).then(|| view! { <span class="plat-badge"><Svg icon=Icon::Trophy size=12 />{tr!("Platinado")}</span> })}
+                    {(done && g.award.is_none()).then(|| {
+                        // 100% once, and a DLC added more since: still a platinum, said so.
+                        let (label, tip) = if g.complete() { (tr!("Platinado"), None) } else { (tr!("Platinado antes do DLC"), Some(tr!("Chegou a 100%; depois o jogo ganhou conquistas novas."))) };
+                        view! { <span class="plat-badge" title=tip><Svg icon=Icon::Trophy size=12 />{label}</span> }
+                    })}
                 </span>
                 <small>{meta.join(" · ")}</small>
             </span>

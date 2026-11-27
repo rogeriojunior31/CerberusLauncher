@@ -162,6 +162,7 @@ pub fn entry(namespace: &str, title: &str, cover: Option<&str>, played_secs: u64
         last_played: None,
         award: None,
         award_at: None,
+        completed_at: None,
     }
 }
 

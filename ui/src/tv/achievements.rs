@@ -92,7 +92,7 @@ pub fn GameList(source: String, key: String) -> impl IntoView {
         let Some(Ok(d)) = data.get() else { return None };
         let g = d.game;
         let pct = g.percent();
-        let done = g.total > 0 && g.unlocked == g.total;
+        let done = g.platinum();
         let points = (g.points_total > 0).then(|| view! { <span>{tr!("{} de {} pontos", g.points, g.points_total)}</span> });
         Some(view! {
             <header class="tv-al-head">
@@ -177,7 +177,7 @@ pub fn Achievements() -> impl IntoView {
         let Some(Ok(hub)) = hub.get() else { return Vec::new() };
         let mut near: Vec<AchievementGame> = hub.games.iter().filter(|g| g.unlocked > 0 && g.unlocked < g.total && g.percent() >= 40).cloned().collect();
         near.sort_by(|a, b| b.percent().cmp(&a.percent()));
-        let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).cloned().collect();
+        let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.platinum()).cloned().collect();
         plats.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
         let mut lately: Vec<AchievementGame> = hub.games.iter().filter(|g| g.last_unlock.is_some()).cloned().collect();
         lately.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
@@ -234,7 +234,7 @@ pub fn Achievements() -> impl IntoView {
         let Some(Ok(hub)) = hub.get() else { return None };
         let unlocked: u32 = hub.games.iter().map(|g| g.unlocked).sum();
         let total: u32 = hub.games.iter().map(|g| g.total).sum();
-        let plats = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+        let plats = hub.games.iter().filter(|g| g.platinum()).count();
         let pct = if total == 0 { 0 } else { unlocked as u64 * 100 / total as u64 };
         // The account synced longest ago tells how fresh this is.
         let oldest = hub.sources.iter().filter(|s| s.wait_until.is_none()).filter_map(|s| s.synced_at).min();
@@ -272,7 +272,7 @@ pub fn Achievements() -> impl IntoView {
                     .enumerate()
                     .map(|(c, g)| {
                         let pct = g.percent();
-                        let done = g.total > 0 && g.unlocked == g.total;
+                        let done = g.platinum();
                         let target = target(library, &g);
                         view! {
                             <div class="tv-tile" class:on=move || focus.is(r, c) data-tvf=focus.key(r, c)

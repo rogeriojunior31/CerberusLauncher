@@ -246,12 +246,15 @@ impl Store {
             .flatten()
             .and_then(|t| serde_json::from_str(&t).ok());
         if let Some(mut g) = row {
+            let before = g.clone();
             let have = list.iter().filter(|a| a.unlocked_at.is_some());
             g.total = list.len() as u32;
             g.unlocked = have.clone().count() as u32;
             g.hardcore = list.iter().filter(|a| a.hardcore_at.is_some()).count() as u32;
             g.points = have.map(|a| a.points).sum();
             g.points_total = g.points_total.max(list.iter().map(|a| a.points).sum());
+            // Unlocks taken back (stats reset): not a platinum anymore; more to get (a DLC): still one.
+            g.completed_at = if g.unlocked < before.unlocked { None } else { first_completion(&before, &g) };
             let _ = tx.execute(
                 "UPDATE games SET data=?4 WHERE source=?1 AND account=?2 AND key=?3",
                 params![scope.source.code(), scope.account, game, serde_json::to_string(&g).unwrap_or_default()],
@@ -488,6 +491,8 @@ impl Store {
 
 /// The newer reading, with progress that never goes back.
 fn merge(old: AchievementGame, mut new: AchievementGame) -> AchievementGame {
+    // Before old's fields move into new.
+    let completed = first_completion(&old, &new);
     if new.name.trim().is_empty() {
         new.name = old.name;
     }
@@ -509,7 +514,16 @@ fn merge(old: AchievementGame, mut new: AchievementGame) -> AchievementGame {
         new.award = old.award;
         new.award_at = old.award_at;
     }
+    new.completed_at = completed;
     new
+}
+
+/// When the game first reached 100%: kept once known (a DLC that adds
+/// achievements later doesn't take the platinum away), else now if it's complete.
+fn first_completion(old: &AchievementGame, new: &AchievementGame) -> Option<u64> {
+    old.completed_at
+        .or_else(|| old.complete().then(|| old.last_unlock.unwrap_or(1)))
+        .or_else(|| new.complete().then(|| new.last_unlock.unwrap_or(1)))
 }
 
 #[cfg(test)]
@@ -566,6 +580,30 @@ mod tests {
         assert!(!db.due_now(&scope, true));
         db.set_stamp(&scope, "wait_until", now() - 1);
         assert_eq!(db.status(&scope).wait_until, None, "a wait that's over isn't shown");
+    }
+
+    #[test]
+    fn merge_keeps_first_platinum_when_total_grows() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Xbox, "player");
+        let mut done = game("g", 50, 50);
+        done.last_unlock = Some(900);
+        db.keep_games(&scope, &[done]);
+        // A DLC adds five.
+        db.keep_games(&scope, &[game("g", 50, 55)]);
+        let g = db.game(&scope, "g").unwrap();
+        assert_eq!((g.unlocked, g.total, g.completed_at), (50, 55, Some(900)), "a platinum before the DLC, 50/55");
+        assert!(g.platinum() && !g.complete());
+        // The whole list says the same: still the first platinum.
+        let mut list: Vec<Achievement> = (0..50).map(|i| unlock(&i.to_string(), Some(100 + i))).collect();
+        list.extend((50..55).map(|i| unlock(&i.to_string(), None)));
+        db.keep_current_list(&scope, "g", 1, &list);
+        assert_eq!(db.game(&scope, "g").unwrap().completed_at, Some(900));
+        // Stats reset: taken back, no platinum anymore.
+        let reset: Vec<Achievement> = (0..55).map(|i| unlock(&i.to_string(), None)).collect();
+        db.keep_current_list(&scope, "g", 2, &reset);
+        assert_eq!(db.game(&scope, "g").unwrap().completed_at, None);
     }
 
     #[test]
@@ -656,6 +694,7 @@ mod tests {
             last_played: None,
             award: None,
             award_at: None,
+            completed_at: None,
         }
     }
 

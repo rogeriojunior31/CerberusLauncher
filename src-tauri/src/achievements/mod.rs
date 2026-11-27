@@ -347,6 +347,7 @@ async fn steam_api_part(
             last_played: (o.last_played > 0).then_some(o.last_played),
             award: all.then_some(cerberus_shared::GameAward::Completed),
             award_at: if all { last } else { None },
+            completed_at: None,
         });
     }
     // Nothing came back at all: a private profile or a key problem; say so.
@@ -656,7 +657,10 @@ async fn sync_epic_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
     db.keep_played(scope, &played.iter().map(|(k, (s, l))| (k.clone(), *s, *l)).collect::<Vec<_>>());
     let now = store::now();
     let mut misses = Misses::default();
-    for o in &owned {
+    // A game and its add-ons share a namespace: one entry, the first in the
+    // order above (the most played: the base game), not the last one's title.
+    let mut seen = std::collections::HashSet::new();
+    for o in owned.iter().filter(|o| seen.insert(o.namespace.clone())) {
         let secs = played.get(&o.app_name).map_or(0, |p| p.0);
         let kept = db.list(scope, &o.namespace);
         let fresh = kept.as_ref().is_some_and(|(at, _)| *at >= secs.max(1));
@@ -1149,6 +1153,7 @@ mod tests {
             last_played: None,
             award: None,
             award_at: None,
+            completed_at: None,
         };
         let mut games = vec![game("old", 2, 100), game("never", 0, 0), game("read", 3, 300), game("new", 1, 500)];
         games.extend((0..6).map(|i| game(&format!("many{i}"), 1, 50 - i)));

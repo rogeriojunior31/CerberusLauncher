@@ -811,11 +811,25 @@ pub struct AchievementGame {
     pub award: Option<GameAward>,
     #[serde(default)]
     pub award_at: Option<u64>,
+    /// When it first reached 100% (Unix seconds): kept when a DLC adds
+    /// achievements later, so it stays a platinum "before the DLC".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<u64>,
 }
 
 impl AchievementGame {
     pub fn percent(&self) -> u32 {
         if self.total == 0 { 0 } else { self.unlocked * 100 / self.total }
+    }
+
+    /// Every achievement unlocked now.
+    pub fn complete(&self) -> bool {
+        self.total > 0 && self.unlocked == self.total
+    }
+
+    /// A platinum now, or one before a DLC added more.
+    pub fn platinum(&self) -> bool {
+        self.complete() || self.completed_at.is_some()
     }
 }
 

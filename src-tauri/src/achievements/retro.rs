@@ -109,6 +109,7 @@ fn game_from_progress(g: &Value) -> AchievementGame {
         last_played: None,
         award: GameAward::from_code(&text(g, "HighestAwardKind")),
         award_at: unix(&text(g, "HighestAwardDate")),
+        completed_at: None,
     }
 }
 
@@ -201,6 +202,7 @@ fn game_from_info(id: &str, v: &Value) -> (AchievementGame, Vec<Achievement>) {
         last_played: None,
         award: GameAward::from_code(&text(v, "HighestAwardKind")),
         award_at: unix(&text(v, "HighestAwardDate")),
+        completed_at: None,
     };
     (game, achievements)
 }

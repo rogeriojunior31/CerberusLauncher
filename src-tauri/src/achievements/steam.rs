@@ -365,6 +365,7 @@ pub fn game_entry(app: u32, name: String, list: &[Achievement], played: Option<&
         // Every achievement: completed, from the last unlock.
         award: (!list.is_empty() && list.iter().all(|a| a.unlocked_at.is_some())).then_some(cerberus_shared::GameAward::Completed),
         award_at: (!list.is_empty() && list.iter().all(|a| a.unlocked_at.is_some())).then(|| list.iter().filter_map(|a| a.unlocked_at).max()).flatten(),
+        completed_at: None,
     }
 }
 

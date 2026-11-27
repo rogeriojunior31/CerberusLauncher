@@ -157,6 +157,7 @@ fn read_games(v: &Value) -> Vec<AchievementGame> {
             last_played: t.pointer("/titleHistory/lastTimePlayed").and_then(Value::as_str).and_then(seconds),
             award: None,
             award_at: None,
+            completed_at: None,
         });
     }
     games
