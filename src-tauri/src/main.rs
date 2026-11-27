@@ -2933,17 +2933,21 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
     // Store games go through their own launcher, which handles updates, DRM and
     // overlays; the rest are started, and watched, by us.
     let url = match &game.source {
-        // Not on this PC yet: Steam's own install window.
-        Source::Steam { app_id } if game.install_dir.is_empty() => format!("steam://install/{app_id}"),
-        Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
-        // Owned, not on this PC: the Epic launcher installs it.
-        Source::Epic { app_name, namespace, item_id } if game.install_dir.is_empty() => epic_account::install_url(namespace, item_id, app_name),
-        Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         // Through Windows, as the Start menu does (Xbox app sign-in and Game Pass included).
-        // Not on this PC: its page in the Xbox app, where it installs (Game Pass or bought).
-        Source::Xbox { product, .. } if game.install_dir.is_empty() => format!("msxbox://game/?productId={product}"),
-        Source::Xbox { family, app: app_id, .. } => {
+        Source::Xbox { family, app: app_id, .. } if !game.install_dir.is_empty() => {
             return xbox::launch(family, app_id).map_err(|e| tr!("Não foi possível abrir o jogo pelo app Xbox: {}", e));
+        }
+        Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. } => {
+            let epic_found = !matches!(game.source, Source::Epic { .. }) || epic::launcher_found();
+            match store_url(&game, epic_found) {
+                Ok(url) => url,
+                Err(e) if e == EPIC_MISSING => {
+                    // Its download page instead of a link Windows can't open.
+                    let _ = app.opener().open_url("https://store.epicgames.com/download", None::<&str>);
+                    return Err(tr!("A Epic Games Launcher não está neste PC: abrimos a página para baixar. Instale, entre com sua conta e tente de novo.").into());
+                }
+                Err(e) => return Err(e),
+            }
         }
         Source::Local { .. } => {
             let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or(tr!("O jogo foi removido da biblioteca."))?;
@@ -2963,6 +2967,62 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| tr!("Não foi possível abrir o launcher da loja: {}", e))
+}
+
+const EPIC_MISSING: &str = "epic-missing";
+
+/// The address that plays or installs a store game through its own launcher.
+/// Never one with an empty id: an Xbox game whose product isn't known opens
+/// the store's search by its name. `epic_found`: the Epic launcher is on this PC.
+fn store_url(game: &Game, epic_found: bool) -> Result<String, String> {
+    let installed = !game.install_dir.is_empty();
+    Ok(match &game.source {
+        Source::Steam { app_id } if *app_id == 0 => return Err(tr!("Esse jogo não tem id da Steam.").into()),
+        // Not on this PC yet: Steam's own install window.
+        Source::Steam { app_id } if !installed => format!("steam://install/{app_id}"),
+        Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
+        Source::Epic { .. } if !epic_found => return Err(EPIC_MISSING.into()),
+        Source::Epic { app_name, .. } if app_name.is_empty() => return Err(tr!("Esse jogo não tem id da Epic.").into()),
+        // Owned, not on this PC: the Epic launcher installs it.
+        Source::Epic { app_name, namespace, item_id } if !installed => epic_account::install_url(namespace, item_id, app_name),
+        Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
+        // Not on this PC: its page in the Xbox app, where it installs (Game Pass or bought).
+        Source::Xbox { product, .. } if !product.is_empty() && product.chars().all(|c| c.is_ascii_alphanumeric()) => format!("msxbox://game/?productId={product}"),
+        Source::Xbox { .. } => format!("ms-windows-store://search/?query={}", percent(&game.name)),
+        _ => return Err(tr!("Esse jogo não é de uma loja.").into()),
+    })
+}
+
+/// Where a store game is uninstalled or checked: the store's own window, or,
+/// where the store has no address for it, the place to do it (Windows'
+/// installed apps for the Xbox app, Epic's library).
+fn store_manage_url(game: &Game, verify: bool) -> Result<String, String> {
+    match (&game.source, verify) {
+        (Source::Steam { app_id }, _) if *app_id == 0 => Err(tr!("Esse jogo não tem id da Steam.").into()),
+        (Source::Steam { app_id }, false) => Ok(format!("steam://uninstall/{app_id}")),
+        (Source::Steam { app_id }, true) => Ok(format!("steam://validate/{app_id}")),
+        (Source::Xbox { .. }, false) => Ok("ms-settings:appsfeatures".into()),
+        (Source::Epic { .. }, _) => Ok("com.epicgames.launcher://store/library".into()),
+        _ => Err(tr!("Essa loja não verifica arquivos por aqui.").into()),
+    }
+}
+
+/// Letters, digits and -_.~ as they are; everything else as %XX (UTF-8 bytes).
+fn percent(text: &str) -> String {
+    text.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
+/// Opens the store's own place to uninstall (or, `verify`, check the files of)
+/// one of its games. The store asks before removing anything.
+#[tauri::command]
+fn store_manage(app: AppHandle, game: Game, verify: bool) -> Result<(), String> {
+    if matches!(game.source, Source::Epic { .. }) && !epic::launcher_found() {
+        return Err(tr!("A Epic Games Launcher não está neste PC.").into());
+    }
+    let url = store_manage_url(&game, verify)?;
+    app.opener().open_url(url, None::<&str>).map_err(|e| tr!("Não foi possível abrir o launcher da loja: {}", e))
 }
 
 /// Play refuses what the button wouldn't offer: a recomp without its game copy
@@ -4087,6 +4147,7 @@ fn main() {
             store_page,
             steam_news,
             open_in_store,
+            store_manage,
             standalone_status,
             install_standalone,
             pick_standalone,
@@ -4313,5 +4374,39 @@ fn settings_are_changed_under_their_lock_not_loaded_and_saved_whole() {
                 panic!("{file}:{}: use settings::update instead of load + save: {}", n + 1, line.trim());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod store_url_tests {
+    use super::*;
+
+    fn game(source: Source, installed: bool) -> Game {
+        Game { name: "Forza Horizon 5".into(), source, install_dir: if installed { r"C:\Games\x".into() } else { String::new() }, ..library::blank_game() }
+    }
+
+    #[test]
+    fn no_button_opens_an_address_with_an_empty_id() {
+        let xbox = |product: &str| Source::Xbox { family: "f".into(), app: "Game".into(), product: product.into(), game_pass: false };
+        assert_eq!(store_url(&game(xbox("9NKX70BBCDRN"), false), true).unwrap(), "msxbox://game/?productId=9NKX70BBCDRN");
+        assert_eq!(store_url(&game(xbox(""), false), true).unwrap(), "ms-windows-store://search/?query=Forza%20Horizon%205", "no product: the store's search by name");
+        assert!(store_url(&game(Source::Steam { app_id: 0 }, false), true).is_err());
+        assert_eq!(store_url(&game(Source::Steam { app_id: 10 }, false), true).unwrap(), "steam://install/10");
+        assert_eq!(store_url(&game(Source::Steam { app_id: 10 }, true), true).unwrap(), "steam://rungameid/10");
+        let epic = Source::Epic { app_name: "Fortnite".into(), namespace: "fn".into(), item_id: "i".into() };
+        assert_eq!(store_url(&game(epic.clone(), false), false).unwrap_err(), EPIC_MISSING, "without the Epic launcher: its download page instead");
+        assert!(store_url(&game(epic, false), true).unwrap().ends_with("?action=install"));
+        assert!(store_url(&game(Source::Local { exe: "x.exe".into() }, true), true).is_err());
+    }
+
+    #[test]
+    fn each_store_has_a_way_to_uninstall() {
+        let xbox = Source::Xbox { family: "f".into(), app: "Game".into(), product: "p".into(), game_pass: false };
+        let epic = Source::Epic { app_name: "a".into(), namespace: "n".into(), item_id: "i".into() };
+        assert_eq!(store_manage_url(&game(Source::Steam { app_id: 10 }, true), false).unwrap(), "steam://uninstall/10");
+        assert_eq!(store_manage_url(&game(Source::Steam { app_id: 10 }, true), true).unwrap(), "steam://validate/10");
+        assert_eq!(store_manage_url(&game(xbox.clone(), true), false).unwrap(), "ms-settings:appsfeatures");
+        assert!(store_manage_url(&game(xbox, true), true).is_err(), "the Xbox app checks files only in its own window");
+        assert_eq!(store_manage_url(&game(epic, true), false).unwrap(), "com.epicgames.launcher://store/library");
     }
 }

@@ -799,6 +799,16 @@ pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>
 
 /// Opens a page about a Steam game in the browser: "store", "steamdb", "pcgw" or "site".
 /// The Epic store, or an Xbox game's page in the Microsoft Store.
+/// Opens the store's own place to uninstall (or `verify`) one of its games.
+pub async fn store_manage(game: &Game, verify: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        game: &'a Game,
+        verify: bool,
+    }
+    call("store_manage", &Arg { game, verify }).await
+}
+
 pub async fn open_in_store(kind: &str, product: &str) {
     #[derive(serde::Serialize)]
     struct Arg<'a> {

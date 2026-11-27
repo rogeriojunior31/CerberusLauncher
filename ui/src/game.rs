@@ -1667,19 +1667,43 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    // A store game on this PC: uninstalled and checked by its store, which asks first.
+    let store_game = game.clone().filter(|g| !g.install_dir.is_empty() && matches!(g.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. }));
+    let store_button = move |verify: bool| {
+        let g = store_game.clone()?;
+        let store = crate::tiles::source_name(&g.source);
+        let (title, detail) = match (&g.source, verify) {
+            (Source::Steam { .. }, false) => (tr!("Desinstalar pela {}", store), tr!("Abre a janela da Steam, que pede confirmação. Os backups de saves continuam guardados.").to_string()),
+            (Source::Steam { .. }, true) => (tr!("Verificar arquivos").to_string(), tr!("A Steam confere os arquivos do jogo e baixa de novo o que estiver faltando ou estragado.").to_string()),
+            (Source::Xbox { .. }, false) => (tr!("Desinstalar pelo Windows").to_string(), tr!("Abre Aplicativos instalados: procure {} e desinstale por lá. O app Xbox não tem um link para isso.", g.name)),
+            (Source::Epic { .. }, false) => (tr!("Desinstalar pela {}", store), tr!("Abre a biblioteca da Epic: nos três pontos do jogo, escolha Desinstalar.").to_string()),
+            (Source::Epic { .. }, true) => (tr!("Verificar arquivos").to_string(), tr!("Abre a biblioteca da Epic: nos três pontos do jogo, Gerenciar › Verificar.").to_string()),
+            _ => return None,
+        };
+        let g = StoredValue::new(g);
+        Some(view! {
+            <button type="button" class=if verify { "row-btn" } else { "row-btn danger" }
+                on:click=move |_| spawn_local(async move { library.report(api::store_manage(&g.get_value(), verify).await); })>
+                <Svg icon=if verify { Icon::Check } else { Icon::Trash } />
+                <span><b>{title}</b><small>{detail}</small></span>
+            </button>
+        })
+    };
+    let verify = store_button(true);
+    let store_remove = store_button(false);
     // Grouped by what they touch, the risky one last and apart.
     let group = |title: &'static str, any: bool| any.then(|| view! { <h3 class="mg-h">{title}</h3> });
-    let files_h = group(tr!("Arquivos"), folder.is_some() || relocate.is_some() || repair.is_some() || hold.is_some());
+    let files_h = group(tr!("Arquivos"), folder.is_some() || relocate.is_some() || repair.is_some() || hold.is_some() || verify.is_some());
     let links_h = group(tr!("Integração"), shortcut.is_some() || steam.is_some() || project.is_some());
     let look_h = group(tr!("Aparência"), customize.is_some() || edit.is_some());
-    let danger_h = remove.is_some().then(|| view! { <h3 class="mg-h danger">{tr!("Zona de perigo")}</h3> });
+    let danger_h = (remove.is_some() || store_remove.is_some()).then(|| view! { <h3 class="mg-h danger">{tr!("Zona de perigo")}</h3> });
     view! {
         <div class="manage">
             {outside}{link}{program}{options}{dlss}{history}
-            {files_h}{folder}{relocate}{repair}{hold}
+            {files_h}{folder}{relocate}{repair}{hold}{verify}
             {links_h}{shortcut}{steam}{project}
             {look_h}{customize}{edit}
-            {danger_h}{remove}
+            {danger_h}{remove}{store_remove}
         </div>
     }
 }
