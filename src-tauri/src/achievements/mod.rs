@@ -977,10 +977,42 @@ pub async fn game(
         AchievementSource::Epic => {
             let user = crate::settings::load(data_dir).epic_user.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
             let scope = Scope::new(AchievementSource::Epic, &user);
-            let db = Store::open(data_dir)?;
-            let game = db.game(&scope, key).ok_or(tr!("Esse jogo não está nas conquistas da Epic."))?;
-            let achievements = db.list(&scope, key).map(|(_, l)| l).unwrap_or_default();
-            Ok(GameAchievements { game, achievements, by_title: false })
+            let mut db = Store::open(data_dir)?;
+            let owned = crate::epic_account::cached(data_dir).into_iter().find(|o| o.namespace == key);
+            let secs = owned.as_ref().and_then(|o| db.played(&scope).get(&o.app_name).map(|p| p.0)).unwrap_or(0);
+            let kept = db.list(&scope, key);
+            // Read now when not read since last played (a sync reads only a few games at a time).
+            let list = match kept {
+                Some((at, list)) if at >= secs.max(1) => list,
+                kept => {
+                    let fresh = async {
+                        let (access, account) = epic_session(http, data_dir).await?;
+                        epic::game_list(http, &access, &account, key).await
+                    }
+                    .await;
+                    match (fresh, kept) {
+                        (Ok(list), _) => {
+                            db.keep_current_list(&scope, key, secs.max(1), &list);
+                            list
+                        }
+                        (Err(_), Some((_, list))) => list,
+                        (Err(e), None) => return Err(shown(&e).to_string()),
+                    }
+                }
+            };
+            let game = match (db.game(&scope, key), &owned) {
+                (Some(g), _) if !list.is_empty() => AchievementGame { last_played: g.last_played, ..epic::entry(key, &g.name, g.art.first().map(String::as_str), secs, &list) },
+                (Some(g), _) => g,
+                (None, Some(o)) => {
+                    let g = epic::entry(key, &o.title, o.cover.as_deref(), secs, &list);
+                    if !list.is_empty() {
+                        db.keep_games(&scope, std::slice::from_ref(&g));
+                    }
+                    g
+                }
+                (None, None) => return Err(tr!("Esse jogo não está nas conquistas da Epic.").into()),
+            };
+            Ok(GameAchievements { game, achievements: list, by_title: false })
         }
         AchievementSource::Xbox => {
             let chosen = crate::settings::load(data_dir);
