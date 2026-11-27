@@ -92,6 +92,37 @@ pub fn record(data_dir: &Path, game_id: &str, seconds: u64, ended: u64) {
     if let Err(e) = crate::state_file::append_line(&file(data_dir), &text) {
         eprintln!("partidas: {e}");
     }
+    trim_if_big(&file(data_dir), TRIM_ABOVE, PER_GAME);
+}
+
+/// The log is read whole for a game's page: past this size it's trimmed.
+const TRIM_ABOVE: u64 = 1 << 20;
+/// Sessions kept per game when trimming (the chart shows two weeks).
+const PER_GAME: usize = 1000;
+
+/// Keeps each game's newest `per_game` sessions once the file passes `above` bytes.
+fn trim_if_big(file: &Path, above: u64, per_game: usize) {
+    if std::fs::metadata(file).map(|m| m.len()).unwrap_or(0) <= above {
+        return;
+    }
+    let all: Vec<PlaySession> = crate::state_file::json_lines(file);
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut keep = vec![false; all.len()];
+    for (i, s) in all.iter().enumerate().rev() {
+        let n = seen.entry(s.game_id.as_str()).or_default();
+        if *n < per_game {
+            *n += 1;
+            keep[i] = true;
+        }
+    }
+    let mut text = String::new();
+    for (s, kept) in all.iter().zip(keep) {
+        if let (true, Ok(line)) = (kept, serde_json::to_string(s)) {
+            text.push_str(&line);
+            text.push('\n');
+        }
+    }
+    let _ = crate::state_file::write_bytes(file, text.as_bytes());
 }
 
 /// A game's sessions, oldest first.
@@ -148,6 +179,26 @@ fn fill_from_trail(data_dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_big_log_keeps_each_games_newest_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("sessions.jsonl");
+        let mut text = String::new();
+        for i in 0..10u64 {
+            for game in ["a", "b"] {
+                text.push_str(&serde_json::to_string(&PlaySession { game_id: game.into(), ended: i, seconds: 60 }).unwrap());
+                text.push('\n');
+            }
+        }
+        fs::write(&log, &text).unwrap();
+        trim_if_big(&log, 1 << 20, 3);
+        assert_eq!(crate::state_file::json_lines::<PlaySession>(&log).len(), 20, "small: left alone");
+        trim_if_big(&log, 10, 3);
+        let left: Vec<PlaySession> = crate::state_file::json_lines(&log);
+        assert_eq!(left.len(), 6);
+        assert!(left.iter().all(|s| s.ended >= 7), "the newest three of each");
+    }
 
     #[test]
     fn a_session_cerberus_closed_in_the_middle_of_still_reaches_the_log() {
