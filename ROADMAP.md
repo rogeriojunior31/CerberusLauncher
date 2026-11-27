@@ -836,7 +836,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [ ] Listas guardadas sem idioma (L7). — P/M
 - [ ] Steam e RetroAchievements quase não alimentam Próximas e Mais raras; página da Epic só lê o banco (L8). — M
 - [ ] Estados por fonte: quando sincronizou, quando tenta de novo, forçar (L9). — M
-- [ ] ~~Concorrência no SQLite com escrita que some em silêncio (L10)~~ (27/11/2026: transações Immediate, erros registrados em vez de engolidos, account_times fora do runtime; teste com dois escritores, 2000 linhas); esquema com versão (L11). — P/M
+- [ ] ~~Concorrência no SQLite com escrita que some em silêncio (L10)~~ (27/11/2026: transações Immediate, erros registrados em vez de engolidos, account_times fora do runtime; teste com dois escritores, 2000 linhas); ~~esquema com versão (L11)~~ (27/11/2026: migrações em ordem contadas pelo user_version, aplicadas uma vez por execução; o banco daqui virou v1 sem perder nada: 571 jogos, 2531 desbloqueios). — P/M
 - [ ] Banco fora do backup e órfãos acumulando (L12). — P/M
 - [ ] Menos consultas por sincronização (L13; tabela de orçamento no documento). — M
 - [ ] Aviso ao vivo e releitura ao fechar o jogo também para Xbox e Epic (L14). — M/G
