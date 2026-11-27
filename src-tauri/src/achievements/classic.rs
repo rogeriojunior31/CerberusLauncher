@@ -119,7 +119,7 @@ async fn game_list(http: &reqwest::Client, data_dir: &Path, user: &str, key: &st
         })
         .collect();
     let _ = fs::create_dir_all(cache(data_dir));
-    let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&list).unwrap_or_default().as_bytes());
     Ok(list)
 }
 
@@ -207,7 +207,7 @@ pub async fn game_for(http: &reqwest::Client, data_dir: &Path, user: &str, key: 
     let found = by_hash.or_else(|| titles.iter().find_map(|t| pick(&list, None, t)));
     memo.insert(memo_key, Match { id: found, by_hash: by_hash.is_some(), size, modified, at: now });
     let _ = fs::create_dir_all(cache(data_dir));
-    let _ = fs::write(&memo_file, serde_json::to_string(&memo).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&memo_file, serde_json::to_string(&memo).unwrap_or_default().as_bytes());
     Ok(found.map(|id| (id, by_hash.is_some())))
 }
 

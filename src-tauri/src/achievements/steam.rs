@@ -398,7 +398,7 @@ pub async fn rarity(http: &reqwest::Client, cache_dir: &Path, app: u32) -> HashM
     match parsed {
         Some(map) if !map.is_empty() => {
             let _ = fs::create_dir_all(cache_dir);
-            let _ = fs::write(&file, serde_json::to_string(&map).unwrap_or_default());
+            let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&map).unwrap_or_default().as_bytes());
             map
         }
         _ => cached().unwrap_or_default(),

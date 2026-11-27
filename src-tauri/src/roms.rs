@@ -451,7 +451,7 @@ pub fn save_cache(file: &Path, cache: &ScanCache) {
     }
     let list: Vec<(&PathBuf, &Seen)> = cache.iter().collect();
     if let Ok(json) = serde_json::to_string(&list) {
-        let _ = fs::write(file, json);
+        let _ = crate::state_file::write_bytes(&file, json.as_bytes());
     }
 }
 
@@ -714,7 +714,7 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
         let _ = fs::create_dir_all(dir);
     }
     if let Ok(json) = serde_json::to_string(roms) {
-        let _ = fs::write(file, json);
+        let _ = crate::state_file::write_bytes(&file, json.as_bytes());
     }
 }
 

@@ -45,7 +45,7 @@ async fn fetch(http: &reqwest::Client, data_dir: &Path, app: u32) -> Result<Stor
     let details = parse(app, entry.get("data").ok_or(tr!("A loja da Steam respondeu algo inesperado."))?);
     let path = file(data_dir, app);
     let _ = fs::create_dir_all(path.parent().unwrap_or(data_dir));
-    let _ = fs::write(&path, serde_json::to_string(&details).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&path, serde_json::to_string(&details).unwrap_or_default().as_bytes());
     Ok(details)
 }
 

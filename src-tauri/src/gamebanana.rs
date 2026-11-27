@@ -171,7 +171,7 @@ pub async fn list(client: &Client, cache: &Path, game: u64) -> Result<Vec<Listed
         }
     }
     let _ = fs::create_dir_all(cache);
-    let _ = fs::write(&file, serde_json::to_string(&all).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&all).unwrap_or_default().as_bytes());
     Ok(all)
 }
 

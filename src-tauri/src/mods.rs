@@ -116,7 +116,7 @@ pub async fn communities(client: &Client, cache: &Path) -> Vec<String> {
         next = page.pointer("/pagination/next_link").and_then(Value::as_str).map(str::to_string);
     }
     let _ = fs::create_dir_all(cache);
-    let _ = fs::write(&file, serde_json::to_string(&ids).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&ids).unwrap_or_default().as_bytes());
     ids
 }
 
@@ -192,7 +192,7 @@ pub async fn packages(client: &Client, cache: &Path, community: &str) -> Result<
             match get_json(client, &url).await {
                 Ok(list) => {
                     let _ = fs::create_dir_all(cache);
-                    let _ = fs::write(&file, list.to_string());
+                    let _ = crate::state_file::write_bytes(&file, list.to_string().as_bytes());
                     list
                 }
                 Err(error) => on_disk.ok_or(error)?,

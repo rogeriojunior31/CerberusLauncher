@@ -132,7 +132,7 @@ async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [Achiev
     }
     if learned {
         let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
-        let _ = std::fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+        let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
     }
     for g in games.iter_mut().filter(|g| nameless(g)) {
         if let Some(name) = known.get(&g.key) {
@@ -586,7 +586,7 @@ pub async fn hub(
                 (Ok(games), Ok(points)) => {
                     let got = RetroKept { games, recent: recent.unwrap_or_default(), points };
                     let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
-                    let _ = std::fs::write(&file, serde_json::to_string(&got).unwrap_or_default());
+                    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&got).unwrap_or_default().as_bytes());
                     db.synced(&scope);
                     keep_retro(&mut db, &scope, &got);
                     (hub.retro_points, hub.retro_softcore) = got.points;

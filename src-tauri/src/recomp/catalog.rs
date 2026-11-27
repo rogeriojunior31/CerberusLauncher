@@ -327,7 +327,7 @@ async fn refresh_own(client: &Client, cache_dir: &Path, force: bool) {
         return;
     };
     let _ = fs::create_dir_all(cache_dir);
-    let _ = fs::write(&file, &text);
+    let _ = crate::state_file::write_bytes(&file, text.as_bytes());
     *OWN.write().unwrap_or_else(|p| p.into_inner()) = Some(list);
 }
 

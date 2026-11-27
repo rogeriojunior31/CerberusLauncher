@@ -112,7 +112,7 @@ pub async fn about(http: &reqwest::Client, data_dir: &Path, game: &str) -> Optio
     }
     let found = find(http, game).await;
     let _ = fs::create_dir_all(path.parent().unwrap_or(data_dir));
-    let _ = fs::write(&path, serde_json::to_string(&found).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&path, serde_json::to_string(&found).unwrap_or_default().as_bytes());
     found
 }
 

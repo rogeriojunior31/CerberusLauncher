@@ -414,7 +414,7 @@ fn keep_entry(install_dir: &Path, entry: &CatalogEntry) {
         aliases: entry.aliases.clone(),
     };
     if let Ok(text) = serde_json::to_string_pretty(&kept) {
-        let _ = fs::write(install_dir.join(KEPT_ENTRY), text);
+        let _ = crate::state_file::write_bytes(&install_dir.join(KEPT_ENTRY), text.as_bytes());
     }
 }
 
@@ -1692,7 +1692,7 @@ async fn fetch_repo_manifest(client: &Client, entry: &CatalogEntry, install: &Pa
     if let Some(dir) = target.parent() {
         let _ = fs::create_dir_all(dir);
     }
-    let _ = fs::write(target, text);
+    let _ = crate::state_file::write_bytes(&target, text.as_bytes());
 }
 
 /// Adds the recomp to the library, or updates the entry already there while

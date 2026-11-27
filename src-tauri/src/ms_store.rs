@@ -41,7 +41,7 @@ fn write<T: Serialize>(file: &Path, value: T) {
     if let Some(parent) = file.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let _ = fs::write(file, serde_json::to_string(&Kept { at: now(), value }).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&Kept { at: now(), value }).unwrap_or_default().as_bytes());
 }
 
 /// The Store's product for a game with exactly this name (its add-ons left out).
