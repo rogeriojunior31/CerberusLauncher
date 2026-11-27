@@ -118,13 +118,28 @@ impl RomIndex {
 
     fn set(&self, found: Vec<roms::RomFile>) {
         *self.0.lock().unwrap_or_else(|p| p.into_inner()) = found;
+        ROM_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
-/// Recomp id -> the player's copy of its game.
+/// Bumped each time the ROM index changes.
+static ROM_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Recomp id -> the player's copy of its game. Matching the whole catalog
+/// against every ROM takes a while; kept until the catalog or the ROMs change.
 fn owned_games(app: &AppHandle) -> std::collections::HashMap<String, String> {
-    let found = app.state::<RomIndex>().get();
-    roms::match_catalog(&recomp::catalog::all(), &found)
+    type Kept = (Arc<Vec<recomp::catalog::CatalogEntry>>, u64, std::collections::HashMap<String, String>);
+    static KEPT: std::sync::Mutex<Option<Kept>> = std::sync::Mutex::new(None);
+    let catalog = recomp::catalog::all();
+    let generation = ROM_GENERATION.load(std::sync::atomic::Ordering::SeqCst);
+    if let Some((list, seen, owned)) = KEPT.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        if Arc::ptr_eq(list, &catalog) && *seen == generation {
+            return owned.clone();
+        }
+    }
+    let owned = roms::match_catalog(&catalog, &app.state::<RomIndex>().get());
+    *KEPT.lock().unwrap_or_else(|p| p.into_inner()) = Some((catalog, generation, owned.clone()));
+    owned
 }
 
 fn settings_view(app: &AppHandle) -> SettingsView {
@@ -140,7 +155,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         recomps_dir_is_default: installs == folders.default_installs,
         recomps_dir: installs.to_string_lossy().into_owned(),
         data_dir: data.0.to_string_lossy().into_owned(),
-        art_cache_bytes: settings::folder_size(art.dir()),
+        art_cache_bytes: settings::folder_size_kept(art.dir()),
         version: app.package_info().version.to_string(),
         rom_dirs: chosen.rom_dirs.iter().map(|d| d.to_string_lossy().into_owned()).collect(),
         roms_found: app.state::<RomIndex>().get().len(),
