@@ -2,6 +2,7 @@
 //! renamed on one side fails to compile on the other, instead of breaking at runtime.
 
 pub mod i18n;
+pub mod names;
 
 use serde::{Deserialize, Serialize};
 

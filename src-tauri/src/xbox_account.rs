@@ -294,7 +294,7 @@ pub fn merge(games: &mut Vec<Game>, owned: &[Owned]) {
             _ => None,
         })
         .collect();
-    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let plain = cerberus_shared::names::key;
     let installed: std::collections::HashSet<String> = games.iter().filter(|g| !g.install_dir.is_empty()).map(|g| plain(&g.name)).collect();
     for o in owned {
         if families.contains(&o.family.to_lowercase()) || installed.contains(&plain(&o.name)) {

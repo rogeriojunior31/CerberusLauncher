@@ -1275,6 +1275,15 @@ async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id:
 #[tauri::command]
 async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: String, product: Option<String>) -> Result<Option<cerberus_shared::StoreDetails>, String> {
     let data = app.state::<DataDir>().0.clone();
+    let product = product.filter(|p| !p.is_empty());
+    // A game whose store product is known gets its own page first: a Steam
+    // game with the same name may be another one ("DOOM", "Prey").
+    if let Some(p) = &product {
+        if let Some(mut page) = ms_store::details(&http, &data, p).await {
+            page.origin = "msstore".into();
+            return Ok(Some(page));
+        }
+    }
     if let Some(steam) = steam_store::app_for(&http, &data, &name).await {
         if let Ok(mut page) = steam_details::details(&http, &data, steam).await {
             // Pages kept from before the origin was written say it too.
@@ -1282,7 +1291,7 @@ async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: Stri
             return Ok(Some(page));
         }
     }
-    let product = match product.filter(|p| !p.is_empty()) {
+    let product = match product {
         Some(p) => Some(p),
         None => ms_store::find(&http, &data, &name).await,
     };
