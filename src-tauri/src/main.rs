@@ -2400,11 +2400,12 @@ async fn install_recomp(
     };
     // One download at a time: the others say they're waiting their turn.
     downloads::queue(&id);
-    let permit = match downloads::ONE.try_acquire() {
-        Ok(permit) => permit,
-        Err(_) => {
+    // In line: the slot free and this one first (the player can put one first).
+    let permit = match downloads::try_turn(&id) {
+        Some(permit) => Some(permit),
+        None => {
             report(cerberus_shared::InstallStep::Queued);
-            downloads::ONE.acquire().await.map_err(|e| e.to_string())?
+            downloads::wait_turn(&id).await
         }
     };
     // Paused or cancelled while it waited: it doesn't start.
@@ -2843,6 +2844,12 @@ fn cancel_install(app: AppHandle, installing: State<'_, recomp::Installing>, id:
 #[tauri::command(async)]
 fn download_queue(app: AppHandle) -> Vec<InstallProgress> {
     downloads::waiting(&app.state::<DataDir>().0)
+}
+
+/// Puts a recomp waiting in the download line first.
+#[tauri::command]
+fn download_first(id: String) -> bool {
+    downloads::put_first(&id)
 }
 
 /// A download the player dismissed from "Didn't finish".
@@ -3845,6 +3852,7 @@ fn main() {
             cancel_copy,
             download_queue,
             forget_download,
+            download_first,
             move_game,
             running_games,
             list_backups,

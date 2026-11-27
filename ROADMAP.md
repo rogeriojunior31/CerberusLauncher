@@ -960,7 +960,7 @@ do que não leu; gravar com temporário próprio, `sync_all` e rename; trava por
 - [x] Disco cheio e rede caída [RC F14] — feito em 26/11/2026: disco cheio no download diz qual disco encheu e que o baixado ficou guardado para continuar; uma queda de rede espera 2, 4, 8, 16, 30 e 30 s antes de desistir (~1,5 min). Conversão para ISO e cópias de pasta conferem o espaço antes. Testado.
 - [x] Fila de downloads no backend, persistida [RC F13] — feito em 26/11/2026: `downloads.json` guarda o estado de cada download quando ele muda (não a cada porcentagem); ao abrir, os pausados e os que não terminaram voltam para Downloads (um que estava baixando volta pausado); um download por vez, os outros "Na fila" (pausar ou cancelar na fila funciona); cancelar e dispensar tiram da lista. Testado; conferido no app que a página abre e a fila é lida.
 - [x] Cópias grandes com progresso e cancelamento [RP F14] — feito em 26/11/2026: ao escolher a cópia do jogo, a página mostra "Copiando o jogo" com a barra e os GB copiados, e um botão Cancelar; as cópias de arquivo, de pasta, a extração de ISO/XISO e a conversão para ISO contam o que gravam e param no bloco seguinte ao Cancelar (só a cópia em andamento: um Cancelar antigo nunca para a próxima). Testado; não exercitado com uma cópia real (pede o seletor de arquivo).
-- [ ] Reordenar a fila de downloads
+- [x] Reordenar a fila de downloads — feito em 27/11/2026: a fila tem ordem (quem chegou primeiro baixa primeiro, e um download novo não fura a fila); "Baixar primeiro" num que espera o põe logo depois do de agora. Teste da ordem; não testado com downloads de verdade.
 
 ### Lote E — Segurança
 

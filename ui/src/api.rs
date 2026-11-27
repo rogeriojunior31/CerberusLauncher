@@ -579,6 +579,11 @@ pub async fn download_queue() -> Result<Vec<cerberus_shared::InstallProgress>, S
     call("download_queue", &()).await
 }
 
+/// Puts a recomp waiting in the download line first.
+pub async fn download_first(id: &str) -> Result<bool, String> {
+    call("download_first", &Id { id }).await
+}
+
 pub async fn forget_download(id: String) -> Result<(), String> {
     call("forget_download", &Id { id: &id }).await
 }

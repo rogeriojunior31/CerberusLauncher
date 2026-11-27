@@ -114,6 +114,20 @@ pub fn DownloadsPage() -> impl IntoView {
                     }
                 };
                 let paused = matches!(step, InstallStep::Paused { .. });
+                // Waiting in line: it can go first.
+                let first = matches!(step, InstallStep::Queued).then(|| {
+                    let id = id.clone();
+                    view! {
+                        <button type="button" class="btn sm" on:click=move |_| {
+                            let id = id.clone();
+                            leptos::task::spawn_local(async move {
+                                if library.report(api::download_first(&id).await) == Some(true) {
+                                    library.toast(tr!("Esse baixa logo depois do download de agora."));
+                                }
+                            });
+                        }>{tr!("Baixar primeiro")}</button>
+                    }
+                });
                 let pct = match step {
                     InstallStep::Downloading { done, total } | InstallStep::Paused { done, total } if total > 0 => Some(done.min(total) * 100 / total),
                     _ => None,
@@ -148,6 +162,7 @@ pub fn DownloadsPage() -> impl IntoView {
                                 <p class="dl-line">{line}</p>
                                 <div class="dl-bar" class:busy=pct.is_none()><i style=pct.map(|p| format!("width: {p}%")).unwrap_or_default()></i></div>
                                 {progress_view(step, id.clone())}
+                                {first}
                             </div>
                             <div class="dl-hero-side">
                                 <b class="dl-pct">{pct.map(|p| format!("{p}%")).unwrap_or_else(|| "…".into())}</b>
