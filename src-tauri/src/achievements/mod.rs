@@ -390,6 +390,44 @@ fn keep_retro(db: &mut Store, scope: &Scope, r: &RetroKept) {
     }
 }
 
+/// Lists of RetroAchievements games read per sync (one question each).
+const RETRO_LISTS_PER_SYNC: usize = 5;
+
+/// The whole lists of the games with new unlocks since they were read, the
+/// latest first: they carry each achievement's rarity, so Next and Rarest have
+/// RetroAchievements' games too. A game's mark is its latest unlock (the
+/// service tells no "last played").
+async fn keep_retro_lists(http: &reqwest::Client, user: &str, key: &str, db: &mut Store, scope: &Scope, games: &[AchievementGame]) {
+    let now = store::now();
+    let mark = |g: &AchievementGame| g.last_unlock.unwrap_or(0);
+    let mut misses = Misses::default();
+    for g in retro_stale(db, scope, games, now) {
+        match retro::game(http, user, key, &g.key).await {
+            Ok((_, list)) => {
+                misses.game_answered();
+                db.keep_current_list(scope, &g.key, mark(g), &list);
+            }
+            Err(_) if misses.game_failed(db, scope, &g.key, now) => break,
+            Err(_) => {}
+        }
+    }
+}
+
+/// The games whose list to read this sync: unlocked something since it was
+/// read (or never read), not failing lately, the latest first.
+fn retro_stale<'a>(db: &Store, scope: &Scope, games: &'a [AchievementGame], now: u64) -> Vec<&'a AchievementGame> {
+    let mark = |g: &AchievementGame| g.last_unlock.unwrap_or(0);
+    let mut stale: Vec<&AchievementGame> = games
+        .iter()
+        .filter(|g| g.unlocked > 0)
+        .filter(|g| db.list(scope, &g.key).is_none_or(|(read, _)| mark(g) > read))
+        .filter(|g| !failed_lately(db, scope, &g.key, now))
+        .collect();
+    stale.sort_by_key(|g| std::cmp::Reverse(mark(g)));
+    stale.truncate(RETRO_LISTS_PER_SYNC);
+    stale
+}
+
 /// One account sync at a time.
 static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -487,7 +525,7 @@ async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
         let lists = xbox::all_lists(http, &session).await?;
         for g in &games {
             if let Some(list) = lists.get(&g.key) {
-                db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), list);
+                db.keep_current_list(scope, &g.key, g.last_played.unwrap_or(0), list);
             }
         }
         db.set_stamp(scope, "all_lists_v4", store::now());
@@ -506,7 +544,7 @@ async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
             match xbox::title_list(http, &session, &g.key).await {
                 Ok(list) => {
                     misses.game_answered();
-                    db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
+                    db.keep_current_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
                 }
                 Err(e) if misses.game_failed(db, scope, &g.key, now) => {
                     stopped = Some(e);
@@ -601,7 +639,7 @@ async fn sync_epic_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
             match epic::game_list(http, &access, &account, &o.namespace).await {
                 Ok(list) => {
                     misses.game_answered();
-                    db.keep_list(scope, &o.namespace, secs.max(1), &list);
+                    db.keep_current_list(scope, &o.namespace, secs.max(1), &list);
                     Some(list)
                 }
                 Err(e) if misses.game_failed(db, scope, &o.namespace, now) => {
@@ -731,6 +769,7 @@ pub async fn hub(
                     let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&got).unwrap_or_default().as_bytes());
                     db.synced(&scope);
                     keep_retro(&mut db, &scope, &got);
+                    keep_retro_lists(http, &user, &key, &mut db, &scope, &got.games).await;
                     (hub.retro_points, hub.retro_softcore) = got.points;
                 }
                 (Err(e), _) | (_, Err(e)) => {
@@ -775,6 +814,7 @@ pub async fn hub(
         hub.games.extend(db.games(scope).into_iter().filter(|g| g.total > 0));
     }
     hub.recent = db.recent(&scopes, RECENT);
+    hub.revoked = db.revoked(&scopes, RECENT);
     (hub.next, hub.rarest) = db.highlights(&scopes, 12);
     if let Some((key, _)) = &steam_api_account {
         fill_recent_icons(http, data_dir, key, &mut hub.recent, online).await;
@@ -896,6 +936,7 @@ pub async fn game(
                 .as_ref()
                 .map(|(_, l, _)| l.iter().map(|a| (a.id.clone(), (a.icon.clone(), a.icon_locked.clone()))).collect())
                 .unwrap_or_default();
+            let from_web = from_api.is_some();
             let (name, mut list, played) = match (from_api, read) {
                 (Some((api_name, list, owned)), local) => {
                     let name = if api_name.is_empty() { local.as_ref().map(|l| l.0.clone()).unwrap_or_default() } else { api_name };
@@ -915,7 +956,13 @@ pub async fn game(
             let game = steam::game_entry(app, name, &list, played.as_ref());
             // Kept: the hub's next and rarest achievements come from the lists read.
             if let Ok(mut db) = Store::open(data_dir) {
-                db.keep_list(&Scope::new(AchievementSource::Steam, ""), key, game.last_played.unwrap_or(0), &list);
+                let scope = Scope::new(AchievementSource::Steam, "");
+                // The Web API says what the account has now; the files on this PC may be behind.
+                if from_web {
+                    db.keep_current_list(&scope, key, game.last_played.unwrap_or(0), &list);
+                } else {
+                    db.keep_list(&scope, key, game.last_played.unwrap_or(0), &list);
+                }
             }
             Ok(GameAchievements { game, achievements: list, by_title: false })
         }
@@ -923,7 +970,7 @@ pub async fn game(
             let (user, key_) = retro_account.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
             let (game, achievements) = retro::game(http, &user, &key_, key).await?;
             if let Ok(mut db) = Store::open(data_dir) {
-                db.keep_list(&Scope::new(AchievementSource::Retro, &user), key, game.last_played.unwrap_or(0), &achievements);
+                db.keep_current_list(&Scope::new(AchievementSource::Retro, &user), key, game.last_unlock.unwrap_or(0), &achievements);
             }
             Ok(GameAchievements { game, achievements, by_title: false })
         }
@@ -960,7 +1007,7 @@ pub async fn game(
                     .await;
                     match (fresh, kept) {
                         (Ok(list), _) => {
-                            db.keep_list(&scope, key, played, &list);
+                            db.keep_current_list(&scope, key, played, &list);
                             list
                         }
                         (Err(_), Some((_, list))) => list,
@@ -1009,6 +1056,40 @@ mod tests {
         // A busy store still grows it.
         stamp(&mut db, &scope, &Err("busy".into()));
         assert_eq!(db.stamp(&scope, "failures"), Some(1));
+    }
+
+    #[test]
+    fn retro_lists_are_read_for_games_with_new_unlocks_latest_first() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Retro, "player");
+        let game = |key: &str, unlocked: u32, last: u64| AchievementGame {
+            source: AchievementSource::Retro,
+            key: key.into(),
+            name: String::new(),
+            art: Vec::new(),
+            platform: String::new(),
+            total: 10,
+            unlocked,
+            hardcore: 0,
+            points: 0,
+            points_total: 0,
+            last_unlock: Some(last),
+            playtime_secs: None,
+            last_played: None,
+            award: None,
+            award_at: None,
+        };
+        let mut games = vec![game("old", 2, 100), game("never", 0, 0), game("read", 3, 300), game("new", 1, 500)];
+        games.extend((0..6).map(|i| game(&format!("many{i}"), 1, 50 - i)));
+        // "read" was read after its last unlock: not asked again.
+        db.keep_list(&scope, "read", 300, &[]);
+        let keys: Vec<&str> = retro_stale(&db, &scope, &games, store::now()).iter().map(|g| g.key.as_str()).collect();
+        assert_eq!(keys, vec!["new", "old", "many0", "many1", "many2"], "latest first, nothing unlocked skipped, five per sync");
+        // A new unlock after the read makes it stale again.
+        games[2].last_unlock = Some(400);
+        assert!(retro_stale(&db, &scope, &games, store::now()).iter().any(|g| g.key == "read"));
     }
 
     #[test]

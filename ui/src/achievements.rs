@@ -351,6 +351,31 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         }
     });
 
+    // Taken back by the store: apart and closed, they no longer count.
+    let revoked = (!hub.revoked.is_empty()).then(|| {
+        let count = hub.revoked.len();
+        let items = hub.revoked.iter().map(|r| {
+            let a = r.achievement.clone();
+            let route = Route::AchievementGame(r.source.code().to_string(), r.game_key.clone());
+            let title = a.description.clone();
+            view! {
+                <button type="button" class="ach-unlock locked" title=title on:click=move |_| library.go(route.clone())>
+                    <AchIcon a=a.clone() unlocked=false />
+                    <b>{a.name.clone()}</b>
+                    <small>{r.game_name.clone()}</small>
+                    <small class="ach-ago">{a.unlocked_at.filter(|t| *t > 1).map(format::ago).unwrap_or_default()}</small>
+                </button>
+            }
+        }).collect_view();
+        view! {
+            <details class="shelf ach-revoked">
+                <summary class="shelf-h"><div><h2>{tr!("Revogadas")}<small class="chip-n">{count}</small></h2>
+                    <p class="muted small shelf-sub">{tr!("Desbloqueadas um dia, mas a loja não as mostra mais (estatísticas zeradas ou conquista removida do jogo). Ficam guardadas e não contam.")}</p></div></summary>
+                <div class="ach-strip">{items}</div>
+            </details>
+        }
+    });
+
     let games = hub.games.clone();
     let list = move || {
         let needle = search.get().trim().to_lowercase();
@@ -428,6 +453,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         {next}
         {recent}
         {rarest}
+        {revoked}
         <section class="shelf" id="ach-all">
             <div class="shelf-h"><h2>{tr!("Todos os jogos")}</h2></div>
             <div class="ach-tools" aria-label=tr!("Filtros das conquistas")>

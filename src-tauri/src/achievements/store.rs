@@ -127,6 +127,8 @@ const MIGRATIONS: &[&str] = &[
                 PRIMARY KEY(source, account, name));",
     // 2: the language a list was read in, so one read in another is read again.
     "ALTER TABLE lists ADD COLUMN lang TEXT NOT NULL DEFAULT '';",
+    // 3: when an unlock seen once stopped being in the store's own list (0: still there).
+    "ALTER TABLE unlocks ADD COLUMN revoked_at INTEGER NOT NULL DEFAULT 0;",
 ];
 
 impl Store {
@@ -202,6 +204,86 @@ impl Store {
         self.keep_unlocks(scope, game, list);
     }
 
+    /// A whole list from a source that says what the player has now (Xbox,
+    /// Epic, RetroAchievements, Steam's Web API): what was unlocked once and
+    /// isn't now is marked revoked (kept, not counted), what came back is not,
+    /// and the game's counts become the list's instead of the highest seen.
+    /// Steam's files on this PC are not one: a game not opened here may be behind.
+    pub fn keep_current_list(&mut self, scope: &Scope, game: &str, played: u64, list: &[Achievement]) {
+        self.keep_list(scope, game, played, list);
+        if list.is_empty() {
+            return;
+        }
+        let now = now() as i64;
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
+        let unlocked: std::collections::HashSet<&str> = list.iter().filter(|a| a.unlocked_at.is_some()).map(|a| a.id.as_str()).collect();
+        let kept: Vec<String> = tx
+            .prepare("SELECT id FROM unlocks WHERE source=?1 AND account=?2 AND game=?3")
+            .and_then(|mut q| q.query_map(params![scope.source.code(), scope.account, game], |r| r.get::<_, String>(0))?.collect())
+            .unwrap_or_default();
+        for id in kept {
+            let _ = if unlocked.contains(id.as_str()) {
+                tx.execute("UPDATE unlocks SET revoked_at=0 WHERE source=?1 AND account=?2 AND game=?3 AND id=?4", params![scope.source.code(), scope.account, game, id])
+            } else {
+                tx.execute(
+                    "UPDATE unlocks SET revoked_at=?5 WHERE source=?1 AND account=?2 AND game=?3 AND id=?4 AND revoked_at=0",
+                    params![scope.source.code(), scope.account, game, id, now],
+                )
+            };
+        }
+        let row: Option<AchievementGame> = tx
+            .query_row("SELECT data FROM games WHERE source=?1 AND account=?2 AND key=?3", params![scope.source.code(), scope.account, game], |r| r.get::<_, String>(0))
+            .optional()
+            .ok()
+            .flatten()
+            .and_then(|t| serde_json::from_str(&t).ok());
+        if let Some(mut g) = row {
+            let have = list.iter().filter(|a| a.unlocked_at.is_some());
+            g.total = list.len() as u32;
+            g.unlocked = have.clone().count() as u32;
+            g.hardcore = list.iter().filter(|a| a.hardcore_at.is_some()).count() as u32;
+            g.points = have.map(|a| a.points).sum();
+            g.points_total = g.points_total.max(list.iter().map(|a| a.points).sum());
+            let _ = tx.execute(
+                "UPDATE games SET data=?4 WHERE source=?1 AND account=?2 AND key=?3",
+                params![scope.source.code(), scope.account, game, serde_json::to_string(&g).unwrap_or_default()],
+            );
+        }
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
+    }
+
+    /// Unlocks the store took back (seen once, not in its list now), the latest first.
+    pub fn revoked(&self, scopes: &[Scope], limit: usize) -> Vec<RecentUnlock> {
+        let mut all = Vec::new();
+        for scope in scopes {
+            let Ok(mut q) = self.0.prepare(
+                "SELECT u.game, u.data, g.data, u.unlocked_at, u.revoked_at FROM unlocks u LEFT JOIN games g ON g.source=u.source AND g.account=u.account AND g.key=u.game
+                 WHERE u.source=?1 AND u.account=?2 AND u.revoked_at > 0 ORDER BY u.revoked_at DESC LIMIT ?3",
+            ) else {
+                continue;
+            };
+            let rows = q.query_map(params![scope.source.code(), scope.account, limit as i64], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, i64>(3)?, r.get::<_, i64>(4)?))
+            });
+            for (game, a, g, at, revoked) in rows.into_iter().flatten().flatten() {
+                let Ok(mut achievement) = serde_json::from_str::<Achievement>(&a) else { continue };
+                achievement.unlocked_at = Some(at as u64);
+                let name = g.and_then(|t| serde_json::from_str::<AchievementGame>(&t).ok()).map(|g| g.name).unwrap_or_default();
+                all.push((revoked, RecentUnlock { source: scope.source, game_key: game, game_name: name, achievement }));
+            }
+        }
+        all.sort_by(|a, b| b.0.cmp(&a.0));
+        all.into_iter().take(limit).map(|(_, r)| r).collect()
+    }
+
     /// The kept full list and when the game had last been played when it was
     /// read. One read in another language than the app's now says 0 for when,
     /// so it's read again like a game played since (a few per sync, not all).
@@ -243,7 +325,7 @@ impl Store {
         for scope in scopes {
             let Ok(mut q) = self.0.prepare(
                 "SELECT u.game, u.data, g.data, u.unlocked_at FROM unlocks u LEFT JOIN games g ON g.source=u.source AND g.account=u.account AND g.key=u.game
-                 WHERE u.source=?1 AND u.account=?2 AND u.unlocked_at > 1 ORDER BY u.unlocked_at DESC LIMIT ?3",
+                 WHERE u.source=?1 AND u.account=?2 AND u.unlocked_at > 1 AND u.revoked_at = 0 ORDER BY u.unlocked_at DESC LIMIT ?3",
             ) else {
                 continue;
             };
@@ -442,6 +524,32 @@ mod tests {
         assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(0), "another language: read again");
         db.0.execute("UPDATE lists SET lang=''", []).unwrap();
         assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(500), "from before languages were kept: left alone");
+    }
+
+    #[test]
+    fn taken_back_unlocks_are_kept_apart_and_stop_counting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Xbox, "player");
+        db.keep_games(&scope, &[game("g", 3, 3)]);
+        db.keep_current_list(&scope, "g", 1, &[unlock("a", Some(100)), unlock("b", Some(200)), unlock("c", Some(300))]);
+        assert!(db.revoked(&[scope.clone()], 10).is_empty());
+        // The store took "c" back and the developer removed "b".
+        db.keep_current_list(&scope, "g", 2, &[unlock("a", Some(100)), unlock("c", None)]);
+        let revoked: Vec<String> = db.revoked(&[scope.clone()], 10).into_iter().map(|r| r.achievement.id).collect();
+        assert_eq!(revoked.len(), 2, "both kept apart: {revoked:?}");
+        let recent: Vec<String> = db.recent(&[scope.clone()], 10).into_iter().map(|r| r.achievement.id).collect();
+        assert_eq!(recent, vec!["a"], "only what the store still shows is recent");
+        let g = db.game(&scope, "g").unwrap();
+        assert_eq!((g.unlocked, g.total), (1, 2), "the game counts what the store says now, not the highest seen");
+        // Unlocked again: no longer revoked, and the first date stays.
+        db.keep_current_list(&scope, "g", 3, &[unlock("a", Some(100)), unlock("c", Some(900))]);
+        let revoked: Vec<String> = db.revoked(&[scope.clone()], 10).into_iter().map(|r| r.achievement.id).collect();
+        assert_eq!(revoked, vec!["b"]);
+        assert!(db.recent(&[scope.clone()], 10).iter().any(|r| r.achievement.id == "c" && r.achievement.unlocked_at == Some(300)));
+        // A list from Steam's files on this PC changes nothing (may be behind).
+        db.keep_list(&scope, "g", 4, &[unlock("a", None), unlock("c", None)]);
+        assert_eq!(db.revoked(&[scope], 10).len(), 1);
     }
 
     #[test]

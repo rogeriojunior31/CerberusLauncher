@@ -2274,3 +2274,8 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .dlc-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
 .dlc-list li { padding: 6px 0; border-top: 1px solid var(--line); }
 .dlc-list li:first-child { border-top: 0; }
+
+.ach-revoked > summary { cursor: pointer; list-style: none; }
+.ach-revoked > summary::-webkit-details-marker { display: none; }
+.ach-revoked > summary h2 { display: flex; align-items: center; gap: 8px; }
+.ach-revoked:not([open]) > summary { margin-bottom: 0; }

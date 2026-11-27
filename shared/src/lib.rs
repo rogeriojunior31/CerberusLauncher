@@ -852,6 +852,10 @@ pub struct AchievementsHub {
     pub games: Vec<AchievementGame>,
     /// Newest first.
     pub recent: Vec<RecentUnlock>,
+    /// Unlocks the store took back (seen once, gone from its list now): kept
+    /// apart, not counted.
+    #[serde(default)]
+    pub revoked: Vec<RecentUnlock>,
     /// Steam is installed and has achievement data on this PC.
     pub steam: bool,
     /// A RetroAchievements account is connected.
