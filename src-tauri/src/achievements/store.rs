@@ -97,10 +97,10 @@ pub fn merge_from(data: &Path, other: &Path) -> Result<(), String> {
     let result = (|| {
         let tx = db.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
         tx.execute_batch(
-            "INSERT OR IGNORE INTO games SELECT source, account, key, data FROM other.games;
-             INSERT OR IGNORE INTO lists SELECT source, account, game, played, data FROM other.lists;
-             INSERT OR IGNORE INTO unlocks SELECT source, account, game, id, unlocked_at, data FROM other.unlocks;
-             INSERT INTO played SELECT source, account, key, seconds, last FROM other.played WHERE true
+            "INSERT OR IGNORE INTO games(source, account, key, data) SELECT source, account, key, data FROM other.games;
+             INSERT OR IGNORE INTO lists(source, account, game, played, data) SELECT source, account, game, played, data FROM other.lists;
+             INSERT OR IGNORE INTO unlocks(source, account, game, id, unlocked_at, data) SELECT source, account, game, id, unlocked_at, data FROM other.unlocks;
+             INSERT INTO played(source, account, key, seconds, last) SELECT source, account, key, seconds, last FROM other.played WHERE true
                 ON CONFLICT(source, account, key) DO UPDATE SET seconds=MAX(seconds, excluded.seconds), last=MAX(last, excluded.last);",
         )
         .map_err(|e| e.to_string())?;
@@ -125,6 +125,8 @@ const MIGRATIONS: &[&str] = &[
                 seconds INTEGER NOT NULL, last INTEGER NOT NULL, PRIMARY KEY(source, account, key));
              CREATE TABLE IF NOT EXISTS stamps(source TEXT NOT NULL, account TEXT NOT NULL, name TEXT NOT NULL, value INTEGER NOT NULL,
                 PRIMARY KEY(source, account, name));",
+    // 2: the language a list was read in, so one read in another is read again.
+    "ALTER TABLE lists ADD COLUMN lang TEXT NOT NULL DEFAULT '';",
 ];
 
 impl Store {
@@ -193,23 +195,30 @@ impl Store {
     /// A game's full list, as read when the game had last been played at `played`.
     pub fn keep_list(&mut self, scope: &Scope, game: &str, played: u64, list: &[Achievement]) {
         let _ = self.0.execute(
-            "INSERT INTO lists(source, account, game, played, data) VALUES(?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(source, account, game) DO UPDATE SET played=excluded.played, data=excluded.data",
-            params![scope.source.code(), scope.account, game, played as i64, serde_json::to_string(list).unwrap_or_default()],
+            "INSERT INTO lists(source, account, game, played, data, lang) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(source, account, game) DO UPDATE SET played=excluded.played, data=excluded.data, lang=excluded.lang",
+            params![scope.source.code(), scope.account, game, played as i64, serde_json::to_string(list).unwrap_or_default(), cerberus_shared::i18n::lang().code()],
         );
         self.keep_unlocks(scope, game, list);
     }
 
-    /// The kept full list and when the game had last been played when it was read.
+    /// The kept full list and when the game had last been played when it was
+    /// read. One read in another language than the app's now says 0 for when,
+    /// so it's read again like a game played since (a few per sync, not all).
     pub fn list(&self, scope: &Scope, game: &str) -> Option<(u64, Vec<Achievement>)> {
+        let now = cerberus_shared::i18n::lang().code();
         self.0
-            .query_row("SELECT played, data FROM lists WHERE source=?1 AND account=?2 AND game=?3", params![scope.source.code(), scope.account, game], |r| {
-                Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
+            .query_row("SELECT played, data, lang FROM lists WHERE source=?1 AND account=?2 AND game=?3", params![scope.source.code(), scope.account, game], |r| {
+                Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
             })
             .optional()
             .ok()
             .flatten()
-            .and_then(|(p, t)| serde_json::from_str(&t).ok().map(|l| (p, l)))
+            .and_then(|(p, t, lang)| {
+                // Lists from before languages were kept count as the app's own.
+                let played = if lang.is_empty() || lang == now { p } else { 0 };
+                serde_json::from_str(&t).ok().map(|l| (played, l))
+            })
     }
 
     pub fn game(&self, scope: &Scope, key: &str) -> Option<AchievementGame> {
@@ -402,6 +411,38 @@ fn merge(old: AchievementGame, mut new: AchievementGame) -> AchievementGame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A copy of this PC's real database (the original isn't touched) opens
+    /// on the newest schema with nothing lost.
+    /// `cargo test -p cerberus-launcher real_database_migrates -- --ignored --nocapture`
+    #[test]
+    #[ignore = "copies this PC's achievements database"]
+    fn real_database_migrates() {
+        let real = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("app.cerberus.launcher");
+        let dir = tempfile::tempdir().unwrap();
+        copy_to(&real, &dir.path().join("achievements.db")).unwrap();
+        let count = |c: &Connection, t: &str| c.query_row(&format!("SELECT count(*) FROM {t}"), [], |r| r.get::<_, i64>(0)).unwrap();
+        let before = { let c = Connection::open(dir.path().join("achievements.db")).unwrap(); (count(&c, "unlocks"), count(&c, "lists"), count(&c, "games")) };
+        let db = Store::open(dir.path()).unwrap();
+        let after = (count(&db.0, "unlocks"), count(&db.0, "lists"), count(&db.0, "games"));
+        let version: i64 = db.0.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        println!("before {before:?} after {after:?} version {version}");
+        assert_eq!(before, after);
+        assert_eq!(version as usize, MIGRATIONS.len());
+    }
+
+    #[test]
+    fn list_in_other_language_is_stale() {
+        let mut db = Store::memory();
+        let scope = Scope::new(AchievementSource::Xbox, "p");
+        db.keep_list(&scope, "game", 500, &[]);
+        assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(500), "read in the app's language: as it was");
+        let other = if cerberus_shared::i18n::lang().code() == "en" { "pt-BR" } else { "en" };
+        db.0.execute("UPDATE lists SET lang=?1", params![other]).unwrap();
+        assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(0), "another language: read again");
+        db.0.execute("UPDATE lists SET lang=''", []).unwrap();
+        assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(500), "from before languages were kept: left alone");
+    }
 
     #[test]
     fn opens_a_v1_database() {
