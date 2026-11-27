@@ -40,6 +40,57 @@ thread_local! {
     static SHOW_REMOVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// A store game on this PC: its store uninstalls it (and asks first).
+pub fn by_store(game: &Game) -> bool {
+    !game.install_dir.is_empty() && matches!(game.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. })
+}
+
+/// What removing the game is called, wherever it's offered (the "..." menu, Gerenciar).
+pub fn uninstall_label(game: &Game) -> String {
+    match &game.source {
+        Source::Xbox { .. } if by_store(game) => tr!("Desinstalar pelo Windows").to_string(),
+        Source::Steam { .. } | Source::Epic { .. } if by_store(game) => tr!("Desinstalar pela {}", crate::tiles::source_name(&game.source)),
+        Source::Recomp { .. } if !game.external => tr!("Desinstalar").to_string(),
+        _ => tr!("Remover da biblioteca").to_string(),
+    }
+}
+
+/// Whether the game can be uninstalled (or taken off the library) from here.
+pub fn can_uninstall(game: &Game) -> bool {
+    by_store(game) || matches!(game.source, Source::Recomp { .. } | Source::Local { .. })
+}
+
+/// Uninstalls the game where it was asked, after the player confirmed: a
+/// recomp's folder goes (saves backed up first), a game added by hand leaves
+/// the library, a store game opens its store's own uninstall. `Err` carries
+/// the stop code (saves not backed up, folder not ours) and why.
+pub async fn uninstall(library: Library, game: Game, without_backup: bool, keep_folder: bool) -> Result<(), (Option<&'static str>, String)> {
+    if by_store(&game) {
+        api::store_manage(&game, false).await.map_err(|e| (None, e))?;
+        library.toast(match &game.source {
+            Source::Xbox { .. } => tr!("Aplicativos instalados aberto: procure {} e desinstale por lá.", game.name),
+            _ => tr!("A {} vai pedir para confirmar a desinstalação.", crate::tiles::source_name(&game.source)),
+        });
+        return Ok(());
+    }
+    match api::remove_game_with(&game.id, without_backup, keep_folder).await {
+        Ok(()) => {
+            library.games.refetch();
+            library.recomps.refetch();
+            library.toast(if keep_folder || game.external || matches!(game.source, Source::Local { .. }) { tr!("Tirado da biblioteca. A pasta continua no PC.") } else { tr!("Desinstalado.") });
+            // Its page is gone with it.
+            if library.route.get_untracked() == crate::Route::Game(game.id.clone()) {
+                library.go(crate::Route::Library);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let (code, why) = cerberus_shared::uninstall::split(&e);
+            Err((code, why.to_string()))
+        }
+    }
+}
+
 /// Opens a game's Gerenciar tab at its "Desinstalar" / "Remover da biblioteca".
 pub fn open_to_remove(library: Library, id: String) {
     // Already on its page (the "..." menu there): going to the same page does
@@ -1681,11 +1732,27 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             _ => return None,
         };
         let g = StoredValue::new(g);
+        // Uninstalling asks for a second click, here and in the "..." menu.
+        let confirm = RwSignal::new(false);
+        let label = move || if !verify && confirm.get() { tr!("Clique de novo para confirmar").to_string() } else { title.clone() };
         Some(view! {
             <button type="button" class=if verify { "row-btn" } else { "row-btn danger" }
-                on:click=move |_| spawn_local(async move { library.report(api::store_manage(&g.get_value(), verify).await); })>
+                on:click=move |_| {
+                    if verify {
+                        spawn_local(async move { library.report(api::store_manage(&g.get_value(), true).await); });
+                    } else if !confirm.get_untracked() {
+                        confirm.set(true);
+                    } else {
+                        confirm.set(false);
+                        spawn_local(async move {
+                            if let Err((_, e)) = uninstall(library, g.get_value(), false, false).await {
+                                library.report::<()>(Err(e));
+                            }
+                        });
+                    }
+                }>
                 <Svg icon=if verify { Icon::Check } else { Icon::Trash } />
-                <span><b>{title}</b><small>{detail}</small></span>
+                <span><b>{label}</b><small>{detail}</small></span>
             </button>
         })
     };

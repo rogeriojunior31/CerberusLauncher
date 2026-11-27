@@ -142,6 +142,15 @@ fn is_game(install: &Install, entry: Option<&CatalogItem>) -> bool {
 }
 
 /// The Epic Games Launcher is on this PC (it keeps its data under ProgramData).
+/// The folder and file whose contents say what Epic has installed.
+pub fn install_folders() -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = program_data().map(|d| d.join(r"Epic\EpicGamesLauncher\Data\Manifests")).into_iter().collect();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        found.push(PathBuf::from(local).join("com.epicgames.eglv2"));
+    }
+    found
+}
+
 pub fn launcher_found() -> bool {
     program_data().is_some_and(|d| d.join("Epic").join("EpicGamesLauncher").is_dir())
 }

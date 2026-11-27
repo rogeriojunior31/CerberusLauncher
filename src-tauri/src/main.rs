@@ -1907,6 +1907,69 @@ static STORES: std::sync::Mutex<Option<(std::time::Instant, u64, Vec<Game>)>> = 
 static STORES_CHANGED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 const STORES_FRESH: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// What the stores' install folders hold now: each entry's name, size and
+/// time, one level deep. A game installed or removed by its store changes it.
+fn install_fingerprint(folders: &[PathBuf]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    for folder in folders {
+        let Ok(entries) = std::fs::read_dir(folder) else { continue };
+        let mut seen: Vec<(std::ffi::OsString, u64, Option<std::time::SystemTime>)> = entries
+            .flatten()
+            .map(|e| {
+                let meta = e.metadata().ok();
+                (e.file_name(), meta.as_ref().map_or(0, |m| m.len()), meta.and_then(|m| m.modified().ok()))
+            })
+            .collect();
+        seen.sort();
+        folder.hash(&mut hash);
+        seen.hash(&mut hash);
+    }
+    hash.finish()
+}
+
+/// Watches the stores' install folders: a game installed or uninstalled by
+/// Steam, Epic or the Xbox app shows in the library within seconds, without
+/// pressing anything. A store downloading changes its files all the time:
+/// the library is read again at most every 15 s.
+fn watch_store_installs(app: AppHandle) {
+    std::thread::spawn(move || {
+        let folders = || {
+            let mut all = steam::install_folders();
+            all.extend(epic::install_folders());
+            all.extend(xbox::install_folders());
+            all
+        };
+        let mut watched = folders();
+        let mut listed_at = std::time::Instant::now();
+        let mut last = install_fingerprint(&watched);
+        let mut pending = false;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            // A library added in Steam, or a drive plugged in: the folders are found again now and then.
+            if listed_at.elapsed() > std::time::Duration::from_secs(60) {
+                watched = folders();
+                listed_at = std::time::Instant::now();
+            }
+            let now = install_fingerprint(&watched);
+            if now != last {
+                last = now;
+                pending = true;
+            }
+            if pending && LAST_INSTALL_NEWS.lock().map_or(true, |at| at.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(15))) {
+                pending = false;
+                if let Ok(mut at) = LAST_INSTALL_NEWS.lock() {
+                    *at = Some(std::time::Instant::now());
+                }
+                stores_changed();
+                let _ = app.emit("catalog-changed", ());
+            }
+        }
+    });
+}
+
+static LAST_INSTALL_NEWS: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
 /// The stores' listing is out of date.
 fn stores_changed() {
     STORES_CHANGED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -3901,6 +3964,7 @@ fn main() {
             let chosen = settings::load(&data_dir);
             language::apply(chosen.language.as_deref());
             app.manage(LocalLibrary::load(&data_dir));
+            watch_store_installs(app.handle().clone());
             // Copies lost by an update made before this fix (or a folder cleaned by hand) go back now.
             {
                 let handle = app.handle().clone();
@@ -4408,5 +4472,22 @@ mod store_url_tests {
         assert_eq!(store_manage_url(&game(xbox.clone(), true), false).unwrap(), "ms-settings:appsfeatures");
         assert!(store_manage_url(&game(xbox, true), true).is_err(), "the Xbox app checks files only in its own window");
         assert_eq!(store_manage_url(&game(epic, true), false).unwrap(), "com.epicgames.launcher://store/library");
+    }
+}
+
+#[cfg(test)]
+mod install_watch_tests {
+    #[test]
+    fn a_manifest_removed_or_added_changes_the_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let folders = vec![dir.path().to_path_buf(), dir.path().join("not-there")];
+        std::fs::write(dir.path().join("appmanifest_1.acf"), "a").unwrap();
+        let first = super::install_fingerprint(&folders);
+        assert_eq!(super::install_fingerprint(&folders), first, "nothing changed: the same");
+        std::fs::remove_file(dir.path().join("appmanifest_1.acf")).unwrap();
+        let removed = super::install_fingerprint(&folders);
+        assert_ne!(removed, first, "uninstalled: changed");
+        std::fs::write(dir.path().join("appmanifest_2.acf"), "b").unwrap();
+        assert_ne!(super::install_fingerprint(&folders), removed, "installed: changed");
     }
 }

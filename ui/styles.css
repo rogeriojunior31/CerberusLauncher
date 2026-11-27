@@ -2290,3 +2290,5 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .copy-stores { margin-left: 4px; }
 .copy-store { display: inline-flex; align-items: center; gap: 6px; }
 .copy-store .store-logo { width: 16px; height: 16px; }
+
+.ctx-why { max-width: 260px; margin: 4px 10px; color: var(--warn); font-size: 12px; line-height: 1.4; }
