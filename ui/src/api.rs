@@ -48,6 +48,12 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// A game's achievements changed (an unlock seen live, or a store game's list
+/// read again when it closed): while the page that asked is on screen.
+pub fn on_achievements_changed_here(mut handler: impl FnMut() + 'static) {
+    on_event_here("achievements-changed", move |_: serde::de::IgnoredAny| handler());
+}
+
 /// Calls `handler` for every `event` while the component that asked is on
 /// screen: the listener goes when it does (one per visit otherwise, each
 /// reading the component's state after it was gone).

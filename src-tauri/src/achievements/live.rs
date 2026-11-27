@@ -43,6 +43,29 @@ pub fn news<'a>(before: &HashSet<String>, now: &'a [Achievement]) -> (Vec<&'a Ac
     (fresh, complete)
 }
 
+/// Tells new unlocks of any store (their rarity, when known, from the list
+/// itself), and the 100% when the last one came; notes each one in the trail.
+pub fn tell(app: &AppHandle, game_id: &str, game: &str, fresh: &[&Achievement], complete: bool) {
+    for a in fresh {
+        let rare = a.rarity.filter(|r| *r < RARE);
+        let title = match rare {
+            Some(r) => tr!("Conquista rara desbloqueada ({}% dos jogadores)", format!("{r:.1}")),
+            None => tr!("Conquista desbloqueada").to_string(),
+        };
+        crate::unlock_toast::show(
+            app,
+            UnlockNotice { title, name: a.name.clone(), description: a.description.clone(), icon: a.icon.clone(), kind: if rare.is_some() { UnlockKind::Rare } else { UnlockKind::Normal } },
+        );
+        crate::trail::note(app, game_id, tk!("Conquista"), &Ok(a.name.clone()));
+    }
+    if complete {
+        crate::unlock_toast::show(
+            app,
+            UnlockNotice { title: tr!("100% das conquistas!").to_string(), name: game.to_string(), description: tr!("Você completou {}.", game), icon: None, kind: UnlockKind::Complete },
+        );
+    }
+}
+
 impl Live {
     /// Starts watching a game that just opened: what's unlocked now is the baseline.
     pub fn start(&mut self, app: &AppHandle, app_id: u32) {

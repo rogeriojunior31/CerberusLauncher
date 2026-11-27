@@ -133,6 +133,14 @@ pub fn AchievementsPage() -> impl IntoView {
         });
     };
     refresh_later.set_value(Some(Callback::new(move |_| refresh(false))));
+    // A game just closed and its new unlocks were kept: shown from what's kept, no store asked.
+    api::on_achievements_changed_here(move || {
+        leptos::task::spawn_local(async move {
+            if let Ok(fresh) = api::achievements_hub(false).await {
+                let _ = hub.try_set(Some(Ok(fresh)));
+            }
+        });
+    });
     leptos::task::spawn_local(async move {
         let got = api::achievements_hub(false).await;
         let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };

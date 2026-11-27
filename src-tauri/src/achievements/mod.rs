@@ -447,6 +447,63 @@ fn retro_stale<'a>(db: &Store, scope: &Scope, games: &'a [AchievementGame], now:
     stale
 }
 
+/// An Xbox or Epic game (library id `xbox:<family>` or `epic:<app name>`)
+/// just closed: only its list is read again (one question, two on Epic the
+/// first time), kept, and what's new is told, so it shows in Recent at once
+/// instead of at the account's next sync. A store asking to wait is respected.
+pub async fn after_session(app: &tauri::AppHandle, http: &reqwest::Client, data_dir: &Path, game_id: &str) {
+    let chosen = crate::settings::load(data_dir);
+    // What to ask, read from the store before any question (a connection doesn't cross an await).
+    enum Ask {
+        Xbox { refresh: String, title: String },
+        Epic { namespace: String },
+    }
+    let (scope, key, name, ask) = {
+        let Ok(db) = Store::open(data_dir) else { return };
+        if let Some(family) = game_id.strip_prefix("xbox:") {
+            let (Some(refresh), Some(user)) = (chosen.xbox_refresh.clone(), chosen.xbox_user.clone()) else { return };
+            let scope = Scope::new(AchievementSource::Xbox, &user);
+            let Some(title) = db.stamp(&scope, &format!("pfn:{}", family.to_lowercase())).map(|t| t.to_string()) else { return };
+            if !db.ready(&scope) {
+                return;
+            }
+            let name = db.game(&scope, &title).map(|g| g.name).unwrap_or_default();
+            (scope, title.clone(), name, Ask::Xbox { refresh, title })
+        } else if let Some(app_name) = game_id.strip_prefix("epic:") {
+            let (Some(_), Some(user)) = (chosen.epic_refresh.as_ref(), chosen.epic_user.clone()) else { return };
+            let scope = Scope::new(AchievementSource::Epic, &user);
+            let Some(owned) = crate::epic_account::cached(data_dir).into_iter().find(|o| o.app_name == app_name) else { return };
+            if !db.ready(&scope) {
+                return;
+            }
+            (scope, owned.namespace.clone(), owned.title, Ask::Epic { namespace: owned.namespace })
+        } else {
+            return;
+        }
+    };
+    let list = match ask {
+        Ask::Xbox { refresh, title } => {
+            let Ok(session) = xbox::session(http, &refresh, |r| save_xbox_refresh(data_dir, &refresh, r)).await else { return };
+            xbox::title_list(http, &session, &title).await
+        }
+        Ask::Epic { namespace } => {
+            let Ok((access, account)) = epic_session(http, data_dir).await else { return };
+            epic::game_list(http, &data_dir.join("cache").join("achievements"), &access, &account, &namespace).await
+        }
+    };
+    let Some(list) = list.ok().filter(|l| !l.is_empty()) else { return };
+    let Ok(mut db) = Store::open(data_dir) else { return };
+    let before: std::collections::HashSet<String> =
+        db.list(&scope, &key).map(|(_, l)| l.into_iter().filter(|a| a.unlocked_at.is_some()).map(|a| a.id).collect()).unwrap_or_default();
+    let (fresh, complete) = live::news(&before, &list);
+    // Read now: marked as played now, so the next sync doesn't ask it again.
+    db.keep_current_list(&scope, &key, store::now(), &list);
+    if !fresh.is_empty() {
+        live::tell(app, game_id, &name, &fresh, complete);
+    }
+    let _ = tauri::Emitter::emit(app, "achievements-changed", game_id);
+}
+
 /// Another sync (the library's, which can take minutes the first time) holds
 /// the accounts: the hub answers with what it has instead of waiting, and says so.
 fn syncing_elsewhere(busy: &mut Vec<AchievementSource>, source: AchievementSource) -> bool {
