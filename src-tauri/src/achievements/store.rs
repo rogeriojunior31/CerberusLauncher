@@ -75,6 +75,41 @@ impl Store {
     }
 }
 
+/// A consistent copy of the database at `to` (the file itself can't be copied
+/// while it's open with its write-ahead log).
+pub fn copy_to(data: &Path, to: &Path) -> Result<(), String> {
+    let file = data.join("achievements.db");
+    if !file.exists() {
+        return Err("no achievements database".into());
+    }
+    let _ = std::fs::remove_file(to);
+    let c = Connection::open(&file).map_err(|e| e.to_string())?;
+    c.execute("VACUUM INTO ?1", params![to.to_string_lossy()]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Brings in what another copy of the database saw: unlocks and games this
+/// one doesn't have, and the larger play time. Nothing here is taken away,
+/// and this PC's sync times (stamps) stay its own.
+pub fn merge_from(data: &Path, other: &Path) -> Result<(), String> {
+    let mut db = Store::open(data)?;
+    db.0.execute("ATTACH DATABASE ?1 AS other", params![other.to_string_lossy()]).map_err(|e| e.to_string())?;
+    let result = (|| {
+        let tx = db.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+        tx.execute_batch(
+            "INSERT OR IGNORE INTO games SELECT source, account, key, data FROM other.games;
+             INSERT OR IGNORE INTO lists SELECT source, account, game, played, data FROM other.lists;
+             INSERT OR IGNORE INTO unlocks SELECT source, account, game, id, unlocked_at, data FROM other.unlocks;
+             INSERT INTO played SELECT source, account, key, seconds, last FROM other.played WHERE true
+                ON CONFLICT(source, account, key) DO UPDATE SET seconds=MAX(seconds, excluded.seconds), last=MAX(last, excluded.last);",
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    })();
+    let _ = db.0.execute("DETACH DATABASE other", []);
+    result
+}
+
 /// The schema, one step per version. A new column is a new step at the end;
 /// a step already shipped never changes. Version 1 is the schema from before
 /// versions were counted (IF NOT EXISTS: an old database only gets its number).

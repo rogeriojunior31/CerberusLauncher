@@ -28,6 +28,9 @@ const FILES: [&str; 9] = [
     "store-playtime.json",
 ];
 const SETTINGS: &str = "settings.json";
+/// The achievements seen (a consistent copy of the database): merged on a
+/// restore, so nothing unlocked on either PC goes away.
+const ACHIEVEMENTS: &str = "achievements.db";
 const MARK: &str = "cerberus-backup.json";
 /// Never written into a copy.
 /// (The store accounts' refresh tokens too: a copy must never sign someone in.)
@@ -86,6 +89,14 @@ pub fn export(data: &Path, out: &Path) -> Result<usize, String> {
             }
         }
     }
+    // Beside the copy being written, not in the data folder.
+    let copy = out.with_extension("achievements.db");
+    if crate::achievements::store::copy_to(data, &copy).is_ok() {
+        if let Ok(bytes) = fs::read(&copy) {
+            put(&mut zip, ACHIEVEMENTS, &bytes)?;
+        }
+        let _ = fs::remove_file(&copy);
+    }
     zip.finish().map_err(|e| e.to_string())?;
     // The mark doesn't count as one of the player's files.
     Ok(count - 1)
@@ -121,7 +132,7 @@ pub fn stage(data: &Path, from: &Path) -> Result<usize, String> {
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
             let name = entry.name().to_string();
-            let target = if FILES.contains(&name.as_str()) || name == SETTINGS {
+            let target = if FILES.contains(&name.as_str()) || name == SETTINGS || name == ACHIEVEMENTS {
                 stage.join(&name)
             } else if let Some(picture) = name.strip_prefix("covers/").filter(|n| plain_name(n)) {
                 stage.join("covers").join(picture)
@@ -181,6 +192,10 @@ fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
     for entry in fs::read_dir(data.join("covers")).into_iter().flatten().flatten() {
         fs::copy(entry.path(), before.join("covers").join(entry.file_name())).map_err(|e| tr!("Não foi possível guardar os dados atuais antes de trazer a cópia ({}): nada foi trocado.", e))?;
     }
+    let incoming_achievements = stage.join(ACHIEVEMENTS);
+    if incoming_achievements.exists() && data.join(ACHIEVEMENTS).exists() {
+        crate::achievements::store::copy_to(data, &before.join(ACHIEVEMENTS)).map_err(|e| tr!("Não foi possível guardar os dados atuais antes de trazer a cópia ({}): nada foi trocado.", e))?;
+    }
     let mut count = 0;
     for name in FILES {
         let incoming = stage.join(name);
@@ -202,6 +217,11 @@ fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
     fs::create_dir_all(data.join("covers")).map_err(|e| e.to_string())?;
     for entry in fs::read_dir(stage.join("covers")).into_iter().flatten().flatten() {
         replace(&entry.path(), &data.join("covers").join(entry.file_name()))?;
+        count += 1;
+    }
+    // Achievements are joined, not replaced: what either PC saw stays.
+    if incoming_achievements.exists() {
+        crate::achievements::store::merge_from(data, &incoming_achievements)?;
         count += 1;
     }
     Ok((count, before))
@@ -278,6 +298,47 @@ fn merged_settings(data: &Path, text: &str) -> Result<crate::settings::Settings,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// This PC's real data, exported to a temporary folder (nothing in the data folder changes).
+    /// `cargo test -p cerberus-launcher real_export -- --ignored --nocapture`
+    #[test]
+    #[ignore = "reads this PC's Cerberus data"]
+    fn real_export_carries_the_achievements() {
+        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("app.cerberus.launcher");
+        let out = tempfile::tempdir().unwrap();
+        let zip_path = out.path().join("copy.zip");
+        let files = export(&data, &zip_path).unwrap();
+        let zip = zip::ZipArchive::new(fs::File::open(&zip_path).unwrap()).unwrap();
+        let db = zip.file_names().any(|n| n == ACHIEVEMENTS);
+        println!("{files} files, achievements in the copy: {db}, {} KB", fs::metadata(&zip_path).unwrap().len() / 1024);
+        assert!(db);
+        assert!(!data.join("achievements-export.db").exists());
+    }
+
+    #[test]
+    fn achievements_travel_in_the_copy_and_are_joined_not_replaced() {
+        use crate::achievements::store::{Scope, Store};
+        use cerberus_shared::AchievementSource;
+        let unlock = |id: &str| cerberus_shared::Achievement {
+            id: id.into(), name: id.into(), description: String::new(), icon: None, icon_locked: None, hidden: false,
+            unlocked_at: Some(1_700_000_000), hardcore_at: None, points: 0, rarity: None,
+        };
+        let scope = Scope::new(AchievementSource::Epic, "player");
+        let old_pc = tempfile::tempdir().unwrap();
+        write(old_pc.path(), "library.json", "[]");
+        Store::open(old_pc.path()).unwrap().keep_unlocks(&scope, "game", &[unlock("from-old-pc")]);
+        let zip = old_pc.path().join("copy.zip");
+        export(old_pc.path(), &zip).unwrap();
+
+        let here = tempfile::tempdir().unwrap();
+        write(here.path(), "library.json", "[]");
+        Store::open(here.path()).unwrap().keep_unlocks(&scope, "game", &[unlock("from-this-pc")]);
+        stage(here.path(), &zip).unwrap();
+        let (_, before) = apply_pending(here.path()).unwrap().unwrap();
+        let ids: std::collections::BTreeSet<String> = Store::open(here.path()).unwrap().recent(&[scope], 10).into_iter().map(|r| r.achievement.id).collect();
+        assert!(ids.contains("from-old-pc") && ids.contains("from-this-pc"), "{ids:?}");
+        assert!(before.join(ACHIEVEMENTS).exists(), "this PC's database kept first");
+    }
 
     #[test]
     fn a_staged_copy_waits_for_the_restart_and_keeps_the_hours_played_since() {
