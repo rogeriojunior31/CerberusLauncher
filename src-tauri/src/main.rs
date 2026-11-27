@@ -3591,8 +3591,19 @@ fn restore_emulator_backup(app: AppHandle, id: String, name: String) -> Result<u
         return Err(tr!("Feche o emulador antes de restaurar os saves.").into());
     }
     let data = app.state::<DataDir>().0.clone();
-    let (_, _, exe) = emulators_here(&data).into_iter().find(|(e, _, _)| *e == id).ok_or(tr!("Esse emulador não está neste PC."))?;
+    let (_, label, exe) = emulators_here(&data).into_iter().find(|(e, _, _)| *e == id).ok_or(tr!("Esse emulador não está neste PC."))?;
+    // Opened some other way (its own shortcut, "Open emulator"): on closing it
+    // would write its memory card over what was restored.
+    if running_from(&exe, &store_time::running_programs()) {
+        return Err(tr!("Feche o {} antes de restaurar os saves: aberto, ele regrava o cartão de memória ao fechar.", label));
+    }
     emulator_saves::restore(&data, &id, &exe, &name)
+}
+
+/// Whether the program at `exe` is among the running ones.
+fn running_from(exe: &Path, programs: &[String]) -> bool {
+    let want = exe.to_string_lossy().replace('/', "\\").to_lowercase();
+    programs.iter().any(|p| p.replace('/', "\\").to_lowercase() == want)
 }
 
 #[tauri::command(async)]
@@ -4085,6 +4096,15 @@ fn an_owned_steam_game_installed_here_isnt_added_again() {
     add_owned(&mut games, &owned, None);
     let ids: Vec<&str> = games.iter().map(|g| g.id.as_str()).collect();
     assert_eq!(ids, ["steam:1", "steam:2"], "no copy of the installed one, one of a repeated one, none without a name");
+}
+
+#[cfg(test)]
+#[test]
+fn an_emulator_open_outside_cerberus_is_seen() {
+    let exe = Path::new(r"C:\Emu\DuckStation\duckstation-qt.exe");
+    assert!(running_from(exe, &[r"c:\emu\duckstation\DuckStation-QT.exe".into()]));
+    assert!(!running_from(exe, &[r"C:\Other\duckstation-qt.exe".into()]), "another copy elsewhere");
+    assert!(!running_from(exe, &[]));
 }
 
 #[cfg(test)]

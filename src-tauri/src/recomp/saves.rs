@@ -38,6 +38,9 @@ const NOT_SAVES: &[&str] = &[
     "exe", "dll", "so", "dylib", "pdb", "msi", "zip", "7z", "rar", "appimage", "z64", "n64", "v64", "iso", "xex",
     "o2r", "otr", "log", "tmp", "dmp", "mp4", "mkv",
 ];
+/// The console's own files, dumped by the player (BIOS, keys): never in a
+/// backup, and never sent to a cloud folder.
+const CONSOLE_FILES: &[&str] = &["ipl.bin", "dsp_rom.bin", "dsp_coef.bin", "font_ansi.bin", "font_sjis.bin", "keys.bin", "otp.bin", "seeprom.bin"];
 /// Folders that never hold saves.
 const NOT_SAVE_DIRS: &[&str] = &[
     "mods", "shadercache", "shader_cache", "shaders", "cache", "caches", "logs", "log", "crashdumps", "dumps",
@@ -209,7 +212,7 @@ fn walk(root: &Path, dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         }
         let ext = path.extension().unwrap_or_default().to_string_lossy().to_lowercase();
         let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(u64::MAX);
-        if NOT_SAVES.contains(&ext.as_str()) || size > MAX_FILE {
+        if NOT_SAVES.contains(&ext.as_str()) || size > MAX_FILE || CONSOLE_FILES.contains(&name.as_str()) {
             continue;
         }
         out.push(path);

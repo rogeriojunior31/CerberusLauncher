@@ -756,6 +756,7 @@
   "Feche o jogo para mudar os ajustes: ele grava os próprios ajustes ao fechar.": "Close the game to change the settings: it writes its own settings when it closes.",
   "Feche o {} antes de reinstalar: ele está aberto ou com arquivos em uso.": "Close {} before reinstalling: it is open or has files in use.",
   "Feche o {} antes de remover: ele está aberto ou com arquivos em uso.": "Close {} before removing it: it is open or has files in use.",
+  "Feche o {} antes de restaurar os saves: aberto, ele regrava o cartão de memória ao fechar.": "Close {} before restoring the saves: while open, it writes its memory card again when it closes.",
   "Feche os jogos abertos antes de trocar uma chave compartilhada.": "Close the open games before changing a shared key.",
   "Fica nesta versão, mesmo quando sair uma nova. Útil se a nova quebrar seus mods ou saves.": "Stays on this version even when a new one comes out. Useful if the new one breaks your mods or saves.",
   "Filme": "Film",
