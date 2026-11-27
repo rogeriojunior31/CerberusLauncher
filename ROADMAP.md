@@ -818,7 +818,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [ ] Conta identificada pelo id (xuid, account id, steamid), não pelo nome; Sair sem apagar conquistas (L4; conquistas L3). — M
 - [ ] Resposta parcial, limites de uso e custo de cada sincronização (L5). — M
 - [ ] Tokens fora do texto puro (Cofre de credenciais do Windows) (L6). — M
-- [ ] Endurecer a janela de login (L7). — P
+- [x] Endurecer a janela de login (L7). — P (27/11/2026: a passagem do código da Epic só vale com o segredo deste login, que só a página de retorno da Epic recebe; a janela da Epic e a da Microsoft só mostram os sites de login, Epic, Microsoft e os provedores da Epic, e o resto abre no navegador; pop-ups idem; teste; o login real não foi refeito, a conta daqui já está conectada; PKCE da Microsoft fica de fora)
 - [ ] Cartões de conta com carregando, erro, "sincronizado há" e "Atualizar agora" (L8). — P/M
 - [ ] Xbox: "jogos da conta" vem do histórico, não da posse (L9); pacotes instalados de verdade (L10). — M
 - [ ] Epic: plataforma, demos e limite de páginas (L11). — M

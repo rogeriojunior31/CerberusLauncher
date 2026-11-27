@@ -41,6 +41,48 @@ fn encode(text: &str) -> String {
 }
 
 /// The page that hands the code: Epic's own address, with our client, nothing else.
+/// A fresh secret for one sign-in (16 random bytes, in hex).
+pub fn nonce() -> String {
+    let mut bytes = [0u8; 16];
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Security::Cryptography::{BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom};
+        // SAFETY: the buffer is ours and its length is given.
+        unsafe { BCryptGenRandom(std::ptr::null_mut(), bytes.as_mut_ptr(), bytes.len() as u32, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
+    }
+    #[cfg(not(windows))]
+    {
+        use sha2::Digest;
+        let seed = format!("{:?}{}", std::time::SystemTime::now(), std::process::id());
+        bytes.copy_from_slice(&sha2::Sha256::digest(seed.as_bytes())[..16]);
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The sign-in's hand-off address carries the code only with this sign-in's
+/// secret, which only Epic's own return page gets: a page from elsewhere
+/// loaded in the window can't sign Cerberus in to someone else's account.
+pub fn hand_off_code(url: &tauri::Url, nonce: &str) -> Option<String> {
+    if url.host_str() != Some("cerberus.invalid") || nonce.is_empty() {
+        return None;
+    }
+    let get = |key: &str| url.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned());
+    (get("state").as_deref() == Some(nonce)).then(|| get("code").unwrap_or_default())
+}
+
+/// The sites a sign-in window may show: the stores' and the sign-in providers'.
+/// Anything else opens in the player's own browser.
+pub fn login_site(url: &tauri::Url) -> bool {
+    // Epic and Microsoft, and every provider Epic's page offers to sign in with
+    // (Xbox, PlayStation, Nintendo, Steam, Google, Apple, Facebook, LEGO).
+    const SITES: [&str; 19] = [
+        "epicgames.com", "epicgames.dev", "unrealengine.com", "live.com", "microsoft.com", "microsoftonline.com", "xboxlive.com", "xbox.com",
+        "playstation.com", "sonyentertainmentnetwork.com", "nintendo.com", "nintendo.net", "steampowered.com", "steamcommunity.com",
+        "sony.com", "google.com", "apple.com", "facebook.com", "lego.com",
+    ];
+    url.scheme() == "https" && url.host_str().is_some_and(|host| SITES.iter().any(|site| host == *site || host.ends_with(&format!(".{site}"))))
+}
+
 pub fn is_return(url: &tauri::Url) -> bool {
     url.scheme() == "https"
         && url.host_str() == Some("www.epicgames.com")
@@ -309,6 +351,24 @@ pub fn install_url(namespace: &str, item_id: &str, app_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hand_off_needs_this_sign_ins_secret_and_only_sign_in_sites_open() {
+        let url = |u: &str| tauri::Url::parse(u).unwrap();
+        let secret = nonce();
+        assert_eq!(secret.len(), 32);
+        assert_ne!(secret, nonce(), "a new one each time");
+        assert_eq!(hand_off_code(&url(&format!("https://cerberus.invalid/epic?state={secret}&code=abc")), &secret).as_deref(), Some("abc"));
+        assert!(hand_off_code(&url("https://cerberus.invalid/epic?code=attacker"), &secret).is_none(), "no secret");
+        assert!(hand_off_code(&url("https://cerberus.invalid/epic?state=guess&code=attacker"), &secret).is_none(), "wrong secret");
+        assert!(login_site(&url("https://www.epicgames.com/id/login")));
+        assert!(login_site(&url("https://login.live.com/oauth20_authorize.srf")));
+        assert!(login_site(&url("https://accounts.google.com/o/oauth2")));
+        assert!(login_site(&url("https://my.account.sony.com/")) && login_site(&url("https://steamcommunity.com/openid/login")));
+        assert!(!login_site(&url("https://epicgames.com.evil.example/")), "a look-alike");
+        assert!(!login_site(&url("http://www.epicgames.com/")), "not secure");
+        assert!(!login_site(&url("https://example.com/help")));
+    }
 
     #[test]
     fn only_epics_own_return_page_counts() {

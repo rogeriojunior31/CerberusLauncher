@@ -1897,6 +1897,9 @@ async fn epic_login(app: AppHandle) -> Result<(), String> {
     }
     let url = tauri::Url::parse(&epic_account::login_url()).map_err(|e| e.to_string())?;
     let handle = app.clone();
+    // This sign-in's secret: only Epic's return page gets it, and the hand-off needs it.
+    let secret = epic_account::nonce();
+    let (on_load, opener) = (secret.clone(), app.clone());
     tauri::WebviewWindowBuilder::new(&app, "epic-login", tauri::WebviewUrl::External(url))
         .title(tr!("Entrar na Epic Games"))
         .inner_size(800.0, 860.0)
@@ -1905,30 +1908,38 @@ async fn epic_login(app: AppHandle) -> Result<(), String> {
         // WebView2's own pop-up keeps the same private session and the link back
         // to Epic's page (a window of ours didn't: it stayed blank).
         .on_new_window(|target, _| {
-            if target.scheme() == "https" {
+            if epic_account::login_site(&target) {
                 tauri::webview::NewWindowResponse::Allow
             } else {
                 tauri::webview::NewWindowResponse::Deny
             }
         })
         .on_navigation(move |at| {
-            // The hand-off: never loaded, the code read from the address.
+            // The hand-off: never loaded, the code read from the address, with this sign-in's secret.
             if at.host_str() == Some("cerberus.invalid") {
-                let code = at.query_pairs().find(|(k, _)| k == "code").map(|(_, v)| v.into_owned()).unwrap_or_default();
-                let app = handle.clone();
-                tauri::async_runtime::spawn(async move { finish_epic_login(app, code).await });
+                if let Some(code) = epic_account::hand_off_code(at, &secret) {
+                    let app = handle.clone();
+                    tauri::async_runtime::spawn(async move { finish_epic_login(app, code).await });
+                }
                 return false;
             }
-            // Only Epic's secure pages open here.
-            at.scheme() == "https"
+            // Only the sign-in sites open here; a link elsewhere (help, terms) opens in the browser.
+            if epic_account::login_site(at) {
+                return true;
+            }
+            if at.scheme() == "https" {
+                use tauri_plugin_opener::OpenerExt;
+                let _ = opener.opener().open_url(at.as_str(), None::<&str>);
+            }
+            false
         })
-        .on_page_load(|window, payload| {
+        .on_page_load(move |window, payload| {
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) && epic_account::is_return(payload.url()) {
                 // The page shows {"authorizationCode": "…"}: carry it to the hand-off address.
-                let _ = window.eval(
-                    "(function(){var c='';try{c=JSON.parse(document.body.innerText).authorizationCode||'';}catch(e){}\
-                     location.replace('https://cerberus.invalid/epic?code='+encodeURIComponent(c));})()",
-                );
+                let _ = window.eval(format!(
+                    "(function(){{var c='';try{{c=JSON.parse(document.body.innerText).authorizationCode||'';}}catch(e){{}}\
+                     location.replace('https://cerberus.invalid/epic?state={on_load}&code='+encodeURIComponent(c));}})()"
+                ));
             }
         })
         .build()
@@ -2041,7 +2052,15 @@ async fn xbox_login(app: AppHandle) -> Result<(), String> {
                 }
                 return false;
             }
-            at.scheme() == "https"
+            // Only the sign-in sites open here; anything else in the browser.
+            if epic_account::login_site(at) {
+                return true;
+            }
+            if at.scheme() == "https" {
+                use tauri_plugin_opener::OpenerExt;
+                let _ = handle.opener().open_url(at.as_str(), None::<&str>);
+            }
+            false
         })
         .build()
         .map_err(|e| tr!("Não foi possível abrir o login da Microsoft: {}", e))?;
