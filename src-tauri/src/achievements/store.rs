@@ -13,6 +13,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 /// Between two syncs of the same source, at least this long.
 pub const SYNC_EVERY: u64 = 300;
+/// Pressing Update asks again this long after the last sync, not before.
+const FORCED_FLOOR: u64 = 60;
 
 /// Who the data belongs to: the store and the account in it.
 #[derive(Clone, Debug, PartialEq)]
@@ -441,6 +443,25 @@ impl Store {
         self.ready(scope) && self.stamp(scope, "synced").is_none_or(|s| now() >= s + SYNC_EVERY)
     }
 
+    /// Due, or with `force` (the player pressed Update) due a minute after the
+    /// last sync; a store's wait is kept either way.
+    pub fn due_now(&self, scope: &Scope, force: bool) -> bool {
+        if !force {
+            return self.due(scope);
+        }
+        self.ready(scope) && self.stamp(scope, "synced").is_none_or(|s| now() >= s + FORCED_FLOOR)
+    }
+
+    /// When the account last synced, and until when the store asked to wait.
+    pub fn status(&self, scope: &Scope) -> cerberus_shared::SourceStatus {
+        let now = now();
+        cerberus_shared::SourceStatus {
+            source: scope.source,
+            synced_at: self.stamp(scope, "synced").filter(|s| *s > 0),
+            wait_until: self.stamp(scope, "wait_until").filter(|w| *w > now),
+        }
+    }
+
     /// The sync went through: ask again after `SYNC_EVERY`.
     pub fn synced(&self, scope: &Scope) {
         self.set_stamp(scope, "synced", now());
@@ -524,6 +545,26 @@ mod tests {
         assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(0), "another language: read again");
         db.0.execute("UPDATE lists SET lang=''", []).unwrap();
         assert_eq!(db.list(&scope, "game").map(|(p, _)| p), Some(500), "from before languages were kept: left alone");
+    }
+
+    #[test]
+    fn source_status_reads_stamps_and_update_asks_a_minute_later() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Retro, "player");
+        assert_eq!((db.status(&scope).synced_at, db.status(&scope).wait_until), (None, None), "never synced");
+        db.synced(&scope);
+        let at = db.status(&scope).synced_at.unwrap();
+        assert!(!db.due_now(&scope, false) && !db.due_now(&scope, true), "just synced: not even Update asks again");
+        db.set_stamp(&scope, "synced", at - FORCED_FLOOR);
+        assert!(!db.due_now(&scope, false), "a minute later: not due on its own");
+        assert!(db.due_now(&scope, true), "but Update asks");
+        // The store said no: the wait shows, and Update keeps it.
+        db.refused(&scope);
+        assert!(db.status(&scope).wait_until.is_some_and(|w| w > now()));
+        assert!(!db.due_now(&scope, true));
+        db.set_stamp(&scope, "wait_until", now() - 1);
+        assert_eq!(db.status(&scope).wait_until, None, "a wait that's over isn't shown");
     }
 
     #[test]

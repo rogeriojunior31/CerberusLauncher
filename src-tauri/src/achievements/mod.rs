@@ -441,9 +441,9 @@ const XBOX_LISTS_PER_SYNC: usize = 8;
 /// refused with a longer wait) while still holding the lock: the hub and the
 /// library may both ask at once, and the one that finds it not due leaves
 /// the stamp alone (it used to write "synced" over a refusal, and the wait was lost).
-async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
+async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str, force: bool) -> Result<(), String> {
     let _one = SYNCING.lock().await;
-    if !db.due(scope) {
+    if !db.due_now(scope, force) {
         return Ok(());
     }
     let result = sync_xbox_now(http, data_dir, db, scope, refresh).await;
@@ -605,9 +605,9 @@ const EPIC_GAMES_PER_SYNC: usize = 40;
 /// The Epic account into the store: play time of every game in one question;
 /// then each game new to the store, or played since its list was read.
 /// The Epic account's sync, stamped as `sync_xbox` is.
-async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
+async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, force: bool) -> Result<(), String> {
     let _one = SYNCING.lock().await;
-    if !db.due(scope) {
+    if !db.due_now(scope, force) {
         return Ok(());
     }
     let result = sync_epic_now(http, data_dir, db, scope).await;
@@ -690,14 +690,14 @@ pub async fn sync_accounts(http: &reqwest::Client, data_dir: &Path) -> bool {
         let scope = Scope::new(AchievementSource::Xbox, &user);
         if db.due(&scope) {
             asked = true;
-            let _ = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await;
+            let _ = sync_xbox(http, data_dir, &mut db, &scope, &refresh, false).await;
         }
     }
     if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
         let scope = Scope::new(AchievementSource::Epic, &user);
         if db.due(&scope) {
             asked = true;
-            let _ = sync_epic(http, data_dir, &mut db, &scope).await;
+            let _ = sync_epic(http, data_dir, &mut db, &scope, false).await;
         }
     }
     asked
@@ -709,6 +709,7 @@ pub async fn hub(
     retro_account: Option<(String, String)>,
     steam_api_account: Option<(String, String)>,
     online: bool,
+    force: bool,
 ) -> AchievementsHub {
     let mut hub = AchievementsHub::default();
     let (mut games, mut recent, steam_lists) = match tauri::async_runtime::spawn_blocking(steam_part).await {
@@ -760,7 +761,7 @@ pub async fn hub(
         let scope = Scope::new(AchievementSource::Retro, &user);
         let file = retro_file(data_dir, &user);
         let kept: Option<RetroKept> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok());
-        if online && db.due(&scope) {
+        if online && db.due_now(&scope, force) {
             let (games, recent, points) = futures_util::join!(retro::games(http, &user, &key), retro::recent(http, &user, &key), retro::points(http, &user, &key));
             match (games, points) {
                 (Ok(games), Ok(points)) => {
@@ -791,8 +792,8 @@ pub async fn hub(
     if let (Some(refresh), Some(user)) = (chosen.xbox_refresh, chosen.xbox_user) {
         hub.xbox = true;
         let scope = Scope::new(AchievementSource::Xbox, &user);
-        if online && db.due(&scope) {
-            if let Err(e) = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
+        if online && db.due_now(&scope, force) {
+            if let Err(e) = sync_xbox(http, data_dir, &mut db, &scope, &refresh, force).await {
                 hub.problems.push(tr!("Xbox: {}", shown(&e)));
             }
         }
@@ -802,8 +803,8 @@ pub async fn hub(
     if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
         hub.epic = true;
         let scope = Scope::new(AchievementSource::Epic, &user);
-        if online && db.due(&scope) {
-            if let Err(e) = sync_epic(http, data_dir, &mut db, &scope).await {
+        if online && db.due_now(&scope, force) {
+            if let Err(e) = sync_epic(http, data_dir, &mut db, &scope, force).await {
                 hub.problems.push(tr!("Epic: {}", shown(&e)));
             }
         }
@@ -815,6 +816,7 @@ pub async fn hub(
     }
     hub.recent = db.recent(&scopes, RECENT);
     hub.revoked = db.revoked(&scopes, RECENT);
+    hub.sources = scopes.iter().filter(|s| s.source != AchievementSource::Steam).map(|s| db.status(s)).collect();
     (hub.next, hub.rarest) = db.highlights(&scopes, 12);
     if let Some((key, _)) = &steam_api_account {
         fill_recent_icons(http, data_dir, key, &mut hub.recent, online).await;
@@ -1135,7 +1137,7 @@ mod tests {
         let (wait, failures) = (db.stamp(&scope, "wait_until"), db.stamp(&scope, "failures"));
         // The library asks meanwhile: not due, so it goes nowhere and stamps nothing.
         let http = reqwest::Client::new();
-        assert!(tauri::async_runtime::block_on(sync_xbox(&http, dir.path(), &mut db, &scope, "token")).is_ok());
+        assert!(tauri::async_runtime::block_on(sync_xbox(&http, dir.path(), &mut db, &scope, "token", false)).is_ok());
         assert_eq!((db.stamp(&scope, "wait_until"), db.stamp(&scope, "failures")), (wait, failures), "the wait is kept");
         assert!(db.stamp(&scope, "synced").is_none(), "not stamped as synced");
     }

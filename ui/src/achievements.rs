@@ -104,13 +104,14 @@ pub fn AchievementsPage() -> impl IntoView {
     let refresh_later = StoredValue::new(None::<Callback<()>>);
     // The answers can arrive after the page was left: then its signals are gone,
     // and reading them must not bring the window down (try_ reads).
-    let refresh = move || {
+    // `force`: the player pressed Update (asks again a minute after the last sync).
+    let refresh = move |force: bool| {
         if refreshing.try_get_untracked() != Some(false) {
             return;
         }
         refreshing.set(true);
         leptos::task::spawn_local(async move {
-            let got = api::achievements_hub(true).await;
+            let got = api::achievements_hub_now(true, force).await;
             let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
             let again = got.as_ref().is_ok_and(|h| h.retry_soon);
             // A failed refresh keeps what's already on screen.
@@ -131,14 +132,14 @@ pub fn AchievementsPage() -> impl IntoView {
             }
         });
     };
-    refresh_later.set_value(Some(Callback::new(move |_| refresh())));
+    refresh_later.set_value(Some(Callback::new(move |_| refresh(false))));
     leptos::task::spawn_local(async move {
         let got = api::achievements_hub(false).await;
         let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
         if !shown {
             hub.set(Some(got));
         }
-        refresh();
+        refresh(false);
     });
 
     let body = move || match hub.get() {
@@ -157,7 +158,7 @@ pub fn AchievementsPage() -> impl IntoView {
                     <Show when=move || refreshing.get()>
                         <span class="ach-sync" role="status"><span class="spin"></span>{tr!("Atualizando")}</span>
                     </Show>
-                    <button type="button" class="btn" disabled=move || refreshing.get() on:click=move |_| refresh()>
+                    <button type="button" class="btn" disabled=move || refreshing.get() on:click=move |_| refresh(true)>
                         <Svg icon=Icon::Refresh size=16 />{tr!("Atualizar")}
                     </button>
                 </div>
@@ -225,6 +226,17 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         let done = mine.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
         by_source.push((p, src, mine.len(), got, all, done));
     }
+    // When each account last synced, or until when its store asked to wait.
+    let sources = hub.sources.clone();
+    let sync_line = move |src: AchievementSource| {
+        let s = sources.iter().find(|s| s.source == src)?;
+        let text = match (s.wait_until, s.synced_at) {
+            (Some(w), _) => tr!("A loja pediu para esperar; tenta de novo às {}", format::clock(w)),
+            (None, Some(at)) => tr!("Atualizado {}", format::synced_ago(at)),
+            (None, None) => return None,
+        };
+        Some(view! { <small class="ach-synced" class:waiting=s.wait_until.is_some()>{text}</small> })
+    };
     let stores = (by_source.len() > 1).then(|| view! {
         <section class="ach-stores" aria-label=tr!("Por plataforma")>
             {by_source.into_iter().map(|(p, src, games, got, all, done)| {
@@ -237,6 +249,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                         <small>{if games == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", games) }}
                             {(done > 0).then(|| format!(" · {}", if done == 1 { tr!("1 platinado").to_string() } else { tr!("{} platinados", done) }))}</small>
                         <span class="ach-bar"><i style=format!("width: {}%", pct.max(1))></i></span>
+                        {sync_line(src)}
                     </button>
                 }
             }).collect_view()}

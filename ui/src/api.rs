@@ -880,13 +880,19 @@ pub async fn steam_open(page: &str) -> Result<(), String> {
     call("steam_open", &Arg { page }).await
 }
 
-/// `online` off: only what's on this PC, at once; on: asks Steam and RetroAchievements too.
+/// `online` off: only what's on this PC, at once; on: asks the accounts too,
+/// when due. `force` (the player pressed Update): asks a minute after the last time.
 pub async fn achievements_hub(online: bool) -> Result<cerberus_shared::AchievementsHub, String> {
+    achievements_hub_now(online, false).await
+}
+
+pub async fn achievements_hub_now(online: bool, force: bool) -> Result<cerberus_shared::AchievementsHub, String> {
     #[derive(serde::Serialize)]
     struct Arg {
         online: bool,
+        force: bool,
     }
-    call("achievements_hub", &Arg { online }).await
+    call("achievements_hub", &Arg { online, force }).await
 }
 
 pub async fn game_achievements(source: &str, key: &str) -> Result<cerberus_shared::GameAchievements, String> {

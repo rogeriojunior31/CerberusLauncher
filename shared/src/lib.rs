@@ -763,6 +763,18 @@ impl GameAward {
     }
 }
 
+/// How an account's achievements sync stands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceStatus {
+    pub source: AchievementSource,
+    /// The last sync that went through, in Unix seconds.
+    #[serde(default)]
+    pub synced_at: Option<u64>,
+    /// The store said no: asked again from then on (Unix seconds).
+    #[serde(default)]
+    pub wait_until: Option<u64>,
+}
+
 /// A game with achievements, as the hub lists it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AchievementGame {
@@ -856,6 +868,10 @@ pub struct AchievementsHub {
     /// apart, not counted.
     #[serde(default)]
     pub revoked: Vec<RecentUnlock>,
+    /// Each account's sync: when it last went through, and until when the
+    /// store asked to wait (Steam's files are read every time: not listed).
+    #[serde(default)]
+    pub sources: Vec<SourceStatus>,
     /// Steam is installed and has achievement data on this PC.
     pub steam: bool,
     /// A RetroAchievements account is connected.
