@@ -1724,7 +1724,9 @@ async fn list_games(
     let steam_id = settings::load(&app.state::<DataDir>().0).steam_id;
     let data_dir = app.state::<DataDir>().0.clone();
     let steam_time = tauri::async_runtime::spawn_blocking(move || achievements::steam_playtimes(&data_dir, steam_id.as_deref())).await.unwrap_or_default();
-    let mut games = assemble(&app.state::<DataDir>().0, games, stores, &steam_time);
+    // Files and the achievements database read off the async runtime.
+    let data_dir = app.state::<DataDir>().0.clone();
+    let mut games = tauri::async_runtime::spawn_blocking(move || assemble(&data_dir, games, stores, &steam_time)).await.map_err(|e| e.to_string())?;
     let mut missing = Vec::new();
     art.use_copies_for_games(&mut games, &mut missing);
     // A cover picked for a game added by hand, kept by full path: after the data
