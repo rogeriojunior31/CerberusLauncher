@@ -69,7 +69,7 @@ pub fn source_marks(source: &Source) -> Vec<SourceMark> {
 }
 
 /// The corner signs, top left of the cover.
-fn marks_view(marks: &[SourceMark]) -> Option<impl IntoView + use<>> {
+pub fn marks_view(marks: &[SourceMark]) -> Option<impl IntoView + use<>> {
     (!marks.is_empty()).then(|| {
         let items = marks
             .iter()
@@ -200,7 +200,7 @@ pub fn game_tile(game: &Game, library: Library) -> TileInfo {
 }
 
 /// Every store's logo for a game owned in several: the tile's own first.
-fn copies_marks(game: &Game, library: Library) -> Vec<SourceMark> {
+pub fn copies_marks(game: &Game, library: Library) -> Vec<SourceMark> {
     let ids = library.copies_of(&game.id);
     if ids.is_empty() {
         return source_marks(&game.source);

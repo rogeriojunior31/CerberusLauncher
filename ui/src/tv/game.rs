@@ -31,6 +31,8 @@ enum Act {
 
 fn label(act: &Act, library: Library, entry: &Option<RecompEntry>) -> String {
     match act {
+        // The same game in several stores: which one this button goes through.
+        Act::Play(g) if library.copies_of(&g.id).len() > 1 => tr!("{} · {}", crate::launch_action(g).0, crate::tiles::source_name(&g.source)),
         Act::Play(g) => crate::launch_action(g).0.to_string(),
         Act::PlayOriginal(_, _, name) => tr!("Jogar o original no {}", name),
         Act::Running => tr!("Voltar ao jogo").into(),
@@ -94,6 +96,12 @@ pub fn GamePage(id: String) -> impl IntoView {
                     list.push(Act::Running);
                 } else {
                     list.push(Act::Play(g.clone()));
+                    // Its copies in other stores: a button each, saying through which.
+                    let copies = library.copies_of(&g.id);
+                    if copies.len() > 1 {
+                        let all = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
+                        list.extend(all.into_iter().filter(|c| c.id != g.id && copies.contains(&c.id)).map(Act::Play));
+                    }
                     // A merged classic: its original plays from here too, as on the desktop.
                     let games = library.games.get_untracked().and_then(Result::ok).unwrap_or_default();
                     let recomps = library.recomps.get_untracked().and_then(Result::ok).unwrap_or_default();
@@ -122,27 +130,30 @@ pub fn GamePage(id: String) -> impl IntoView {
         list.push(Act::Options);
         list
     };
-    // A Steam game's store page and achievements, both kept on disk once read.
-    let steam_app = Memo::new(move |_| match game.get().map(|g| g.source) {
-        Some(Source::Steam { app_id }) => Some(app_id),
-        _ => None,
-    });
+    // The store page and achievements, as the desktop reads them: Steam's by
+    // app id, Epic's and Xbox's by name and product, and their account's list.
+    let store_of = Memo::new(move |_| game.get().map(|g| (g.name.clone(), g.source)));
     let store = LocalResource::new(move || {
-        let app = steam_app.get();
+        let of = store_of.get();
         async move {
-            match app {
-                Some(a) => api::steam_details(a).await.ok(),
-                None => None,
+            match of {
+                Some((_, Source::Steam { app_id })) => api::steam_details(app_id).await.ok(),
+                Some((name, Source::Xbox { product, .. })) => api::store_page(&name, &product).await.ok(),
+                Some((name, Source::Epic { .. })) => api::store_page(&name, "").await.ok(),
+                _ => None,
             }
         }
     });
     let achievements = LocalResource::new(move || {
-        let app = steam_app.get();
+        let of = store_of.get();
         async move {
-            match app {
-                Some(a) => api::game_achievements("steam", &a.to_string()).await.ok(),
-                None => None,
-            }
+            let (source, key) = match of? {
+                (_, Source::Steam { app_id }) => ("steam", app_id.to_string()),
+                (_, Source::Epic { namespace, .. }) if !namespace.is_empty() => ("epic", namespace),
+                (_, Source::Xbox { family, .. }) if !family.is_empty() => ("xbox", format!("pfn:{family}")),
+                _ => return None,
+            };
+            api::game_achievements(source, &key).await.ok()
         }
     });
     let shots = move || store.get().flatten().map(|d| d.screenshots).unwrap_or_default();

@@ -92,6 +92,7 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
                 return Some(tr!("Jogando"));
             }
             match &item {
+                Item::Game(g) if g.next_step == cerberus_shared::NextStep::Install => Some(tr!("Não instalado")),
                 Item::Game(g) if g.next_step != cerberus_shared::NextStep::Play => Some(tr!("Configurar")),
                 Item::Entry(e) if e.installed.is_some() => Some(tr!("Instalado")),
                 // Without an emulator ready here: shown, and A says what's missing.
@@ -105,6 +106,11 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
     let bar = move || {
         let percent = rid.as_deref().and_then(|r| progress_of(library, r))?;
         Some(view! { <div class="tv-bar"><i style=format!("width:{percent}%")></i></div> })
+    };
+    // Where it comes from: each store's logo, as on the desktop's covers.
+    let marks = match &item {
+        Item::Game(g) => crate::tiles::marks_view(&crate::tiles::copies_marks(g, library)),
+        _ => None,
     };
     // With a mouse: a click opens the game's page, as Y does.
     let tv = expect_context::<Tv>();
@@ -120,6 +126,7 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
         <div class="tv-tile" class:on=on data-tvf=key on:mouseenter=move |_| hover() on:click=on_click>
             <div class="tv-cover">
                 <Poster sources=item.covers() title=item.name() />
+                {marks}
                 {move || badge().map(|b| view! { <span class="tv-tag">{b}</span> })}
                 {bar}
             </div>
@@ -129,8 +136,15 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
 }
 
 /// Hidden games stay out of Big Picture.
+/// Every game, one tile each (a second store's copy is in the first's
+/// tile): the ones not on this PC too, which A installs through their store.
 fn library_games(library: Library) -> Vec<Game> {
-    library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.next_step != cerberus_shared::NextStep::Install).collect()
+    library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.part_ids.is_empty() && !library.is_extra_copy(&g.id)).collect()
+}
+
+/// The games on this PC (Home, updates): not-installed ones have their own tab in the library.
+fn installed_games(library: Library) -> Vec<Game> {
+    library_games(library).into_iter().filter(|g| g.next_step != cerberus_shared::NextStep::Install).collect()
 }
 
 /// The player's classics, the ones played lately first. Those no emulator here
@@ -174,7 +188,7 @@ pub fn Home() -> impl IntoView {
 
     let shelves = Memo::new(move |_| {
         let classic_items = classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default());
-        let mut games = library_games(library);
+        let mut games = installed_games(library);
         games.sort_by_key(|g| (std::cmp::Reverse(g.last_played), g.name.to_lowercase()));
         let dock: Vec<Item> = games.iter().take(12).cloned().map(Item::Game).collect();
         let rest: Vec<Item> = games.iter().skip(12).take(14).cloned().map(Item::Game).collect();
@@ -369,13 +383,15 @@ pub fn LibraryGrid() -> impl IntoView {
     let kind = RwSignal::new(0usize);
     let order = RwSignal::new(0usize);
     // The desktop library's tabs, in its order.
-    let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), tr!("Nativos"), "PC", tr!("Clássicos")];
+    // Not installed last: the account's and Game Pass games, which A installs through their store.
+    let kinds: [&'static str; 6] = [tr!("Todos"), tr!("Favoritos"), tr!("Nativos"), "PC", tr!("Clássicos"), tr!("Não instalados")];
     let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
     let games = Memo::new(move |_| {
         let which = kind.get();
         let needle = fold(&tv.lib_search.get());
         let mut list: Vec<Item> = library_games(library)
             .into_iter()
+            .filter(|g| (g.next_step == cerberus_shared::NextStep::Install) == (which == 5))
             .filter(|g| match which {
                 1 => g.favorite,
                 2 => matches!(g.source, cerberus_shared::Source::Recomp { .. }),
@@ -754,7 +770,7 @@ pub fn Downloads() -> impl IntoView {
         entries.with(|all| ids.iter().filter_map(|id| all.iter().find(|e| e.id == *id).cloned()).collect::<Vec<_>>())
     });
     let updates = Memo::new(move |_| {
-        let games = library_games(library);
+        let games = installed_games(library);
         entries.with(|all| {
             all.iter()
                 .filter(|e| e.update_to().is_some())
