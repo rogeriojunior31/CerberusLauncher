@@ -82,6 +82,11 @@ fn gaming_root(bytes: &[u8]) -> Option<String> {
 fn read_install(game_dir: &Path) -> Option<Install> {
     let content = game_dir.join("Content");
     let config = fs::read_to_string(content.join("MicrosoftGame.config")).ok()?;
+    // A DLC (Age of Empires II's "Dawn of the Dukes") is a package of its own
+    // that names the game it belongs to: it isn't a game in the library.
+    if config.contains("<MainPackageDependency") {
+        return None;
+    }
     let package = attribute(&config, "Identity", "Name")?;
     let publisher = attribute(&config, "Identity", "Publisher")?;
     let shown = attribute(&config, "ShellVisuals", "DefaultDisplayName").filter(|n| !n.starts_with("ms-resource:"));
@@ -183,6 +188,17 @@ mod tests {
         assert_eq!(install.family, "FEATHERWEIGHTGAMESPTYLIMI.ChainedBeasts_ad46npcgb9ttj");
         assert_eq!(install.app, "Game");
         assert_eq!(install.program.as_deref(), Some("ChainedBeasts.exe"));
+        // A DLC names the game it belongs to: not listed as a game.
+        let dlc = dir.path().join("Dawn of the Dukes");
+        fs::create_dir_all(dlc.join("Content")).unwrap();
+        fs::write(
+            dlc.join("Content").join("MicrosoftGame.config"),
+            r#"<Game><Identity Name="Microsoft.PhoenixPDLC02" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+            <ShellVisuals DefaultDisplayName="Dawn of the Dukes" />
+            <DesktopRegistration><MainPackageDependency Name="Microsoft.MSPhoenix" /></DesktopRegistration></Game>"#,
+        )
+        .unwrap();
+        assert!(read_install(&dlc).is_none());
         // The saves folder beside the games isn't one.
         fs::create_dir_all(dir.path().join("GameSave").join("wgs")).unwrap();
         assert!(read_install(&dir.path().join("GameSave")).is_none());
