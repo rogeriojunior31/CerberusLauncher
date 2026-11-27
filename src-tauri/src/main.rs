@@ -1,6 +1,7 @@
 // Release builds on Windows would otherwise open a console window next to the app.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod accounts;
 mod art_cache;
 mod authenticode;
 mod emulator_saves;
@@ -2003,7 +2004,9 @@ async fn store_games(app: &AppHandle, http: &reqwest::Client) -> Vec<Game> {
 /// the background when an hour old (renewing the token), the library listed again then.
 fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
     let data = app.state::<DataDir>().0.clone();
-    let Some(refresh) = settings::load(&data).epic_refresh else { return };
+    if settings::load(&data).epic_refresh.is_none() {
+        return;
+    }
     epic_account::merge(games, &epic_account::cached(&data));
     if !epic_account::stale(&data) {
         return;
@@ -2015,9 +2018,9 @@ fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
     let (app, http) = (app.clone(), http.clone());
     tauri::async_runtime::spawn(async move {
         let result = async {
-            let session = epic_account::token(&http, epic_account::Grant::Refresh(&refresh)).await?;
-            settings::renew_token(&data, settings::Account::Epic, &refresh, &session.refresh);
-            epic_account::library(&http, &session.access).await
+            // The same session the achievements use: one renewal, never two at once.
+            let (access, _) = achievements::epic_session(&http, &data).await?;
+            epic_account::library(&http, &access).await
         }
         .await;
         ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -2156,8 +2159,8 @@ fn xbox_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
     let (app, http) = (app.clone(), http.clone());
     tauri::async_runtime::spawn(async move {
         let result = async {
-            let session = xbox_account::sign_in(&http, xbox_account::Grant::Refresh(&refresh)).await?;
-            settings::renew_token(&data, settings::Account::Xbox, &refresh, &session.refresh);
+            // The same session the achievements use: one sign-in, never two at once.
+            let session = achievements::xbox::session(&http, &refresh, |r| settings::renew_token(&data, settings::Account::Xbox, &refresh, r)).await?;
             let owned = xbox_account::library(&http, &session).await?;
             Ok::<_, String>(xbox_account::with_store_details(&http, owned).await)
         }

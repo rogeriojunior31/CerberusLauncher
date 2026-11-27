@@ -7,42 +7,34 @@
 //! in for each question.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use cerberus_shared::{tr, Achievement, AchievementGame, AchievementSource};
 use serde_json::{json, Value};
 
 use crate::xbox_account::{self, Session};
 
-/// The session, kept between questions (a sign-in is three requests).
-static SESSION: Mutex<Option<(Instant, String, Session)>> = Mutex::new(None);
+/// The account's one session (the library's too): a sign-in is three
+/// requests, and Microsoft hands a new refresh token each time.
+static SESSION: crate::accounts::Kept<Session> = crate::accounts::Kept::new();
 const SESSION_FOR: Duration = Duration::from_secs(3600);
 
 /// Forgets the session kept in memory (signed out, or another account).
 pub fn forget_session() {
-    if let Ok(mut kept) = SESSION.lock() {
-        *kept = None;
-    }
+    SESSION.forget();
 }
 
-/// Signs in with the kept refresh token, or reuses the last hour's session.
-/// The new refresh token, when there is one, is handed to `save`.
+/// Signs in with the kept refresh token, or reuses the last hour's session;
+/// one sign-in at a time for the whole app. The new refresh token is handed to `save`.
 pub async fn session(http: &reqwest::Client, refresh: &str, save: impl FnOnce(&str)) -> Result<Session, String> {
-    if let Ok(kept) = SESSION.lock() {
-        if let Some((at, from, s)) = kept.as_ref() {
-            if from == refresh && at.elapsed() < SESSION_FOR {
-                return Ok(Session { refresh: s.refresh.clone(), auth: s.auth.clone(), xuid: s.xuid.clone(), gamertag: s.gamertag.clone() });
-            }
-        }
-    }
-    let fresh = xbox_account::sign_in(http, xbox_account::Grant::Refresh(refresh)).await?;
-    save(&fresh.refresh);
-    if let Ok(mut kept) = SESSION.lock() {
-        let copy = Session { refresh: fresh.refresh.clone(), auth: fresh.auth.clone(), xuid: fresh.xuid.clone(), gamertag: fresh.gamertag.clone() };
-        *kept = Some((Instant::now(), fresh.refresh.clone(), copy));
-    }
-    Ok(fresh)
+    SESSION
+        .get(refresh, SESSION_FOR, || async {
+            let fresh = xbox_account::sign_in(http, xbox_account::Grant::Refresh(refresh)).await?;
+            save(&fresh.refresh);
+            let next = fresh.refresh.clone();
+            Ok((fresh, next))
+        })
+        .await
 }
 
 pub(super) async fn get(http: &reqwest::Client, s: &Session, url: &str, contract: &str) -> Result<Value, String> {

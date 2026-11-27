@@ -22,9 +22,7 @@ fn save_xbox_refresh(data_dir: &Path, started_with: &str, refresh: &str) {
 
 /// Forgets the Epic session kept in memory (signed out, or another account).
 pub fn forget_epic_session() {
-    if let Ok(mut kept) = EPIC_SESSION.lock() {
-        *kept = None;
-    }
+    EPIC_SESSION.forget();
 }
 
 use std::collections::HashMap;
@@ -662,28 +660,24 @@ fn keep_xbox_games(db: &mut Store, scope: &Scope, games: Vec<AchievementGame>) {
     db.keep_games(scope, &games);
 }
 
-/// The Epic session, kept for half an hour (Epic hands a new refresh token each time: it's saved).
-static EPIC_SESSION: std::sync::Mutex<Option<(std::time::Instant, String, String)>> = std::sync::Mutex::new(None);
+/// The Epic account's one session (the library's too), kept for half an hour
+/// with the refresh token it came with: Epic hands a new one each time (saved).
+static EPIC_SESSION: crate::accounts::Kept<(String, String)> = crate::accounts::Kept::new();
 
-async fn epic_session(http: &reqwest::Client, data_dir: &Path) -> Result<(String, String), String> {
-    if let Ok(kept) = EPIC_SESSION.lock() {
-        if let Some((at, access, account)) = kept.as_ref() {
-            if at.elapsed() < std::time::Duration::from_secs(1800) {
-                return Ok((access.clone(), account.clone()));
-            }
-        }
-    }
+/// The Epic access token and account id; one renewal at a time for the whole app.
+pub(crate) async fn epic_session(http: &reqwest::Client, data_dir: &Path) -> Result<(String, String), String> {
     let refresh = crate::settings::load(data_dir).epic_refresh.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
-    let s = crate::epic_account::token(http, crate::epic_account::Grant::Refresh(&refresh)).await?;
-    crate::settings::renew_token(data_dir, crate::settings::Account::Epic, &refresh, &s.refresh);
-    // Signed out while asking: the session isn't kept.
-    if crate::settings::load(data_dir).epic_refresh.as_deref() != Some(s.refresh.as_str()) {
-        return Err(tr!("Entre na Epic em Configurações › Epic Games primeiro.").into());
-    }
-    if let Ok(mut kept) = EPIC_SESSION.lock() {
-        *kept = Some((std::time::Instant::now(), s.access.clone(), s.account.clone()));
-    }
-    Ok((s.access, s.account))
+    EPIC_SESSION
+        .get(&refresh, std::time::Duration::from_secs(1800), || async {
+            let s = crate::epic_account::token(http, crate::epic_account::Grant::Refresh(&refresh)).await?;
+            crate::settings::renew_token(data_dir, crate::settings::Account::Epic, &refresh, &s.refresh);
+            // Signed out while asking: the session isn't kept.
+            if crate::settings::load(data_dir).epic_refresh.as_deref() != Some(s.refresh.as_str()) {
+                return Err(tr!("Entre na Epic em Configurações › Epic Games primeiro.").into());
+            }
+            Ok(((s.access, s.account), s.refresh))
+        })
+        .await
 }
 
 /// Epic games asked per sync (two questions each); the rest wait for the next sync.

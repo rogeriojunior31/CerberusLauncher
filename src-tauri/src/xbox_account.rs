@@ -66,6 +66,7 @@ struct LiveToken {
 }
 
 /// The account's Xbox Live access: the header value and its user id.
+#[derive(Clone)]
 pub struct Session {
     pub refresh: String,
     pub auth: String,
