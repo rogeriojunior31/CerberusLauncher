@@ -387,7 +387,7 @@ fn ShortcutSheet(close: Callback<()>) -> impl IntoView {
     let in_game: [(&str, &'static str); 4] = [
         ("F12", tr!("Tirar uma foto do jogo")),
         ("Ctrl+F12", tr!("Abrir ou fechar o menu por cima do jogo")),
-        ("View+Menu", tr!("No controle: o menu por cima do jogo (ou segure View)")),
+        ("View+Menu", tr!("No controle: o menu por cima do jogo (segurar View também, se ligado)")),
         ("View+RB", tr!("No controle: tirar uma foto")),
     ];
     let line = |(keys, what): (&str, &'static str)| {

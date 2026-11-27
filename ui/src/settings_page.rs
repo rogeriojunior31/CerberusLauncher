@@ -735,6 +735,10 @@ fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                 switch(c.screenshots, tr!("Fotos com F12"), busy, change(|g| g.screenshots = !g.screenshots, "")))}
             {row(tr!("Sair da frente enquanto joga"), tr!("O Cerberus minimiza quando um jogo abre e volta quando ele fecha."),
                 switch(c.minimize, tr!("Sair da frente enquanto joga"), busy, change(|g| g.minimize = !g.minimize, "")))}
+            {row(tr!("Atalhos do controle"), tr!("View + Menu abre o menu e View + RB tira uma foto. Desligue se o jogo usa essas combinações; o teclado continua valendo."),
+                switch(c.pad, tr!("Atalhos do controle"), busy, change(|g| g.pad = !g.pad, "")))}
+            {row(tr!("Segurar View abre o menu"), tr!("Segurar View sozinho por um segundo também abre o menu. Muitos jogos usam Select segurado para o mapa ou o placar."),
+                switch(c.hold_view, tr!("Segurar View abre o menu"), busy, change(|g| g.hold_view = !g.hold_view, "")))}
         </section>
         <section class="card set">
             <div class="card-h">

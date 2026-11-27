@@ -158,7 +158,8 @@ struct Combos {
 }
 
 impl Combos {
-    fn step(&mut self, buttons: u16, now_ms: u64) -> Option<PadAction> {
+    /// `hold_view`: whether holding View alone opens the menu.
+    fn step(&mut self, buttons: u16, now_ms: u64, hold_view: bool) -> Option<PadAction> {
         let pressed = buttons & !self.last;
         self.last = buttons;
         let view = buttons & VIEW != 0;
@@ -181,7 +182,7 @@ impl Combos {
             return None;
         }
         let since = *self.view_since.get_or_insert(now_ms);
-        if !self.held_fired && now_ms.saturating_sub(since) >= HOLD_MS {
+        if hold_view && !self.held_fired && now_ms.saturating_sub(since) >= HOLD_MS {
             self.held_fired = true;
             return Some(PadAction::Menu);
         }
@@ -206,7 +207,9 @@ pub fn watch(app: AppHandle) {
                 continue;
             }
             let choices = crate::in_game::get();
-            match combos.step(pads.buttons(), clock.elapsed().as_millis() as u64) {
+            // The controller's shortcuts can be off on their own (the keyboard's stay).
+            let buttons = if choices.pad { pads.buttons() } else { 0 };
+            match combos.step(buttons, clock.elapsed().as_millis() as u64, choices.hold_view) {
                 Some(PadAction::Menu) if choices.menu => {
                     let menu = app.clone();
                     let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
@@ -482,28 +485,34 @@ mod tests {
     fn controller_shortcuts_fire_once_and_not_while_playing() {
         let mut c = Combos::default();
         // View+Menu: the menu, once.
-        assert_eq!(c.step(VIEW, 0), None);
-        assert_eq!(c.step(VIEW | MENU, 40), Some(PadAction::Menu));
-        assert_eq!(c.step(VIEW | MENU, 80), None);
-        assert_eq!(c.step(0, 120), None);
+        assert_eq!(c.step(VIEW, 0, true), None);
+        assert_eq!(c.step(VIEW | MENU, 40, true), Some(PadAction::Menu));
+        assert_eq!(c.step(VIEW | MENU, 80, true), None);
+        assert_eq!(c.step(0, 120, true), None);
         // View+RB: a picture, and holding on doesn't open the menu later.
-        assert_eq!(c.step(VIEW, 200), None);
-        assert_eq!(c.step(VIEW | RB, 240), Some(PadAction::Photo));
-        assert_eq!(c.step(VIEW, 2000), None);
-        assert_eq!(c.step(0, 2040), None);
+        assert_eq!(c.step(VIEW, 200, true), None);
+        assert_eq!(c.step(VIEW | RB, 240, true), Some(PadAction::Photo));
+        assert_eq!(c.step(VIEW, 2000, true), None);
+        assert_eq!(c.step(0, 2040, true), None);
         // Holding View alone for a second: the menu, once.
-        assert_eq!(c.step(VIEW, 3000), None);
-        assert_eq!(c.step(VIEW, 3900), None);
-        assert_eq!(c.step(VIEW, 4000), Some(PadAction::Menu));
-        assert_eq!(c.step(VIEW, 6000), None);
-        assert_eq!(c.step(0, 6040), None);
+        assert_eq!(c.step(VIEW, 3000, true), None);
+        assert_eq!(c.step(VIEW, 3900, true), None);
+        assert_eq!(c.step(VIEW, 4000, true), Some(PadAction::Menu));
+        assert_eq!(c.step(VIEW, 6000, true), None);
+        assert_eq!(c.step(0, 6040, true), None);
         // View held while playing (another button too): nothing.
-        assert_eq!(c.step(VIEW | 0x1000, 7000), None);
-        assert_eq!(c.step(VIEW, 7100), None);
-        assert_eq!(c.step(VIEW, 9000), None);
-        assert_eq!(c.step(0, 9040), None);
+        assert_eq!(c.step(VIEW | 0x1000, 7000, true), None);
+        assert_eq!(c.step(VIEW, 7100, true), None);
+        assert_eq!(c.step(VIEW, 9000, true), None);
+        assert_eq!(c.step(0, 9040, true), None);
         // RB alone is the game's.
-        assert_eq!(c.step(RB, 10000), None);
+        assert_eq!(c.step(RB, 10000, true), None);
+        // "Holding View opens the menu" off (the default): a long hold does nothing,
+        // View + Menu still opens it.
+        let mut c = Combos::default();
+        assert_eq!(c.step(VIEW, 0, false), None);
+        assert_eq!(c.step(VIEW, 3000, false), None, "a long hold: nothing");
+        assert_eq!(c.step(VIEW | MENU, 3040, false), Some(PadAction::Menu));
     }
 
     fn game(id: &str, dir: &str, exe: &str) -> Game {

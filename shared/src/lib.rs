@@ -1217,11 +1217,16 @@ pub struct InGame {
     pub corner: String,
     /// Cerberus minimizes itself while a game runs and comes back when it closes.
     pub minimize: bool,
+    /// The controller's shortcuts (View+Menu, View+RB), apart from the keyboard's.
+    pub pad: bool,
+    /// Holding View alone opens the menu too. Off at first: many games hold
+    /// Select for their map or scoreboard.
+    pub hold_view: bool,
 }
 
 impl Default for InGame {
     fn default() -> Self {
-        Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false }
+        Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false, pad: true, hold_view: false }
     }
 }
 
