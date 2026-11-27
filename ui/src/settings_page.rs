@@ -1896,7 +1896,7 @@ fn XboxCard() -> impl IntoView {
             </div>
             {row(
                 tr!("PC Game Pass na Biblioteca"),
-                if on && pass > 0 { tr!("{} jogos do Game Pass aparecem como não instalados: instalam pelo app Xbox. A lista vem do catálogo público da Microsoft.", pass) } else { tr!("Mostra os jogos do PC Game Pass como não instalados, para instalar pelo app Xbox.").to_string() },
+                if on && pass > 0 { tr!("{} jogos do Game Pass aparecem como não instalados: instalam pelo app Xbox. A lista vem do catálogo público da Microsoft.", pass) } else { tr!("Ligue se você assina o PC Game Pass (ou o Ultimate): os jogos do catálogo aparecem como não instalados, para instalar pelo app Xbox. Sem a assinatura, eles não abrem.").to_string() },
                 switch(on, tr!("PC Game Pass na Biblioteca"), busy, toggle),
             )}
             <div class="row">

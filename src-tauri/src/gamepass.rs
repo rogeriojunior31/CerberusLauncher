@@ -42,10 +42,46 @@ fn now() -> u64 {
 
 /// The market and language the catalog is asked in, from the app's language.
 pub fn market() -> (&'static str, &'static str) {
-    match cerberus_shared::i18n::lang() {
-        cerberus_shared::i18n::Lang::Pt => ("BR", "pt-br"),
-        _ => ("US", "en-us"),
-    }
+    market_for(region(), cerberus_shared::i18n::lang())
+}
+
+/// The Windows region (Settings › Time & language › Region), as two letters:
+/// where the player lives, not the language the app is in. Read once.
+fn region() -> &'static str {
+    static REGION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    REGION.get_or_init(|| windows_region().unwrap_or_default())
+}
+
+#[cfg(windows)]
+fn windows_region() -> Option<String> {
+    use windows_sys::Win32::Globalization::GetUserDefaultGeoName;
+    let mut buffer = [0u16; 16];
+    // SAFETY: the buffer and its length are ours.
+    let len = unsafe { GetUserDefaultGeoName(buffer.as_mut_ptr(), buffer.len() as i32) };
+    let name = String::from_utf16_lossy(&buffer[..(len.max(1) as usize - 1).min(buffer.len())]);
+    (name.len() == 2 && name.chars().all(|c| c.is_ascii_alphabetic())).then(|| name.to_ascii_uppercase())
+}
+
+#[cfg(not(windows))]
+fn windows_region() -> Option<String> {
+    None
+}
+
+/// The store's market and language: the region's market (Portugal gets
+/// Portugal's catalog, Brazil Brazil's, whatever the app's language), the
+/// texts in the app's language. No region known: by the language, as before.
+fn market_for(region: &'static str, lang: cerberus_shared::i18n::Lang) -> (&'static str, &'static str) {
+    let pt = lang == cerberus_shared::i18n::Lang::Pt;
+    let market = match region {
+        "" => if pt { "BR" } else { "US" },
+        other => other,
+    };
+    let language = match (pt, market) {
+        (true, "BR") => "pt-br",
+        (true, _) => "pt-pt",
+        (false, _) => "en-us",
+    };
+    (market, language)
 }
 
 /// What was read last time; nothing (and no wait) before the first answer.
@@ -192,12 +228,13 @@ pub fn drop_owned_elsewhere(games: &mut Vec<Game>) {
 }
 
 pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
-    let by_family: HashMap<&str, &Product> = catalog.iter().filter(|p| !p.family.is_empty()).map(|p| (p.family.as_str(), p)).collect();
+    // Package families compared without case (the app and the catalog may write them differently).
+    let by_family: HashMap<String, &Product> = catalog.iter().filter(|p| !p.family.is_empty()).map(|p| (p.family.to_lowercase(), p)).collect();
     let mut here = std::collections::HashSet::new();
     for game in games.iter_mut() {
         let Source::Xbox { family, product, game_pass, .. } = &mut game.source else { continue };
         here.insert(family.to_lowercase());
-        if let Some(p) = by_family.get(family.as_str()) {
+        if let Some(p) = by_family.get(&family.to_lowercase()) {
             *product = p.id.clone();
             *game_pass = true;
             if p.poster.is_some() {
@@ -236,6 +273,16 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_market_is_the_windows_region_and_the_texts_the_apps_language() {
+        use cerberus_shared::i18n::Lang;
+        assert_eq!(market_for("PT", Lang::Pt), ("PT", "pt-pt"), "Portugal gets Portugal's catalog");
+        assert_eq!(market_for("BR", Lang::Pt), ("BR", "pt-br"));
+        assert_eq!(market_for("BR", Lang::En), ("BR", "en-us"), "living in Brazil with the app in English: still Brazil's");
+        assert_eq!(market_for("", Lang::Pt), ("BR", "pt-br"), "no region known: as before");
+        assert_eq!(market_for("", Lang::En), ("US", "en-us"));
+    }
 
     #[test]
     fn a_game_owned_elsewhere_hides_its_game_pass_entry() {
