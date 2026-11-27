@@ -140,7 +140,8 @@ impl Default for LibraryView {
             sort: RwSignal::new(Sort::Name),
             compact: RwSignal::new(false),
             shelf: RwSignal::new(None),
-            absent: RwSignal::new(None),
+            // Opens on the games this PC plays now; "All" and "Not installed" a click away.
+            absent: RwSignal::new(Some(false)),
             status: RwSignal::new(None),
         }
     }
@@ -352,7 +353,7 @@ pub fn LibraryPage() -> impl IntoView {
         search.set(String::new());
         filter.set(Filter::All);
         status.set(None);
-        absent.set(None);
+        absent.set(Some(false));
         if let Some(input) = input.get_untracked() {
             let _ = input.focus();
         }
@@ -437,11 +438,11 @@ pub fn LibraryPage() -> impl IntoView {
         let (_, here, missing) = counts.get();
         view! {
             <div class="segs" role="group" aria-label=tr!("Instalação")>
-                <button type="button" class="seg" class:on=move || absent.get().is_none() aria-pressed=move || absent.get().is_none().to_string()
-                    title=tr!("Instalados e não instalados juntos: os que não estão neste PC aparecem apagados e instalam por ali.")
-                    on:click=move |_| absent.set(None)>{tr!("Todos")}<span class="chip-n">{here + missing}</span></button>
                 <button type="button" class="seg" class:on=move || absent.get() == Some(false) aria-pressed=move || (absent.get() == Some(false)).to_string()
                     on:click=move |_| absent.set(Some(false))>{tr!("Instalados")}<span class="chip-n">{here}</span></button>
+                <button type="button" class="seg" class:on=move || absent.get().is_none() aria-pressed=move || absent.get().is_none().to_string()
+                    title=tr!("Instalados e não instalados juntos: os instalados primeiro, os que não estão neste PC depois, apagados, e instalam por ali.")
+                    on:click=move |_| absent.set(None)>{tr!("Todos")}<span class="chip-n">{here + missing}</span></button>
                 <button type="button" class="seg" class:on=move || absent.get() == Some(true) aria-pressed=move || (absent.get() == Some(true)).to_string()
                     disabled=missing == 0 && absent.get_untracked() != Some(true)
                     on:click=move |_| absent.set(Some(true))>{tr!("Não instalados")}<span class="chip-n">{missing}</span></button>
@@ -603,6 +604,12 @@ pub fn LibraryPage() -> impl IntoView {
             // Rating and achievements are the library games' own: classics after them, in the order above.
             Sort::Rating | Sort::Achievements => rows.sort_by_key(|r| matches!(r, Row::Classic(_))),
         }
+        // What plays here comes first, in the order chosen: a game not installed,
+        // or a classic no emulator here opens yet, after it.
+        rows.sort_by_key(|r| match r {
+            Row::Game(g) => is_absent(g),
+            Row::Classic(rom) => crate::classics::ready_player(&players, crate::classics::console_of(rom)).is_none(),
+        });
         let count = rows.len();
         let list = compact.get();
         let items = rows.iter().map(|row| {

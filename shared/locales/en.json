@@ -821,7 +821,7 @@
   "Instalador de primeira execução": "First-run installer",
   "Instalador de {} aberto. Siga os passos dele; quando ele fechar, o Cerberus procura o jogo.": "{}'s installer is open. Follow its steps; when it closes, Cerberus looks for the game.",
   "Instalados": "Installed",
-  "Instalados e não instalados juntos: os que não estão neste PC aparecem apagados e instalam por ali.": "Installed and not installed together: the ones not on this PC show dimmed and install from there.",
+  "Instalados e não instalados juntos: os instalados primeiro, os que não estão neste PC depois, apagados, e instalam por ali.": "Installed and not installed together: installed first, then the ones not on this PC, dimmed, which install from there.",
   "Instalando núcleos · {} de {}": "Installing cores · {} of {}",
   "Instalando... confirme no Windows": "Installing... confirm it in Windows",
   "Instalar": "Install",
