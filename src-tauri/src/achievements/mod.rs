@@ -371,6 +371,33 @@ async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
     result
 }
 
+/// A game whose list failed (a title the store answers 404 or 403 for, a
+/// namespace without achievements) waits this long before it's asked again,
+/// so it doesn't stop the account's other games every time, first in line.
+const GAME_FAIL_WAIT: u64 = 6 * 3600;
+
+fn failed_lately(db: &Store, scope: &Scope, key: &str, now: u64) -> bool {
+    db.stamp(scope, &format!("fail:{key}")).is_some_and(|at| now < at + GAME_FAIL_WAIT)
+}
+
+/// Failures in one round: one game failing is that game's; a second one in a
+/// row is the account (signed out, the store busy), and the round stops.
+#[derive(Default)]
+struct Misses(u32);
+
+impl Misses {
+    /// Notes a game's failure; whether the round should stop.
+    fn game_failed(&mut self, db: &Store, scope: &Scope, key: &str, now: u64) -> bool {
+        db.set_stamp(scope, &format!("fail:{key}"), now);
+        self.0 += 1;
+        self.0 >= 2
+    }
+
+    fn game_answered(&mut self) {
+        self.0 = 0;
+    }
+}
+
 /// How a sync went, in the store: synced, or refused (the wait grows).
 fn stamp(db: &mut Store, scope: &Scope, result: &Result<(), String>) {
     match result {
@@ -404,17 +431,41 @@ async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
         }
         db.set_stamp(scope, "all_lists_v4", store::now());
     } else {
+        let now = store::now();
         let mut stale: Vec<&AchievementGame> = games
             .iter()
             .filter(|g| db.list(scope, &g.key).is_none_or(|(played, _)| g.last_played.unwrap_or(0) > played))
             .filter(|g| g.unlocked > 0 || g.total == 0)
+            .filter(|g| !failed_lately(db, scope, &g.key, now))
             .collect();
         stale.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+        let mut misses = Misses::default();
+        let mut stopped = None;
         for g in stale.into_iter().take(XBOX_LISTS_PER_SYNC) {
-            let list = xbox::title_list(http, &session, &g.key).await?;
-            db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
+            match xbox::title_list(http, &session, &g.key).await {
+                Ok(list) => {
+                    misses.game_answered();
+                    db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
+                }
+                Err(e) if misses.game_failed(db, scope, &g.key, now) => {
+                    stopped = Some(e);
+                    break;
+                }
+                Err(_) => {}
+            }
+        }
+        // What came is kept even when the round stopped.
+        if let Some(e) = stopped {
+            keep_xbox_games(db, scope, games);
+            return Err(e);
         }
     }
+    keep_xbox_games(db, scope, games);
+    Ok(())
+}
+
+/// The account's games with the lists kept for them.
+fn keep_xbox_games(db: &mut Store, scope: &Scope, games: Vec<AchievementGame>) {
     let games: Vec<AchievementGame> = games
         .into_iter()
         .map(|g| match db.list(scope, &g.key) {
@@ -423,7 +474,6 @@ async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
         })
         .collect();
     db.keep_games(scope, &games);
-    Ok(())
 }
 
 /// The Epic session, kept for half an hour (Epic hands a new refresh token each time: it's saved).
@@ -476,17 +526,30 @@ async fn sync_epic_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
     let mut owned = owned;
     owned.sort_by_key(|o| std::cmp::Reverse(played.get(&o.app_name).map_or(0, |p| p.0)));
     db.keep_played(scope, &played.iter().map(|(k, (s, l))| (k.clone(), *s, *l)).collect::<Vec<_>>());
+    let now = store::now();
+    let mut misses = Misses::default();
     for o in &owned {
         let secs = played.get(&o.app_name).map_or(0, |p| p.0);
         let kept = db.list(scope, &o.namespace);
         let fresh = kept.as_ref().is_some_and(|(at, _)| *at >= secs.max(1));
-        let list = if fresh || asked >= EPIC_GAMES_PER_SYNC {
+        // One that failed lately keeps what it had and lets the others go first.
+        let list = if fresh || asked >= EPIC_GAMES_PER_SYNC || failed_lately(db, scope, &o.namespace, now) {
             kept.map(|(_, l)| l)
         } else {
             asked += 1;
-            let list = epic::game_list(http, &access, &account, &o.namespace).await?;
-            db.keep_list(scope, &o.namespace, secs.max(1), &list);
-            Some(list)
+            match epic::game_list(http, &access, &account, &o.namespace).await {
+                Ok(list) => {
+                    misses.game_answered();
+                    db.keep_list(scope, &o.namespace, secs.max(1), &list);
+                    Some(list)
+                }
+                Err(e) if misses.game_failed(db, scope, &o.namespace, now) => {
+                    // The account, not a game: what came is kept, and the round stops.
+                    db.keep_games(scope, &games);
+                    return Err(e);
+                }
+                Err(_) => kept.map(|(_, l)| l),
+            }
         };
         if let Some(list) = list.filter(|l| !l.is_empty()) {
             games.push(epic::entry(&o.namespace, &o.title, o.cover.as_deref(), secs, &list));
@@ -852,6 +915,23 @@ pub async fn game(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failing_game_waits_and_a_second_failure_in_a_row_stops_the_round() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Epic, "player");
+        let now = 1_000_000;
+        let mut misses = Misses::default();
+        assert!(!misses.game_failed(&db, &scope, "broken", now), "one game failing doesn't stop the round");
+        assert!(failed_lately(&db, &scope, "broken", now + 60), "it waits");
+        assert!(!failed_lately(&db, &scope, "broken", now + GAME_FAIL_WAIT), "and is asked again later");
+        assert!(!failed_lately(&db, &scope, "fine", now));
+        misses.game_answered();
+        assert!(!misses.game_failed(&db, &scope, "other", now), "an answer in between: still one");
+        assert!(misses.game_failed(&db, &scope, "third", now), "two in a row: the account");
+    }
+
     #[test]
     fn skipped_sync_keeps_the_wait() {
         use super::*;
