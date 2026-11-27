@@ -67,7 +67,15 @@ impl Store {
     /// Merges games read now: the store's names and art win, progress only grows
     /// (a smaller count read from one place never hides what another showed).
     pub fn keep_games(&mut self, scope: &Scope, games: &[AchievementGame]) {
-        let Ok(tx) = self.0.transaction() else { return };
+        // Immediate: the write lock is taken at the start, so another connection
+        // writing meanwhile waits (busy_timeout) instead of failing halfway.
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
         for g in games {
             let old: Option<AchievementGame> = tx
                 .query_row("SELECT data FROM games WHERE source=?1 AND account=?2 AND key=?3", params![scope.source.code(), scope.account, g.key], |r| r.get::<_, String>(0))
@@ -85,12 +93,22 @@ impl Store {
                 params![scope.source.code(), scope.account, g.key, serde_json::to_string(&merged).unwrap_or_default()],
             );
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
     }
 
     /// Unlocks seen now; a date already kept stays (the earliest real one wins).
     pub fn keep_unlocks(&mut self, scope: &Scope, game: &str, list: &[Achievement]) {
-        let Ok(tx) = self.0.transaction() else { return };
+        // Immediate: the write lock is taken at the start, so another connection
+        // writing meanwhile waits (busy_timeout) instead of failing halfway.
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
         for a in list {
             let Some(at) = a.unlocked_at else { continue };
             let _ = tx.execute(
@@ -102,7 +120,9 @@ impl Store {
                 params![scope.source.code(), scope.account, game, a.id, at as i64, serde_json::to_string(a).unwrap_or_default()],
             );
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
     }
 
     /// A game's full list, as read when the game had last been played at `played`.
@@ -209,7 +229,15 @@ impl Store {
     /// The account's play time per game (seconds, and when last played; 0 when unknown).
     /// Only grows: a smaller answer never takes time away.
     pub fn keep_played(&mut self, scope: &Scope, times: &[(String, u64, u64)]) {
-        let Ok(tx) = self.0.transaction() else { return };
+        // Immediate: the write lock is taken at the start, so another connection
+        // writing meanwhile waits (busy_timeout) instead of failing halfway.
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
         for (key, seconds, last) in times {
             let _ = tx.execute(
                 "INSERT INTO played(source, account, key, seconds, last) VALUES(?1, ?2, ?3, ?4, ?5)
@@ -217,7 +245,9 @@ impl Store {
                 params![scope.source.code(), scope.account, key, *seconds as i64, *last as i64],
             );
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
     }
 
     /// Play time per game key, for a store's account.
@@ -307,6 +337,31 @@ fn merge(old: AchievementGame, mut new: AchievementGame) -> AchievementGame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parallel_writers_lose_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        Store::open(dir.path()).unwrap();
+        let writers: Vec<_> = ["a", "b"]
+            .into_iter()
+            .map(|who| {
+                let path = dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let mut db = Store::open(&path).unwrap();
+                    let scope = Scope::new(AchievementSource::Epic, "player");
+                    for round in 0..20 {
+                        let times: Vec<(String, u64, u64)> = (0..50).map(|i| (format!("{who}-{round}-{i}"), 60, 1)).collect();
+                        db.keep_played(&scope, &times);
+                    }
+                })
+            })
+            .collect();
+        for w in writers {
+            w.join().unwrap();
+        }
+        let db = Store::open(dir.path()).unwrap();
+        assert_eq!(db.played(&Scope::new(AchievementSource::Epic, "player")).len(), 2000);
+    }
 
     fn game(key: &str, unlocked: u32, total: u32) -> AchievementGame {
         AchievementGame {
