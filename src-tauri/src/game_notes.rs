@@ -32,6 +32,15 @@ pub fn load(data: &Path) -> BTreeMap<String, Note> {
     crate::state_file::load_or_default(&file(data))
 }
 
+/// A game's note under another id (a classic whose file moved).
+pub fn rename(data: &Path, old: &str, new: &str) {
+    let _ = crate::state_file::update(&file(data), |all: &mut BTreeMap<String, Note>| {
+        if let Some(note) = all.remove(old) {
+            all.entry(new.to_string()).or_insert(note);
+        }
+    });
+}
+
 /// Saves one game's note; an empty one is removed.
 pub fn set(data: &Path, id: &str, note: Note) -> Result<(), String> {
     let note = Note { rating: note.rating.min(5), notes: note.notes.chars().take(4000).collect(), ..note };

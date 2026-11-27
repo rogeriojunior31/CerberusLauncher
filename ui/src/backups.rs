@@ -75,7 +75,7 @@ pub fn Backups(
             <div class="card-h">
                 <div>
                     <h3>{title.unwrap_or_else(|| tr!("Backups de saves").to_string())}</h3>
-                    <p class="muted small">{note.unwrap_or_else(|| tr!("Os 10 mais recentes ficam guardados, mesmo se você desinstalar o jogo.").to_string())}</p>
+                    <p class="muted small">{note.unwrap_or_else(|| tr!("Os 10 mais recentes ficam guardados, e mais as cópias de antes de cada restauração, mesmo se você desinstalar o jogo.").to_string())}</p>
                 </div>
                 <div class="row">
                     <button type="button" class="btn sm" on:click=on_open>
@@ -100,6 +100,8 @@ fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<
     let on_restore = move |_| {
         if !armed.get_untracked() {
             armed.set(true);
+            // Not armed forever: a click much later is a new first click.
+            set_timeout(move || armed.set(false), std::time::Duration::from_secs(5));
             return;
         }
         armed.set(false);
@@ -113,9 +115,9 @@ fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<
             busy.set(false);
             if let Some(files) = restored {
                 library.toast(if files == 1 {
-                    tr!("1 arquivo restaurado. Os saves de antes ficaram num backup novo.").to_string()
+                    tr!("1 arquivo restaurado. Os saves de antes estão guardados nos backups.").to_string()
                 } else {
-                    tr!("{} arquivos restaurados. Os saves de antes ficaram num backup novo.", files)
+                    tr!("{} arquivos restaurados. Os saves de antes estão guardados nos backups.", files)
                 });
             }
             refresh.update(|n| *n += 1);
@@ -124,7 +126,12 @@ fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<
 
     let when = format::date_time(backup.created);
     let files = if backup.files == 1 { tr!("1 arquivo").to_string() } else { tr!("{} arquivos", backup.files) };
-    let detail = format!("{} · {} · {}", cerberus_shared::i18n::translate(&backup.reason), files, format::megabytes(backup.bytes));
+    let damaged = backup.damaged;
+    let detail = if damaged {
+        tr!("Danificado ({}): o arquivo não pode ser lido, então não dá para restaurar.", format::megabytes(backup.bytes))
+    } else {
+        format!("{} · {} · {}", cerberus_shared::i18n::translate(&backup.reason), files, format::megabytes(backup.bytes))
+    };
     let label = move || if armed.get() { tr!("Confirmar: substituir os saves atuais") } else { tr!("Restaurar") };
 
     view! {
@@ -134,9 +141,11 @@ fn BackupRow(backup: Backup, game_id: String, emulator: bool, refresh: RwSignal<
                 <b>{when}</b>
                 <span class="muted small">{detail}</span>
             </div>
-            <button type="button" class="btn sm" class:warn=move || armed.get() on:click=on_restore disabled=move || busy.get()>
-                {label}
-            </button>
+            {(!damaged).then(|| view! {
+                <button type="button" class="btn sm" class:warn=move || armed.get() on:click=on_restore on:blur=move |_| armed.set(false) disabled=move || busy.get()>
+                    {label}
+                </button>
+            })}
         </li>
     }
 }

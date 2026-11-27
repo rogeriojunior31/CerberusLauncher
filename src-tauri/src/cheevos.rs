@@ -260,6 +260,68 @@ fn pending_file(data: &Path) -> PathBuf {
     data.join("emulators").join("session-settings.json")
 }
 
+/// What a session changed and has yet to put back, with the emulator that has
+/// the changes loaded: while it still runs, putting them back is left for
+/// later (on exit it would write its own copy over the restored file).
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Pending {
+    edits: Vec<Edit>,
+    #[serde(default)]
+    pid: Option<u32>,
+    #[serde(default)]
+    exe: Option<PathBuf>,
+}
+
+fn read_pending(data: &Path) -> Option<Pending> {
+    let text = fs::read_to_string(pending_file(data)).ok()?;
+    // Written before the emulator was noted: only the changes.
+    serde_json::from_str::<Pending>(&text).ok().or_else(|| serde_json::from_str::<Vec<Edit>>(&text).ok().map(|edits| Pending { edits, ..Default::default() }))
+}
+
+fn write_pending(data: &Path, pending: &Pending) {
+    let file = pending_file(data);
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(pending).unwrap_or_default().as_bytes());
+}
+
+/// The emulator a session opened: noted with its changes.
+pub fn started(data: &Path, pid: u32) {
+    if let Some(mut pending) = read_pending(data) {
+        pending.pid = Some(pid);
+        write_pending(data, &pending);
+    }
+}
+
+/// Whether process `pid` is still running and is `exe` (a number reused by
+/// another program doesn't count).
+#[cfg(windows)]
+fn still_running(pid: u32, exe: &Path) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+    // SAFETY: the handle is checked and closed; the buffer outlives the call.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let alive = GetExitCodeProcess(handle, &mut code) != 0 && code == STILL_ACTIVE as u32;
+        let mut buffer = [0u16; 1024];
+        let mut len = buffer.len() as u32;
+        let named = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut len) != 0;
+        CloseHandle(handle);
+        let same = named && Path::new(&String::from_utf16_lossy(&buffer[..len as usize])).file_name().map(|n| n.to_ascii_lowercase()) == exe.file_name().map(|n| n.to_ascii_lowercase());
+        alive && same
+    }
+}
+
+#[cfg(not(windows))]
+fn still_running(_: u32, _: &Path) -> bool {
+    false
+}
+
 fn documents() -> Option<PathBuf> {
     crate::standalone::documents()
 }
@@ -361,6 +423,9 @@ pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>
                     ("cheevos_visibility_lboard_cancel", "false"),
                     ("cheevos_visibility_lboard_trackers", "false"),
                     ("cheevos_unlock_sound_enable", "false"),
+                    // "Close Content" quits RetroArch instead of going back to its
+                    // menu, so the session (and its play time) ends with the game.
+                    ("quit_on_close_content", "1"),
                 ],
             );
             session.log = retroarch_log.map(Path::to_path_buf);
@@ -451,10 +516,7 @@ pub fn prepare(data: &Path, emulator: &str, exe: &Path, account: Option<Account>
     }
     session.from = session.log.as_ref().and_then(|l| fs::metadata(l).ok()).map_or(0, |m| m.len());
     if !session.edits.is_empty() {
-        if let Some(dir) = pending_file(data).parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        let _ = fs::write(pending_file(data), serde_json::to_string(&session.edits).unwrap_or_default());
+        write_pending(data, &Pending { edits: session.edits.clone(), pid: None, exe: Some(exe.to_path_buf()) });
     }
     session
 }
@@ -471,11 +533,8 @@ fn keep_left(data: &Path, left: Vec<Edit>) {
     if left.is_empty() {
         let _ = fs::remove_file(pending_file(data));
     } else {
-        let file = pending_file(data);
-        if let Some(dir) = file.parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        let _ = fs::write(file, serde_json::to_string(&left).unwrap_or_default());
+        // Tried again later, with no emulator to wait for any more.
+        write_pending(data, &Pending { edits: left, ..Default::default() });
     }
 }
 
@@ -507,11 +566,13 @@ fn undo_all(edits: &[Edit]) -> Vec<Edit> {
 
 /// A session Cerberus couldn't finish (it closed, or the PC turned off): its changes go back.
 pub fn restore_pending(data: &Path) {
-    let file = pending_file(data);
-    match fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Vec<Edit>>(&t).ok()) {
-        Some(edits) => keep_left(data, undo_all(&edits)),
+    match read_pending(data) {
+        // The emulator of that session is still open (Cerberus restarted while
+        // it ran): left as it is, put back once it closes.
+        Some(Pending { pid: Some(pid), exe: Some(exe), .. }) if still_running(pid, &exe) => {}
+        Some(pending) => keep_left(data, undo_all(&pending.edits)),
         None => {
-            let _ = fs::remove_file(file);
+            let _ = fs::remove_file(pending_file(data));
         }
     }
 }
@@ -538,6 +599,33 @@ pub fn read_new(log: &Path, from: u64) -> (Vec<String>, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changes_wait_while_the_emulator_of_their_session_still_runs() {
+        let data = tempfile::tempdir().unwrap();
+        let cfg = data.path().join("retroarch.cfg");
+        fs::write(&cfg, "cheevos_visibility_unlock = \"true\"\n").unwrap();
+        let edits = apply(&cfg, None, &[("cheevos_visibility_unlock", "false")]);
+        // This test's own process stands for an emulator still open.
+        let me = std::env::current_exe().unwrap();
+        write_pending(data.path(), &Pending { edits: edits.clone(), pid: Some(std::process::id()), exe: Some(me) });
+        restore_pending(data.path());
+        assert!(fs::read_to_string(&cfg).unwrap().contains("\"false\""), "not put back under a running emulator");
+        assert!(pending_file(data.path()).exists());
+        // Closed (a number no process has): put back.
+        write_pending(data.path(), &Pending { edits, pid: Some(u32::MAX - 1), exe: Some(PathBuf::from("retroarch.exe")) });
+        restore_pending(data.path());
+        assert!(fs::read_to_string(&cfg).unwrap().contains("\"true\""));
+        assert!(!pending_file(data.path()).exists());
+    }
+
+    #[test]
+    fn a_pending_file_from_before_still_reads() {
+        let data = tempfile::tempdir().unwrap();
+        fs::create_dir_all(pending_file(data.path()).parent().unwrap()).unwrap();
+        fs::write(pending_file(data.path()), "[]").unwrap();
+        assert!(read_pending(data.path()).is_some_and(|p| p.edits.is_empty() && p.pid.is_none()));
+    }
 
     #[test]
     fn forgetting_the_account_takes_our_token_out_of_each_emulator_and_leaves_the_players() {
@@ -704,6 +792,7 @@ mod tests {
             let session = prepare(data.path(), id, &dir.join(exe), None, None);
             let during = fs::read_to_string(dir.join(file)).unwrap();
             assert!(during.contains(off), "{id}: pop-ups not turned off");
+            assert!(id != "retroarch" || during.contains("quit_on_close_content = \"1\""), "closing the game quits RetroArch");
             finish(data.path(), &session);
             let after = fs::read_to_string(dir.join(file)).unwrap();
             assert_eq!(after.replace("

@@ -92,7 +92,7 @@ pub async fn token(client: &reqwest::Client, grant: Grant<'_>) -> Result<Session
         .await
         .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
-        return Err(tr!("A Epic recusou o acesso: entre de novo em Configurações › Epic Games.").into());
+        return Err(crate::achievements::needs_login(&tr!("A Epic recusou o acesso: entre de novo em Configurações › Epic Games.")));
     }
     let reply: TokenReply = response.json().await.map_err(|e| e.to_string())?;
     Ok(Session { access: reply.access_token, refresh: reply.refresh_token, name: reply.display_name, account: reply.account_id })

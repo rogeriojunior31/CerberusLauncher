@@ -54,8 +54,10 @@ pub fn UnlockToast() -> impl IntoView {
     let current = RwSignal::new(None::<UnlockNotice>);
     let leaving = RwSignal::new(false);
     let busy = StoredValue::new(false);
+    // A notice queued while the last answer ("nothing left") was on its way.
+    let missed = StoredValue::new(false);
 
-    fn next(current: RwSignal<Option<UnlockNotice>>, leaving: RwSignal<bool>, busy: StoredValue<bool>) {
+    fn next(current: RwSignal<Option<UnlockNotice>>, leaving: RwSignal<bool>, busy: StoredValue<bool>, missed: StoredValue<bool>) {
         busy.set_value(true);
         spawn_local(async move {
             match api::unlock_next().await.ok().flatten() {
@@ -64,22 +66,29 @@ pub fn UnlockToast() -> impl IntoView {
                     leaving.set(false);
                     current.set(Some(n));
                     after(SHOWN_MS - 450, move || leaving.set(true));
-                    after(SHOWN_MS, move || next(current, leaving, busy));
+                    after(SHOWN_MS, move || next(current, leaving, busy, missed));
                 }
                 None => {
                     current.set(None);
                     busy.set_value(false);
+                    // One arrived meanwhile: asked for again, not left until the next unlock.
+                    if missed.get_value() {
+                        missed.set_value(false);
+                        next(current, leaving, busy, missed);
+                    }
                 }
             }
         });
     }
 
     api::on_unlock_queued(move || {
-        if !busy.get_value() {
-            next(current, leaving, busy);
+        if busy.get_value() {
+            missed.set_value(true);
+        } else {
+            next(current, leaving, busy, missed);
         }
     });
-    next(current, leaving, busy);
+    next(current, leaving, busy, missed);
 
     move || {
         current.get().map(|n| {

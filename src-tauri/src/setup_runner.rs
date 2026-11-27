@@ -112,6 +112,13 @@ pub fn use_program(app: &AppHandle, game_id: &str, program: &Path) -> Result<Gam
     let exe = program.to_string_lossy().into_owned();
     let library = app.state::<LocalLibrary>();
     let game = library.update(game_id, |game| {
+        // A game added by hand that moved: its folder moves with it (a recomp's
+        // is the release's own, and stays).
+        if matches!(game.source, Source::Local { .. }) {
+            if let Some(dir) = program.parent() {
+                game.install_dir = dir.to_string_lossy().into_owned();
+            }
+        }
         if let Source::Recomp { exe: current, .. } | Source::Local { exe: current } = &mut game.source {
             *current = exe;
         }

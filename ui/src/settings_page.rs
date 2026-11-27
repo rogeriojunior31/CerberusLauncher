@@ -479,25 +479,31 @@ fn general(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
 fn MonitorRow(chosen: Option<String>) -> impl IntoView {
     let library = expect_context::<Library>();
     let monitors = LocalResource::new(api::list_monitors);
+    // The choice as saved now, not as first read: the list shows the new one at once.
+    let picked = RwSignal::new(chosen);
     move || {
         let list = monitors.get().and_then(Result::ok).unwrap_or_default();
+        let chosen = picked.get();
         let unplugged = chosen.as_ref().is_some_and(|c| !list.iter().any(|m| &m.name == c));
         if list.len() < 2 && !unplugged {
             return None;
         }
-        let chosen = chosen.clone();
         let options = list.into_iter().map(|m| {
             let on = chosen.as_deref() == Some(m.name.as_str());
             view! { <option value=m.name.clone() selected=on>{m.label}</option> }
         }).collect_view();
         let gone = unplugged.then(|| view! { <option value=chosen.clone().unwrap_or_default() selected=true>{tr!("O escolhido (desligado agora)")}</option> });
-        Some(row("Monitor", tr!("Onde a janela do Cerberus e o Big Picture Mode abrem."),
+        Some(row(tr!("Monitor"), tr!("Onde a janela do Cerberus e o Big Picture Mode abrem."),
             view! {
                 <select class="select" aria-label=tr!("Monitor")
                     on:change=move |e| {
                         let name = event_target_value(&e);
+                        let choice = (!name.is_empty()).then_some(name);
                         leptos::task::spawn_local(async move {
-                            library.report(api::set_monitor((!name.is_empty()).then_some(name)).await);
+                            if library.report(api::set_monitor(choice.clone()).await).is_some() {
+                                picked.set(choice);
+                                library.toast(tr!("A janela foi para o monitor escolhido; o Big Picture abre nele também."));
+                            }
                         });
                     }>
                     <option value="" selected=chosen.is_none()>{tr!("Onde o Windows abrir")}</option>
@@ -521,6 +527,8 @@ fn language_row() -> impl IntoView {
             <select class="select" aria-label=tr!("Idioma") on:change=move |e| {
                 let code = event_target_value(&e);
                 let code = (!code.is_empty()).then_some(code);
+                // Kept first: the menu and notice windows, reloaded by the backend, read it.
+                crate::i18n::remember(code.as_deref());
                 spawn_local(async move {
                     let _ = api::set_language(code.clone()).await;
                     crate::i18n::choose(code.as_deref());
@@ -727,6 +735,10 @@ fn in_game(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                 switch(c.screenshots, tr!("Fotos com F12"), busy, change(|g| g.screenshots = !g.screenshots, "")))}
             {row(tr!("Sair da frente enquanto joga"), tr!("O Cerberus minimiza quando um jogo abre e volta quando ele fecha."),
                 switch(c.minimize, tr!("Sair da frente enquanto joga"), busy, change(|g| g.minimize = !g.minimize, "")))}
+            {row(tr!("Atalhos do controle"), tr!("View + Menu abre o menu e View + RB tira uma foto. Desligue se o jogo usa essas combinações; o teclado continua valendo."),
+                switch(c.pad, tr!("Atalhos do controle"), busy, change(|g| g.pad = !g.pad, "")))}
+            {row(tr!("Segurar View abre o menu"), tr!("Segurar View sozinho por um segundo também abre o menu. Muitos jogos usam Select segurado para o mapa ou o placar."),
+                switch(c.hold_view, tr!("Segurar View abre o menu"), busy, change(|g| g.hold_view = !g.hold_view, "")))}
         </section>
         <section class="card set">
             <div class="card-h">

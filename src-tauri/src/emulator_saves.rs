@@ -60,7 +60,8 @@ pub fn places(id: &str, exe: &Path) -> Option<Places> {
     let folders: &[&str] = match id {
         "duckstation" => &["memcards", "savestates"],
         "pcsx2" => &["memcards", "sstates"],
-        "dolphin" => &["GC", "StateSaves"],
+        // The Wii's game saves (discs and channels), not its system memory.
+        "dolphin" => &["GC", "StateSaves", "Wii/title/00010000", "Wii/title/00010004"],
         "ppsspp" => &["SAVEDATA", "PPSSPP_STATE"],
         _ => return None,
     };
@@ -122,6 +123,32 @@ mod tests {
         assert_eq!(fs::read(emu.join("memcards").join("shared_card_1.mcd")).unwrap(), b"crash progress");
         // The saves replaced were kept first.
         assert!(list(&data, "duckstation").len() >= 2);
+    }
+
+    #[test]
+    fn dolphin_backup_skips_the_console_files_and_takes_wii_saves() {
+        let root = tempfile::tempdir().unwrap();
+        let emu = root.path().join("dolphin");
+        let user = emu.join("User");
+        fs::create_dir_all(user.join("GC").join("USA").join("Card A")).unwrap();
+        fs::create_dir_all(user.join("Wii").join("title").join("00010000").join("52534245").join("data")).unwrap();
+        fs::create_dir_all(user.join("Wii").join("shared2")).unwrap();
+        fs::write(emu.join("portable.txt"), b"").unwrap();
+        let exe = emu.join("Dolphin.exe");
+        fs::write(&exe, b"MZ").unwrap();
+        fs::write(user.join("GC").join("USA").join("IPL.bin"), b"bios").unwrap();
+        fs::write(user.join("GC").join("dsp_rom.bin"), b"dsp").unwrap();
+        fs::write(user.join("GC").join("USA").join("Card A").join("save.gci"), b"gc save").unwrap();
+        fs::write(user.join("Wii").join("title").join("00010000").join("52534245").join("data").join("rsbe.dat"), b"wii save").unwrap();
+        fs::write(user.join("Wii").join("shared2").join("sys.bin"), b"system").unwrap();
+        let data = root.path().join("data");
+        let made = backup(&data, "dolphin", &exe, "Manual").unwrap().expect("a copy");
+        let zip = zip::ZipArchive::new(fs::File::open(backups_dir(&data, "dolphin").join(&made.name)).unwrap()).unwrap();
+        let names: Vec<String> = zip.file_names().map(|n| n.replace('\\', "/").to_lowercase()).collect();
+        assert!(names.iter().any(|n| n.ends_with("rsbe.dat")), "the Wii save: {names:?}");
+        assert!(names.iter().any(|n| n.ends_with("save.gci")), "the GameCube save");
+        assert!(!names.iter().any(|n| n.ends_with("ipl.bin") || n.ends_with("dsp_rom.bin")), "no BIOS: {names:?}");
+        assert!(!names.iter().any(|n| n.ends_with("sys.bin")), "no system memory");
     }
 
     #[test]

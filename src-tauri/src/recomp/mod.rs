@@ -119,6 +119,14 @@ impl Folders {
         self.installs.read().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
+    /// Where releases download: beside the installs when the player moved them
+    /// (another drive), so a full system drive doesn't stop the download and
+    /// the finished file moves in place instead of being copied across drives.
+    pub fn downloads(&self) -> PathBuf {
+        let installs = self.installs();
+        if installs == self.default_installs { self.downloads.clone() } else { installs.join(DOWNLOADS_BESIDE) }
+    }
+
     /// New installs go here from now on; games already installed stay where they are.
     pub fn set_installs(&self, dir: PathBuf) {
         *self.installs.write().unwrap_or_else(|p| p.into_inner()) = dir;
@@ -201,6 +209,12 @@ pub fn backup_saves(folders: &Folders, recomp_id: &str, install_dir: &Path, reas
     backup_saves_to(folders, recomp_id, install_dir, reason, true)
 }
 
+/// The same, kept on this PC only (the cloud wasn't checked before playing:
+/// sent up, these saves could pass over newer ones from another PC).
+pub fn backup_saves_here(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str) -> Result<Option<Backup>, String> {
+    backup_saves_to(folders, recomp_id, install_dir, reason, false)
+}
+
 /// `to_cloud: false` for a safety copy of saves about to be replaced: sending
 /// it up would make the old saves the cloud's newest, and bring them back.
 fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str, to_cloud: bool) -> Result<Option<Backup>, String> {
@@ -219,6 +233,28 @@ fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reaso
 /// Before playing: when another PC left newer saves in the cloud folder, they
 /// are put in place. The safety copy of the current saves stays on this PC.
 /// Returns what happened, for a message, or `None` when nothing changed.
+/// Whether the game's cloud folder answers within `wait`: a OneDrive that is
+/// signed out or a network drive that is away can keep a folder listing
+/// hanging for minutes, and Play shouldn't wait on it. The listing that hangs
+/// does only that, in a thread of its own, and writes nothing.
+pub fn cloud_answers(folders: &Folders, recomp_id: &str, wait: std::time::Duration) -> bool {
+    let Some(cloud) = folders.cloud_dir(recomp_id) else { return true };
+    let (tell, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let answered = match fs::read_dir(&cloud) {
+            Ok(entries) => {
+                // Reading a few names is what hangs on a folder that's away.
+                let _ = entries.take(64).count();
+                true
+            }
+            // Not made yet (nothing synced): it answered.
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound || cloud.parent().is_some_and(|p| p.is_dir()),
+        };
+        let _ = tell.send(answered);
+    });
+    heard.recv_timeout(wait).unwrap_or(false)
+}
+
 pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -> Result<Option<String>, String> {
     let Some(cloud) = folders.cloud_dir(recomp_id) else {
         return Ok(None);
@@ -284,7 +320,7 @@ fn bring_down(folders: &Folders, recomp_id: &str, install_dir: &Path, cloud: &Pa
 /// waiting to go there (read from the folder itself, not assumed).
 pub fn list_backups(folders: &Folders, recomp_id: &str) -> Vec<Backup> {
     let local = folders.backups_dir(recomp_id);
-    let mut list = saves::list(&local);
+    let mut list = saves::list_with_damaged(&local);
     if let Some(cloud) = folders.cloud_dir(recomp_id) {
         for backup in &mut list {
             backup.in_cloud = Some(cloud.join(&backup.name).is_file());
@@ -378,7 +414,7 @@ fn keep_entry(install_dir: &Path, entry: &CatalogEntry) {
         aliases: entry.aliases.clone(),
     };
     if let Ok(text) = serde_json::to_string_pretty(&kept) {
-        let _ = fs::write(install_dir.join(KEPT_ENTRY), text);
+        let _ = crate::state_file::write_bytes(&install_dir.join(KEPT_ENTRY), text.as_bytes());
     }
 }
 
@@ -538,7 +574,7 @@ pub fn prepare_start(game: &Game) -> Result<(), String> {
     let picked = picked_inputs(game, manifest);
     let copy = manifest.main_input().and_then(|m| picked.get(&m.id)).map(String::as_str);
     let install = Path::new(&game.install_dir);
-    let _ = fs::create_dir_all(manifest::data_dir(install));
+    fs::create_dir_all(manifest::data_dir(install)).map_err(|e| tr!("A pasta de dados do jogo não pôde ser criada: {}", e))?;
     configs.before_start(install, copy)
 }
 
@@ -848,8 +884,14 @@ pub fn next_step(game: &Game, found: Option<&String>) -> NextStep {
                 return NextStep::ChooseCopy { found: found.cloned() };
             }
         }
-        if !manifest::missing_for(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest), part_of(game)).is_empty() {
-            return NextStep::ChooseCopy { found: found.cloned() };
+        let missing = manifest::missing_for(manifest, Path::new(&game.install_dir), &picked_inputs(game, manifest), part_of(game));
+        if !missing.is_empty() {
+            // The main copy itself: chosen again. Anything else (disc 2, a key): named.
+            let main_missing = manifest.main_input().is_some_and(|m| missing.iter().any(|i| i.id == m.id));
+            if main_missing || game.game_copy.is_none() {
+                return NextStep::ChooseCopy { found: found.cloned() };
+            }
+            return NextStep::ChooseInput { label: missing.iter().map(|i| i.label.as_str()).collect::<Vec<_>>().join(", ") };
         }
     }
     // A folder copy the recomp reads named parts from: they must be in its folder.
@@ -962,8 +1004,10 @@ pub fn split_args(text: &str) -> Vec<String> {
 /// image's files) put there.
 /// A copy the player already chose, put back where the game reads it when it
 /// went missing: an update replaces the game's folder, and with it the copy
-/// that was placed inside. `None` when nothing needed (or could be) done.
-pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
+/// that was placed inside. `None` when nothing needed doing; an error when it
+/// couldn't be put back (said in the game's history, so a request for the copy
+/// again has its reason).
+pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Result<Game, String>> {
     let copy = game.game_copy.as_deref().filter(|c| Path::new(c).exists())?;
     let entry = entry_for(game)?;
     // Only the file an update can take away: a copy put in the game's folder
@@ -977,14 +1021,16 @@ pub fn restore_copy(library: &LocalLibrary, game: &Game) -> Option<Game> {
     if Path::new(&game.install_dir).join(folder).join(name).is_file() {
         return None;
     }
-    use_game_copy(library, &game.id, Path::new(copy)).ok()
+    Some(use_game_copy(library, &game.id, Path::new(copy)))
 }
 
-/// The same for every installed recomp, when Cerberus starts.
-pub fn restore_copies(library: &LocalLibrary) {
+/// The same for every installed recomp, when Cerberus starts; what failed goes to the history.
+pub fn restore_copies(app: &tauri::AppHandle, library: &LocalLibrary) {
     for game in library.games().unwrap_or_default() {
         if matches!(game.source, Source::Recomp { .. }) {
-            let _ = restore_copy(library, &game);
+            if let Some(Err(e)) = restore_copy(library, &game) {
+                crate::trail::note(app, &game.id, tk!("Cópia do jogo"), &Err(tr!("A cópia escolhida não pôde voltar para a pasta do jogo: {}", e)));
+            }
         }
     }
 }
@@ -1182,7 +1228,7 @@ pub(crate) fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
             copy_tree(&entry.path(), &target)?;
             continue;
         }
-        fs::copy(entry.path(), target)?;
+        crate::copying::file(&entry.path(), &target)?;
     }
     Ok(())
 }
@@ -1393,14 +1439,15 @@ async fn install_now(
     let on_bytes = |done: u64, total: u64| {
         got.store(done, Ordering::Relaxed);
         of.store(total, Ordering::Relaxed);
-        let percent = if total == 0 { 0 } else { done * 100 / total };
+        // Without a size from the server, every 4 MB (else it would never move).
+        let percent = if total == 0 { 1000 + (done >> 22) } else { done * 100 / total };
         if percent != last_percent.swap(percent, Ordering::Relaxed) {
             report(InstallStep::Downloading { done, total });
         }
     };
     // The checksum is checked as the bytes arrive, so there is no separate step for it.
     // Each recomp in its own folder: two catalogs' "release.zip" never land on one name.
-    let download_dir = folders.downloads.join(&entry.id);
+    let download_dir = folders.downloads().join(&entry.id);
     let downloaded = match &source {
         FileSource::Asset(asset) => match install::download(client, asset, &download_dir, cancel, on_bytes).await {
             Err(e) if e.starts_with(install::UNVERIFIED) => {
@@ -1645,7 +1692,7 @@ async fn fetch_repo_manifest(client: &Client, entry: &CatalogEntry, install: &Pa
     if let Some(dir) = target.parent() {
         let _ = fs::create_dir_all(dir);
     }
-    let _ = fs::write(target, text);
+    let _ = crate::state_file::write_bytes(&target, text.as_bytes());
 }
 
 /// Adds the recomp to the library, or updates the entry already there while
@@ -1751,6 +1798,8 @@ fn removing_name(dir: &Path, recomp_id: &str) -> PathBuf {
 }
 
 pub(super) const REMOVING: &str = ".cerberus-removing-";
+/// The downloads folder inside an installs folder the player picked.
+pub(crate) const DOWNLOADS_BESIDE: &str = ".cerberus-downloads";
 
 /// Half-downloaded files nobody came back for in two weeks (a pause before a
 /// new version, or Cerberus closed mid-download): gigabytes otherwise kept forever.
@@ -1802,7 +1851,9 @@ pub fn sweep_unfinished_installs(folders: &Folders) {
 
 pub fn sweep_stale_downloads(folders: &Folders) {
     let two_weeks = std::time::Duration::from_secs(14 * 24 * 3600);
-    let mut pending = vec![folders.downloads.clone()];
+    // Both places: the default one, and beside the installs (also where they were before a move).
+    let mut pending = vec![folders.downloads.clone(), folders.downloads()];
+    pending.dedup();
     while let Some(dir) = pending.pop() {
         let Ok(entries) = fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
@@ -1884,7 +1935,7 @@ pub(crate) fn copy_whole(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut partial = to.as_os_str().to_owned();
     partial.push(".part");
     let partial = PathBuf::from(partial);
-    if let Err(e) = fs::copy(from, &partial) {
+    if let Err(e) = crate::copying::file(from, &partial) {
         let _ = fs::remove_file(&partial);
         return Err(e);
     }
@@ -2279,6 +2330,16 @@ mod tests {
     }
 
     #[test]
+    fn a_cloud_folder_that_answers_is_checked_and_none_set_is_fine() {
+        let root = tempfile::tempdir().unwrap();
+        let sync = root.path().join("sync");
+        let (pc, _game) = pc(&root.path().join("desktop"), &sync, "x");
+        assert!(cloud_answers(&pc, "shipwright", std::time::Duration::from_secs(5)));
+        pc.set_cloud(None);
+        assert!(cloud_answers(&pc, "shipwright", std::time::Duration::from_secs(5)));
+    }
+
+    #[test]
     fn each_backup_says_whether_it_is_in_the_cloud_folder_or_waiting() {
         let root = tempfile::tempdir().unwrap();
         let sync = root.path().join("sync");
@@ -2589,6 +2650,51 @@ Content-Length: {}
         assert!(Path::new(&again.install_dir).join("Game.exe").is_file());
         assert!(Path::new(&again.install_dir).join(MARKER).is_file());
         assert_eq!(library.games().unwrap().iter().filter(|g| g.id == again.id).count(), 1);
+    }
+
+    #[test]
+    fn downloads_go_to_the_drive_of_the_installs() {
+        let data = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), None);
+        assert_eq!(folders.downloads(), data.path().join("downloads"), "default: in the data folder");
+        let elsewhere = tempfile::tempdir().unwrap();
+        let folders = Folders::new(data.path(), Some(elsewhere.path().to_path_buf()));
+        assert_eq!(folders.downloads(), elsewhere.path().join(DOWNLOADS_BESIDE), "moved: beside the installs");
+        // An old half download there is swept like the default folder's.
+        let old = folders.downloads().join("game").join("release.zip.part");
+        fs::create_dir_all(old.parent().unwrap()).unwrap();
+        let file = fs::File::create(&old).unwrap();
+        file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(20 * 24 * 3600)).unwrap();
+        drop(file);
+        sweep_stale_downloads(&folders);
+        assert!(!old.exists());
+    }
+
+    #[test]
+    fn a_missing_second_disc_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("game");
+        fs::create_dir_all(&install).unwrap();
+        fs::write(install.join(MARKER), "twodiscs").unwrap();
+        fs::write(install.join("g.exe"), b"MZ").unwrap();
+        keep_entry(&install, &CatalogEntry { id: "twodiscs".into(), name: "Two Discs".into(), ..Default::default() });
+        fs::write(install.join(manifest::FILE), r#"{"format":1,"inputs":[
+            {"id":"disc1","label":"Disc 1","role":"disc"},{"id":"disc2","label":"Disc 2","role":"disc"}],
+            "start":{"program":["g.exe"],"args":["{input:disc1}","{input:disc2}"]}}"#).unwrap();
+        let disc1 = dir.path().join("disc1.iso");
+        fs::write(&disc1, b"iso").unwrap();
+        let mut game = crate::library::game_from_exe(&install.join("g.exe"));
+        game.install_dir = install.to_string_lossy().into();
+        game.source = Source::Recomp { recomp_id: "twodiscs".into(), version: "1".into(), exe: install.join("g.exe").to_string_lossy().into(), generation: 0 };
+        // No copy at all: the copy is asked for.
+        assert!(matches!(next_step(&game, None), NextStep::ChooseCopy { .. }));
+        // Disc 1 given, disc 2 not: disc 2 is named, the copy isn't blamed.
+        game.game_copy = Some(disc1.to_string_lossy().into());
+        assert_eq!(next_step(&game, None), NextStep::ChooseInput { label: "Disc 2".into() });
+        let disc2 = dir.path().join("disc2.iso");
+        fs::write(&disc2, b"iso").unwrap();
+        game.inputs.insert("disc2".into(), disc2.to_string_lossy().into());
+        assert_eq!(next_step(&game, None), NextStep::Play);
     }
 
     #[test]

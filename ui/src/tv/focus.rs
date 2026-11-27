@@ -96,3 +96,56 @@ fn scroll_to(key: &str) {
         element.scroll_into_view_with_scroll_into_view_options(&options);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Without the scroll effect (it needs a page).
+    fn focus(grid: bool) -> Focus {
+        Focus { row: RwSignal::new(0), col: RwSignal::new(0), memory: StoredValue::new(HashMap::new()), grid, prefix: "t" }
+    }
+
+    #[test]
+    fn up_and_down_skip_empty_rows_and_shelves_remember_their_place() {
+        let f = focus(false);
+        let rows = [5, 0, 3];
+        assert!(f.step(Btn::Right, &rows) && f.step(Btn::Right, &rows));
+        assert!(f.step(Btn::Down, &rows), "the empty row is skipped");
+        assert_eq!((f.row.get_untracked(), f.col.get_untracked()), (2, 0), "a shelf starts at its own place");
+        assert!(f.step(Btn::Right, &rows));
+        assert!(f.step(Btn::Up, &rows));
+        assert_eq!((f.row.get_untracked(), f.col.get_untracked()), (0, 2), "back where it was on the first shelf");
+        assert!(!f.step(Btn::Up, &rows), "nothing above");
+        assert!(f.step(Btn::Left, &rows) && f.col.get_untracked() == 1, "left within the row");
+        f.col.set(0);
+        assert!(!f.step(Btn::Left, &rows), "stops at the row's start");
+    }
+
+    #[test]
+    fn a_grid_keeps_the_column_and_a_short_last_row_holds_it_in() {
+        let f = focus(true);
+        let rows = [6, 6, 2];
+        for _ in 0..4 {
+            f.step(Btn::Right, &rows);
+        }
+        f.step(Btn::Down, &rows);
+        assert_eq!((f.row.get_untracked(), f.col.get_untracked()), (1, 4), "same column below");
+        f.step(Btn::Down, &rows);
+        assert_eq!((f.row.get_untracked(), f.col.get_untracked()), (2, 1), "the short row's last item");
+        assert!(!f.step(Btn::Right, &rows), "stops at the row's end");
+    }
+
+    #[test]
+    fn after_the_items_change_the_focus_lands_on_one_that_exists() {
+        let f = focus(false);
+        f.set(1, 7);
+        f.clamp(&[3, 0, 4]);
+        assert_eq!((f.row.get_untracked(), f.col.get_untracked()), (0, 2), "its row emptied: the first with items");
+        f.set(2, 9);
+        f.clamp(&[3, 0, 4]);
+        assert_eq!(f.col.get_untracked(), 3);
+        f.clamp(&[0, 0]);
+        assert_eq!(f.col.get_untracked(), 3, "nothing to show: left alone");
+    }
+}

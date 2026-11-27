@@ -215,6 +215,7 @@ pub fn launch_action(game: &Game) -> (&'static str, icons::Icon) {
         NextStep::RunInstaller => (tr!("Abrir instalador"), icons::Icon::External),
         NextStep::ChooseCopy { found: Some(_) } => (tr!("Usar minha cópia"), icons::Icon::Check),
         NextStep::ChooseCopy { found: None } => (tr!("Escolher cópia do jogo"), icons::Icon::Folder),
+        NextStep::ChooseInput { .. } => (tr!("Escolher o que falta"), icons::Icon::Folder),
         NextStep::Locate { .. } => (tr!("Localizar programa"), icons::Icon::Search),
         NextStep::Install => (tr!("Instalar"), icons::Icon::Download),
     }
@@ -247,6 +248,12 @@ pub fn play_game(library: Library, game: Game) {
                 }
                 // Plays right away; Play itself refuses if anything is still missing.
                 set
+            }
+            // A second disc or a key: picked on the game's page, under "The game also needs".
+            NextStep::ChooseInput { label } => {
+                library.toast(tr!("Falta: {}. Escolha em \"O jogo também precisa\".", label));
+                library.go(Route::Game(game.id.clone()));
+                None
             }
             NextStep::Locate { reason } => {
                 library.toast(reason.clone());
@@ -378,6 +385,21 @@ fn App() -> impl IntoView {
     api::on_needs_location(move |id| locating.set(Some(id)));
     // Speed from how many bytes arrived since the last sample, at most twice a second.
     let last_sample = StoredValue::new(HashMap::<String, (f64, u64)>::new());
+    // What was paused or didn't finish last time comes back to Downloads.
+    leptos::task::spawn_local(async move {
+        if let Ok(kept) = api::download_queue().await {
+            for p in kept {
+                match p.step {
+                    InstallStep::Failed { message } => library.failed.update(|all| {
+                        all.entry(p.recomp_id).or_insert(message);
+                    }),
+                    step => library.progress.update(|all| {
+                        all.entry(p.recomp_id).or_insert(step);
+                    }),
+                }
+            }
+        }
+    });
     api::on_install_progress(move |progress| {
         if let InstallStep::Downloading { done, .. } = progress.step {
             let now = js_sys::Date::now();
@@ -447,7 +469,14 @@ fn App() -> impl IntoView {
             wanted.set(Some(id));
         }
     });
-    api::on_play_request(move |id| wanted.set(Some(id)));
+    // The request is kept in the backend: taken from there, so a game is played once.
+    api::on_play_request(move |_| {
+        spawn_local(async move {
+            if let Some(id) = api::take_play_request().await {
+                let _ = wanted.try_set(Some(id));
+            }
+        });
+    });
     api::on_show_game(move |id: String| library.go(Route::Game(id)));
     Effect::new(move |_| {
         let Some(id) = wanted.get() else { return };

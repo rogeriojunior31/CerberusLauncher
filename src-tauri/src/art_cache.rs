@@ -22,11 +22,40 @@ pub struct ArtCache {
     dir: PathBuf,
     /// Addresses being fetched now, so two listings don't fetch the same one twice.
     busy: Mutex<HashSet<String>>,
+    /// The folder's file names, with the folder's time when listed.
+    listed: Mutex<Option<(std::time::SystemTime, std::collections::HashSet<std::ffi::OsString>)>>,
+    /// Sites whose pictures failed, already said this run (one line per site, not per picture).
+    told: Mutex<HashSet<String>>,
+    /// Where a failure is said (the history), set once the app is up.
+    on_failure: std::sync::OnceLock<Box<dyn Fn(&str, usize, &str) + Send + Sync>>,
+}
+
+/// The sites, among `failed` (address, reason), not said yet: each with how
+/// many of its pictures failed and the first reason.
+fn sites_to_tell(failed: &[(String, String)], told: &mut HashSet<String>) -> Vec<(String, usize, String)> {
+    let mut out: Vec<(String, usize, String)> = Vec::new();
+    for (url, why) in failed {
+        let site = url.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(url).to_lowercase();
+        match out.iter_mut().find(|(s, _, _)| *s == site) {
+            Some(entry) => entry.1 += 1,
+            None if !told.contains(&site) => out.push((site, 1, why.clone())),
+            None => {}
+        }
+    }
+    for (site, _, _) in &out {
+        told.insert(site.clone());
+    }
+    out
 }
 
 impl ArtCache {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, busy: Mutex::new(HashSet::new()) }
+        Self { dir, busy: Mutex::new(HashSet::new()), listed: Mutex::new(None), told: Mutex::new(HashSet::new()), on_failure: std::sync::OnceLock::new() }
+    }
+
+    /// Says pictures that wouldn't come (`site`, how many, why), once per site.
+    pub fn report_failures_with(&self, say: impl Fn(&str, usize, &str) + Send + Sync + 'static) {
+        let _ = self.on_failure.set(Box::new(say));
     }
 
     pub fn dir(&self) -> &Path {
@@ -47,10 +76,23 @@ impl ArtCache {
     /// otherwise notes the address in `missing`.
     /// The pictures on disk, listed once (a listing of a thousand games would
     /// otherwise ask the disk about each picture).
+    /// The pictures in the folder: listed again only when the folder changed
+    /// (thousands of names, asked for on every library listing).
     fn on_disk(&self) -> std::collections::HashSet<std::ffi::OsString> {
-        std::fs::read_dir(&self.dir)
+        let changed = std::fs::metadata(&self.dir).and_then(|m| m.modified()).ok();
+        let mut kept = self.listed.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, names)) = kept.as_ref() {
+            if changed.is_some() && Some(*at) == changed {
+                return names.clone();
+            }
+        }
+        let names: std::collections::HashSet<std::ffi::OsString> = std::fs::read_dir(&self.dir)
             .map(|entries| entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name()).collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if let Some(at) = changed {
+            *kept = Some((at, names.clone()));
+        }
+        names
     }
 
     fn swap(&self, value: &mut Option<String>, missing: &mut Vec<String>, here: &std::collections::HashSet<std::ffi::OsString>) {
@@ -99,10 +141,19 @@ impl ArtCache {
         }
         let cache = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
+            let mut failed = Vec::new();
             for url in fresh {
                 // A picture that won't come now is tried again on the next listing.
-                let _ = cache.fetch(&client, &url).await;
+                if let Err(why) = cache.fetch(&client, &url).await {
+                    failed.push((url.clone(), why));
+                }
                 cache.busy.lock().unwrap_or_else(|p| p.into_inner()).remove(&url);
+            }
+            let tell = sites_to_tell(&failed, &mut cache.told.lock().unwrap_or_else(|p| p.into_inner()));
+            if let Some(say) = cache.on_failure.get() {
+                for (site, count, why) in tell {
+                    say(&site, count, &why);
+                }
             }
         });
     }
@@ -110,17 +161,20 @@ impl ArtCache {
     async fn fetch(&self, client: &Client, url: &str) -> Result<(), String> {
         let reply = crate::net::send(client.get(url)).await.map_err(|e| e.to_string())?;
         if !reply.status().is_success() {
-            return Err(format!("{} answered {}", url, reply.status()));
+            return Err(cerberus_shared::tr!("o site respondeu {}", reply.status().as_u16()));
         }
         let bytes = crate::net::read_limited(reply, MAX_BYTES as u64).await?;
         if !is_image(&bytes) {
-            return Err(format!("{} is not a picture", url));
+            return Err(cerberus_shared::tr!("não veio uma imagem").into());
         }
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let file = self.file_for(url);
         let temp = file.with_extension("part");
         fs::write(&temp, &bytes).map_err(|e| e.to_string())?;
-        fs::rename(&temp, &file).map_err(|e| e.to_string())
+        fs::rename(&temp, &file).map_err(|e| e.to_string())?;
+        // A new picture: the folder is listed again next time.
+        *self.listed.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        Ok(())
     }
 
     /// Deletes every copy; they come back as pages need them.
@@ -149,6 +203,30 @@ fn is_image(bytes: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_kept_listing_sees_a_picture_added_to_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ArtCache::new(dir.path().to_path_buf());
+        assert!(cache.on_disk().is_empty());
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(dir.path().join("a.jpg"), b"x").unwrap();
+        assert!(cache.on_disk().contains(std::ffi::OsStr::new("a.jpg")), "the folder changed: listed again");
+        assert_eq!(cache.on_disk().len(), 1);
+    }
+
+    #[test]
+    fn a_failing_site_is_said_once_not_per_picture() {
+        let mut told = HashSet::new();
+        let failed = vec![
+            ("https://cdn.example.com/a.jpg".to_string(), "timeout".to_string()),
+            ("https://cdn.example.com/b.jpg".to_string(), "timeout".to_string()),
+            ("https://other.org/c.png".to_string(), "404".to_string()),
+        ];
+        let said = sites_to_tell(&failed, &mut told);
+        assert_eq!(said, vec![("cdn.example.com".to_string(), 2, "timeout".to_string()), ("other.org".to_string(), 1, "404".to_string())]);
+        assert!(sites_to_tell(&failed, &mut told).is_empty(), "said already this run");
+    }
 
     #[test]
     fn knows_pictures_from_text() {

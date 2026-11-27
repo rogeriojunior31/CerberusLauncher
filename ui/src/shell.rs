@@ -298,7 +298,7 @@ fn SideGames() -> impl IntoView {
                 <Show when=move || { total() > 8 }>
                     <label class="sg-search">
                         <Svg icon=Icon::Search size=14 />
-                        <input type="search" placeholder=tr!("Filtrar jogos") prop:value=move || query.get()
+                        <input type="search" placeholder=tr!("Filtrar jogos") aria-label=tr!("Filtrar jogos") prop:value=move || query.get()
                             on:input=move |e| query.set(event_target_value(&e)) />
                     </label>
                 </Show>
@@ -317,13 +317,26 @@ fn SideGames() -> impl IntoView {
 
 #[component]
 pub fn TitleBar() -> impl IntoView {
+    // Maximized, a frameless window fills the screen's work area exactly: the
+    // button then says what it does, "Restore".
+    let filled = || {
+        web_sys::window().and_then(|w| {
+            let screen = w.screen().ok()?;
+            let (width, height) = (w.outer_width().ok()?.as_f64()?, w.outer_height().ok()?.as_f64()?);
+            Some(width >= f64::from(screen.avail_width().ok()?) - 1.0 && height >= f64::from(screen.avail_height().ok()?) - 1.0)
+        }).unwrap_or(false)
+    };
+    let maximized = RwSignal::new(filled());
+    let resized = window_event_listener(leptos::ev::resize, move |_| maximized.set(filled()));
+    on_cleanup(move || resized.remove());
+    let size_label = move || if maximized.get() { tr!("Restaurar") } else { tr!("Maximizar") };
     view! {
         <div class="topbar" data-tauri-drag-region>
             <div class="win">
                 <button type="button" aria-label=tr!("Minimizar") on:click=|_| api::window_action("minimize")>
                     <Svg icon=Icon::Minimize size=14 />
                 </button>
-                <button type="button" aria-label=tr!("Maximizar") on:click=|_| api::window_action("toggleMaximize")>
+                <button type="button" aria-label=size_label title=size_label on:click=|_| api::window_action("toggleMaximize")>
                     <Svg icon=Icon::Maximize size=14 />
                 </button>
                 <button type="button" class="close" aria-label=tr!("Fechar") on:click=|_| api::window_action("close")>
@@ -370,13 +383,19 @@ fn ShortcutSheet(close: Callback<()>) -> impl IntoView {
         ("Esc", tr!("Fechar um menu, sair de uma busca")),
         ("?", tr!("Esta lista")),
     ];
-    let list = rows
-        .into_iter()
-        .map(|(keys, what)| {
-            let caps = keys.split('+').map(|k| view! { <kbd>{k.to_string()}</kbd> }).collect_view();
-            view! { <li><span class="keys">{caps}</span><span>{what}</span></li> }
-        })
-        .collect_view();
+    // With a game Cerberus opened in front (they reach the game's window too).
+    let in_game: [(&str, &'static str); 4] = [
+        ("F12", tr!("Tirar uma foto do jogo")),
+        ("Ctrl+F12", tr!("Abrir ou fechar o menu por cima do jogo")),
+        ("View+Menu", tr!("No controle: o menu por cima do jogo (segurar View também, se ligado)")),
+        ("View+RB", tr!("No controle: tirar uma foto")),
+    ];
+    let line = |(keys, what): (&str, &'static str)| {
+        let caps = keys.split('+').map(|k| view! { <kbd>{k.to_string()}</kbd> }).collect_view();
+        view! { <li><span class="keys">{caps}</span><span>{what}</span></li> }
+    };
+    let list = rows.into_iter().map(line).collect_view();
+    let game_list = in_game.into_iter().map(line).collect_view();
     request_animation_frame(|| {
         if let Some(el) = document().query_selector(".keys-sheet .link").ok().flatten() {
             let el: web_sys::HtmlElement = wasm_bindgen::JsCast::unchecked_into(el);
@@ -391,6 +410,8 @@ fn ShortcutSheet(close: Callback<()>) -> impl IntoView {
                     <button type="button" class="link" on:click=move |_| close.run(())>{tr!("Fechar")}</button>
                 </div>
                 <ul class="keys-list">{list}</ul>
+                <h3 class="keys-h">{tr!("Durante o jogo")}</h3>
+                <ul class="keys-list">{game_list}</ul>
                 <p class="muted small">{tr!("Nos menus, as setas andam entre as opções. No Big Picture, o controle manda.")}</p>
             </section>
         </div>

@@ -569,6 +569,25 @@ struct RestoreArgs<'a> {
 }
 
 /// How many files were put back.
+/// Stops the copy of the player's game going on now.
+pub async fn cancel_copy() -> Result<(), String> {
+    call("cancel_copy", &()).await
+}
+
+/// The paused and unfinished downloads kept from the last run.
+pub async fn download_queue() -> Result<Vec<cerberus_shared::InstallProgress>, String> {
+    call("download_queue", &()).await
+}
+
+/// Puts a recomp waiting in the download line first.
+pub async fn download_first(id: &str) -> Result<bool, String> {
+    call("download_first", &Id { id }).await
+}
+
+pub async fn forget_download(id: String) -> Result<(), String> {
+    call("forget_download", &Id { id: &id }).await
+}
+
 pub async fn restore_backup(id: &str, name: &str) -> Result<u32, String> {
     call("restore_backup", &RestoreArgs { id, name }).await
 }
@@ -643,8 +662,12 @@ pub async fn set_monitor(name: Option<String>) -> Result<SettingsView, String> {
     call("set_monitor", &Arg { name }).await
 }
 
-pub async fn to_chosen_monitor() -> Result<(), String> {
+pub async fn to_chosen_monitor() -> Result<Option<String>, String> {
     call("to_chosen_monitor", &()).await
+}
+
+pub async fn back_from_tv() -> Result<(), String> {
+    call("back_from_tv", &()).await
 }
 
 pub async fn set_close_to_tray(on: bool) -> Result<SettingsView, String> {
@@ -915,6 +938,7 @@ pub async fn install_core(core: String) -> Result<cerberus_shared::EmulationView
 struct ClassicArgs {
     path: String,
     console: String,
+    disc: Option<usize>,
 }
 
 /// Copies the player's BIOS files from a folder they pick; what was added, said for the player.
@@ -923,8 +947,8 @@ pub async fn import_bios() -> Result<(cerberus_shared::EmulationView, String), S
 }
 
 /// Starts a classic from the ROM folders in RetroArch.
-pub async fn play_classic(path: String, console: String) -> Result<(), String> {
-    call("play_classic", &ClassicArgs { path, console }).await
+pub async fn play_classic(path: String, console: String, disc: Option<usize>) -> Result<(), String> {
+    call("play_classic", &ClassicArgs { path, console, disc }).await
 }
 
 #[derive(Serialize)]

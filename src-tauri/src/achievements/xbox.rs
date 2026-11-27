@@ -55,6 +55,8 @@ pub(super) async fn get(http: &reqwest::Client, s: &Session, url: &str, contract
     match response.status().as_u16() {
         200..=299 => response.json().await.map_err(|e| e.to_string()),
         429 => Err(tr!("O Xbox Live pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.").into()),
+        // The session isn't good any more: sign in again, not a wait.
+        401 => Err(super::needs_login(&tr!("A sessão do Xbox venceu: entre de novo em Configurações › Xbox."))),
         status => {
             // Which address and why, for the log (the answer never has the token).
             let body = response.text().await.unwrap_or_default();

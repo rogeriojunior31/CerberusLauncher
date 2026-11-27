@@ -145,6 +145,7 @@ fn n64_header(path: &Path) -> Option<N64Header> {
         b'E' | b'N' => "US",
         b'J' => "Japan",
         b'P' | b'D' | b'F' | b'I' | b'S' | b'U' | b'X' | b'Y' => "Europe",
+        b'B' => "Brazil",
         _ => "",
     };
     // 0x3B is the media letter, then the game's two-letter id, its region and revision.
@@ -153,18 +154,42 @@ fn n64_header(path: &Path) -> Option<N64Header> {
     Some(N64Header { name: name.trim().to_string(), region: region.to_string(), code })
 }
 
+/// No-Intro's region names (and the old one-letter tags), as Cerberus keeps them.
+fn region_word(word: &str) -> Option<&'static str> {
+    Some(match word.trim().to_lowercase().as_str() {
+        "usa" | "us" | "u" | "america" | "canada" => "US",
+        "europe" | "e" | "uk" | "germany" | "france" | "spain" | "italy" | "netherlands" | "sweden" | "scandinavia" | "australia" | "a" => "Europe",
+        "japan" | "j" => "Japan",
+        "world" | "w" => "World",
+        "brazil" | "b" => "Brazil",
+        "korea" | "k" => "Korea",
+        "asia" | "china" | "taiwan" | "hong kong" => "Asia",
+        _ => return None,
+    })
+}
+
+/// The regions in a name's tags: "(Japan, USA)" -> "US, Japan" (the US one
+/// first, the version picked when there are several). Empty when none is named.
 fn region_from_name(name: &str) -> String {
-    let lower = name.to_lowercase();
-    let region = if lower.contains("(usa") || lower.contains("(us)") || lower.contains("(u)") {
-        "US"
-    } else if lower.contains("(europe") || lower.contains("(e)") {
-        "Europe"
-    } else if lower.contains("(japan") || lower.contains("(j)") {
-        "Japan"
-    } else {
-        ""
-    };
-    region.to_string()
+    let mut found: Vec<&'static str> = Vec::new();
+    for group in name.split('(').skip(1).filter_map(|g| g.split_once(')').map(|(inside, _)| inside)) {
+        let words: Vec<Option<&'static str>> = group.split(',').map(region_word).collect();
+        // A tag of regions only ("Disc 1", "Rev 2" are not).
+        if words.iter().all(Option::is_some) {
+            for r in words.into_iter().flatten() {
+                if !found.contains(&r) {
+                    found.push(r);
+                }
+            }
+        }
+    }
+    found.sort_by_key(|r| *r != "US");
+    found.join(", ")
+}
+
+/// Whether a ROM's regions include the US one.
+fn is_us(region: &str) -> bool {
+    region.split(", ").any(|r| r == "US")
 }
 
 /// Windows' marks for a file whose contents are in the cloud, fetched when read
@@ -230,6 +255,8 @@ fn identify(path: &Path) -> Option<RomFile> {
         return Some(RomFile { path: path.to_path_buf(), system: "n64".into(), title: header.name, region, n64: Some(header.code), discs: Vec::new() });
     }
     let system = match cartridge_system(&ext) {
+        // `.md` is also Markdown: a Mega Drive cartridge says SEGA at 0x100.
+        Some("genesis") if (ext == "md" || ext == "gen") && !sega_header(path) => return None,
         Some(system) => system.to_string(),
         // A list of discs is its first disc's console.
         None if ext == "m3u" => listed_discs(path).first().and_then(|disc| crate::disc_console::console_of(disc)).or_else(|| crate::disc_console::console_of(path)).unwrap_or_default().to_string(),
@@ -238,6 +265,13 @@ fn identify(path: &Path) -> Option<RomFile> {
         None => return None,
     };
     Some(RomFile { path: path.to_path_buf(), system, region: region_from_name(&stem), title: stem, n64: None, discs: Vec::new() })
+}
+
+/// A Mega Drive / Genesis cartridge: "SEGA" at 0x100 (the plain, not
+/// interleaved, dumps that `.md` and `.gen` are).
+fn sega_header(path: &Path) -> bool {
+    let mut head = [0u8; 0x110];
+    fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok() && head[0x100..0x110].windows(4).any(|w| w == b"SEGA")
 }
 
 /// A disc's file name without its disc tag: "Final Fantasy VII (USA) (Disc 1)"
@@ -252,18 +286,23 @@ fn disc_tag(stem: &str) -> Option<(u32, String)> {
     // here cut `stem` at the same places ("İ" would not, and could panic).
     let lower = stem.to_ascii_lowercase();
     for word in ["(disc", "(disk", "(cd"] {
-        let Some(start) = lower.find(word) else { continue };
-        let rest = &lower[start + word.len()..];
-        let end = rest.find(')')?;
-        let inside = rest[..end].trim();
-        let number: String = inside.chars().take_while(char::is_ascii_digit).collect();
-        let tail = inside[number.len()..].trim();
-        if number.is_empty() || !(tail.is_empty() || tail.starts_with("of ")) {
-            continue;
+        // Every occurrence: "Game (Disc Edition) (Disc 2)" has its number in the second.
+        let mut from = 0;
+        while let Some(found) = lower[from..].find(word) {
+            let start = from + found;
+            from = start + word.len();
+            let rest = &lower[start + word.len()..];
+            let Some(end) = rest.find(')') else { break };
+            let inside = rest[..end].trim();
+            let number: String = inside.chars().take_while(char::is_ascii_digit).collect();
+            let tail = inside[number.len()..].trim();
+            if number.is_empty() || !(tail.is_empty() || tail.starts_with("of ")) {
+                continue;
+            }
+            let cut = start + word.len() + end + 1;
+            let base = format!("{}{}", &stem[..start], &stem[cut..]).split_whitespace().collect::<Vec<_>>().join(" ");
+            return Some((number.parse().ok()?, base));
         }
-        let cut = start + word.len() + end + 1;
-        let base = format!("{}{}", &stem[..start], &stem[cut..]).split_whitespace().collect::<Vec<_>>().join(" ");
-        return Some((number.parse().ok()?, base));
     }
     None
 }
@@ -313,12 +352,16 @@ pub fn join_discs(found: Vec<RomFile>) -> Vec<RomFile> {
     }
     rest.retain(|rom| !lists.iter().any(|l| l.discs.iter().any(|d| same_file(d, &rom.path))));
     // Discs of one game: same folder, same name without the tag, same file type.
+    // Each disc in its own folder named like it ("FF7 (Disc 1)\FF7 (Disc 1).cue"):
+    // the folder above counts as theirs.
     let key = |rom: &RomFile| {
         let stem = rom.path.file_stem()?.to_string_lossy().into_owned();
         let (number, base) = disc_tag(&stem)?;
         let ext = rom.path.extension()?.to_string_lossy().to_lowercase();
-        let dir = rom.path.parent()?.to_string_lossy().to_lowercase();
-        Some(((dir, base.to_lowercase(), ext), number))
+        let parent = rom.path.parent()?;
+        let own_folder = parent.file_name().map(|n| n.to_string_lossy().into_owned()).and_then(|n| disc_tag(&n)).is_some_and(|(n, b)| n == number && b.eq_ignore_ascii_case(&base));
+        let dir = if own_folder { parent.parent().unwrap_or(parent) } else { parent };
+        Some(((dir.to_string_lossy().to_lowercase(), base.to_lowercase(), ext), number))
     };
     let mut groups: HashMap<(String, String, String), Vec<(u32, PathBuf)>> = HashMap::new();
     for rom in &rest {
@@ -408,7 +451,7 @@ pub fn save_cache(file: &Path, cache: &ScanCache) {
     }
     let list: Vec<(&PathBuf, &Seen)> = cache.iter().collect();
     if let Ok(json) = serde_json::to_string(&list) {
-        let _ = fs::write(file, json);
+        let _ = crate::state_file::write_bytes(&file, json.as_bytes());
     }
 }
 
@@ -421,6 +464,22 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<RomFile> {
 /// The same, reusing what `cache` knows of files that haven't changed; the
 /// cache is left holding only the files seen this time.
 pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
+    let (found, stopped) = scan_limited(dirs, cache, MOST_ENTRIES);
+    STOPPED_EARLY.store(stopped, std::sync::atomic::Ordering::SeqCst);
+    found
+}
+
+/// Whether the last scan stopped at its limit (a whole drive picked), so the
+/// screen can say so instead of "checked".
+static STOPPED_EARLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn last_scan_stopped_early() -> bool {
+    STOPPED_EARLY.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The scan, and whether it stopped at `most` entries.
+fn scan_limited(dirs: &[PathBuf], cache: &mut ScanCache, most: usize) -> (Vec<RomFile>, bool) {
+    let mut stopped = false;
     let before = std::mem::take(cache);
     let mut found = Vec::new();
     let mut seen_dirs = HashSet::new();
@@ -436,8 +495,9 @@ pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
         };
         for entry in entries.flatten() {
             looked += 1;
-            if looked > MOST_ENTRIES {
+            if looked > most {
                 // Stop looking, but what was found still gets its discs put together.
+                stopped = true;
                 pending.clear();
                 break;
             }
@@ -467,7 +527,7 @@ pub fn scan_cached(dirs: &[PathBuf], cache: &mut ScanCache) -> Vec<RomFile> {
             }
         }
     }
-    join_discs(found)
+    (join_discs(found), stopped)
 }
 
 /// The words of a name that say which game it is: lower case, without
@@ -601,12 +661,46 @@ pub fn match_catalog(entries: &[CatalogEntry], roms: &[RomFile]) -> HashMap<Stri
         };
         let candidates = roms.iter().filter(|rom| fits(rom, &entry.origin) && same_game(&entry.game, rom)).filter(same_id);
         // The exact version the recomp was built against first, then a US copy.
-        let best = candidates.max_by_key(|rom| (right_version(rom), rom.region == "US"));
+        let best = candidates.max_by_key(|rom| (right_version(rom), is_us(&rom.region)));
         if let Some(rom) = best {
             owned.insert(entry.id.clone(), rom.path.to_string_lossy().into_owned());
         }
     }
     owned
+}
+
+/// Classics that moved (a ROM folder moved to another drive, a drive with a
+/// new letter): gone from one path and found at another with the same file
+/// name and console, when exactly one matches. Old path, new path.
+pub fn moved(before: &[RomFile], now: &[RomFile]) -> Vec<(PathBuf, PathBuf)> {
+    let gone: Vec<&RomFile> = before.iter().filter(|b| !now.iter().any(|n| n.path == b.path)).collect();
+    let new: Vec<&RomFile> = now.iter().filter(|n| !before.iter().any(|b| b.path == n.path)).collect();
+    gone.iter()
+        .filter_map(|old| {
+            let same = |r: &&&RomFile| r.path.file_name() == old.path.file_name() && r.system == old.system;
+            let mut matches = new.iter().filter(same);
+            let one = matches.next()?;
+            // Two candidates: not sure which it is, so nothing moves.
+            matches.next().is_none().then(|| (old.path.clone(), one.path.clone()))
+        })
+        .collect()
+}
+
+/// The classics found last time in folders that can't be read now (an external
+/// drive unplugged, a network share away): kept, so opening Cerberus without
+/// the drive doesn't wipe them; they come back up to date once it's there.
+pub fn keep_unreachable(found: Vec<RomFile>, before: &[RomFile], dirs: &[PathBuf]) -> Vec<RomFile> {
+    let away: Vec<&PathBuf> = dirs.iter().filter(|d| fs::read_dir(d).is_err()).collect();
+    if away.is_empty() {
+        return found;
+    }
+    let mut all = found;
+    for rom in before {
+        if away.iter().any(|d| rom.path.starts_with(d)) && !all.iter().any(|r| r.path == rom.path) {
+            all.push(rom.clone());
+        }
+    }
+    all
 }
 
 /// The last scan, kept on disk so the matches show at start without walking the folders again.
@@ -620,13 +714,79 @@ pub fn save_index(file: &Path, roms: &[RomFile]) {
         let _ = fs::create_dir_all(dir);
     }
     if let Ok(json) = serde_json::to_string(roms) {
-        let _ = fs::write(file, json);
+        let _ = crate::state_file::write_bytes(&file, json.as_bytes());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scan_that_hits_its_limit_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..20 {
+            fs::write(dir.path().join(format!("game{i} (USA).sfc")), b"rom").unwrap();
+        }
+        let (found, stopped) = scan_limited(&[dir.path().to_path_buf()], &mut ScanCache::new(), 10);
+        assert!(stopped && found.len() <= 10);
+        assert!(!scan_limited(&[dir.path().to_path_buf()], &mut ScanCache::new(), 100).1);
+    }
+
+    #[test]
+    fn regions_are_read_from_the_no_intro_tags() {
+        for (name, region) in [
+            ("Super Mario World (USA)", "US"),
+            ("Chrono Trigger (Japan, USA)", "US, Japan"),
+            ("Tetris (World)", "World"),
+            ("Mônica no Castelo do Dragão (Brazil)", "Brazil"),
+            ("Pokemon Gold (Korea)", "Korea"),
+            ("Sonic (Europe) (Rev 1)", "Europe"),
+            ("Final Fantasy VII (Disc 1)", ""),
+            ("Zelda (U) [!]", "US"),
+            ("Doom (Germany)", "Europe"),
+        ] {
+            assert_eq!(region_from_name(name), region, "{name}");
+        }
+        assert!(is_us("US, Japan") && !is_us("Europe"));
+    }
+
+    #[test]
+    fn a_rom_folder_moved_to_another_drive_is_followed() {
+        let rom = |p: &str, system: &str| RomFile { path: PathBuf::from(p), system: system.into(), title: "x".into(), region: String::new(), n64: None, discs: Vec::new() };
+        let before = vec![rom(r"D:\ROMS\Crash (USA).cue", "ps1"), rom(r"D:\ROMS\Twice.sfc", "snes")];
+        let now = vec![rom(r"E:\ROMS\Crash (USA).cue", "ps1"), rom(r"E:\A\Twice.sfc", "snes"), rom(r"E:\B\Twice.sfc", "snes")];
+        // Crash followed; "Twice" has two candidates, so it stays put.
+        assert_eq!(moved(&before, &now), vec![(PathBuf::from(r"D:\ROMS\Crash (USA).cue"), PathBuf::from(r"E:\ROMS\Crash (USA).cue"))]);
+    }
+
+    #[test]
+    fn a_markdown_file_is_not_a_mega_drive_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let readme = dir.path().join("README.md");
+        fs::write(&readme, "# My ROMs\n\nNotes about the collection, long enough to pass 0x110 bytes. ".repeat(8)).unwrap();
+        assert!(identify(&readme).is_none());
+        let mut cart = vec![0u8; 0x200];
+        cart[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        let sonic = dir.path().join("Sonic (USA).md");
+        fs::write(&sonic, &cart).unwrap();
+        assert_eq!(identify(&sonic).unwrap().system, "genesis");
+    }
+
+    #[test]
+    fn a_drive_that_is_away_keeps_its_classics() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("here");
+        fs::create_dir_all(&here).unwrap();
+        let away = dir.path().join("unplugged");
+        let rom = |p: &Path| RomFile { path: p.to_path_buf(), system: "snes".into(), title: "x".into(), region: String::new(), n64: None, discs: Vec::new() };
+        let before = vec![rom(&away.join("a.sfc")), rom(&away.join("b.sfc")), rom(&here.join("gone.sfc"))];
+        let found = vec![rom(&here.join("new.sfc"))];
+        let kept = keep_unreachable(found, &before, &[here.clone(), away.clone()]);
+        // The two on the drive that's away stay; the one deleted from a folder that answers goes.
+        assert_eq!(kept.len(), 3);
+        assert!(kept.iter().any(|r| r.path == away.join("a.sfc")) && !kept.iter().any(|r| r.path == here.join("gone.sfc")));
+    }
 
     #[test]
     fn a_second_scan_reuses_what_it_knew_of_unchanged_files() {
@@ -717,6 +877,8 @@ mod tests {
         assert_eq!(disc_tag("Game (CD3)"), Some((3, "Game".into())));
         assert_eq!(disc_tag("Discworld (USA)"), None);
         assert_eq!(disc_tag("Game (Disc Edition)"), None);
+        assert_eq!(disc_tag("Game (Disc Edition) (Disc 2)"), Some((2, "Game (Disc Edition)".into())), "the tag after a look-alike");
+        assert_eq!(disc_tag("Game (Disc"), None);
         assert_eq!(disc_tag("İstanbul (Disc 2)"), Some((2, "İstanbul".into())), "letters that change size in lowercase");
     }
 
@@ -744,6 +906,25 @@ mod tests {
             ["Final Fantasy VII (USA) (Disc 1).chd", "Final Fantasy VII (USA) (Disc 2).chd", "Final Fantasy VII (USA) (Disc 3).chd"]);
         assert_eq!(found[0].discs.len(), 2);
         assert!(found[1].discs.is_empty() && found[3].discs.is_empty());
+    }
+
+    #[test]
+    fn discs_each_in_a_folder_named_like_it_join() {
+        let dir = tempfile::tempdir().unwrap();
+        for n in [1, 2] {
+            let folder = dir.path().join(format!("FF7 (Disc {n})"));
+            fs::create_dir_all(&folder).unwrap();
+            fs::write(folder.join(format!("FF7 (Disc {n}).chd")), b"disc").unwrap();
+        }
+        // Another game's disc in a folder of its own stays apart.
+        let other = dir.path().join("Other (Disc 1)");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("Other (Disc 1).chd"), b"disc").unwrap();
+        let mut found = scan(&[dir.path().to_path_buf()]);
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].discs.len(), 2);
+        assert!(found[1].discs.is_empty());
     }
 
     fn temp(name: &str) -> PathBuf {

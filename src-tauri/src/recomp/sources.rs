@@ -210,7 +210,7 @@ fn save_art(cache_dir: &Path, cache: &ArtCache) {
     if let Some(parent) = file.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(&file, serde_json::to_string(cache).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(cache).unwrap_or_default().as_bytes());
 }
 
 /// Puts the art already found into the games, so a restart never asks Steam again.

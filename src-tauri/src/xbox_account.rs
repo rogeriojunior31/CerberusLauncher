@@ -100,7 +100,7 @@ pub async fn sign_in(client: &reqwest::Client, grant: Grant<'_>) -> Result<Sessi
             encode(SCOPE)
         ),
     };
-    let refused = || tr!("A Microsoft recusou o acesso: entre de novo em Configurações › Xbox.").to_string();
+    let refused = || crate::achievements::needs_login(&tr!("A Microsoft recusou o acesso: entre de novo em Configurações › Xbox."));
     let live = client
         .post("https://login.live.com/oauth20_token.srf")
         .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")

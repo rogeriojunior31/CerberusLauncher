@@ -8,7 +8,9 @@ use cerberus_shared::tk;
 use cerberus_shared::tr;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+// Hours the PC slept with the game open aren't played.
+use crate::awake_time::AwakeInstant as Instant;
 
 use cerberus_shared::{Game, Source};
 use tauri::{AppHandle, Emitter, Manager};
@@ -37,13 +39,15 @@ pub fn load(data: &Path) -> HashMap<String, Played> {
     crate::state_file::load_or_default(&file(data))
 }
 
-fn add(data: &Path, id: &str, seconds: u64, now: u64) -> Result<(), String> {
+/// Adds `seconds` to a game's time; `session` is how long the session that
+/// brought them has lasted so far (the minute-by-minute credit isn't one).
+fn add(data: &Path, id: &str, seconds: u64, now: u64, session: u64) -> Result<(), String> {
     // A file that can't be read is left alone (the minute is lost, never the total).
     crate::state_file::update(&file(data), |all: &mut HashMap<String, Played>| {
         let entry = all.entry(id.to_string()).or_default();
         entry.seconds += seconds;
         entry.last = now;
-        entry.last_session = seconds;
+        entry.last_session = session;
     })
 }
 
@@ -73,6 +77,25 @@ fn folder_key(path: &str) -> String {
     key
 }
 
+/// The programs that can say a store game is being played: not a crash
+/// reporter or updater left behind, and not one inside a folder Cerberus's own
+/// session already follows (a store game also added by hand, opened from it).
+fn counted(programs: &[String], tracked: &[String]) -> Vec<String> {
+    let tracked: Vec<String> = tracked.iter().map(|d| folder_key(d)).collect();
+    programs
+        .iter()
+        .filter(|p| {
+            let name = p.rsplit(['\\', '/']).next().unwrap_or(p);
+            !crate::sessions::is_helper_program(&name.to_lowercase())
+        })
+        .filter(|p| {
+            let p = p.replace('/', "\\").to_lowercase();
+            !tracked.iter().any(|t| p.starts_with(t))
+        })
+        .cloned()
+        .collect()
+}
+
 /// The games (by id) that have a running program inside their folder.
 fn running(programs: &[String], games: &[(String, String)]) -> HashSet<String> {
     let programs: Vec<String> = programs.iter().map(|p| p.replace('/', "\\").to_lowercase()).collect();
@@ -95,12 +118,19 @@ pub fn running_programs() -> Vec<String> {
     use windows_sys::Win32::System::ProcessStatus::EnumProcesses;
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
 
+    // Asked again with room to spare when the list came back full.
     let mut pids = vec![0u32; 4096];
-    let mut used = 0u32;
-    if unsafe { EnumProcesses(pids.as_mut_ptr(), (pids.len() * 4) as u32, &mut used) } == 0 {
-        return Vec::new();
+    loop {
+        let mut used = 0u32;
+        if unsafe { EnumProcesses(pids.as_mut_ptr(), (pids.len() * 4) as u32, &mut used) } == 0 {
+            return Vec::new();
+        }
+        if (used as usize) < pids.len() * 4 || pids.len() >= 1 << 16 {
+            pids.truncate(used as usize / 4);
+            break;
+        }
+        pids = vec![0u32; pids.len() * 2];
     }
-    pids.truncate(used as usize / 4);
     let mut found = Vec::new();
     let mut buffer = vec![0u16; 32768];
     for pid in pids.into_iter().filter(|&p| p != 0) {
@@ -149,11 +179,11 @@ pub fn watch(app: AppHandle) {
                 scanned = Instant::now();
             }
             let dirs: Vec<(String, String)> = games.iter().map(|(id, dir, _)| (id.clone(), dir.clone())).collect();
-            let now_running = if dirs.is_empty() { HashSet::new() } else { running(&running_programs(), &dirs) };
+            let now_running = if dirs.is_empty() { HashSet::new() } else { running(&counted(&running_programs(), &crate::sessions::tracked_folders(&app)), &dirs) };
             for id in &now_running {
                 if !playing.contains_key(id) {
                     playing.insert(id.clone(), Instant::now());
-                    crate::in_game::session(&app, true);
+                    crate::in_game::session(&app, id, true);
                     let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: true });
                     if let Some(n) = steam_app(id) {
                         live.start(&app, n);
@@ -166,9 +196,10 @@ pub fn watch(app: AppHandle) {
                     let (done, at) = credited.get(id).copied().unwrap_or((0, *started));
                     if so_far >= 30 && at.elapsed() >= Duration::from_secs(60) {
                         let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
-                        if add(&data, id, so_far - done, now).is_ok() {
+                        if add(&data, id, so_far - done, now, so_far).is_ok() {
                             credited.insert(id.clone(), (so_far, Instant::now()));
                         }
+                        crate::play_log::still_going(&data, id, so_far, now);
                     }
                 }
             }
@@ -182,7 +213,7 @@ pub fn watch(app: AppHandle) {
                 }
                 let seconds = started.elapsed().as_secs();
                 let already = credited.remove(&id).map_or(0, |(done, _)| done);
-                crate::in_game::session(&app, false);
+                crate::in_game::session(&app, &id, false);
                 let _ = app.emit(crate::sessions::EVENT, cerberus_shared::SessionEvent { game_id: id.clone(), running: false });
                 // A blink (a launcher checking for updates) isn't a session.
                 if seconds < 30 {
@@ -190,7 +221,8 @@ pub fn watch(app: AppHandle) {
                 }
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };
-                let saved = add(&data, &id, seconds.saturating_sub(already), now);
+                let saved = add(&data, &id, seconds.saturating_sub(already), now, seconds);
+                crate::play_log::ended(&data, &id);
                 crate::play_log::record(&data, &id, seconds, now);
                 let minutes = if seconds < 60 { tr!("Menos de 1 min jogado").to_string() } else { crate::sessions::played_text(seconds / 60 * 60) };
                 crate::trail::note(&app, &id, tk!("Partida"), &saved.map(|_| minutes));
@@ -209,6 +241,17 @@ pub fn watch(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn helpers_and_games_cerberus_follows_dont_count_for_the_store() {
+        let games = [("steam:1".to_string(), r"D:\Steam\common\Game".to_string())];
+        let crash = vec![r"D:\Steam\common\Game\CrashReporter.exe".to_string()];
+        assert!(running(&counted(&crash, &[]), &games).is_empty(), "a crash handler left running");
+        let game = vec![r"D:\Steam\common\Game\Game.exe".to_string()];
+        assert_eq!(running(&counted(&game, &[]), &games).len(), 1);
+        // Opened from its hand-added copy: Cerberus's own session counts it.
+        assert!(running(&counted(&game, &[r"D:\Steam\common\Game".into()]), &games).is_empty());
+    }
 
     #[test]
     fn a_game_runs_when_a_program_inside_its_folder_does() {
@@ -238,13 +281,25 @@ mod tests {
     #[test]
     fn kept_time_adds_up_and_reaches_the_listed_game() {
         let dir = tempfile::tempdir().unwrap();
-        add(dir.path(), "steam:1", 600, 100).unwrap();
-        add(dir.path(), "steam:1", 120, 200).unwrap();
+        add(dir.path(), "steam:1", 600, 100, 600).unwrap();
+        add(dir.path(), "steam:1", 120, 200, 120).unwrap();
         let mut games: Vec<Game> = vec![serde_json::from_value(serde_json::json!({
             "id": "steam:1", "name": "Balatro", "source": {"kind": "steam", "app_id": 1}, "install_dir": "x"
         }))
         .unwrap()];
         apply(dir.path(), &mut games);
         assert_eq!((games[0].playtime_secs, games[0].last_played, games[0].last_session_secs), (720, Some(200), Some(120)));
+    }
+
+    #[test]
+    fn the_last_session_is_the_whole_session_not_its_last_minute() {
+        let dir = tempfile::tempdir().unwrap();
+        // An hour, credited a minute at a time, then the close.
+        for minute in 1..=59u64 {
+            add(dir.path(), "steam:1", 60, minute * 60, minute * 60).unwrap();
+        }
+        add(dir.path(), "steam:1", 10, 3550, 3550).unwrap();
+        let kept = load(dir.path());
+        assert_eq!((kept["steam:1"].seconds, kept["steam:1"].last_session), (59 * 60 + 10, 3550));
     }
 }

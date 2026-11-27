@@ -77,9 +77,30 @@ fn is_bin(path: &Path) -> bool {
 
 /// Which BIOS files RetroArch has: (PlayStation, PlayStation 2).
 pub fn bios_status(exe: &Path) -> (bool, bool) {
-    let ps1 = has_file(&system_dir(exe), |p, size| is_bin(p) && size == PS1_BIOS);
-    let ps2 = has_file(&ps2_bios_dir(exe), |p, size| is_bin(p) && size == PS2_BIOS);
+    let ps1 = has_file(&system_dir(exe), |p, size| is_bin(p) && size == PS1_BIOS && is_bios(p, Bios::Ps1));
+    let ps2 = has_file(&ps2_bios_dir(exe), |p, size| is_bin(p) && size == PS2_BIOS && is_bios(p, Bios::Ps2));
     (ps1, ps2)
+}
+
+#[derive(Clone, Copy)]
+enum Bios {
+    Ps1,
+    Ps2,
+}
+
+/// The size alone takes any 512 KB file (a Mega Drive cartridge) for a PS1
+/// BIOS. Sony's BIOS carry its name, and the PS2's its table of parts
+/// (ROMDIR, starting with RESET): checked in the file, nothing downloaded.
+fn is_bios(path: &Path, kind: Bios) -> bool {
+    fs::read(path).is_ok_and(|bytes| bios_marks(&bytes, kind))
+}
+
+fn bios_marks(bytes: &[u8], kind: Bios) -> bool {
+    let has = |mark: &[u8]| bytes.windows(mark.len()).any(|w| w == mark);
+    match kind {
+        Bios::Ps1 => bytes.len() as u64 == PS1_BIOS && has(b"Sony Computer Entertainment"),
+        Bios::Ps2 => bytes.len() as u64 == PS2_BIOS && has(b"ROMDIR") && has(b"RESET"),
+    }
 }
 
 /// Copies the player's BIOS files (from their own consoles) where the cores
@@ -97,11 +118,13 @@ pub fn import_bios(exe: &Path, from: &Path) -> Result<(usize, usize), String> {
         let name = entry.file_name();
         let ext = path.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
         let lower = name.to_string_lossy().to_lowercase();
-        let target = if ext == "bin" && meta.len() == PS1_BIOS {
+        let ps1_bios = ext == "bin" && meta.len() == PS1_BIOS && is_bios(&path, Bios::Ps1);
+        let ps2_bios = ext == "bin" && meta.len() == PS2_BIOS && is_bios(&path, Bios::Ps2);
+        let target = if ps1_bios {
             ps1 += 1;
             system_dir(exe)
-        } else if (ext == "bin" && meta.len() == PS2_BIOS) || matches!(ext.as_str(), "mec" | "nvm") || lower == "erom.bin" || lower.starts_with("rom1") || lower.starts_with("rom2") {
-            if ext == "bin" && meta.len() == PS2_BIOS {
+        } else if ps2_bios || matches!(ext.as_str(), "mec" | "nvm") || lower == "erom.bin" || lower.starts_with("rom1") || lower.starts_with("rom2") {
+            if ps2_bios {
                 ps2 += 1;
             }
             ps2_bios_dir(exe)
@@ -164,8 +187,10 @@ pub fn retroarch(data: &Path, picked: Option<&Path>) -> Option<PathBuf> {
     places.into_iter().find(|p| p.is_file())
 }
 
+/// Where RetroArch loads a core from: the cores folder its settings name
+/// (`libretro_directory`), else `cores` beside it.
 fn core_file(exe: &Path, core: &str) -> PathBuf {
-    exe.parent().unwrap_or(Path::new(".")).join("cores").join(format!("{core}_libretro.dll"))
+    retroarch_dir(exe, "libretro_directory", "cores").join(format!("{core}_libretro.dll"))
 }
 
 fn config_file(exe: &Path) -> PathBuf {
@@ -339,7 +364,8 @@ async fn install_system_files(http: &reqwest::Client, exe: &Path, pack: &str) ->
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
-    let system = exe.parent().unwrap_or(Path::new(".")).join("system");
+    // Where RetroArch reads them, the same folder as the BIOS.
+    let system = system_dir(exe);
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|_| tr!("Os arquivos do núcleo vieram corrompidos.").to_string())?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
@@ -385,6 +411,35 @@ pub fn disc_list(data: &Path, rom: &Path, discs: &[PathBuf], console: &str) -> R
     let text: String = discs.iter().map(|d| format!("{}\n", d.display())).collect();
     fs::write(&list, text).map_err(|e| tr!("Não foi possível preparar a lista de discos: {}", e))?;
     Ok(list)
+}
+
+/// RetroArch names a game's save after the file it opened. Someone who played
+/// "FF7 (USA) (Disc 1).cue" there has "FF7 (USA) (Disc 1).srm"; opened through
+/// the disc list "FF7 (USA).m3u" the game would start on an empty card. The
+/// old save is copied to the list's name (never moved, never over one that's
+/// there). Returns the copies made.
+pub fn carry_disc_saves(exe: &Path, first_disc: &Path, list: &Path) -> Vec<PathBuf> {
+    let (Some(old), Some(new)) = (first_disc.file_stem(), list.file_stem()) else { return Vec::new() };
+    if old == new {
+        return Vec::new();
+    }
+    let saves = retroarch_dir(exe, "savefile_directory", "saves");
+    // With "sort saves by core" on, each core has its own folder inside.
+    let mut dirs = vec![saves.clone()];
+    if let Ok(entries) = fs::read_dir(&saves) {
+        dirs.extend(entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path()));
+    }
+    let mut copied = Vec::new();
+    for dir in dirs {
+        for ext in ["srm", "mcd"] {
+            let from = dir.join(format!("{}.{ext}", old.to_string_lossy()));
+            let to = dir.join(format!("{}.{ext}", new.to_string_lossy()));
+            if from.is_file() && !to.exists() && fs::copy(&from, &to).is_ok() {
+                copied.push(to);
+            }
+        }
+    }
+    copied
 }
 
 /// Starts a classic in RetroArch with its console's core. With `log`, RetroArch
@@ -436,7 +491,10 @@ pub async fn connect_token(http: &reqwest::Client, user: &str, password: &str) -
 
 /// Puts the account in RetroArch's settings when they don't have it already
 /// (backed up first). Nothing is written when it's already there.
-pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
+/// `asked`: the player linked it just now in Cerberus. Otherwise (before a
+/// game) RetroArch signed in to another account, or with achievements turned
+/// off there, is left as the player set it.
+pub fn write_token(exe: &Path, name: &str, token: &str, asked: bool) -> Result<(), String> {
     let cfg = config_file(exe);
     // A settings file that's there but can't be read is left alone: writing
     // ours in its place would wipe the player's RetroArch settings.
@@ -449,6 +507,12 @@ pub fn write_token(exe: &Path, name: &str, token: &str) -> Result<(), String> {
         && config_value(&text, "cheevos_username").as_deref() == Some(name)
         && config_value(&text, "cheevos_token").as_deref() == Some(token);
     if same {
+        return Ok(());
+    }
+    let theirs = config_value(&text, "cheevos_username").filter(|u| !u.is_empty());
+    let another_account = theirs.as_deref().is_some_and(|u| !u.eq_ignore_ascii_case(name));
+    let turned_off = config_value(&text, "cheevos_enable").as_deref() == Some("false") && theirs.is_some();
+    if !asked && (another_account || turned_off) {
         return Ok(());
     }
     // The player's own settings, kept once: a second link mustn't replace them with ours.
@@ -483,6 +547,22 @@ pub fn played(data: &Path) -> std::collections::HashMap<String, Played> {
     crate::state_file::load_or_default(&data.join("classics.json"))
 }
 
+/// A classic's file moved: its play time, sessions, note and favorite follow it.
+pub fn follow_moved(data: &Path, old: &Path, new: &Path) {
+    let (old, new) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
+    let _ = crate::state_file::update(&data.join("classics.json"), |all: &mut std::collections::HashMap<String, Played>| {
+        if let Some(time) = all.remove(&old) {
+            let entry = all.entry(new.clone()).or_default();
+            entry.seconds += time.seconds;
+            entry.last = entry.last.max(time.last);
+        }
+    });
+    let (old_id, new_id) = (format!("classic:{old}"), format!("classic:{new}"));
+    crate::play_log::rename(data, &old_id, &new_id);
+    crate::game_notes::rename(data, &old_id, &new_id);
+    crate::favorites::rename(data, &old_id, &new_id);
+}
+
 /// Adds a session; two classics closing at once both count, and a file that
 /// can't be read is never replaced by this one session.
 pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), String> {
@@ -496,6 +576,22 @@ pub fn add_played(data: &Path, rom: &str, seconds: u64, now: u64) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bios_is_known_by_what_it_holds_not_its_size() {
+        let size = PS1_BIOS as usize;
+        assert!(!bios_marks(&vec![0u8; size], Bios::Ps1), "512 KB of zeros");
+        let mut cartridge = vec![0u8; size];
+        cartridge[0x100..0x110].copy_from_slice(b"SEGA MEGA DRIVE ");
+        assert!(!bios_marks(&cartridge, Bios::Ps1), "a Mega Drive game of the same size");
+        let mut ps1 = vec![0u8; size];
+        ps1[0x108..0x108 + 27].copy_from_slice(b"Sony Computer Entertainment");
+        assert!(bios_marks(&ps1, Bios::Ps1));
+        let mut ps2 = vec![0u8; PS2_BIOS as usize];
+        ps2[0x2700..0x2705].copy_from_slice(b"RESET");
+        ps2[0x2710..0x2716].copy_from_slice(b"ROMDIR");
+        assert!(bios_marks(&ps2, Bios::Ps2) && !bios_marks(&ps2[..size], Bios::Ps2));
+    }
 
     #[test]
     fn several_discs_open_from_a_list_in_cerberus_folder() {
@@ -520,8 +616,15 @@ mod tests {
         fs::write(&exe, b"MZ").unwrap();
         let from = dir.path().join("bios");
         fs::create_dir_all(&from).unwrap();
-        fs::write(from.join("scph5501.bin"), vec![0u8; PS1_BIOS as usize]).unwrap();
-        fs::write(from.join("SCPH-70012.bin"), vec![0u8; PS2_BIOS as usize]).unwrap();
+        let mut ps1 = vec![0u8; PS1_BIOS as usize];
+        ps1[0x108..0x108 + 27].copy_from_slice(b"Sony Computer Entertainment");
+        fs::write(from.join("scph5501.bin"), ps1).unwrap();
+        let mut ps2 = vec![0u8; PS2_BIOS as usize];
+        ps2[0x2700..0x2705].copy_from_slice(b"RESET");
+        ps2[0x2710..0x2716].copy_from_slice(b"ROMDIR");
+        fs::write(from.join("SCPH-70012.bin"), ps2).unwrap();
+        // A game of the PS1 BIOS's size isn't taken for one.
+        fs::write(from.join("Sonic (USA).bin"), vec![0u8; PS1_BIOS as usize]).unwrap();
         fs::write(from.join("SCPH-70012.nvm"), b"x").unwrap();
         fs::write(from.join("notes.txt"), b"x").unwrap();
         assert_eq!(bios_status(&exe), (false, false));
@@ -530,6 +633,7 @@ mod tests {
         assert!(ps2_bios_dir(&exe).join("SCPH-70012.bin").is_file());
         assert!(ps2_bios_dir(&exe).join("SCPH-70012.nvm").is_file());
         assert!(!system_dir(&exe).join("notes.txt").exists());
+        assert!(!system_dir(&exe).join("Sonic (USA).bin").exists());
         assert_eq!(bios_status(&exe), (true, true));
         let empty = dir.path().join("empty");
         fs::create_dir_all(&empty).unwrap();
@@ -579,13 +683,53 @@ mod tests {
     }
 
     #[test]
+    fn a_save_made_from_disc_one_follows_the_game_to_its_disc_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        let by_core = dir.path().join("saves").join("PCSX-ReARMed");
+        fs::create_dir_all(&by_core).unwrap();
+        fs::write(by_core.join("FF7 (USA) (Disc 1).srm"), b"card").unwrap();
+        let copied = carry_disc_saves(&exe, Path::new(r"D:\ps1\FF7 (USA) (Disc 1).cue"), Path::new(r"C:\x\FF7 (USA).m3u"));
+        assert_eq!(copied, vec![by_core.join("FF7 (USA).srm")]);
+        assert_eq!(fs::read(by_core.join("FF7 (USA).srm")).unwrap(), b"card");
+        assert!(by_core.join("FF7 (USA) (Disc 1).srm").exists(), "the old one stays");
+        // One already there is never replaced.
+        fs::write(by_core.join("FF7 (USA).srm"), b"newer").unwrap();
+        assert!(carry_disc_saves(&exe, Path::new(r"D:\ps1\FF7 (USA) (Disc 1).cue"), Path::new(r"C:\x\FF7 (USA).m3u")).is_empty());
+        assert_eq!(fs::read(by_core.join("FF7 (USA).srm")).unwrap(), b"newer");
+    }
+
+    #[test]
+    fn a_moved_classic_keeps_its_time_sessions_and_note() {
+        let data = tempfile::tempdir().unwrap();
+        let (old, new) = (Path::new(r"D:\ROMS\Crash.cue"), Path::new(r"E:\ROMS\Crash.cue"));
+        add_played(data.path(), &old.to_string_lossy(), 600, 100).unwrap();
+        crate::play_log::record(data.path(), &format!("classic:{}", old.display()), 600, 100);
+        let note = crate::game_notes::Note { rating: 4, ..Default::default() };
+        crate::game_notes::set(data.path(), &format!("classic:{}", old.display()), note).unwrap();
+        follow_moved(data.path(), old, new);
+        assert_eq!(played(data.path())[&new.to_string_lossy().into_owned()].seconds, 600);
+        assert_eq!(crate::play_log::of_game(data.path(), &format!("classic:{}", new.display())).len(), 1);
+        assert_eq!(crate::game_notes::load(data.path())[&format!("classic:{}", new.display())].rating, 4);
+    }
+
+    #[test]
+    fn cores_go_where_retroarch_loads_them_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        assert_eq!(core_file(&exe, "snes9x"), dir.path().join("cores").join("snes9x_libretro.dll"));
+        fs::write(config_file(&exe), "libretro_directory = \"D:\\RA\\cores\"\n").unwrap();
+        assert_eq!(core_file(&exe, "snes9x"), PathBuf::from(r"D:\RA\cores").join("snes9x_libretro.dll"));
+    }
+
+    #[test]
     fn forgetting_the_account_takes_only_our_token_out_of_retroarch() {
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join("retroarch.exe");
         fs::write(config_file(&exe), "video_fullscreen = \"true\"
 ").unwrap();
-        write_token(&exe, "me", "abc").unwrap();
-        write_token(&exe, "me", "def").unwrap();
+        write_token(&exe, "me", "abc", true).unwrap();
+        write_token(&exe, "me", "def", true).unwrap();
         // The player's original settings are the backup, not our first edit.
         assert!(!fs::read_to_string(config_file(&exe).with_extension("cfg.cerberus-bak")).unwrap().contains("cheevos_token"));
         forget_token(&exe, "other");
@@ -594,6 +738,22 @@ mod tests {
         let text = fs::read_to_string(config_file(&exe)).unwrap();
         assert_eq!(config_value(&text, "cheevos_token").as_deref(), Some(""));
         assert_eq!(config_value(&text, "video_fullscreen").as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn before_a_game_retroarch_keeps_the_account_and_switch_the_player_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("retroarch.exe");
+        fs::write(config_file(&exe), "cheevos_enable = \"true\"\ncheevos_username = \"Outro\"\ncheevos_token = \"theirs\"\n").unwrap();
+        write_token(&exe, "me", "ours", false).unwrap();
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_username").as_deref(), Some("Outro"));
+        // Turned off for a hack, with our own account: stays off.
+        fs::write(config_file(&exe), "cheevos_enable = \"false\"\ncheevos_username = \"me\"\ncheevos_token = \"ours\"\n").unwrap();
+        write_token(&exe, "me", "ours", false).unwrap();
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_enable").as_deref(), Some("false"));
+        // Linked by the player in Cerberus: written.
+        write_token(&exe, "me", "new", true).unwrap();
+        assert_eq!(config_value(&fs::read_to_string(config_file(&exe)).unwrap(), "cheevos_token").as_deref(), Some("new"));
     }
 
     #[test]

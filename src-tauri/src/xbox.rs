@@ -213,6 +213,24 @@ pub mod art {
     pub struct Found {
         pub cover: Option<String>,
         pub hero: Option<String>,
+        /// When Steam didn't know the game (seconds since 1970): asked again a
+        /// month later, as Steam may have it by then.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub missed: Option<u64>,
+    }
+
+    /// A game Steam didn't know is asked about again after this long.
+    const ASK_AGAIN: u64 = 30 * 24 * 3600;
+    /// At most this many misses asked again at once, not hundreds in a row.
+    const AGAIN_AT_ONCE: usize = 40;
+
+    /// Seconds since 1970.
+    pub fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    }
+
+    pub fn missed_now(now: u64) -> Found {
+        Found { cover: None, hero: None, missed: Some(now) }
     }
 
     fn file(data: &Path) -> PathBuf {
@@ -225,18 +243,33 @@ pub mod art {
 
     pub fn save(data: &Path, all: &HashMap<String, Option<Found>>) {
         if let Ok(text) = serde_json::to_string(all) {
-            let temp = file(data).with_extension("json.tmp");
-            if fs::write(&temp, text).is_ok() {
-                let _ = fs::rename(temp, file(data));
-            }
+            let _ = crate::state_file::write_bytes(&file(data), text.as_bytes());
         }
     }
 
-    /// Puts the art already found on these games; returns the ones never asked about.
+    /// Puts the art already found on these games; returns the ones to ask
+    /// about: never asked, or missed a month ago (a few at a time).
     pub fn apply(data: &Path, games: &mut [Game]) -> Vec<(String, String)> {
-        let known = load(data);
+        apply_at(&load(data), games, now())
+    }
+
+    fn apply_at(known: &HashMap<String, Option<Found>>, games: &mut [Game], now: u64) -> Vec<(String, String)> {
         let mut ask = Vec::new();
+        let mut again = 0;
         for game in games.iter_mut().filter(|g| g.id.starts_with("xbox:")) {
+            // Missed before: a month on (or with no date, from older versions), asked again.
+            let missed = match known.get(&game.id) {
+                Some(None) => Some(0),
+                Some(Some(found)) => found.missed,
+                None => None,
+            };
+            if let Some(at) = missed {
+                if now.saturating_sub(at) >= ASK_AGAIN && again < AGAIN_AT_ONCE {
+                    again += 1;
+                    ask.push((game.id.clone(), game.name.clone()));
+                }
+                continue;
+            }
             match known.get(&game.id) {
                 Some(Some(found)) => {
                     // The tall cover over the square logo; the logo stays as the fallback.
@@ -251,5 +284,29 @@ pub mod art {
             }
         }
         ask
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn xbox(id: &str) -> Game {
+            serde_json::from_value(serde_json::json!({"id": id, "name": id, "source": {"kind": "xbox", "family": id, "app": "App"}, "install_dir": ""})).unwrap()
+        }
+
+        #[test]
+        fn a_game_steam_didnt_know_is_asked_again_a_month_later() {
+            let now = 100 * 24 * 3600;
+            let known = HashMap::from([
+                ("xbox:old".to_string(), Some(missed_now(now - 31 * 24 * 3600))),
+                ("xbox:recent".to_string(), Some(missed_now(now - 24 * 3600))),
+                ("xbox:legacy".to_string(), None),
+                ("xbox:found".to_string(), Some(Found { cover: Some("c".into()), hero: None, missed: None })),
+            ]);
+            let mut games = vec![xbox("xbox:old"), xbox("xbox:recent"), xbox("xbox:legacy"), xbox("xbox:found"), xbox("xbox:new")];
+            let asked: Vec<String> = apply_at(&known, &mut games, now).into_iter().map(|(id, _)| id).collect();
+            assert_eq!(asked, ["xbox:old", "xbox:legacy", "xbox:new"]);
+            assert_eq!(games[3].cover_url.as_deref(), Some("c"));
+        }
     }
 }

@@ -34,8 +34,19 @@ pub fn version(text: &str) -> Option<(u64, u64, u64)> {
     Some((parts.next()??, parts.next().flatten().unwrap_or(0), parts.next().flatten().unwrap_or(0)))
 }
 
+/// Whether `candidate` (a release, never a pre-release) is newer than `than`,
+/// which may be a test build: "0.12.0" is newer than "0.12.0-beta.1".
 pub fn is_newer(candidate: &str, than: &str) -> bool {
-    matches!((version(candidate), version(than)), (Some(a), Some(b)) if a > b)
+    let Some(new) = version(candidate) else { return false };
+    let than = than.trim();
+    let (numbers, test_build) = match than.split_once('-') {
+        Some((n, _)) => (n, true),
+        None => (than, false),
+    };
+    match version(numbers) {
+        Some(have) => new > have || (new == have && test_build),
+        None => false,
+    }
 }
 
 /// A release as Cerberus needs it.
@@ -149,22 +160,43 @@ pub async fn install(app: &AppHandle, http: &reqwest::Client, data_dir: &Path, u
 /// `reopen`. PowerShell does the waiting, so nothing depends on a console.
 #[cfg(windows)]
 pub fn spawn_after_exit(pid: u32, installer: &Path, reopen: &Path) -> Result<(), String> {
+    spawn_with("powershell.exe", pid, installer, reopen, std::time::Duration::from_secs(5))
+}
+
+/// The same with the shell named, and how long to wait for its sign that it
+/// runs: a PowerShell blocked on this PC (AppLocker, a restricted mode) starts
+/// but never runs the script, and Cerberus, already closed, would never come back.
+#[cfg(windows)]
+fn spawn_with(shell: &str, pid: u32, installer: &Path, reopen: &Path, wait: std::time::Duration) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     // Single quotes in PowerShell strings are written twice.
     let quote = |p: &Path| p.display().to_string().replace('\'', "''");
+    let started = installer.with_extension("started");
+    let _ = std::fs::remove_file(&started);
     let script = format!(
-        "Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Start-Process -FilePath '{inst}' -ArgumentList '/S' -Wait; Start-Process -FilePath '{me}'",
+        "Set-Content -LiteralPath '{sign}' -Value ok; Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Start-Process -FilePath '{inst}' -ArgumentList '/S' -Wait; Start-Process -FilePath '{me}'",
+        sign = quote(&started),
         pid = pid,
         inst = quote(installer),
         me = quote(reopen)
     );
     const NO_WINDOW: u32 = 0x0800_0000;
-    std::process::Command::new("powershell.exe")
+    let mut child = std::process::Command::new(shell)
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .creation_flags(NO_WINDOW)
         .spawn()
-        .map(|_| ())
-        .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))
+        .map_err(|e| tr!("Não foi possível abrir o instalador: {}", e))?;
+    // Cerberus closes only once the script is seen running.
+    let asked = std::time::Instant::now();
+    while asked.elapsed() < wait {
+        if started.is_file() {
+            let _ = std::fs::remove_file(&started);
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let _ = child.kill();
+    Err(tr!("O PowerShell não rodou neste PC (pode estar bloqueado). O Cerberus continua aberto; instale a versão nova pelo instalador em {}.", installer.display()))
 }
 
 #[cfg(windows)]
@@ -225,6 +257,10 @@ mod tests {
         assert!(!is_newer("0.10.0", "0.10.0"));
         assert!(!is_newer("v0.9.9", "0.10.0"));
         assert!(!is_newer("0.11.0-beta.1", "0.10.0"));
+        // A test build installed gets the release it was testing, and later ones.
+        assert!(is_newer("0.12.0", "0.12.0-beta.1"));
+        assert!(is_newer("0.12.1", "v0.12.0-rc.2"));
+        assert!(!is_newer("0.11.9", "0.12.0-beta.1"));
     }
 
     #[test]
@@ -286,6 +322,17 @@ mod handoff {
         }
         assert_eq!(std::fs::read_to_string(&installed).unwrap().trim(), "/S");
         assert!(reopened.exists(), "the app opens again after installing");
+    }
+
+    /// A shell that starts but doesn't run the script (PowerShell blocked):
+    /// refused in time, so Cerberus stays open instead of closing for nothing.
+    #[test]
+    fn a_shell_that_never_runs_the_script_keeps_cerberus_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = dir.path().join("setup.exe");
+        let app = dir.path().join("app.exe");
+        let error = super::spawn_with("where.exe", std::process::id(), &installer, &app, std::time::Duration::from_secs(1)).unwrap_err();
+        assert!(error.contains("PowerShell"), "{error}");
     }
 }
 

@@ -5,19 +5,20 @@ mod recovery;
 use cerberus_shared::tr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use cerberus_shared::{Game, Source};
 
 pub struct LocalLibrary {
     file: PathBuf,
     games: Mutex<Option<Vec<Game>>>,
-    recovery_notice: OnceLock<String>,
+    /// Every notice from opening the library (both a recovered file and a stuck update).
+    recovery_notice: Mutex<Vec<String>>,
 }
 
 impl LocalLibrary {
     pub fn load(dir: &Path) -> Self {
-        Self { file: dir.join("library.json"), games: Mutex::new(None), recovery_notice: OnceLock::new() }
+        Self { file: dir.join("library.json"), games: Mutex::new(None), recovery_notice: Mutex::new(Vec::new()) }
     }
 
     // A failed read stays retryable. Every operation loads a valid starting point before it can write.
@@ -28,7 +29,7 @@ impl LocalLibrary {
             None => {
                 let (games, notice) = recovery::read(&self.file)?;
                 if let Some(text) = notice {
-                    let _ = self.recovery_notice.set(text);
+                    self.recovery_notice.lock().unwrap_or_else(|p| p.into_inner()).push(text);
                 }
                 // One game's interrupted update that can't be put right yet (a
                 // file held by the antivirus) mustn't keep the whole library from
@@ -38,7 +39,7 @@ impl LocalLibrary {
                     .filter_map(|game| crate::recomp::update::recover(game).err().map(|e| format!("{}: {}", game.name, e)))
                     .collect();
                 if !stuck.is_empty() {
-                    let _ = self.recovery_notice.set(tr!("Uma atualização interrompida não pôde ser desfeita agora; o Cerberus tenta de novo na próxima vez que abrir. {}", stuck.join(" · ")));
+                    self.recovery_notice.lock().unwrap_or_else(|p| p.into_inner()).push(tr!("Uma atualização interrompida não pôde ser desfeita agora; o Cerberus tenta de novo na próxima vez que abrir. {}", stuck.join(" · ")));
                 }
                 cache.insert(games)
             }
@@ -47,7 +48,8 @@ impl LocalLibrary {
     }
 
     pub fn recovery_notice(&self) -> Option<String> {
-        self.recovery_notice.get().cloned()
+        let notices = self.recovery_notice.lock().unwrap_or_else(|p| p.into_inner());
+        (!notices.is_empty()).then(|| notices.join(" "))
     }
 
     pub fn games(&self) -> Result<Vec<Game>, String> {

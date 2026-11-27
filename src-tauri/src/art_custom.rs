@@ -82,6 +82,20 @@ fn from_data_url(data: &str) -> Result<(Vec<u8>, &'static str), String> {
     Ok((bytes, kind))
 }
 
+/// A picture kept in the covers folder: by its name (how new ones are kept),
+/// or by a full path written before (on another PC or user, found by its name
+/// in this covers folder). `None` when it isn't there.
+pub fn in_folder(folder: &Path, kept: &str) -> Option<String> {
+    let path = Path::new(kept);
+    if path.is_absolute() && path.is_file() {
+        return Some(kept.to_string());
+    }
+    // A path from another PC: Windows separators, whatever this system calls them.
+    let name = kept.rsplit(['/', '\\']).next().filter(|n| !n.is_empty())?;
+    let here = folder.join(name);
+    here.is_file().then(|| here.to_string_lossy().into_owned())
+}
+
 impl CustomArt {
     pub fn new(data_dir: &Path, covers: &Path) -> Self {
         let file = data_dir.join("art.json");
@@ -97,7 +111,7 @@ impl CustomArt {
     pub fn apply(&self, game: &mut Game) {
         let map = self.lock();
         let Some(custom) = map.get(&game.id) else { return };
-        let exists = |p: &Option<String>| p.clone().filter(|p| Path::new(p).is_file());
+        let exists = |p: &Option<String>| p.as_deref().and_then(|p| in_folder(&self.folder, p));
         if let Some(cover) = exists(&custom.cover) {
             game.cover_path = Some(cover);
         }
@@ -113,7 +127,7 @@ impl CustomArt {
 
     /// A picture made here (in the covers folder), deleted once nothing uses it.
     fn forget(&self, old: Option<String>) {
-        if let Some(old) = old.map(PathBuf::from).filter(|p| p.starts_with(&self.folder)) {
+        if let Some(old) = old.and_then(|p| in_folder(&self.folder, &p)).map(PathBuf::from).filter(|p| p.starts_with(&self.folder)) {
             let _ = fs::remove_file(old);
         }
     }
@@ -136,7 +150,8 @@ impl CustomArt {
                 let ext = if format == "jpeg" { "jpg" } else { format };
                 let path = self.folder.join(format!("{safe}-{kind}-{stamp}.{ext}"));
                 fs::write(&path, bytes).map_err(|e| tr!("Não foi possível gravar a imagem: {}", e))?;
-                Some(path.to_string_lossy().into_owned())
+                // Only the name: the data folder can move (another PC, a backup restored).
+                path.file_name().map(|n| n.to_string_lossy().into_owned())
             }
             None => None,
         };
@@ -257,6 +272,28 @@ pub async fn fetch(http: &reqwest::Client, url: &str) -> Result<String, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn own_art_survives_the_data_folder_moving() {
+        let old = tempfile::tempdir().unwrap();
+        let covers = old.path().join("covers");
+        let art = CustomArt::new(old.path(), &covers);
+        let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        art.set("steam:1", "cover", Some(png)).unwrap();
+        // The whole data folder restored somewhere else (another PC, another user).
+        let new = tempfile::tempdir().unwrap();
+        crate::recomp::copy_tree(old.path(), new.path()).unwrap();
+        drop(art);
+        drop(old);
+        let moved = CustomArt::new(new.path(), &new.path().join("covers"));
+        let mut game: Game = serde_json::from_value(serde_json::json!({"id": "steam:1", "name": "x", "install_dir": "", "source": {"kind": "steam", "app_id": 1}})).unwrap();
+        moved.apply(&mut game);
+        assert!(game.cover_path.as_deref().is_some_and(|p| p.starts_with(&*new.path().to_string_lossy())), "{:?}", game.cover_path);
+        // A full path from before, gone: found by its name here.
+        let name = fs::read_dir(new.path().join("covers")).unwrap().next().unwrap().unwrap().file_name();
+        let elsewhere = format!(r"C:\Users\someone\AppData\Roaming\x\covers\{}", name.to_string_lossy());
+        assert!(in_folder(&new.path().join("covers"), &elsewhere).is_some());
+    }
 
     const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 13, 10, 26, 10, 1, 2, 3];
 

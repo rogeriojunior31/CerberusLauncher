@@ -167,6 +167,24 @@ fn file(data_dir: &Path) -> PathBuf {
 }
 
 /// Total size of the files directly inside `dir`.
+/// The same, kept with the folder's time: summed again only when the folder
+/// changed (a picture added, the cache cleared), not on every Settings view.
+pub fn folder_size_kept(dir: &Path) -> u64 {
+    static KEPT: std::sync::Mutex<Option<(std::path::PathBuf, std::time::SystemTime, u64)>> = std::sync::Mutex::new(None);
+    let changed = fs::metadata(dir).and_then(|m| m.modified()).ok();
+    let mut kept = KEPT.lock().unwrap_or_else(|p| p.into_inner());
+    if let (Some((path, at, bytes)), Some(changed)) = (kept.as_ref(), changed) {
+        if path == dir && *at == changed {
+            return *bytes;
+        }
+    }
+    let bytes = folder_size(dir);
+    if let Some(at) = changed {
+        *kept = Some((dir.to_path_buf(), at, bytes));
+    }
+    bytes
+}
+
 pub fn folder_size(dir: &Path) -> u64 {
     let Ok(entries) = fs::read_dir(dir) else {
         return 0;

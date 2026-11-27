@@ -42,6 +42,14 @@ thread_local! {
 
 /// Opens a game's Gerenciar tab at its "Desinstalar" / "Remover da biblioteca".
 pub fn open_to_remove(library: Library, id: String) {
+    // Already on its page (the "..." menu there): going to the same page does
+    // nothing, so the page itself is told to open its removal.
+    if library.route.get_untracked() == crate::Route::Game(id.clone()) {
+        if let Ok(event) = web_sys::Event::new(OPEN_REMOVAL) {
+            let _ = window().dispatch_event(&event);
+        }
+        return;
+    }
     NEXT_TAB.with(|n| n.set(Some(Tab::Manage)));
     SHOW_REMOVE.with(|s| s.set(true));
     library.go(crate::Route::Game(id));
@@ -56,11 +64,31 @@ pub fn open_original(library: Library, id: String, playable: bool) {
     library.replace(crate::Route::Game(id));
 }
 
+const OPEN_REMOVAL: &str = "cerberus-open-removal";
+
+/// Brings the Manage tab's danger zone into view, once it has laid out.
+fn scroll_to_removal() {
+    set_timeout(
+        || {
+            if let Some(el) = document().query_selector(".mg-h.danger").ok().flatten() {
+                el.scroll_into_view();
+            }
+        },
+        std::time::Duration::from_millis(400),
+    );
+}
+
 #[component]
 pub fn GamePage(id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = StoredValue::new(id);
     let tab = RwSignal::new(NEXT_TAB.with(|n| n.take()).unwrap_or(Tab::Overview));
+    // "Uninstall…" from the "..." menu on this very page.
+    let removal = window_event_listener_untyped(OPEN_REMOVAL, move |_| {
+        tab.set(Tab::Manage);
+        scroll_to_removal();
+    });
+    on_cleanup(move || removal.remove());
     let content = move || {
         let game = library.games.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|g| g.id == id.get_value()));
         let recomp_id = id.get_value().strip_prefix("recomp:").map(str::to_string);
@@ -981,11 +1009,15 @@ fn PrepareStatus(game_id: String) -> impl IntoView {
         Some(p) => {
             let width = p.fraction.map(|f| format!("width: {:.0}%", f * 100.0));
             let busy = width.is_none();
+            let title = if p.cancellable { tr!("Copiando o jogo") } else { tr!("Preparando o jogo") };
+            let cancel = p.cancellable.then(|| view! {
+                <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { let _ = api::cancel_copy().await; })>{tr!("Cancelar")}</button>
+            });
             view! {
                 <div class="prep">
-                    <span class="ver-label">{tr!("Preparando o jogo")}</span>
+                    <span class="ver-label">{title}</span>
                     <div class="bar" class:busy=busy><i style=width.unwrap_or_default()></i></div>
-                    <small class="muted">{p.text}</small>
+                    <div class="act-row"><small class="muted">{p.text}</small>{cancel}</div>
                 </div>
             }
             .into_any()
@@ -1506,14 +1538,7 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
     // Opened to remove it: the danger zone comes into view.
     if SHOW_REMOVE.with(|s| s.take()) {
         // After the tab has laid out (pictures and cards above take a moment).
-        set_timeout(
-            || {
-                if let Some(el) = document().query_selector(".mg-h.danger").ok().flatten() {
-                    el.scroll_into_view();
-                }
-            },
-            std::time::Duration::from_millis(400),
-        );
+        scroll_to_removal();
     }
 
     let options = game.clone().filter(|g| g.is_tracked()).map(|g| view! { <LaunchOptions game=g /> });

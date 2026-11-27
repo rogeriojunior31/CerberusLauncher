@@ -200,7 +200,10 @@ pub fn GamePage(id: String) -> impl IntoView {
             play(Sound::Select);
             crate::api::window_action("minimize");
         }
-        Act::Unavailable => {}
+        Act::Unavailable => {
+            play(Sound::Back);
+            library.toast(tr!("Ainda não há uma versão deste jogo para baixar."));
+        }
     };
     tv.handle_page(move |btn| {
         // The full-screen picture: left and right step, B or A closes.
@@ -219,6 +222,13 @@ pub fn GamePage(id: String) -> impl IntoView {
         Btn::Left | Btn::Right | Btn::Up | Btn::Down => {
             if focus.step(btn, &rows()) {
                 play(Sound::Move);
+            } else if matches!(btn, Btn::Up | Btn::Down) {
+                // Nothing further to focus: the page's text (a long description,
+                // "How to start") scrolls instead, so all of it can be read.
+                if let Some(main) = document().query_selector(".tv-main").ok().flatten() {
+                    let step = f64::from(main.client_height()) * 0.4;
+                    main.scroll_by_with_x_and_y(0.0, if btn == Btn::Down { step } else { -step });
+                }
             }
             true
         }

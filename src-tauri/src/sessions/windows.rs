@@ -10,7 +10,8 @@ use std::os::windows::process::{ChildExt, CommandExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::ptr::{null, null_mut};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use crate::awake_time::AwakeInstant as Instant;
 
 use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, FILETIME, WAIT_OBJECT_0};
 use windows_sys::Win32::System::JobObjects::*;
@@ -65,6 +66,47 @@ pub(super) struct GameProcess {
     launcher: Child,
     runtime: Option<PathBuf>,
     started: Instant,
+    /// The launcher's folder: where a game it handed off outside the job runs from.
+    folder: Option<PathBuf>,
+    /// How long to wait for such a game to show up.
+    handoff_wait: Duration,
+}
+
+/// A launcher that ends this soon, with success, may have handed the game to
+/// something outside the job (the Explorer, a store link).
+const QUICK_LAUNCHER: Duration = Duration::from_secs(30);
+
+/// After a quick launcher: waits up to `wait` for a program from `folder` to
+/// run, then follows it until none is left. How long it was played, if one came.
+pub(super) fn follow_by_folder(folder: &Path, wait: Duration) -> Option<Duration> {
+    let key = {
+        let mut k = folder.to_string_lossy().replace('/', "\\").to_lowercase();
+        if !k.ends_with('\\') {
+            k.push('\\');
+        }
+        k
+    };
+    let inside = || {
+        crate::store_time::running_programs().iter().any(|p| {
+            let p = p.replace('/', "\\").to_lowercase();
+            p.starts_with(&key) && !is_helper(p.rsplit('\\').next().unwrap_or(&p))
+        })
+    };
+    let asked = Instant::now();
+    while !inside() {
+        if asked.elapsed() >= wait {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let began = Instant::now();
+    // Gone for two looks in a row: over (a game restarting itself isn't).
+    let mut gone = 0;
+    while gone < 2 {
+        std::thread::sleep(Duration::from_millis(500));
+        gone = if inside() { 0 } else { gone + 1 };
+    }
+    Some(began.elapsed())
 }
 
 // Common installations such as ReStreet ship FooLauncher.exe beside Foo.exe or Binaries/Foo.exe.
@@ -96,6 +138,7 @@ pub(super) fn spawn_game(mut command: Command, selected: Option<&Path>) -> io::R
     }
     let job = unsafe { OwnedHandle::from_raw_handle(handle) };
     let started = Instant::now();
+    let folder = Path::new(command.get_program()).parent().filter(|d| d.is_absolute()).map(Path::to_path_buf);
     let mut launcher = command.creation_flags(CREATE_SUSPENDED).spawn()?;
     // Enroll before the launcher's first instruction, including when it immediately hands off.
     if unsafe { AssignProcessToJobObject(job.as_raw_handle(), launcher.as_raw_handle()) } == 0
@@ -111,6 +154,10 @@ pub(super) fn spawn_game(mut command: Command, selected: Option<&Path>) -> io::R
         launcher,
         runtime,
         started,
+        folder,
+        // Long enough for a store to start the game; a game closed in seconds
+        // shows as running this much longer.
+        handoff_wait: Duration::from_secs(60),
     })
 }
 
@@ -135,9 +182,13 @@ impl GameProcess {
             }
             if let Some(runtime) = &self.runtime {
                 if let Some(game) = members.iter().find_map(|&pid| self.playable(pid as u32, runtime)) {
-                    report(Observation::Started(Instant::now()));
+                    let (begun, wall) = (Instant::now(), std::time::SystemTime::now());
+                    report(Observation::Started(begun));
                     let watch = WindowWatch::start(self.job.as_raw_handle() as usize);
-                    let (played, code) = runtime_duration(game)?;
+                    let (ran, code) = runtime_duration(game)?;
+                    // The process's own times are wall time: the PC sleeping meanwhile
+                    // (wall clock moved, the awake one didn't) comes off.
+                    let played = crate::awake_time::without_sleep(ran, wall.elapsed().unwrap_or_default(), begun.elapsed());
                     if watch.closed_first() {
                         report(Observation::WindowsClosedFirst);
                     }
@@ -149,13 +200,23 @@ impl GameProcess {
             std::thread::sleep(Duration::from_millis(250));
         }
         if self.runtime.is_none() {
+            let mut played = self.started.elapsed();
+            // Over in seconds, with success: the game may be running outside the
+            // job (opened through the Explorer or a store link). Followed by its folder.
+            if launcher_code == Some(0) && played < QUICK_LAUNCHER {
+                if let Some(folder) = &self.folder {
+                    if let Some(more) = follow_by_folder(folder, self.handoff_wait) {
+                        played += more;
+                    }
+                }
+            }
             if let Some(code) = launcher_code {
                 if closed_first {
                     report(Observation::WindowsClosedFirst);
                 }
                 report(Observation::Exited(code));
             }
-            report(Observation::Closed(self.started.elapsed()));
+            report(Observation::Closed(played));
         }
         Ok(())
     }

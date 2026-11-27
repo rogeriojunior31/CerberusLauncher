@@ -70,7 +70,10 @@ impl Halt {
     }
 }
 /// Tries per download. Each try carries on from the bytes already saved.
-const TRIES: u32 = 4;
+/// Tries for a download whose connection drops: waits of 2, 4, 8, 16, 30 and
+/// 30 s, so a network gone for a minute or so (a router restarting) doesn't
+/// end it.
+const TRIES: u32 = 7;
 
 /// Downloads to a `.part` file, renamed once complete and checked, so a
 /// half-finished file is never mistaken for a good one.
@@ -121,7 +124,8 @@ pub async fn download_with(
             }
             Err(Stop::Fatal(message)) => return Err(message),
             Err(Stop::Retry(_)) if tries < TRIES => {
-                let _ = until_cancelled(tokio::time::sleep(Duration::from_secs(2 * tries as u64)), cancel).await;
+                let wait = (1u64 << tries.min(5)).min(30);
+                let _ = until_cancelled(tokio::time::sleep(Duration::from_secs(wait)), cancel).await;
             }
             Err(Stop::Retry(message)) => return Err(message),
         }
@@ -165,6 +169,17 @@ pub fn accept_held(dir: &Path, asset: &Asset) -> Result<PathBuf, String> {
 /// The download kept aside, not vouched for by anyone: gone.
 pub fn drop_held(dir: &Path, asset: &Asset) {
     let _ = fs::remove_file(held_for(&target_in(dir, asset)));
+}
+
+/// What the player reads when a download can't be written: a full disk said
+/// plainly (what's downloaded stays, and the next Install goes on from there).
+fn write_failed(e: &io::Error, part: &Path) -> String {
+    // ERROR_DISK_FULL (112) and ERROR_HANDLE_DISK_FULL (39).
+    if e.kind() == io::ErrorKind::StorageFull || matches!(e.raw_os_error(), Some(112 | 39)) {
+        let drive = part.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned()).unwrap_or_default();
+        return tr!("O disco {} encheu. O que já foi baixado ficou guardado: libere espaço e clique em Instalar de novo, que o download continua de onde parou.", drive);
+    }
+    e.to_string()
 }
 
 // Cancel a stalled connection or retry delay even if the server sends no further bytes.
@@ -293,7 +308,7 @@ async fn fetch_into(
         if response_end > 0 && chunk.len() as u64 > response_end.saturating_sub(*done) {
             return Err(Stop::Fatal(tr!("A resposta excede o tamanho anunciado pela release.").into()));
         }
-        out.write_all(&chunk).await.map_err(|e| Stop::Fatal(e.to_string()))?;
+        out.write_all(&chunk).await.map_err(|e| Stop::Fatal(write_failed(&e, part)))?;
         hash.update(&chunk);
         *done += chunk.len() as u64;
         report(*done, total);
@@ -302,7 +317,7 @@ async fn fetch_into(
             tokio::time::sleep(wait).await;
         }
     }
-    out.flush().await.map_err(|e| Stop::Fatal(e.to_string()))?;
+    out.flush().await.map_err(|e| Stop::Fatal(write_failed(&e, part)))?;
     if total > 0 && *done != total { return Err(dropped()); }
     Ok(())
 }
@@ -559,6 +574,14 @@ fn name_words(name: &str) -> Vec<String> {
 pub(super) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_full_disk_is_said_plainly() {
+        let full = io::Error::from_raw_os_error(112);
+        let said = write_failed(&full, Path::new(r"D:\Recomps\x.part"));
+        assert!(said.contains("D:") && said.contains("encheu"), "{said}");
+        assert_eq!(write_failed(&io::Error::other("other"), Path::new("x")), "other");
+    }
 
     #[test]
     fn a_tar_with_a_link_or_a_climbing_path_is_refused() {
@@ -893,6 +916,19 @@ pub(super) mod tests {
         tar.into_inner().unwrap().finish().unwrap();
         let _ = unpack_over(&archive, &dir.join("staging"), &dir.join("installed"), &portable("Game.exe"));
         assert!(!dir.join("escape.txt").exists());
+    }
+
+    #[test]
+    fn a_7z_with_a_climbing_path_is_refused() {
+        let dir = empty_dir("sevenz-escape");
+        let archive = dir.join("evil.7z");
+        let mut writer = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
+        writer.push_archive_entry(sevenz_rust2::ArchiveEntry::new_file("../escape.txt"), Some(&b"x"[..])).unwrap();
+        writer.finish().unwrap();
+        let installed = dir.join("installed");
+        let error = unpack_over(&archive, &dir.join("staging"), &installed, &portable("Game.exe")).unwrap_err();
+        assert!(error.contains("inseguro"), "{error}");
+        assert!(!dir.join("escape.txt").exists() && !dir.join("staging").join("..").join("escape.txt").exists());
     }
 
     #[test]

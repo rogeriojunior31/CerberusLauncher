@@ -100,7 +100,17 @@ pub fn game_in_front(app: &AppHandle) -> Option<(win::Window, Game)> {
 
 /// A picture of the game's window, saved and announced.
 pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), String> {
-    let (width, height, pixels) = win::grab(window).ok_or(tr!("O jogo está minimizado ou em tela cheia exclusiva; a foto não saiu."))?;
+    // Cerberus's own achievement notice isn't part of the game's picture: left
+    // out of this capture only (a stream or recording still shows it).
+    let notice = app.get_webview_window(crate::unlock_toast::LABEL).and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
+    if let Some(n) = notice {
+        win::leave_out_of_capture(n, true);
+    }
+    let grabbed = win::grab(window);
+    if let Some(n) = notice {
+        win::leave_out_of_capture(n, false);
+    }
+    let (width, height, pixels) = grabbed.ok_or(tr!("A foto não saiu: o jogo está minimizado, numa tela toda preta (carregando) ou em tela cheia exclusiva."))?;
     let data = &app.state::<crate::DataDir>().0;
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or_default();
     let file = dir_of(data, &game.id).join(format!("{now}.png"));
@@ -112,10 +122,13 @@ pub fn shoot(app: &AppHandle, window: win::Window, game: &Game) -> Result<(), St
 /// F12 pressed: the picture of the game in front, if it's one Cerberus opened.
 fn take(app: &AppHandle) {
     let Some((window, game)) = game_in_front(app) else { return };
-    match shoot(app, window, &game) {
-        Ok(()) => crate::notify::tell(app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
-        Err(e) => crate::notify::tell(app, crate::notify::Kind::Reply, tr!("Não foi possível tirar a foto"), &e),
-    }
+    // Off the controller's loop: a 4K picture takes a while to write, and the
+    // next press (or Ctrl+F12) mustn't wait on it.
+    let (app, window) = (app.clone(), window as isize);
+    std::thread::spawn(move || match shoot(&app, window as win::Window, &game) {
+        Ok(()) => crate::notify::tell(&app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
+        Err(e) => crate::notify::tell(&app, crate::notify::Kind::Reply, tr!("Não foi possível tirar a foto"), &e),
+    });
 }
 
 /// XInput's buttons, as `wButtons` has them.
@@ -145,7 +158,8 @@ struct Combos {
 }
 
 impl Combos {
-    fn step(&mut self, buttons: u16, now_ms: u64) -> Option<PadAction> {
+    /// `hold_view`: whether holding View alone opens the menu.
+    fn step(&mut self, buttons: u16, now_ms: u64, hold_view: bool) -> Option<PadAction> {
         let pressed = buttons & !self.last;
         self.last = buttons;
         let view = buttons & VIEW != 0;
@@ -168,7 +182,7 @@ impl Combos {
             return None;
         }
         let since = *self.view_since.get_or_insert(now_ms);
-        if !self.held_fired && now_ms.saturating_sub(since) >= HOLD_MS {
+        if hold_view && !self.held_fired && now_ms.saturating_sub(since) >= HOLD_MS {
             self.held_fired = true;
             return Some(PadAction::Menu);
         }
@@ -184,16 +198,26 @@ pub fn watch(app: AppHandle) {
         let mut was_down = false;
         let mut pads = win::Pads::default();
         let mut combos = Combos::default();
+        let mut hot_key = win::HotKey::default();
         let clock = std::time::Instant::now();
         loop {
             let playing = !app.state::<crate::sessions::Sessions>().running().is_empty();
             if !playing {
+                // Ctrl+F12 is the game's (or another program's) again.
+                hot_key.want(false);
                 was_down = false;
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 continue;
             }
             let choices = crate::in_game::get();
-            match combos.step(pads.buttons(), clock.elapsed().as_millis() as u64) {
+            let registered = hot_key.want(choices.menu);
+            if hot_key.pressed() {
+                let menu = app.clone();
+                let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
+            }
+            // The controller's shortcuts can be off on their own (the keyboard's stay).
+            let buttons = if choices.pad { pads.buttons() } else { 0 };
+            match combos.step(buttons, clock.elapsed().as_millis() as u64, choices.hold_view) {
                 Some(PadAction::Menu) if choices.menu => {
                     let menu = app.clone();
                     let _ = app.run_on_main_thread(move || crate::overlay::toggle(&menu));
@@ -204,7 +228,8 @@ pub fn watch(app: AppHandle) {
             let down = win::f12_down();
             if down && !was_down {
                 if win::ctrl_down() {
-                    if !choices.menu {
+                    // Registered: the hot key above handled it.
+                    if !choices.menu || registered {
                         was_down = down;
                         std::thread::sleep(std::time::Duration::from_millis(40));
                         continue;
@@ -337,6 +362,57 @@ pub(crate) mod win {
         unsafe { (GetAsyncKeyState(VK_CONTROL as i32) as u16 & 0x8000) != 0 }
     }
 
+    /// Ctrl+F12 registered with Windows (RegisterHotKey) while a game runs: a
+    /// hot key gives Cerberus the right to bring its menu to the front with the
+    /// keyboard, which a key read in the background doesn't. Registered and
+    /// read on the one thread that watches the keys.
+    #[derive(Default)]
+    pub struct HotKey {
+        on: bool,
+    }
+
+    const HOT_KEY_ID: i32 = 0x0CB1;
+
+    impl HotKey {
+        /// Registers or lets go of Ctrl+F12; whether it's registered now (another
+        /// program may hold it: then the key is read the old way).
+        pub fn want(&mut self, on: bool) -> bool {
+            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey};
+            if on && !self.on {
+                // SAFETY: a thread hot key (no window); the id is ours.
+                self.on = unsafe { RegisterHotKey(std::ptr::null_mut(), HOT_KEY_ID, MOD_CONTROL | MOD_NOREPEAT, u32::from(VK_F12)) } != 0;
+            } else if !on && self.on {
+                // SAFETY: the same id on the same thread.
+                unsafe { UnregisterHotKey(std::ptr::null_mut(), HOT_KEY_ID) };
+                self.on = false;
+            }
+            self.on
+        }
+
+        /// Whether Ctrl+F12 was pressed since the last look.
+        pub fn pressed(&self) -> bool {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{MSG, PM_REMOVE, PeekMessageW, WM_HOTKEY};
+            if !self.on {
+                return false;
+            }
+            let mut seen = false;
+            // SAFETY: `msg` is a plain out-parameter; only this thread's hot key messages.
+            unsafe {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), WM_HOTKEY, WM_HOTKEY, PM_REMOVE) != 0 {
+                    seen |= msg.wParam == HOT_KEY_ID as usize;
+                }
+            }
+            seen
+        }
+    }
+
+    impl Drop for HotKey {
+        fn drop(&mut self) {
+            self.want(false);
+        }
+    }
+
     /// The Xbox-style controllers (XInput). Asking a missing one is slow, so
     /// those are asked again only every two seconds or so.
     #[derive(Default)]
@@ -397,6 +473,19 @@ pub(crate) mod win {
         }
     }
 
+    /// Leaves one of Cerberus's windows out of screen captures (WDA_EXCLUDEFROMCAPTURE), or puts it back.
+    pub fn leave_out_of_capture(window: isize, out: bool) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity;
+        // SAFETY: a window of this process; a stale handle only fails.
+        unsafe { SetWindowDisplayAffinity(window as HWND, if out { 0x11 } else { 0 }) };
+    }
+
+    /// The window is still there.
+    pub fn still_open(window: isize) -> bool {
+        // SAFETY: IsWindow only checks the handle.
+        unsafe { IsWindow(window as HWND) != 0 }
+    }
+
     /// Asks a window to close, as its X button would.
     pub fn ask_to_close(window: isize) {
         let window = window as HWND;
@@ -416,6 +505,19 @@ pub(crate) mod win {
     pub fn ctrl_down() -> bool {
         false
     }
+
+    #[derive(Default)]
+    pub struct HotKey;
+
+    impl HotKey {
+        pub fn want(&mut self, _: bool) -> bool {
+            false
+        }
+
+        pub fn pressed(&self) -> bool {
+            false
+        }
+    }
     #[derive(Default)]
     pub struct Pads;
     impl Pads {
@@ -428,6 +530,12 @@ pub(crate) mod win {
     }
     pub fn bring_to_front(_: isize) {}
     pub fn ask_to_close(_: isize) {}
+
+    pub fn still_open(_: isize) -> bool {
+        false
+    }
+
+    pub fn leave_out_of_capture(_: isize, _: bool) {}
     pub fn foreground() -> Option<((), u32)> {
         None
     }
@@ -446,32 +554,57 @@ pub(crate) mod win {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[test]
+    fn ctrl_f12_is_taken_only_while_wanted_and_another_holder_is_noticed() {
+        let mut mine = win::HotKey::default();
+        assert!(mine.want(true), "registered");
+        assert!(!mine.pressed(), "nothing pressed yet");
+        // Another holder (here another thread) can't have it meanwhile: the key is then read the old way.
+        let other = std::thread::spawn(|| win::HotKey::default().want(true)).join().unwrap();
+        assert!(!other);
+        assert!(!mine.want(false), "let go");
+        let again = std::thread::spawn(|| {
+            let mut h = win::HotKey::default();
+            h.want(true)
+        })
+        .join()
+        .unwrap();
+        assert!(again, "free once let go");
+    }
+
     #[test]
     fn controller_shortcuts_fire_once_and_not_while_playing() {
         let mut c = Combos::default();
         // View+Menu: the menu, once.
-        assert_eq!(c.step(VIEW, 0), None);
-        assert_eq!(c.step(VIEW | MENU, 40), Some(PadAction::Menu));
-        assert_eq!(c.step(VIEW | MENU, 80), None);
-        assert_eq!(c.step(0, 120), None);
+        assert_eq!(c.step(VIEW, 0, true), None);
+        assert_eq!(c.step(VIEW | MENU, 40, true), Some(PadAction::Menu));
+        assert_eq!(c.step(VIEW | MENU, 80, true), None);
+        assert_eq!(c.step(0, 120, true), None);
         // View+RB: a picture, and holding on doesn't open the menu later.
-        assert_eq!(c.step(VIEW, 200), None);
-        assert_eq!(c.step(VIEW | RB, 240), Some(PadAction::Photo));
-        assert_eq!(c.step(VIEW, 2000), None);
-        assert_eq!(c.step(0, 2040), None);
+        assert_eq!(c.step(VIEW, 200, true), None);
+        assert_eq!(c.step(VIEW | RB, 240, true), Some(PadAction::Photo));
+        assert_eq!(c.step(VIEW, 2000, true), None);
+        assert_eq!(c.step(0, 2040, true), None);
         // Holding View alone for a second: the menu, once.
-        assert_eq!(c.step(VIEW, 3000), None);
-        assert_eq!(c.step(VIEW, 3900), None);
-        assert_eq!(c.step(VIEW, 4000), Some(PadAction::Menu));
-        assert_eq!(c.step(VIEW, 6000), None);
-        assert_eq!(c.step(0, 6040), None);
+        assert_eq!(c.step(VIEW, 3000, true), None);
+        assert_eq!(c.step(VIEW, 3900, true), None);
+        assert_eq!(c.step(VIEW, 4000, true), Some(PadAction::Menu));
+        assert_eq!(c.step(VIEW, 6000, true), None);
+        assert_eq!(c.step(0, 6040, true), None);
         // View held while playing (another button too): nothing.
-        assert_eq!(c.step(VIEW | 0x1000, 7000), None);
-        assert_eq!(c.step(VIEW, 7100), None);
-        assert_eq!(c.step(VIEW, 9000), None);
-        assert_eq!(c.step(0, 9040), None);
+        assert_eq!(c.step(VIEW | 0x1000, 7000, true), None);
+        assert_eq!(c.step(VIEW, 7100, true), None);
+        assert_eq!(c.step(VIEW, 9000, true), None);
+        assert_eq!(c.step(0, 9040, true), None);
         // RB alone is the game's.
-        assert_eq!(c.step(RB, 10000), None);
+        assert_eq!(c.step(RB, 10000, true), None);
+        // "Holding View opens the menu" off (the default): a long hold does nothing,
+        // View + Menu still opens it.
+        let mut c = Combos::default();
+        assert_eq!(c.step(VIEW, 0, false), None);
+        assert_eq!(c.step(VIEW, 3000, false), None, "a long hold: nothing");
+        assert_eq!(c.step(VIEW | MENU, 3040, false), Some(PadAction::Menu));
     }
 
     fn game(id: &str, dir: &str, exe: &str) -> Game {

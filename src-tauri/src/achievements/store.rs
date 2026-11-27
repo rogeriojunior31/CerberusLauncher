@@ -36,7 +36,16 @@ pub struct Store(Connection);
 impl Store {
     pub fn open(data: &Path) -> Result<Store, String> {
         let _ = std::fs::create_dir_all(data);
-        Self::with(Connection::open(data.join("achievements.db")).map_err(|e| e.to_string())?)
+        let file = data.join("achievements.db");
+        let c = Connection::open(&file).map_err(|e| e.to_string())?;
+        // The schema is brought up to date once per run for each file, not on every open.
+        static UP_TO_DATE: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+        let mut done = UP_TO_DATE.lock().unwrap_or_else(|p| p.into_inner());
+        let store = if done.contains(&file) { Self::connected(c)? } else { Self::with(c)? };
+        if !done.contains(&file) {
+            done.push(file);
+        }
+        Ok(store)
     }
 
     #[cfg(test)]
@@ -44,11 +53,33 @@ impl Store {
         Self::with(Connection::open_in_memory().unwrap()).unwrap()
     }
 
-    fn with(c: Connection) -> Result<Store, String> {
+    /// A connection to a database already up to date.
+    fn connected(c: Connection) -> Result<Store, String> {
         c.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e| e.to_string())?;
-        c.execute_batch(
-            "PRAGMA journal_mode=WAL;
-             CREATE TABLE IF NOT EXISTS games(source TEXT NOT NULL, account TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL,
+        Ok(Store(c))
+    }
+
+    /// The same, applying the migrations the database hasn't had yet
+    /// (`PRAGMA user_version` counts them), each in its own transaction.
+    fn with(mut c: Connection) -> Result<Store, String> {
+        c.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e| e.to_string())?;
+        c.execute_batch("PRAGMA journal_mode=WAL;").map_err(|e| e.to_string())?;
+        let at: usize = c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())? as usize;
+        for (i, step) in MIGRATIONS.iter().enumerate().skip(at) {
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+            tx.execute_batch(step).map_err(|e| e.to_string())?;
+            tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1)).map_err(|e| e.to_string())?;
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+        Ok(Store(c))
+    }
+}
+
+/// The schema, one step per version. A new column is a new step at the end;
+/// a step already shipped never changes. Version 1 is the schema from before
+/// versions were counted (IF NOT EXISTS: an old database only gets its number).
+const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS games(source TEXT NOT NULL, account TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL,
                 PRIMARY KEY(source, account, key));
              CREATE TABLE IF NOT EXISTS lists(source TEXT NOT NULL, account TEXT NOT NULL, game TEXT NOT NULL, played INTEGER NOT NULL, data TEXT NOT NULL,
                 PRIMARY KEY(source, account, game));
@@ -59,15 +90,22 @@ impl Store {
                 seconds INTEGER NOT NULL, last INTEGER NOT NULL, PRIMARY KEY(source, account, key));
              CREATE TABLE IF NOT EXISTS stamps(source TEXT NOT NULL, account TEXT NOT NULL, name TEXT NOT NULL, value INTEGER NOT NULL,
                 PRIMARY KEY(source, account, name));",
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(Store(c))
-    }
+];
+
+impl Store {
 
     /// Merges games read now: the store's names and art win, progress only grows
     /// (a smaller count read from one place never hides what another showed).
     pub fn keep_games(&mut self, scope: &Scope, games: &[AchievementGame]) {
-        let Ok(tx) = self.0.transaction() else { return };
+        // Immediate: the write lock is taken at the start, so another connection
+        // writing meanwhile waits (busy_timeout) instead of failing halfway.
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
         for g in games {
             let old: Option<AchievementGame> = tx
                 .query_row("SELECT data FROM games WHERE source=?1 AND account=?2 AND key=?3", params![scope.source.code(), scope.account, g.key], |r| r.get::<_, String>(0))
@@ -85,12 +123,22 @@ impl Store {
                 params![scope.source.code(), scope.account, g.key, serde_json::to_string(&merged).unwrap_or_default()],
             );
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
     }
 
     /// Unlocks seen now; a date already kept stays (the earliest real one wins).
     pub fn keep_unlocks(&mut self, scope: &Scope, game: &str, list: &[Achievement]) {
-        let Ok(tx) = self.0.transaction() else { return };
+        // Immediate: the write lock is taken at the start, so another connection
+        // writing meanwhile waits (busy_timeout) instead of failing halfway.
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
         for a in list {
             let Some(at) = a.unlocked_at else { continue };
             let _ = tx.execute(
@@ -102,7 +150,9 @@ impl Store {
                 params![scope.source.code(), scope.account, game, a.id, at as i64, serde_json::to_string(a).unwrap_or_default()],
             );
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
     }
 
     /// A game's full list, as read when the game had last been played at `played`.
@@ -209,7 +259,15 @@ impl Store {
     /// The account's play time per game (seconds, and when last played; 0 when unknown).
     /// Only grows: a smaller answer never takes time away.
     pub fn keep_played(&mut self, scope: &Scope, times: &[(String, u64, u64)]) {
-        let Ok(tx) = self.0.transaction() else { return };
+        // Immediate: the write lock is taken at the start, so another connection
+        // writing meanwhile waits (busy_timeout) instead of failing halfway.
+        let tx = match self.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(e) => {
+                eprintln!("conquistas: {e}");
+                return;
+            }
+        };
         for (key, seconds, last) in times {
             let _ = tx.execute(
                 "INSERT INTO played(source, account, key, seconds, last) VALUES(?1, ?2, ?3, ?4, ?5)
@@ -217,7 +275,9 @@ impl Store {
                 params![scope.source.code(), scope.account, key, *seconds as i64, *last as i64],
             );
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            eprintln!("conquistas: {e}");
+        }
     }
 
     /// Play time per game key, for a store's account.
@@ -307,6 +367,51 @@ fn merge(old: AchievementGame, mut new: AchievementGame) -> AchievementGame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opens_a_v1_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("achievements.db");
+        {
+            // A database made before versions were counted, with a row in it.
+            let c = Connection::open(&file).unwrap();
+            c.execute_batch(MIGRATIONS[0]).unwrap();
+            c.execute("INSERT INTO stamps(source, account, name, value) VALUES('epic', 'p', 'synced', 7)", []).unwrap();
+            assert_eq!(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        }
+        let db = Store::open(dir.path()).unwrap();
+        assert_eq!(db.stamp(&Scope::new(AchievementSource::Epic, "p"), "synced"), Some(7), "no row lost");
+        let version: i64 = db.0.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version as usize, MIGRATIONS.len());
+        drop(db);
+        // Opened again: nothing to apply.
+        assert!(Store::open(dir.path()).is_ok());
+    }
+
+    #[test]
+    fn parallel_writers_lose_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        Store::open(dir.path()).unwrap();
+        let writers: Vec<_> = ["a", "b"]
+            .into_iter()
+            .map(|who| {
+                let path = dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let mut db = Store::open(&path).unwrap();
+                    let scope = Scope::new(AchievementSource::Epic, "player");
+                    for round in 0..20 {
+                        let times: Vec<(String, u64, u64)> = (0..50).map(|i| (format!("{who}-{round}-{i}"), 60, 1)).collect();
+                        db.keep_played(&scope, &times);
+                    }
+                })
+            })
+            .collect();
+        for w in writers {
+            w.join().unwrap();
+        }
+        let db = Store::open(dir.path()).unwrap();
+        assert_eq!(db.played(&Scope::new(AchievementSource::Epic, "player")).len(), 2000);
+    }
 
     fn game(key: &str, unlocked: u32, total: u32) -> AchievementGame {
         AchievementGame {

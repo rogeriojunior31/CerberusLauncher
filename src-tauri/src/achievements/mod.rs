@@ -132,7 +132,7 @@ async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [Achiev
     }
     if learned {
         let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
-        let _ = std::fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+        let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
     }
     for g in games.iter_mut().filter(|g| nameless(g)) {
         if let Some(name) = known.get(&g.key) {
@@ -357,12 +357,75 @@ const XBOX_LISTS_PER_SYNC: usize = 8;
 /// The Xbox account into the store: every game's progress in one question; the
 /// first time, every list (a page per thousand achievements); after that, only
 /// the lists of games played since they were read.
+/// Syncs the Xbox account when due, and stamps how it went (synced, or
+/// refused with a longer wait) while still holding the lock: the hub and the
+/// library may both ask at once, and the one that finds it not due leaves
+/// the stamp alone (it used to write "synced" over a refusal, and the wait was lost).
 async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
-    // The hub and the library may both ask at once: one goes, the other finds it done.
     let _one = SYNCING.lock().await;
     if !db.due(scope) {
         return Ok(());
     }
+    let result = sync_xbox_now(http, data_dir, db, scope, refresh).await;
+    stamp(db, scope, &result);
+    result
+}
+
+/// A game whose list failed (a title the store answers 404 or 403 for, a
+/// namespace without achievements) waits this long before it's asked again,
+/// so it doesn't stop the account's other games every time, first in line.
+const GAME_FAIL_WAIT: u64 = 6 * 3600;
+
+fn failed_lately(db: &Store, scope: &Scope, key: &str, now: u64) -> bool {
+    db.stamp(scope, &format!("fail:{key}")).is_some_and(|at| now < at + GAME_FAIL_WAIT)
+}
+
+/// Failures in one round: one game failing is that game's; a second one in a
+/// row is the account (signed out, the store busy), and the round stops.
+#[derive(Default)]
+struct Misses(u32);
+
+impl Misses {
+    /// Notes a game's failure; whether the round should stop.
+    fn game_failed(&mut self, db: &Store, scope: &Scope, key: &str, now: u64) -> bool {
+        db.set_stamp(scope, &format!("fail:{key}"), now);
+        self.0 += 1;
+        self.0 >= 2
+    }
+
+    fn game_answered(&mut self) {
+        self.0 = 0;
+    }
+}
+
+/// Put before an error that means "sign in again" (a session the store
+/// refused): it isn't the store being busy, so it doesn't grow the wait.
+pub(crate) const NEEDS_LOGIN: char = '\u{2063}';
+
+/// The error marked as needing a new sign-in.
+pub(crate) fn needs_login(message: &str) -> String {
+    format!("{NEEDS_LOGIN}{message}")
+}
+
+/// The error as the player reads it (without the mark).
+pub(crate) fn shown(error: &str) -> &str {
+    error.trim_start_matches(NEEDS_LOGIN)
+}
+
+/// A refused sign-in is asked about again in a few minutes, not hours.
+const LOGIN_WAIT: u64 = 300;
+
+/// How a sync went, in the store: synced; refused (the wait grows, the store
+/// was busy or away); or signed out (a short wait, the wait doesn't grow).
+fn stamp(db: &mut Store, scope: &Scope, result: &Result<(), String>) {
+    match result {
+        Ok(()) => db.synced(scope),
+        Err(e) if e.starts_with(NEEDS_LOGIN) => db.set_stamp(scope, "wait_until", store::now() + LOGIN_WAIT),
+        Err(_) => db.refused(scope),
+    }
+}
+
+async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope, refresh: &str) -> Result<(), String> {
     let session = xbox::session(http, refresh, |r| save_xbox_refresh(data_dir, refresh, r)).await?;
     let (games, last_played) = xbox::games(http, &session).await?;
     // Minutes played too: a hundred titles per question.
@@ -387,17 +450,41 @@ async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
         }
         db.set_stamp(scope, "all_lists_v4", store::now());
     } else {
+        let now = store::now();
         let mut stale: Vec<&AchievementGame> = games
             .iter()
             .filter(|g| db.list(scope, &g.key).is_none_or(|(played, _)| g.last_played.unwrap_or(0) > played))
             .filter(|g| g.unlocked > 0 || g.total == 0)
+            .filter(|g| !failed_lately(db, scope, &g.key, now))
             .collect();
         stale.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+        let mut misses = Misses::default();
+        let mut stopped = None;
         for g in stale.into_iter().take(XBOX_LISTS_PER_SYNC) {
-            let list = xbox::title_list(http, &session, &g.key).await?;
-            db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
+            match xbox::title_list(http, &session, &g.key).await {
+                Ok(list) => {
+                    misses.game_answered();
+                    db.keep_list(scope, &g.key, g.last_played.unwrap_or(0), &list);
+                }
+                Err(e) if misses.game_failed(db, scope, &g.key, now) => {
+                    stopped = Some(e);
+                    break;
+                }
+                Err(_) => {}
+            }
+        }
+        // What came is kept even when the round stopped.
+        if let Some(e) = stopped {
+            keep_xbox_games(db, scope, games);
+            return Err(e);
         }
     }
+    keep_xbox_games(db, scope, games);
+    Ok(())
+}
+
+/// The account's games with the lists kept for them.
+fn keep_xbox_games(db: &mut Store, scope: &Scope, games: Vec<AchievementGame>) {
     let games: Vec<AchievementGame> = games
         .into_iter()
         .map(|g| match db.list(scope, &g.key) {
@@ -406,7 +493,6 @@ async fn sync_xbox(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
         })
         .collect();
     db.keep_games(scope, &games);
-    Ok(())
 }
 
 /// The Epic session, kept for half an hour (Epic hands a new refresh token each time: it's saved).
@@ -438,12 +524,18 @@ const EPIC_GAMES_PER_SYNC: usize = 40;
 
 /// The Epic account into the store: play time of every game in one question;
 /// then each game new to the store, or played since its list was read.
+/// The Epic account's sync, stamped as `sync_xbox` is.
 async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
-    // The hub and the library may both ask at once: one goes, the other finds it done.
     let _one = SYNCING.lock().await;
     if !db.due(scope) {
         return Ok(());
     }
+    let result = sync_epic_now(http, data_dir, db, scope).await;
+    stamp(db, scope, &result);
+    result
+}
+
+async fn sync_epic_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scope: &Scope) -> Result<(), String> {
     let (access, account) = epic_session(http, data_dir).await?;
     let owned = crate::epic_account::cached(data_dir);
     let played = epic::playtimes(http, &access, &account).await.unwrap_or_default();
@@ -453,17 +545,30 @@ async fn sync_epic(http: &reqwest::Client, data_dir: &Path, db: &mut Store, scop
     let mut owned = owned;
     owned.sort_by_key(|o| std::cmp::Reverse(played.get(&o.app_name).map_or(0, |p| p.0)));
     db.keep_played(scope, &played.iter().map(|(k, (s, l))| (k.clone(), *s, *l)).collect::<Vec<_>>());
+    let now = store::now();
+    let mut misses = Misses::default();
     for o in &owned {
         let secs = played.get(&o.app_name).map_or(0, |p| p.0);
         let kept = db.list(scope, &o.namespace);
         let fresh = kept.as_ref().is_some_and(|(at, _)| *at >= secs.max(1));
-        let list = if fresh || asked >= EPIC_GAMES_PER_SYNC {
+        // One that failed lately keeps what it had and lets the others go first.
+        let list = if fresh || asked >= EPIC_GAMES_PER_SYNC || failed_lately(db, scope, &o.namespace, now) {
             kept.map(|(_, l)| l)
         } else {
             asked += 1;
-            let list = epic::game_list(http, &access, &account, &o.namespace).await?;
-            db.keep_list(scope, &o.namespace, secs.max(1), &list);
-            Some(list)
+            match epic::game_list(http, &access, &account, &o.namespace).await {
+                Ok(list) => {
+                    misses.game_answered();
+                    db.keep_list(scope, &o.namespace, secs.max(1), &list);
+                    Some(list)
+                }
+                Err(e) if misses.game_failed(db, scope, &o.namespace, now) => {
+                    // The account, not a game: what came is kept, and the round stops.
+                    db.keep_games(scope, &games);
+                    return Err(e);
+                }
+                Err(_) => kept.map(|(_, l)| l),
+            }
         };
         if let Some(list) = list.filter(|l| !l.is_empty()) {
             games.push(epic::entry(&o.namespace, &o.title, o.cover.as_deref(), secs, &list));
@@ -505,20 +610,14 @@ pub async fn sync_accounts(http: &reqwest::Client, data_dir: &Path) -> bool {
         let scope = Scope::new(AchievementSource::Xbox, &user);
         if db.due(&scope) {
             asked = true;
-            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
-                Ok(()) => db.synced(&scope),
-                Err(_) => db.refused(&scope),
-            }
+            let _ = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await;
         }
     }
     if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
         let scope = Scope::new(AchievementSource::Epic, &user);
         if db.due(&scope) {
             asked = true;
-            match sync_epic(http, data_dir, &mut db, &scope).await {
-                Ok(()) => db.synced(&scope),
-                Err(_) => db.refused(&scope),
-            }
+            let _ = sync_epic(http, data_dir, &mut db, &scope).await;
         }
     }
     asked
@@ -586,7 +685,7 @@ pub async fn hub(
                 (Ok(games), Ok(points)) => {
                     let got = RetroKept { games, recent: recent.unwrap_or_default(), points };
                     let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
-                    let _ = std::fs::write(&file, serde_json::to_string(&got).unwrap_or_default());
+                    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&got).unwrap_or_default().as_bytes());
                     db.synced(&scope);
                     keep_retro(&mut db, &scope, &got);
                     (hub.retro_points, hub.retro_softcore) = got.points;
@@ -611,12 +710,8 @@ pub async fn hub(
         hub.xbox = true;
         let scope = Scope::new(AchievementSource::Xbox, &user);
         if online && db.due(&scope) {
-            match sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
-                Ok(()) => db.synced(&scope),
-                Err(e) => {
-                    db.refused(&scope);
-                    hub.problems.push(tr!("Xbox: {}", e));
-                }
+            if let Err(e) = sync_xbox(http, data_dir, &mut db, &scope, &refresh).await {
+                hub.problems.push(tr!("Xbox: {}", shown(&e)));
             }
         }
         scopes.push(scope);
@@ -626,12 +721,8 @@ pub async fn hub(
         hub.epic = true;
         let scope = Scope::new(AchievementSource::Epic, &user);
         if online && db.due(&scope) {
-            match sync_epic(http, data_dir, &mut db, &scope).await {
-                Ok(()) => db.synced(&scope),
-                Err(e) => {
-                    db.refused(&scope);
-                    hub.problems.push(tr!("Epic: {}", e));
-                }
+            if let Err(e) = sync_epic(http, data_dir, &mut db, &scope).await {
+                hub.problems.push(tr!("Epic: {}", shown(&e)));
             }
         }
         scopes.push(scope);
@@ -783,7 +874,7 @@ pub async fn game(
             if let Ok(mut db) = Store::open(data_dir) {
                 db.keep_list(&Scope::new(AchievementSource::Steam, ""), key, game.last_played.unwrap_or(0), &list);
             }
-            Ok(GameAchievements { game, achievements: list })
+            Ok(GameAchievements { game, achievements: list, by_title: false })
         }
         AchievementSource::Retro => {
             let (user, key_) = retro_account.ok_or(tr!("Conecte sua conta em Configurações › RetroAchievements primeiro."))?;
@@ -791,7 +882,7 @@ pub async fn game(
             if let Ok(mut db) = Store::open(data_dir) {
                 db.keep_list(&Scope::new(AchievementSource::Retro, &user), key, game.last_played.unwrap_or(0), &achievements);
             }
-            Ok(GameAchievements { game, achievements })
+            Ok(GameAchievements { game, achievements, by_title: false })
         }
         AchievementSource::Epic => {
             let user = crate::settings::load(data_dir).epic_user.ok_or(tr!("Entre na Epic em Configurações › Epic Games primeiro."))?;
@@ -799,7 +890,7 @@ pub async fn game(
             let db = Store::open(data_dir)?;
             let game = db.game(&scope, key).ok_or(tr!("Esse jogo não está nas conquistas da Epic."))?;
             let achievements = db.list(&scope, key).map(|(_, l)| l).unwrap_or_default();
-            Ok(GameAchievements { game, achievements })
+            Ok(GameAchievements { game, achievements, by_title: false })
         }
         AchievementSource::Xbox => {
             let chosen = crate::settings::load(data_dir);
@@ -836,13 +927,63 @@ pub async fn game(
             };
             let game = xbox::with_list(game, &list);
             db.keep_games(&scope, std::slice::from_ref(&game));
-            Ok(GameAchievements { game, achievements: list })
+            Ok(GameAchievements { game, achievements: list, by_title: false })
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failing_game_waits_and_a_second_failure_in_a_row_stops_the_round() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Epic, "player");
+        let now = 1_000_000;
+        let mut misses = Misses::default();
+        assert!(!misses.game_failed(&db, &scope, "broken", now), "one game failing doesn't stop the round");
+        assert!(failed_lately(&db, &scope, "broken", now + 60), "it waits");
+        assert!(!failed_lately(&db, &scope, "broken", now + GAME_FAIL_WAIT), "and is asked again later");
+        assert!(!failed_lately(&db, &scope, "fine", now));
+        misses.game_answered();
+        assert!(!misses.game_failed(&db, &scope, "other", now), "an answer in between: still one");
+        assert!(misses.game_failed(&db, &scope, "third", now), "two in a row: the account");
+    }
+
+    #[test]
+    fn a_refused_sign_in_waits_minutes_and_says_sign_in_again() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Epic, "player");
+        let error = needs_login("Sign in again.");
+        stamp(&mut db, &scope, &Err(error.clone()));
+        let wait = db.stamp(&scope, "wait_until").unwrap() - store::now();
+        assert!(wait <= LOGIN_WAIT, "minutes, not up to 6 h");
+        assert!(db.stamp(&scope, "failures").unwrap_or(0) == 0, "the store's wait doesn't grow");
+        assert_eq!(shown(&error), "Sign in again.");
+        // A busy store still grows it.
+        stamp(&mut db, &scope, &Err("busy".into()));
+        assert_eq!(db.stamp(&scope, "failures"), Some(1));
+    }
+
+    #[test]
+    fn skipped_sync_keeps_the_wait() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Store::open(dir.path()).unwrap();
+        let scope = Scope::new(AchievementSource::Xbox, "player");
+        // The hub's sync was just refused: it waits.
+        db.refused(&scope);
+        let (wait, failures) = (db.stamp(&scope, "wait_until"), db.stamp(&scope, "failures"));
+        // The library asks meanwhile: not due, so it goes nowhere and stamps nothing.
+        let http = reqwest::Client::new();
+        assert!(tauri::async_runtime::block_on(sync_xbox(&http, dir.path(), &mut db, &scope, "token")).is_ok());
+        assert_eq!((db.stamp(&scope, "wait_until"), db.stamp(&scope, "failures")), (wait, failures), "the wait is kept");
+        assert!(db.stamp(&scope, "synced").is_none(), "not stamped as synced");
+    }
+
     /// Reads the Steam of the PC running the tests (read only): `cargo test -- --ignored real_steam`.
     #[test]
     #[ignore = "reads this PC's Steam"]

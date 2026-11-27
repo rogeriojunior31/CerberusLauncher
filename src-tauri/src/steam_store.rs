@@ -78,7 +78,7 @@ pub async fn app_for(client: &Client, data: &std::path::Path, name: &str) -> Opt
     let app = search(client, name, true).await.ok()?.map(|item| item.id);
     known.insert(key, Seen { app, at: now });
     let _ = std::fs::create_dir_all(file.parent()?);
-    let _ = std::fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
     app
 }
 

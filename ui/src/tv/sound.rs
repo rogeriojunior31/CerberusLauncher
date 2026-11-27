@@ -57,6 +57,9 @@ pub fn play(sound: Sound) {
             *slot = web_sys::AudioContext::new().ok();
         }
         let Some(ctx) = slot.as_ref() else { return };
+        // Made by a controller press (not a gesture the page counts), it can start
+        // suspended; resuming one that already runs does nothing.
+        let _ = ctx.resume();
         let _ = match sound {
             Sound::Move => tone(ctx, 1320.0, 1180.0, 0.0, 0.045, 0.05),
             Sound::Select => tone(ctx, 660.0, 660.0, 0.0, 0.07, 0.08).and_then(|_| tone(ctx, 990.0, 990.0, 0.06, 0.12, 0.08)),

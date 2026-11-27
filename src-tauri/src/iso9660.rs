@@ -105,6 +105,7 @@ fn copy_out(file: &mut dyn Disc, at: u64, size: u64, target: &Path) -> io::Resul
         file.read_exact(&mut buffer[..take])?;
         out.write_all(&buffer[..take])?;
         left -= take as u64;
+        crate::copying::tick(take as u64)?;
     }
     Ok(())
 }

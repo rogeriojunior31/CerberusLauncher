@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// Play time leaves out the hours the PC slept with the game open.
+use crate::awake_time::AwakeInstant as Instant;
 
 use cerberus_shared::{Game, SessionEvent, Source};
 use tauri::{AppHandle, Emitter, Manager};
@@ -28,6 +30,10 @@ pub const EVENT: &str = "game-session";
 
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<String, Option<Round>>>);
+
+/// Held while a round's time is written to the library (checkpoint or close),
+/// apart from the sessions' own lock that "is it running?" takes.
+static WRITING: Mutex<()> = Mutex::new(());
 
 struct Round {
     started: Instant,
@@ -78,21 +84,67 @@ impl Sessions {
 
     // An open installer or launcher menu has no measured round.
     fn checkpoint(&self, library: &LocalLibrary, now: Instant) {
-        for (id, round) in self.lock().iter_mut() {
-            let Some(round) = round else { continue };
-            let elapsed = now.saturating_duration_since(round.started).as_secs();
-            if elapsed > round.credited && library.record_session(id, round.credited, elapsed, None).is_ok() {
-                round.credited = elapsed;
+        // Written with the lock let go: a slow disk doesn't hold up "is it running?"
+        // (the in-game menu, the game list) while the library saves.
+        let due: Vec<(String, Instant, u64, u64)> = self
+            .lock()
+            .iter()
+            .filter_map(|(id, round)| {
+                let round = round.as_ref()?;
+                let elapsed = now.saturating_duration_since(round.started).as_secs();
+                (elapsed > round.credited).then(|| (id.clone(), round.started, round.credited, elapsed))
+            })
+            .collect();
+        // One writer at a time with `close_round`, so a span is never counted twice.
+        let _writing = WRITING.lock().unwrap_or_else(|p| p.into_inner());
+        for (id, started, credited, elapsed) in due {
+            if library.record_session(&id, credited, elapsed, None).is_err() {
+                continue;
+            }
+            // Still the same round (not closed or started again meanwhile).
+            if let Some(Some(round)) = self.lock().get_mut(&id) {
+                if round.started == started && round.credited == credited {
+                    round.credited = elapsed;
+                }
             }
         }
     }
 
     fn close_round(&self, library: &LocalLibrary, id: &str, seconds: u64, closed_at: u64) -> Result<Game, String> {
+        let _writing = WRITING.lock().unwrap_or_else(|p| p.into_inner());
         let mut active = self.lock();
         let slot = active.get_mut(id).ok_or(tr!("A sessão já foi encerrada."))?;
         let credited = slot.take().map_or(0, |round| round.credited);
         library.record_session(id, credited, seconds, Some(closed_at))
     }
+}
+
+/// A crash reporter, updater or uninstaller that comes with a game but isn't it.
+pub fn is_helper_program(file_name: &str) -> bool {
+    #[cfg(windows)]
+    {
+        windows::is_helper(file_name)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = file_name;
+        false
+    }
+}
+
+/// The folders of the games Cerberus itself is following now (their own
+/// session counts them; the stores' folder watch must not count them again).
+pub fn tracked_folders(app: &AppHandle) -> Vec<String> {
+    let library = app.state::<LocalLibrary>();
+    app.state::<Sessions>()
+        .running()
+        .iter()
+        .filter_map(|id| library.get(id).ok().flatten())
+        .filter_map(|g| match &g.source {
+            Source::Recomp { exe, .. } | Source::Local { exe } => Path::new(exe).parent().map(|d| d.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect()
 }
 
 pub fn checkpoint(app: &AppHandle) {
@@ -164,7 +216,21 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
     // Newer saves from another PC go in place before the game reads them.
     if let Source::Recomp { recomp_id, .. } = &game.source {
         let folders = app.state::<recomp::Folders>();
-        match recomp::pull_from_cloud(&folders, recomp_id, Path::new(&game.install_dir)) {
+        // A cloud folder that doesn't answer (OneDrive signed out, a drive away) isn't waited on.
+        let answered = recomp::cloud_answers(&folders, recomp_id, Duration::from_secs(10));
+        let mut unchecked = CLOUD_UNCHECKED.lock().unwrap_or_else(|p| p.into_inner());
+        if answered {
+            unchecked.remove(&game.id);
+        } else {
+            unchecked.insert(game.id.clone());
+        }
+        drop(unchecked);
+        if !answered {
+            let message = tr!("A pasta da nuvem não respondeu em 10 segundos, então o jogo abriu com os saves deste PC. Se jogou em outro PC, confira os backups antes de jogar muito.");
+            crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Err(message.to_string()));
+            let _ = app.emit("toast", message.to_string());
+        }
+        match answered.then(|| recomp::pull_from_cloud(&folders, recomp_id, Path::new(&game.install_dir))).unwrap_or(Ok(None)) {
             Ok(Some(message)) => {
                 crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Ok(message.clone()));
                 let _ = app.emit("toast", message);
@@ -344,7 +410,7 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
     let (mut child, tied) = windows::spawn_tied(&mut command, 0x0800_0000).map_err(|e| fail(tr!("Não foi possível abrir a preparação do jogo: {}", e)))?;
     let _ = app.emit("toast", tr!("{0}: {1}. Isso acontece uma vez só e pode levar alguns minutos.", game.name, step.label));
     let say = |app: &AppHandle, fraction: Option<f32>, text: String, finished: bool| {
-        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished });
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction, text, finished, cancellable: false });
     };
     say(app, Some(0.0), step.label.clone(), false);
 
@@ -362,7 +428,7 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
                 }
                 if let Some((fraction, text)) = progress_line(&line) {
                     let text = if text.is_empty() { label.clone() } else { text };
-                    let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game_id.clone(), fraction, text, finished: false });
+                    let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game_id.clone(), fraction, text, finished: false, cancellable: false });
                 }
                 if let Ok(mut h) = heard.lock() {
                     h.0 = Instant::now();
@@ -377,6 +443,8 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
     }
     let app = app.clone();
     std::thread::spawn(move || {
+        // A build can take many minutes: the PC doesn't sleep in the middle of it.
+        let _awake = crate::awake::hold();
         let started = Instant::now();
         let outcome = loop {
             match child.try_wait() {
@@ -413,7 +481,7 @@ fn prepare_then_start(app: &AppHandle, game: Game, exe: Option<PathBuf>, step: r
             clear_own_temp(temp);
         }
         crate::trail::note(&app, &game.id, tk!("Preparação do jogo"), &outcome.clone().map(|()| step.label.clone()));
-        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true });
+        let _ = app.emit("prepare-progress", cerberus_shared::PrepareProgress { game_id: game.id.clone(), fraction: Some(1.0), text: String::new(), finished: true, cancellable: false });
         release(&app, &game.id);
         match outcome {
             Ok(()) => {
@@ -546,8 +614,17 @@ fn close_session(
         notices.push(tr!("Não foi possível gravar o tempo de {0}: {1}", game.name, e));
     }
     if let Source::Recomp { recomp_id, .. } = &game.source {
-        let result = recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"));
+        // The cloud wasn't checked before this session: kept here, not sent up.
+        let unchecked = CLOUD_UNCHECKED.lock().unwrap_or_else(|p| p.into_inner()).remove(&game.id);
+        let result = if unchecked {
+            recomp::backup_saves_here(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"))
+        } else {
+            recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"))
+        };
         trail.note(&game.id, tk!("Backup depois de jogar"), &backup_outcome(&result));
+        if unchecked && result.is_ok() {
+            trail.note(&game.id, tk!("Saves da nuvem"), &Err(tr!("O backup ficou só neste PC: a nuvem não foi conferida antes da partida, e enviar estes saves poderia passar por cima dos de outro PC. Quando a nuvem voltar, se estes forem os mais novos, use \"Fazer backup agora\".").into()));
+        }
         if let Err(e) = result {
             notices.push(tr!("Falha no backup de {0}: {1}", game.name, e));
         }
@@ -555,11 +632,14 @@ fn close_session(
     notices
 }
 
+/// Games whose cloud folder didn't answer before this session.
+static CLOUD_UNCHECKED: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+
 /// "1 h 5 min", "3 min", "40 s".
 /// "1 min jogado", "5 min jogados": what a session's history line says.
 pub fn played_text(seconds: u64) -> String {
     let time = duration_text(seconds);
-    if time == "1 min" || time == "1 s" { format!("{time} jogado") } else { format!("{time} jogados") }
+    if time == "1 min" || time == "1 s" { tr!("{} jogado", time) } else { tr!("{} jogados", time) }
 }
 
 fn duration_text(seconds: u64) -> String {
@@ -573,8 +653,8 @@ fn duration_text(seconds: u64) -> String {
 /// A backup's result as the history shows it.
 pub fn backup_outcome<E: std::fmt::Display>(result: &Result<Option<cerberus_shared::Backup>, E>) -> Result<String, String> {
     match result {
-        Ok(Some(backup)) if backup.files == 1 => Ok("1 arquivo copiado".into()),
-        Ok(Some(backup)) => Ok(format!("{} arquivos copiados", backup.files)),
+        Ok(Some(backup)) if backup.files == 1 => Ok(tr!("1 arquivo copiado").into()),
+        Ok(Some(backup)) => Ok(tr!("{} arquivos copiados", backup.files)),
         Ok(None) => Ok(tr!("Nada novo para copiar").into()),
         Err(e) => Err(e.to_string()),
     }
@@ -591,9 +671,26 @@ pub fn release(app: &AppHandle, id: &str) {
 }
 
 fn notify(app: &AppHandle, game_id: &str, running: bool) {
-    crate::in_game::session(app, running);
+    crate::in_game::session(app, game_id, running);
     let event = SessionEvent { game_id: game_id.to_string(), running };
     let _ = app.emit(EVENT, event);
+}
+
+#[cfg(test)]
+#[test]
+fn a_slow_write_doesnt_hold_up_is_it_running() {
+    let sessions = Sessions::default();
+    sessions.lock().insert("g".into(), Some(Round { started: Instant::now(), credited: 0 }));
+    // A checkpoint stuck on a slow disk for 2 s.
+    let writing = std::thread::spawn(|| {
+        let _held = WRITING.lock().unwrap();
+        std::thread::sleep(Duration::from_secs(2));
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    let asked = std::time::Instant::now();
+    assert!(sessions.is_running("g"));
+    assert!(asked.elapsed() < Duration::from_millis(50));
+    writing.join().unwrap();
 }
 
 #[cfg(test)]
@@ -762,6 +859,30 @@ mod tests {
             .unwrap();
         assert_eq!(seen, ["exit 0xC0000135", "closed"]);
         assert!(crate::crash::reason(0xC000_0135_u32 as i32, 1).unwrap().contains("DLL"));
+    }
+
+    #[test]
+    fn a_game_handed_off_outside_the_job_is_followed_by_its_folder() {
+        // A launcher that ends at once, and its game started by someone else
+        // (here the test itself, as the Explorer would): outside the job.
+        let dir = tempfile::tempdir().unwrap();
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("cmd.exe");
+        let (launcher, game) = (dir.path().join("Launcher.exe"), dir.path().join("Game.exe"));
+        std::fs::copy(&system, &launcher).unwrap();
+        std::fs::copy(&system, &game).unwrap();
+        let mut command = Command::new(&launcher);
+        command.args(["/c", "exit", "0"]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let process = spawn_game(command, None).unwrap();
+        let mut outside = Command::new(&game);
+        outside.args(["/c", "ping -n 4 127.0.0.1 >nul"]).stdout(Stdio::null()).creation_flags(0x0800_0000);
+        let mut outside = outside.spawn().unwrap();
+        let mut played = std::time::Duration::ZERO;
+        process.observe(|event| if let Observation::Closed(t) = event { played = t; }).unwrap();
+        let _ = outside.wait();
+        assert!(played >= std::time::Duration::from_secs(2), "followed the game: {played:?}");
+        // Nothing comes: given up after the wait, the launcher's own seconds only.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(windows::follow_by_folder(empty.path(), std::time::Duration::from_secs(1)).is_none());
     }
 
     #[test]

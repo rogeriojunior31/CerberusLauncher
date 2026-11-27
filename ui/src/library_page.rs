@@ -140,7 +140,8 @@ impl Default for LibraryView {
             sort: RwSignal::new(Sort::Name),
             compact: RwSignal::new(false),
             shelf: RwSignal::new(None),
-            absent: RwSignal::new(None),
+            // Opens on the games this PC plays now; "All" and "Not installed" a click away.
+            absent: RwSignal::new(Some(false)),
             status: RwSignal::new(None),
         }
     }
@@ -352,7 +353,7 @@ pub fn LibraryPage() -> impl IntoView {
         search.set(String::new());
         filter.set(Filter::All);
         status.set(None);
-        absent.set(None);
+        absent.set(Some(false));
         if let Some(input) = input.get_untracked() {
             let _ = input.focus();
         }
@@ -360,7 +361,7 @@ pub fn LibraryPage() -> impl IntoView {
     let tabs = move || Category::ALL.into_iter().filter(|which| *which != Category::Hidden || any_hidden() || category.get() == Category::Hidden).map(|which| {
         let active = move || category.get() == which;
         view! {
-            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string() title=which.meaning()
+            <button type="button" class="seg" role="tab" class:on=active aria-selected=move || active().to_string() tabindex=move || if active() { "0" } else { "-1" } title=which.meaning()
                 on:click=move |_| { category.set(which); filter.set(Filter::All); }>{which.label()}</button>
         }
     }).collect_view();
@@ -437,11 +438,11 @@ pub fn LibraryPage() -> impl IntoView {
         let (_, here, missing) = counts.get();
         view! {
             <div class="segs" role="group" aria-label=tr!("Instalação")>
-                <button type="button" class="seg" class:on=move || absent.get().is_none() aria-pressed=move || absent.get().is_none().to_string()
-                    title=tr!("Instalados e não instalados juntos: os que não estão neste PC aparecem apagados e instalam por ali.")
-                    on:click=move |_| absent.set(None)>{tr!("Todos")}<span class="chip-n">{here + missing}</span></button>
                 <button type="button" class="seg" class:on=move || absent.get() == Some(false) aria-pressed=move || (absent.get() == Some(false)).to_string()
                     on:click=move |_| absent.set(Some(false))>{tr!("Instalados")}<span class="chip-n">{here}</span></button>
+                <button type="button" class="seg" class:on=move || absent.get().is_none() aria-pressed=move || absent.get().is_none().to_string()
+                    title=tr!("Instalados e não instalados juntos: os instalados primeiro, os que não estão neste PC depois, apagados, e instalam por ali.")
+                    on:click=move |_| absent.set(None)>{tr!("Todos")}<span class="chip-n">{here + missing}</span></button>
                 <button type="button" class="seg" class:on=move || absent.get() == Some(true) aria-pressed=move || (absent.get() == Some(true)).to_string()
                     disabled=missing == 0 && absent.get_untracked() != Some(true)
                     on:click=move |_| absent.set(Some(true))>{tr!("Não instalados")}<span class="chip-n">{missing}</span></button>
@@ -468,7 +469,8 @@ pub fn LibraryPage() -> impl IntoView {
             }.into_any(),
             Some(Ok(games)) => games,
         };
-        if games.is_empty() {
+        // Empty only with no classics in the ROM folders either: those show in Todos.
+        if games.is_empty() && crate::classics::standalone(library).is_empty() {
             return view! {
                 <div class="empty">
                     <Svg icon=Icon::Library size=32 />
@@ -602,6 +604,12 @@ pub fn LibraryPage() -> impl IntoView {
             // Rating and achievements are the library games' own: classics after them, in the order above.
             Sort::Rating | Sort::Achievements => rows.sort_by_key(|r| matches!(r, Row::Classic(_))),
         }
+        // What plays here comes first, in the order chosen: a game not installed,
+        // or a classic no emulator here opens yet, after it.
+        rows.sort_by_key(|r| match r {
+            Row::Game(g) => is_absent(g),
+            Row::Classic(rom) => crate::classics::ready_player(&players, crate::classics::console_of(rom)).is_none(),
+        });
         let count = rows.len();
         let list = compact.get();
         let items = rows.iter().map(|row| {
@@ -716,7 +724,21 @@ pub fn LibraryPage() -> impl IntoView {
                     </div>
                 </div>
                 <div class="lib-tabs">
-                    <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo")>{tabs}</div>
+                    <div class="segs big" role="tablist" aria-label=tr!("Tipo de jogo") on:keydown=move |e| {
+                        // Left and right go from tab to tab, as in any tab list.
+                        let step: isize = match e.key().as_str() { "ArrowRight" => 1, "ArrowLeft" => -1, _ => return };
+                        e.prevent_default();
+                        let shown: Vec<Category> = Category::ALL.into_iter().filter(|w| *w != Category::Hidden || any_hidden() || category.get_untracked() == Category::Hidden).collect();
+                        let at = shown.iter().position(|w| *w == category.get_untracked()).unwrap_or(0) as isize;
+                        let next = shown[((at + step).rem_euclid(shown.len() as isize)) as usize];
+                        category.set(next);
+                        filter.set(Filter::All);
+                        request_animation_frame(|| {
+                            if let Some(tab) = document().query_selector(".lib-tabs [role=tab].on").ok().flatten() {
+                                let _ = tab.unchecked_into::<web_sys::HtmlElement>().focus();
+                            }
+                        });
+                    }>{tabs}</div>
                     // Always in sight: a search never hides the games that aren't installed without saying so.
                     <Show when=move || !matches!(category.get(), Category::Classics | Category::Hidden)>
                         <div class="lib-presence">{presence}</div>
@@ -737,5 +759,39 @@ pub fn LibraryPage() -> impl IntoView {
             </section>
             {results}
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn game(id: &str, source: serde_json::Value, extra: serde_json::Value) -> Game {
+        let mut value = serde_json::json!({"id": id, "name": id, "source": source, "install_dir": ""});
+        if let (Some(v), Some(e)) = (value.as_object_mut(), extra.as_object()) {
+            v.extend(e.clone());
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn each_tab_and_store_chip_keeps_its_games() {
+        let steam = game("steam:1", serde_json::json!({"kind": "steam", "app_id": 1}), serde_json::json!({"favorite": true, "collections": ["RPG"]}));
+        let added = game("local:x", serde_json::json!({"kind": "local", "exe": "C:/x.exe"}), serde_json::json!({}));
+        let hidden = game("local:h", serde_json::json!({"kind": "local", "exe": "C:/h.exe"}), serde_json::json!({"hidden": true}));
+        let recomp = game("recomp:z", serde_json::json!({"kind": "recomp", "recomp_id": "z", "version": "1", "exe": "C:/z.exe"}), serde_json::json!({}));
+        let release = game("recomp:r", serde_json::json!({"kind": "recomp", "recomp_id": "r", "version": "1", "exe": "C:/r.exe"}), serde_json::json!({"part_ids": ["recomp:r#a"]}));
+        let all = [&steam, &added, &hidden, &recomp, &release];
+        let ids = |c: Category, shelf: Option<&str>| all.iter().filter(|g| c.keeps(g, shelf)).map(|g| g.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids(Category::All, None), ["steam:1", "local:x", "recomp:z"], "hidden and a multi-game release stay out");
+        assert_eq!(ids(Category::Hidden, None), ["local:h"]);
+        assert_eq!(ids(Category::Favorites, None), ["steam:1"]);
+        assert_eq!(ids(Category::Collections, Some("RPG")), ["steam:1"]);
+        assert_eq!(ids(Category::Recomps, None), ["recomp:z"]);
+        assert_eq!(ids(Category::Pc, None), ["steam:1", "local:x"]);
+        assert!(ids(Category::Classics, None).is_empty());
+        assert!(Filter::Steam.keeps(&steam) && !Filter::Steam.keeps(&added));
+        assert!(Filter::Added.keeps(&added) && !Filter::Added.keeps(&steam));
+        assert!(Filter::All.keeps(&recomp));
     }
 }

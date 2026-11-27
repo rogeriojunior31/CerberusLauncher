@@ -21,7 +21,12 @@ use sha2::{Digest, Sha256};
 const SHADERS: &str = include_str!("CerberusLooks.fx");
 const SHADER_FILE: &str = "CerberusLooks.fx";
 const PROXY: &str = "dxgi.dll";
-const TAGS: &str = "https://api.github.com/repos/crosire/reshade/tags";
+/// The ReShade Cerberus downloads, and its setup program's SHA-256: a new
+/// version comes by a change here (with its checksum), never because a tag or
+/// a mirror says so. ReShade signs its setup with a certificate Windows doesn't
+/// trust on its own, so the checksum is the check.
+const RESHADE_VERSION: &str = "6.8.0";
+const RESHADE_SETUP_SHA256: &str = "207aea16205fbf952bc8fe1879966672454cf04002e7ad34237c7990a5b3c0b4";
 
 /// The looks a player can pick: id, name, ReShade technique.
 pub const LOOKS: [(&str, &str, &str); 4] = [
@@ -151,24 +156,10 @@ fn dlls_from_setup(setup: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
     Ok((read("ReShade64.dll")?, read("ReShade32.dll")?))
 }
 
-/// The newest ReShade version, `6.8.0`, from its repository's tags.
-async fn latest(http: &reqwest::Client) -> Result<String, String> {
-    let tags: serde_json::Value = http
-        .get(TAGS)
-        .header("Accept", "application/vnd.github+json")
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await
-        .map_err(|e| tr!("Não foi possível ver a versão do ReShade: {}", e))?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-    tags.as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|t| t.get("name")?.as_str()?.strip_prefix('v').map(str::to_string))
-        .find(|v| v.split('.').count() == 3 && v.split('.').all(|p| p.parse::<u32>().is_ok()))
-        .ok_or_else(|| tr!("Não foi possível ver a versão do ReShade.").to_string())
+/// Whether a setup program is the ReShade this version of Cerberus expects.
+fn expected_setup(setup: &[u8]) -> bool {
+    use sha2::Digest;
+    format!("{:x}", sha2::Sha256::digest(setup)) == RESHADE_SETUP_SHA256
 }
 
 /// Downloads ReShade from its developer's site, once.
@@ -176,7 +167,7 @@ pub async fn ensure(http: &reqwest::Client, data: &Path) -> Result<(), String> {
     if ready(data) {
         return Ok(());
     }
-    let version = latest(http).await?;
+    let version = RESHADE_VERSION;
     let url = format!("https://reshade.me/downloads/ReShade_Setup_{version}.exe");
     let reply = http
         .get(&url)
@@ -186,6 +177,9 @@ pub async fn ensure(http: &reqwest::Client, data: &Path) -> Result<(), String> {
         .and_then(reqwest::Response::error_for_status)
         .map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e.without_url()))?;
     let setup = crate::net::read_limited(reply, 256 << 20).await.map_err(|e| tr!("Não foi possível baixar o ReShade: {}", e))?;
+    if !expected_setup(&setup) {
+        return Err(tr!("O instalador do ReShade {} não bate com o checksum conhecido, então não foi usado.", version));
+    }
     let (x64, x86) = dlls_from_setup(&setup)?;
     let dir = reshade_dir(data);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -309,6 +303,12 @@ pub fn take_back_all(data: &Path) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn only_the_known_reshade_setup_is_used() {
+        assert!(!expected_setup(b"MZ a setup from somewhere else"));
+        assert_eq!(RESHADE_SETUP_SHA256.len(), 64);
+    }
+
     #[cfg(windows)]
     #[test]
     fn a_filter_held_for_a_moment_is_still_taken_back() {
@@ -343,7 +343,10 @@ mod tests {
         b[0x80..0x84].copy_from_slice(b"PE\0\0");
         b[0x84..0x86].copy_from_slice(&0x8664u16.to_le_bytes());
         b.extend_from_slice(names);
-        let exe = dir.join("Game.exe");
+        // One file per program: `route` remembers a program by path, size and
+        // date, and two fakes of one size written in the same instant would look alike.
+        let tag: String = String::from_utf8_lossy(names).chars().filter(char::is_ascii_alphanumeric).collect();
+        let exe = dir.join(format!("Game-{tag}.exe"));
         fs::write(&exe, b).unwrap();
         exe
     }
@@ -423,3 +426,4 @@ mod tests {
         assert!(dlls_from_setup(b"not a program").is_err());
     }
 }
+

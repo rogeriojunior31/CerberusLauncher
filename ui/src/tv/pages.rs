@@ -81,7 +81,7 @@ pub fn progress_of(library: Library, recomp_id: &str) -> Option<u64> {
 }
 
 /// A cover on a shelf or grid, with its name and what's going on with it.
-pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync + 'static) -> impl IntoView {
+pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync + 'static, hover: impl Fn() + Copy + Send + Sync + 'static) -> impl IntoView {
     let library = expect_context::<Library>();
     let id = item.id();
     let rid = item.recomp_id();
@@ -94,6 +94,8 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
             match &item {
                 Item::Game(g) if g.next_step != cerberus_shared::NextStep::Play => Some(tr!("Configurar")),
                 Item::Entry(e) if e.installed.is_some() => Some(tr!("Instalado")),
+                // Without an emulator ready here: shown, and A says what's missing.
+                Item::Classic(_, console) if library.players.with(|p| crate::classics::ready_player(p.as_deref().unwrap_or_default(), console).is_none()) => Some(tr!("Falta o emulador")),
                 Item::Classic(..) => Some(tr!("Clássico")),
                 Item::Entry(e) if e.owned_copy.is_some() => Some(tr!("Você tem")),
                 _ => None,
@@ -115,7 +117,7 @@ pub fn tile(item: Item, key: String, on: impl Fn() -> bool + Copy + Send + Sync 
         }
     };
     view! {
-        <div class="tv-tile" class:on=on data-tvf=key on:click=on_click>
+        <div class="tv-tile" class:on=on data-tvf=key on:mouseenter=move |_| hover() on:click=on_click>
             <div class="tv-cover">
                 <Poster sources=item.covers() title=item.name() />
                 {move || badge().map(|b| view! { <span class="tv-tag">{b}</span> })}
@@ -131,16 +133,10 @@ fn library_games(library: Library) -> Vec<Game> {
     library.games.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|g| !g.hidden && g.part_ids.is_empty() && g.next_step != cerberus_shared::NextStep::Install).collect()
 }
 
-/// The player's classics an emulator here opens (as Play decides it), the
-/// ones played lately first.
-fn classics(roms: &[cerberus_shared::RomView], players: &[cerberus_shared::ClassicPlayer]) -> Vec<Item> {
-    let mut list: Vec<Item> = roms
-        .iter()
-        .filter_map(|r| {
-            let console = crate::classics::console_of(r);
-            crate::classics::ready_player(players, console).map(|_| Item::Classic(r.clone(), console))
-        })
-        .collect();
+/// The player's classics, the ones played lately first. Those no emulator here
+/// opens yet show too, marked (A then says what's missing), as on the desktop.
+fn classics(roms: &[cerberus_shared::RomView], _players: &[cerberus_shared::ClassicPlayer]) -> Vec<Item> {
+    let mut list: Vec<Item> = roms.iter().map(|r| Item::Classic(r.clone(), crate::classics::console_of(r))).collect();
     list.sort_by_key(|i| match i {
         Item::Classic(r, _) => (std::cmp::Reverse(r.last_played), crate::classics::display_name(r)),
         _ => (std::cmp::Reverse(None), String::new()),
@@ -151,6 +147,14 @@ fn classics(roms: &[cerberus_shared::RomView], players: &[cerberus_shared::Class
 /// Starts the classic itself, in the emulator that opens it here. Its recomp,
 /// if any, has a tile of its own once installed.
 fn open_classic(library: Library, _tv: Tv, rom: &cerberus_shared::RomView, console: &str) {
+    let players = library.players.get_untracked().unwrap_or_default();
+    if crate::classics::ready_player(&players, console).is_none() {
+        play(Sound::Back);
+        let why = crate::classics::player_for(&players, console).and_then(|p| p.problem.clone());
+        // The reason already says where to set it up.
+        library.toast(why.unwrap_or_else(|| tr!("Nenhum emulador abre esse console ainda.").to_string()));
+        return;
+    }
     play(Sound::Select);
     crate::classics::play_original(library, rom.path.clone(), console.to_string());
 }
@@ -168,7 +172,6 @@ pub fn Home() -> impl IntoView {
     let focus = Focus::new("home", false);
     tv.keep_position(focus);
 
-    library.roms.refetch();
     let shelves = Memo::new(move |_| {
         let classic_items = classics(&crate::classics::standalone(library), &library.players.get().unwrap_or_default());
         let mut games = library_games(library);
@@ -259,7 +262,7 @@ pub fn Home() -> impl IntoView {
                 None => tr!("Na sua biblioteca").to_string(),
             },
             Item::Entry(e) if e.owned_copy.is_some() => tr!("Você já tem o jogo").to_string(),
-            Item::Entry(e) => format!("{} downloads", format::count(e.downloads)),
+            Item::Entry(e) => tr!("{} downloads", format::count(e.downloads)),
             Item::Classic(r, c) => crate::classics::classic_sub(r, c, &library.players.get_untracked().unwrap_or_default()),
         };
         let entry = match &item {
@@ -308,7 +311,7 @@ pub fn Home() -> impl IntoView {
                 let tiles = items
                     .into_iter()
                     .enumerate()
-                    .map(|(c, item)| tile(item, focus.key(r, c), move || focus.is(r, c)))
+                    .map(|(c, item)| tile(item, focus.key(r, c), move || focus.is(r, c), move || focus.set(r, c)))
                     .collect_view();
                 view! {
                     <section class="tv-shelf" class:dock=r == 0 class:current=move || focus.row.get() == r>
@@ -368,7 +371,6 @@ pub fn LibraryGrid() -> impl IntoView {
     // The desktop library's tabs, in its order.
     let kinds: [&'static str; 5] = [tr!("Todos"), tr!("Favoritos"), tr!("Nativos"), "PC", tr!("Clássicos")];
     let orders: [&'static str; 3] = [tr!("Recentes"), tr!("A a Z"), tr!("Mais jogados")];
-    library.roms.refetch();
     let games = Memo::new(move |_| {
         let which = kind.get();
         let needle = fold(&tv.lib_search.get());
@@ -539,7 +541,7 @@ pub fn LibraryGrid() -> impl IntoView {
             .enumerate()
             .map(|(i, item)| {
                 let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
-                tile(item, focus.key(r, c), move || focus.is(r, c))
+                tile(item, focus.key(r, c), move || focus.is(r, c), move || focus.set(r, c))
             })
             .collect_view()
             .into_any()
@@ -675,7 +677,7 @@ pub fn Discover() -> impl IntoView {
             }),
         }
     };
-    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::Y, tr!("Buscar"))]);
+    tv.hints.set(vec![(Btn::A, tr!("Abrir")), (Btn::X, tr!("Opções")), (Btn::Y, tr!("Buscar"))]);
     tv.handle_page(move |btn| match btn {
         Btn::Up | Btn::Down | Btn::Left | Btn::Right => {
             if focus.step(btn, &rows()) {
@@ -719,7 +721,7 @@ pub fn Discover() -> impl IntoView {
                 .enumerate()
                 .map(|(i, e)| {
                     let (r, c) = (i / COLUMNS + 1, i % COLUMNS);
-                    tile(Item::Entry(e), focus.key(r, c), move || focus.is(r, c))
+                    tile(Item::Entry(e), focus.key(r, c), move || focus.is(r, c), move || focus.set(r, c))
                 })
                 .collect_view()
         })
@@ -808,6 +810,7 @@ pub fn Downloads() -> impl IntoView {
                             Some(InstallStep::Unpacking) => tr!("Preparando arquivos").to_string(),
                             Some(InstallStep::Paused { done, total }) => tr!("Pausado · {} de {}", format::megabytes(done), format::megabytes(total)),
                             Some(InstallStep::Failed { message }) => tr!("Falhou · {}", message),
+                            Some(InstallStep::Queued) => tr!("Na fila").to_string(),
                             _ => tr!("Começando").to_string(),
                         }
                     } else {
@@ -875,7 +878,8 @@ pub fn Settings() -> impl IntoView {
                     sounds.set(on);
                 }
                 2 if btn == Btn::A => library.go(crate::Route::Home),
-                3 if btn == Btn::A => api::window_action("close"),
+                // Asked first, as from Home (a download may be running).
+                3 if btn == Btn::A => tv.sheet.set(Some(super::Sheet::Leave)),
                 _ => {}
             }
             true
@@ -890,7 +894,7 @@ pub fn Settings() -> impl IntoView {
             </div>
         }
     };
-    let on_off = |s: RwSignal<bool>| -> Box<dyn Fn() -> String + Send + Sync> { Box::new(move || if s.get() { "◀ Ligado ▶".into() } else { "◀ Desligado ▶".into() }) };
+    let on_off = |s: RwSignal<bool>| -> Box<dyn Fn() -> String + Send + Sync> { Box::new(move || if s.get() { tr!("◀ Ligado ▶").into() } else { tr!("◀ Desligado ▶").into() }) };
     view! {
         <div class="tv-page">
             <h1 class="tv-title">{tr!("Configurações")}</h1>

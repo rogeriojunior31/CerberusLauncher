@@ -181,6 +181,9 @@ pub struct GameAction {
 /// How the game's setup step is going: 0 to 1 when it says, and its line.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrepareProgress {
+    /// A copy the player can stop (Cancelar).
+    #[serde(default)]
+    pub cancellable: bool,
     pub game_id: String,
     pub fraction: Option<f32>,
     pub text: String,
@@ -331,6 +334,9 @@ pub enum NextStep {
     /// The recomp needs the player's copy of the game. `found` is one the ROM
     /// folders have, used with one click; otherwise the player picks a file.
     ChooseCopy { found: Option<String> },
+    /// The copy is fine, but something else the game asks for is still missing
+    /// (a second disc, a key): `label` names it, as the developer does.
+    ChooseInput { label: String },
     /// The program to open is gone (moved, deleted, or an installer put it
     /// somewhere unknown); the player points at it.
     Locate { reason: String },
@@ -370,6 +376,10 @@ pub struct Backup {
     /// Made to go to the cloud folder and not there yet.
     #[serde(default)]
     pub waiting: bool,
+    /// The file is there but can't be read (cut short, damaged): listed so the
+    /// player sees it, never offered to restore.
+    #[serde(default)]
+    pub damaged: bool,
 }
 
 /// One step the launcher took for a game (a session, a backup, an install), kept
@@ -854,6 +864,10 @@ pub struct AchievementsHub {
 pub struct GameAchievements {
     pub game: AchievementGame,
     pub achievements: Vec<Achievement>,
+    /// A classic's game found by its title, not by the file's hash: probably
+    /// it, maybe another version (the emulator only grants it if it's the same).
+    #[serde(default)]
+    pub by_title: bool,
 }
 
 /// A picture taken of a game (F12 while it runs).
@@ -1179,6 +1193,8 @@ pub struct InstallProgress {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InstallStep {
+    /// Waiting its turn: one download runs at a time.
+    Queued,
     Downloading { done: u64, total: u64 },
     /// Stopped by the player with its bytes kept; installing again carries on.
     Paused { done: u64, total: u64 },
@@ -1201,11 +1217,16 @@ pub struct InGame {
     pub corner: String,
     /// Cerberus minimizes itself while a game runs and comes back when it closes.
     pub minimize: bool,
+    /// The controller's shortcuts (View+Menu, View+RB), apart from the keyboard's.
+    pub pad: bool,
+    /// Holding View alone opens the menu too. Off at first: many games hold
+    /// Select for their map or scoreboard.
+    pub hold_view: bool,
 }
 
 impl Default for InGame {
     fn default() -> Self {
-        Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false }
+        Self { menu: true, screenshots: true, unlock_notice: true, corner: "br".into(), minimize: false, pad: true, hold_view: false }
     }
 }
 

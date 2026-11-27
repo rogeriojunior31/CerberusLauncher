@@ -88,7 +88,7 @@ pub fn is_paused(library: Library, id: &str) -> bool {
 pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
     let library = expect_context::<Library>();
     // Only a download stops cleanly; unpacking is quick and half-unpacked files help no one.
-    let cancellable = matches!(step, InstallStep::Downloading { .. } | InstallStep::Paused { .. });
+    let cancellable = matches!(step, InstallStep::Downloading { .. } | InstallStep::Paused { .. } | InstallStep::Queued);
     let paused = matches!(step, InstallStep::Paused { .. });
     // Pausing before the first byte would keep nothing worth carrying on from.
     let pausable = matches!(step, InstallStep::Downloading { done, .. } if done > 0);
@@ -104,6 +104,7 @@ pub fn progress_view(step: InstallStep, recomp_id: String) -> impl IntoView {
             (tr!("Pausado em {}% · {} de {}", percent, megabytes(done), megabytes(total)), Some(percent))
         }
         InstallStep::Paused { done, .. } => (tr!("Pausado · {}", megabytes(done)), None),
+        InstallStep::Queued => (tr!("Na fila: começa quando o download de agora terminar").into(), None),
         InstallStep::Unpacking => (tr!("Preparando arquivos…").into(), None),
         InstallStep::Finished => (tr!("Concluído").into(), Some(100)),
         InstallStep::Failed { message } => (tr!("Falha na instalação · {}", cerberus_shared::i18n::translate(&message)), Some(0)),

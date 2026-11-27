@@ -223,6 +223,8 @@ fn clock() -> String {
 #[component]
 pub fn TvMode() -> impl IntoView {
     let library = expect_context::<Library>();
+    // The classics' play times, fresh once on entering (not on every section that passes by).
+    library.roms.refetch();
     let tv = Tv {
         view: RwSignal::new(View::Tab(Tab::Home)),
         stack: RwSignal::new(Vec::new()),
@@ -244,7 +246,9 @@ pub fn TvMode() -> impl IntoView {
     // On the monitor the player picked, then full screen; leaving before that is done stays windowed.
     let here = StoredValue::new(true);
     leptos::task::spawn_local(async move {
-        let _ = api::to_chosen_monitor().await;
+        if let Ok(Some(note)) = api::to_chosen_monitor().await {
+            library.toast(note);
+        }
         if here.try_get_value().unwrap_or(false) {
             api::window_toggle("setFullscreen", true);
         }
@@ -252,6 +256,10 @@ pub fn TvMode() -> impl IntoView {
     on_cleanup(move || {
         here.try_set_value(false);
         api::window_toggle("setFullscreen", false);
+        // Back to the monitor (and place) it was on before Big Picture.
+        leptos::task::spawn_local(async move {
+            let _ = api::back_from_tv().await;
+        });
     });
 
     let leave = move || library.go(Route::Home);
@@ -259,6 +267,7 @@ pub fn TvMode() -> impl IntoView {
         let typing = tv.sheet.get_untracked() == Some(Sheet::Keyboard);
         // Letters are buttons, except on the search keyboard.
         let btn = match btn {
+            Btn::Type(' ') if !typing => Btn::A,
             Btn::Type(c) if !typing => match c.to_ascii_lowercase() {
                 'q' => Btn::Lb,
                 'e' => Btn::Rb,
@@ -286,9 +295,11 @@ pub fn TvMode() -> impl IntoView {
         }
         match btn {
             Btn::Lb | Btn::Rb => {
+                // On a game's page, from the section it was opened from (Discover → game → RB is Achievements).
+                let tab_index = |t: Tab| TABS.iter().position(|(x, _, _)| *x == t).unwrap_or(0);
                 let current = match tv.view.get_untracked() {
-                    View::Tab(t) => TABS.iter().position(|(x, _, _)| *x == t).unwrap_or(0),
-                    View::Game(_) | View::Achievements(..) => 0,
+                    View::Tab(t) => tab_index(t),
+                    View::Game(_) | View::Achievements(..) => tv.stack.with_untracked(|s| s.iter().find_map(|v| if let View::Tab(t) = v { Some(tab_index(*t)) } else { None })).unwrap_or(0),
                 };
                 let next = if btn == Btn::Rb { (current + 1) % TABS.len() } else { (current + TABS.len() - 1) % TABS.len() };
                 tv.tab(TABS[next].0);
@@ -373,8 +384,14 @@ pub fn TvMode() -> impl IntoView {
         let sections = (tv.sheet.get().is_none() && matches!(tv.view.get(), View::Tab(_))).then(|| {
             view! { <span class="tv-hint">{glyph(Btn::Lb, kind)}<i>"+"</i>{glyph(Btn::Rb, kind)}<b>{tr!("Seções")}</b></span> }
         });
+        // On a section, what B does: back to Home, or (from Home) the leave question.
+        let back = (tv.sheet.get().is_none() && !list.iter().any(|(b, _)| *b == Btn::B)).then(|| match tv.view.get() {
+            View::Tab(Tab::Home) => Some(tr!("Sair")),
+            View::Tab(_) => Some(tr!("Início")),
+            _ => None,
+        }).flatten().map(|label| view! { <span class="tv-hint">{glyph(Btn::B, kind)}<b>{label}</b></span> });
         let items = list.into_iter().map(|(btn, label)| view! { <span class="tv-hint">{glyph(btn, kind)}<b>{label}</b></span> }).collect_view();
-        view! { {items}{sections} }
+        view! { {items}{back}{sections} }
     };
 
     let sheet = move || tv.sheet.get().map(|s| view! { <sheets::SheetView sheet=s /> });

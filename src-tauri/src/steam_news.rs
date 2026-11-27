@@ -95,7 +95,7 @@ async fn fetch(http: &reqwest::Client, data_dir: &Path, app: u32, name: &str) ->
     let items = parse(app, name, &v);
     let path = file(data_dir, app);
     let _ = fs::create_dir_all(path.parent().unwrap_or(data_dir));
-    let _ = fs::write(&path, serde_json::to_string(&items).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&path, serde_json::to_string(&items).unwrap_or_default().as_bytes());
     Some(items)
 }
 

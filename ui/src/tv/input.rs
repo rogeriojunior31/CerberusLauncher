@@ -115,15 +115,51 @@ struct PadState {
     stick_seen_resting: bool,
 }
 
-/// One snapshot of the first connected controller: face and shoulder buttons
-/// (A, B, X, Y, LB, RB), Menu, the direction held, and its kind.
-fn read_pad() -> Option<([bool; 8], bool, Option<Btn>, (f64, f64), PadKind)> {
+type Snapshot = ([bool; 8], bool, Option<Btn>, (f64, f64), PadKind);
+
+thread_local! {
+    /// The controller used last (its index): a virtual one sitting idle in the
+    /// first slot (Steam Input, DS4Windows) doesn't block the real one.
+    static ACTIVE: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether a snapshot has anything pressed or the stick pushed.
+fn in_use(s: &Snapshot) -> bool {
+    s.0.iter().any(|b| *b) || s.1 || s.2.is_some() || s.3.0.abs() >= STICK_ON || s.3.1.abs() >= STICK_ON
+}
+
+/// The controller to read: one in use now (the one used last if it still is),
+/// else the one used last while connected, else the first connected.
+fn choose(active: Option<u32>, pads: &[(u32, bool)]) -> Option<u32> {
+    let busy: Vec<u32> = pads.iter().filter(|(_, b)| *b).map(|(i, _)| *i).collect();
+    if let Some(a) = active.filter(|a| busy.contains(a)) {
+        return Some(a);
+    }
+    busy.first().copied().or_else(|| active.filter(|a| pads.iter().any(|(i, _)| i == a))).or_else(|| pads.first().map(|(i, _)| *i))
+}
+
+/// One snapshot of the controller in use: face and shoulder buttons
+/// (A, B, X, Y, LB, RB, LT, RT), Menu, the direction held, and its kind.
+fn read_pad() -> Option<Snapshot> {
     let pads = web_sys::window()?.navigator().get_gamepads().ok()?;
-    for pad in pads.iter() {
+    let mut all: Vec<(u32, Snapshot)> = Vec::new();
+    for (index, pad) in pads.iter().enumerate() {
         let Ok(pad) = pad.dyn_into::<web_sys::Gamepad>() else { continue };
         if !pad.connected() {
             continue;
         }
+        if let Some(s) = snapshot(&pad) {
+            all.push((index as u32, s));
+        }
+    }
+    let flags: Vec<(u32, bool)> = all.iter().map(|(i, s)| (*i, in_use(s))).collect();
+    let picked = choose(ACTIVE.with(std::cell::Cell::get), &flags)?;
+    ACTIVE.with(|a| a.set(Some(picked)));
+    all.into_iter().find(|(i, _)| *i == picked).map(|(_, s)| s)
+}
+
+fn snapshot(pad: &web_sys::Gamepad) -> Option<Snapshot> {
+    {
         let kind = kind_of(&pad.id());
         let buttons = pad.buttons();
         let down = |i: u32| buttons.get(i).dyn_into::<web_sys::GamepadButton>().is_ok_and(|b| b.pressed());
@@ -143,9 +179,81 @@ fn read_pad() -> Option<([bool; 8], bool, Option<Btn>, (f64, f64), PadKind)> {
         };
         let axes = pad.axes();
         let stick = (axes.get(0).as_f64().unwrap_or(0.0), axes.get(1).as_f64().unwrap_or(0.0));
-        return Some((face, down(9), dpad, stick, kind));
+        Some((face, down(9), dpad, stick, kind))
     }
-    None
+}
+
+impl PadState {
+    /// One look at the controller (`face`, Menu, d-pad, stick) at time `t` (ms):
+    /// the presses it makes. Pure, so it can be tested without a controller.
+    fn advance(&mut self, face: [bool; 8], menu: bool, dpad: Option<Btn>, stick: (f64, f64), t: f64) -> Vec<Btn> {
+        let mut fire = Vec::new();
+        if !self.primed {
+            self.primed = true;
+            self.pressed = face;
+            self.menu_blocked = menu;
+            self.menu_since = None;
+            self.stick_seen_resting = false;
+        }
+        if self.menu_blocked && !menu {
+            self.menu_blocked = false;
+        }
+        const FACE: [Btn; 8] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb, Btn::Lt, Btn::Rt];
+        for (i, btn) in FACE.iter().enumerate() {
+            if face[i] && !self.pressed[i] {
+                fire.push(*btn);
+            }
+        }
+        self.pressed = face;
+
+        // Menu: a tap opens Settings, a long hold leaves.
+        match (menu && !self.menu_blocked, self.menu_since) {
+            (true, None) => {
+                self.menu_since = Some(t);
+                self.menu_fired = false;
+            }
+            (true, Some(since)) if !self.menu_fired && t - since >= MENU_HOLD => {
+                self.menu_fired = true;
+                fire.push(Btn::MenuHold);
+            }
+            (false, Some(_)) => {
+                if !self.menu_fired {
+                    fire.push(Btn::Menu);
+                }
+                self.menu_since = None;
+            }
+            _ => {}
+        }
+
+        // The stick counts only after it has been seen at rest.
+        let (sx, sy) = stick;
+        if sx.abs() < STICK_REST && sy.abs() < STICK_REST {
+            self.stick_seen_resting = true;
+        }
+        let from_stick = if !self.stick_seen_resting {
+            None
+        } else if sx.abs() > sy.abs() && sx.abs() > STICK_ON {
+            Some(if sx < 0.0 { Btn::Left } else { Btn::Right })
+        } else if sy.abs() > STICK_ON {
+            Some(if sy < 0.0 { Btn::Up } else { Btn::Down })
+        } else {
+            None
+        };
+        let dir = dpad.or(from_stick);
+        match dir {
+            Some(d) if self.dir != Some(d) => {
+                fire.push(d);
+                self.next_repeat = t + REPEAT_FIRST;
+            }
+            Some(d) if t >= self.next_repeat => {
+                fire.push(d);
+                self.next_repeat = t + REPEAT_NEXT;
+            }
+            _ => {}
+        }
+        self.dir = dir;
+        fire
+    }
 }
 
 fn now() -> f64 {
@@ -171,73 +279,7 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
                 pad_kind.set(kind);
             }
             let t = now();
-            let mut fire = Vec::new();
-            state.update_value(|s| {
-                if !s.primed {
-                    s.primed = true;
-                    s.pressed = face;
-                    s.menu_blocked = menu;
-                    s.menu_since = None;
-                    s.stick_seen_resting = false;
-                }
-                if s.menu_blocked && !menu {
-                    s.menu_blocked = false;
-                }
-                const FACE: [Btn; 8] = [Btn::A, Btn::B, Btn::X, Btn::Y, Btn::Lb, Btn::Rb, Btn::Lt, Btn::Rt];
-                for (i, btn) in FACE.iter().enumerate() {
-                    if face[i] && !s.pressed[i] {
-                        fire.push(*btn);
-                    }
-                }
-                s.pressed = face;
-
-                // Menu: a tap opens Settings, a long hold leaves.
-                match (menu && !s.menu_blocked, s.menu_since) {
-                    (true, None) => {
-                        s.menu_since = Some(t);
-                        s.menu_fired = false;
-                    }
-                    (true, Some(since)) if !s.menu_fired && t - since >= MENU_HOLD => {
-                        s.menu_fired = true;
-                        fire.push(Btn::MenuHold);
-                    }
-                    (false, Some(_)) => {
-                        if !s.menu_fired {
-                            fire.push(Btn::Menu);
-                        }
-                        s.menu_since = None;
-                    }
-                    _ => {}
-                }
-
-                // The stick counts only after it has been seen at rest.
-                let (sx, sy) = stick;
-                if sx.abs() < STICK_REST && sy.abs() < STICK_REST {
-                    s.stick_seen_resting = true;
-                }
-                let from_stick = if !s.stick_seen_resting {
-                    None
-                } else if sx.abs() > sy.abs() && sx.abs() > STICK_ON {
-                    Some(if sx < 0.0 { Btn::Left } else { Btn::Right })
-                } else if sy.abs() > STICK_ON {
-                    Some(if sy < 0.0 { Btn::Up } else { Btn::Down })
-                } else {
-                    None
-                };
-                let dir = dpad.or(from_stick);
-                match dir {
-                    Some(d) if s.dir != Some(d) => {
-                        fire.push(d);
-                        s.next_repeat = t + REPEAT_FIRST;
-                    }
-                    Some(d) if t >= s.next_repeat => {
-                        fire.push(d);
-                        s.next_repeat = t + REPEAT_NEXT;
-                    }
-                    _ => {}
-                }
-                s.dir = dir;
-            });
+            let fire = state.try_update_value(|s| s.advance(face, menu, dpad, stick, t)).unwrap_or_default();
             for btn in fire {
                 on_pad(btn);
             }
@@ -252,7 +294,9 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             "ArrowDown" => Btn::Down,
             "ArrowLeft" => Btn::Left,
             "ArrowRight" => Btn::Right,
-            "Enter" | " " => Btn::A,
+            "Enter" => Btn::A,
+            // Space types a space on the search keyboard; elsewhere it is A.
+            " " => Btn::Type(' '),
             "Escape" => Btn::B,
             "Backspace" => Btn::Erase,
             // Q/E and X/Y arrive as letters: the TV screen reads them as LB/RB and X/Y
@@ -267,7 +311,8 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
             "F11" => Btn::MenuHold,
             k if k.chars().count() == 1 => {
                 let c = k.chars().next().unwrap_or(' ');
-                if c.is_ascii_alphanumeric() { Btn::Type(c) } else { return }
+                // Letters with accents and the keyboard's symbols type too ("Pokémon", "Zelda: ...").
+                if c.is_alphanumeric() || "-:'&.!".contains(c) { Btn::Type(c) } else { return }
             }
             _ => return,
         };
@@ -291,6 +336,61 @@ pub fn listen(on: impl Fn(Btn) + Clone + 'static, pad_kind: RwSignal<PadKind>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NONE: [bool; 8] = [false; 8];
+    const A: [bool; 8] = [true, false, false, false, false, false, false, false];
+
+    #[test]
+    fn a_held_direction_repeats_after_400_then_every_120_ms() {
+        let mut s = PadState::default();
+        assert!(s.advance(NONE, false, None, (0.0, 0.0), 0.0).is_empty());
+        assert_eq!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 10.0), [Btn::Down]);
+        assert!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 300.0).is_empty(), "not yet");
+        assert_eq!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 410.0), [Btn::Down]);
+        assert!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 500.0).is_empty());
+        assert_eq!(s.advance(NONE, false, Some(Btn::Down), (0.0, 0.0), 530.0), [Btn::Down]);
+    }
+
+    #[test]
+    fn buttons_and_the_stick_held_when_reading_starts_dont_count() {
+        let mut s = PadState::default();
+        // A held from before, and a stick drifting at 0.7 that was never seen at rest.
+        assert!(s.advance(A, false, None, (0.7, 0.0), 0.0).is_empty());
+        assert!(s.advance(A, false, None, (0.7, 0.0), 40.0).is_empty());
+        assert!(s.advance(NONE, false, None, (0.7, 0.0), 80.0).is_empty(), "released: nothing either");
+        assert_eq!(s.advance(A, false, None, (0.7, 0.0), 120.0), [Btn::A], "a new press counts");
+        assert!(s.advance(NONE, false, None, (0.1, 0.0), 160.0).is_empty(), "the stick at rest");
+        assert_eq!(s.advance(NONE, false, None, (0.9, 0.0), 200.0), [Btn::Right]);
+    }
+
+    #[test]
+    fn menu_tapped_opens_settings_held_leaves_and_one_held_at_start_waits() {
+        let mut s = PadState::default();
+        s.advance(NONE, false, None, (0.0, 0.0), 0.0);
+        assert!(s.advance(NONE, true, None, (0.0, 0.0), 10.0).is_empty());
+        assert_eq!(s.advance(NONE, false, None, (0.0, 0.0), 200.0), [Btn::Menu], "a tap");
+        s.advance(NONE, true, None, (0.0, 0.0), 300.0);
+        assert_eq!(s.advance(NONE, true, None, (0.0, 0.0), 1250.0), [Btn::MenuHold], "held 900 ms");
+        assert!(s.advance(NONE, false, None, (0.0, 0.0), 1300.0).is_empty(), "no tap after the hold");
+        // The hold that opened the TV is still down when reading begins.
+        let mut s = PadState::default();
+        assert!(s.advance(NONE, true, None, (0.0, 0.0), 0.0).is_empty());
+        assert!(s.advance(NONE, true, None, (0.0, 0.0), 2000.0).is_empty(), "not a hold to leave");
+        assert!(s.advance(NONE, false, None, (0.0, 0.0), 2100.0).is_empty(), "nor a tap when let go");
+    }
+
+    #[test]
+    fn the_controller_in_use_is_read_not_an_idle_one_first() {
+        // A virtual pad idle in slot 0, the real one in 1 pressing a button.
+        assert_eq!(choose(None, &[(0, false), (1, true)]), Some(1));
+        // The real one stays chosen while idle; the idle virtual one doesn't take over.
+        assert_eq!(choose(Some(1), &[(0, false), (1, false)]), Some(1));
+        // Unplugged: back to what's there.
+        assert_eq!(choose(Some(1), &[(0, false)]), Some(0));
+        // Two in use: the one used last keeps it.
+        assert_eq!(choose(Some(1), &[(0, true), (1, true)]), Some(1));
+        assert_eq!(choose(None, &[]), None);
+    }
 
     #[test]
     fn pad_names_drop_the_driver_details() {

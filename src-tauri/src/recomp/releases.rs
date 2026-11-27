@@ -77,7 +77,7 @@ pub async fn latest(client: &Client, cache_dir: &Path, forge: &Forge<'_>, fresh:
         cached => match fetch(client, forge).await {
             Ok(text) => {
                 let _ = fs::create_dir_all(cache_dir);
-                let _ = fs::write(&file, &text);
+                let _ = crate::state_file::write_bytes(&file, &text.as_bytes());
                 text
             }
             // Old info beats none: its files are usually still there to download.

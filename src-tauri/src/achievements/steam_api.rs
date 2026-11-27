@@ -206,7 +206,7 @@ pub async fn owned(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: 
         .await?
         .ok_or_else(|| cerberus_shared::i18n::t(NOT_PUBLIC).to_string())?;
     let _ = fs::create_dir_all(cache_dir(data_dir));
-    let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&list).unwrap_or_default().as_bytes());
     Ok(list)
 }
 
@@ -254,7 +254,7 @@ pub async fn tops(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
         tokio::time::sleep(Duration::from_millis(350)).await;
     }
     let _ = fs::create_dir_all(cache_dir(data_dir));
-    let _ = fs::write(&file, serde_json::to_string(&known).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
     Ok(known)
 }
 
@@ -300,7 +300,7 @@ pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
     if matches!(&v, Err(e) if *e == cerberus_shared::i18n::t(NOT_PUBLIC)) {
         let _ = fs::create_dir_all(cache_dir(data_dir));
         let kept = MineFile { last_played, lang: lang_now.into(), list: Vec::new() };
-        let _ = fs::write(&file, serde_json::to_string(&kept).unwrap_or_default());
+        let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&kept).unwrap_or_default().as_bytes());
     }
     let v = v?;
     // A game without stats answers success false ("Requested app has no stats"):
@@ -323,7 +323,7 @@ pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
         .unwrap_or_default();
     let _ = fs::create_dir_all(cache_dir(data_dir));
     let kept = MineFile { last_played, lang: lang_now.into(), list: list.clone() };
-    let _ = fs::write(&file, serde_json::to_string(&kept).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&kept).unwrap_or_default().as_bytes());
     Ok(list)
 }
 
@@ -367,7 +367,7 @@ pub async fn schema(http: &reqwest::Client, data_dir: &Path, key: &str, app: u32
         })
         .unwrap_or_default();
     let _ = fs::create_dir_all(cache_dir(data_dir));
-    let _ = fs::write(&file, serde_json::to_string(&list).unwrap_or_default());
+    let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&list).unwrap_or_default().as_bytes());
     Ok(list)
 }
 

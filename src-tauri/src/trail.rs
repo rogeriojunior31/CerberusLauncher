@@ -2,8 +2,8 @@
 //! backups, cloud syncs, installs. Notices disappear; this stays, so the last
 //! failure (and its cause) can be read after a restart.
 //!
-//! One JSON object per line in `trail.jsonl`. The file is cut back to the newest
-//! `KEEP` lines once it passes `KEEP + SLACK`, so it never grows without limit.
+//! One JSON object per line in `trail.jsonl`. The file is cut back to each
+//! game's newest `PER_GAME` lines once it passes `KEEP + SLACK`, so it never grows without limit.
 
 #[cfg(test)]
 use std::fs::{self, OpenOptions};
@@ -15,7 +15,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cerberus_shared::TrailEntry;
 
-const KEEP: usize = 500;
+/// Lines kept per game: a night of RetroAchievements unlocks in one game
+/// never pushes out another game's history (its last backup error, say).
+const PER_GAME: usize = 100;
+/// The file is trimmed once it passes this many lines.
+const KEEP: usize = 2000;
 const SLACK: usize = 100;
 
 pub struct Trail {
@@ -31,6 +35,22 @@ fn now() -> u64 {
 fn read_all(path: &Path) -> Vec<TrailEntry> {
     // A line cut short by a crash is skipped, not a reason to lose the rest.
     crate::state_file::json_lines(path)
+}
+
+/// Each game's newest `PER_GAME` lines, in the order they were written.
+fn trim(all: Vec<TrailEntry>) -> Vec<TrailEntry> {
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut kept: Vec<TrailEntry> = all
+        .into_iter()
+        .rev()
+        .filter(|e| {
+            let n = seen.entry(e.game_id.clone()).or_default();
+            *n += 1;
+            *n <= PER_GAME
+        })
+        .collect();
+    kept.reverse();
+    kept
 }
 
 impl Trail {
@@ -57,10 +77,9 @@ impl Trail {
         crate::state_file::append_line(&self.path, &serde_json::to_string(entry)?)?;
         *count += 1;
         if *count > KEEP + SLACK {
-            let all = read_all(&self.path);
-            let newest = &all[all.len().saturating_sub(KEEP)..];
+            let newest = trim(read_all(&self.path));
             let mut text = String::new();
-            for e in newest {
+            for e in &newest {
                 text.push_str(&serde_json::to_string(e)?);
                 text.push('\n');
             }
@@ -92,6 +111,17 @@ impl Trail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_busy_game_never_pushes_out_another_games_history() {
+        let line = |game: &str, n: usize| TrailEntry { at: n as u64, game_id: game.into(), step: "Conquista".into(), ok: true, message: n.to_string() };
+        let mut all: Vec<TrailEntry> = (0..5).map(|n| line("b", n)).collect();
+        all.extend((0..600).map(|n| line("a", n)));
+        let kept = trim(all);
+        assert_eq!(kept.iter().filter(|e| e.game_id == "b").count(), 5);
+        assert_eq!(kept.iter().filter(|e| e.game_id == "a").count(), PER_GAME);
+        assert_eq!(kept.last().unwrap().message, "599", "the newest stay, in order");
+    }
 
     #[test]
     fn keeps_failures_per_game_across_a_restart() {
