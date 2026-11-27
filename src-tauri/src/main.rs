@@ -1385,6 +1385,24 @@ fn set_monitor(app: AppHandle, name: Option<String>) -> Result<SettingsView, Str
     Ok(settings_view(&app))
 }
 
+/// The program's own icon as the window's big one (the one the taskbar and
+/// Alt+Tab show).
+#[cfg(windows)]
+fn taskbar_icon(hwnd: isize) {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ExtractIconExW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{ICON_BIG, SendMessageW, WM_SETICON};
+    let Ok(exe) = std::env::current_exe() else { return };
+    let path: Vec<u16> = exe.as_os_str().encode_wide().chain([0]).collect();
+    let mut large = std::ptr::null_mut();
+    // SAFETY: a nul-terminated path, and room for the one large icon asked for.
+    let found = unsafe { ExtractIconExW(path.as_ptr(), 0, &mut large, std::ptr::null_mut(), 1) };
+    if found > 0 && !large.is_null() {
+        // SAFETY: a window of this process; the icon stays alive with the app.
+        unsafe { SendMessageW(hwnd as _, WM_SETICON, ICON_BIG as usize, large as isize) };
+    }
+}
+
 /// Where the window was before Big Picture moved it to the chosen monitor.
 static BEFORE_TV: std::sync::Mutex<Option<monitors::Placed>> = std::sync::Mutex::new(None);
 
@@ -1738,7 +1756,8 @@ async fn list_games(
         };
         game.next_step = recomp::next_step(game, found);
     }
-    let stores = store_games(&app, &http).await;
+    let mut stores = store_games(&app, &http).await;
+    steam_dlc_names(&app, &http, &mut stores);
     // Steam counts its games' time on every PC; that beats what Cerberus saw here.
     let steam_id = settings::load(&app.state::<DataDir>().0).steam_id;
     let data_dir = app.state::<DataDir>().0.clone();
@@ -1812,6 +1831,64 @@ fn assemble(data: &Path, mut games: Vec<Game>, stores: Vec<Game>, steam_time: &s
     let paused = settings::load(data).paused_updates;
     games.iter_mut().for_each(|g| g.updates_paused = paused.contains(&g.id));
     games
+}
+
+/// Steam DLCs by name: the names kept on disk replace the app ids, and the
+/// ones not known yet are asked of the store in the background (a few at a
+/// time, once each), the library listed again when they come.
+fn steam_dlc_names(app: &AppHandle, http: &reqwest::Client, games: &mut [Game]) {
+    let file = app.state::<DataDir>().cache().join("steam-dlc-names.json");
+    let known: std::collections::HashMap<u32, String> = crate::state_file::load_or_default(&file);
+    let mut missing = Vec::new();
+    for game in games.iter_mut() {
+        if !game.dlcs.iter().any(|d| d.starts_with(steam::DLC_ID)) {
+            continue;
+        }
+        let mut names = Vec::new();
+        for dlc in std::mem::take(&mut game.dlcs) {
+            match dlc.strip_prefix(steam::DLC_ID).and_then(|id| id.parse::<u32>().ok()) {
+                Some(id) => match known.get(&id) {
+                    Some(name) if !name.is_empty() => names.push(name.clone()),
+                    Some(_) => {}
+                    None => missing.push(id),
+                },
+                None => names.push(dlc),
+            }
+        }
+        names.sort();
+        game.dlcs = names;
+    }
+    if missing.is_empty() {
+        return;
+    }
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (app, http) = (app.clone(), http.clone());
+    tauri::async_runtime::spawn(async move {
+        let mut known: std::collections::HashMap<u32, String> = crate::state_file::load_or_default(&file);
+        for id in missing.into_iter().take(30) {
+            let url = format!("https://store.steampowered.com/api/appdetails?appids={id}&filters=basic");
+            let name = match net::send(http.get(&url)).await {
+                Ok(reply) if reply.status().is_success() => reply
+                    .json::<serde_json::Value>()
+                    .await
+                    .ok()
+                    .and_then(|v| v[id.to_string()]["data"]["name"].as_str().map(str::to_string))
+                    .unwrap_or_default(),
+                // Not answered now: asked again another time.
+                _ => continue,
+            };
+            // Empty: the store doesn't know it (kept, so it isn't asked again).
+            known.insert(id, name);
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        }
+        let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
+        ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        stores_changed();
+        let _ = app.emit("catalog-changed", ());
+    });
 }
 
 /// The stores' games, as last listed: a heart or a page change doesn't read
@@ -3796,8 +3873,14 @@ fn main() {
             }
             // Made hidden (tauri.conf.json): shown only now, on its monitor, and not
             // at all when it starts hidden with Windows (no flash of it first).
-            if !(chosen.start_hidden && std::env::args().any(|a| a == "--autostart")) {
-                if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
+                // Made hidden, the window has only its small icon: the taskbar
+                // shows the big one, set here from the program's own.
+                #[cfg(windows)]
+                if let Ok(hwnd) = window.hwnd() {
+                    taskbar_icon(hwnd.0 as isize);
+                }
+                if !(chosen.start_hidden && std::env::args().any(|a| a == "--autostart")) {
                     let _ = window.show();
                 }
             }

@@ -8,6 +8,18 @@ use cerberus_shared::{Game, Source};
 /// Steamworks Common Redistributables: installed with many games, but not playable.
 const NOT_GAMES: &[u32] = &[228980];
 
+/// Put before a DLC's app id in a game's `dlcs` until its name is known
+/// (`main.rs` swaps it for the name, from the store, kept on disk).
+pub const DLC_ID: &str = "\u{2063}steam-dlc:";
+
+/// The installed DLCs a manifest lists (`InstalledDepots` › `dlcappid`).
+pub fn dlc_ids(manifest: &str) -> Vec<u32> {
+    let mut ids: Vec<u32> = pairs(manifest).filter(|(k, _)| k == "dlcappid").filter_map(|(_, v)| v.parse().ok()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
 pub fn installed_games() -> Vec<Game> {
     let Some(root) = steam_root() else {
         return Vec::new();
@@ -119,6 +131,7 @@ pub fn not_installed(app_id: u32, name: &str, covers: Option<&Path>) -> Game {
         collections: Vec::new(),
         status: None,
         rating: 0,
+        dlcs: Vec::new(),
         notes: String::new(),
         updates_paused: false,
         part_of: None,
@@ -173,6 +186,7 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         collections: Vec::new(),
         status: None,
         rating: 0,
+        dlcs: dlc_ids(&text).into_iter().map(|id| format!("{DLC_ID}{id}")).collect(),
         notes: String::new(),
         updates_paused: false,
         part_of: None,
@@ -268,6 +282,27 @@ fn steam_root() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_manifest_lists_its_installed_dlcs() {
+        let acf = r#""AppState"
+{
+	"appid"		"236430"
+	"InstalledDepots"
+	{
+		"236432" { "manifest" "1" "size" "2" }
+		"271942" { "manifest" "3" "size" "30" "dlcappid" "271942" }
+		"271943"
+		{
+			"manifest"		"4"
+			"dlcappid"		"271943"
+		}
+	}
+}"#;
+        assert_eq!(super::dlc_ids(acf), vec![271943], "one key and value per line, as Steam writes them");
+        let one_per_line = "\"dlcappid\"\t\t\"271942\"\n\"dlcappid\"\t\t\"271943\"\n\"dlcappid\"\t\t\"271942\"";
+        assert_eq!(super::dlc_ids(one_per_line), vec![271942, 271943]);
+    }
     #[test]
     fn an_owned_game_not_on_this_pc_installs_through_steam() {
         let dir = tempfile::tempdir().unwrap();

@@ -583,7 +583,19 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
     });
     let play_title = if merged { tr!("Sua jogatina nativa") } else { tr!("Sua jogatina") };
     let play_card = game.clone().map(|g| view! { <crate::game_overview::PlayCard id=g.id.clone() total=g.playtime_secs last=g.last_played title=play_title /> }.into_any());
-    let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g /> }.into_any());
+    // The add-ons the player has for it (installed ones the store's files list), under the note.
+    let dlcs = game.as_ref().map(|g| g.dlcs.clone()).unwrap_or_default();
+    let dlc_card = (!dlcs.is_empty()).then(|| {
+        let count = dlcs.len();
+        let items = dlcs.into_iter().map(|name| view! { <li>{name}</li> }).collect_view();
+        view! {
+            <section class="card dlc-card">
+                <h3>{if count == 1 { tr!("1 DLC").to_string() } else { tr!("{} DLCs", count) }}</h3>
+                <ul class="dlc-list">{items}</ul>
+            </section>
+        }
+    });
+    let note_card = game.clone().map(|g| view! { <crate::game_notes::NoteCard game=g />{dlc_card} }.into_any());
     let steam_app = game.as_ref().and_then(|g| match &g.source {
         Source::Steam { app_id } => Some(*app_id),
         _ => None,

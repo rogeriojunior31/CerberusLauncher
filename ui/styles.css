@@ -2270,3 +2270,7 @@ button.emu-chip:hover { color: var(--ink); border-color: var(--line2); }
 .tv-jump { position: fixed; right: calc(80 * var(--u)); bottom: calc(140 * var(--u)); font-size: calc(160 * var(--u)); font-weight: 800; line-height: 1;
   color: var(--ink); opacity: 0; transform: scale(0.9); transition: opacity 0.15s, transform 0.15s; pointer-events: none; text-shadow: 0 calc(6 * var(--u)) calc(30 * var(--u)) rgba(0, 0, 0, 0.6); }
 .tv-jump.on { opacity: 1; transform: scale(1); }
+
+.dlc-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.dlc-list li { padding: 6px 0; border-top: 1px solid var(--line); }
+.dlc-list li:first-child { border-top: 0; }

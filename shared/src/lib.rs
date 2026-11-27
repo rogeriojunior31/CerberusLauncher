@@ -82,6 +82,10 @@ pub struct Game {
     /// The player's rating, 1 to 5 stars; 0 when not rated.
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub rating: u8,
+    /// The add-ons (DLC) the player has for it, by name: installed ones the
+    /// store's files list (Steam, the Xbox app).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dlcs: Vec<String>,
     /// The player's own notes about it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,

@@ -217,6 +217,7 @@ pub fn game_from_exe(exe: &Path) -> Game {
         collections: Vec::new(),
         status: None,
         rating: 0,
+        dlcs: Vec::new(),
         notes: String::new(),
         updates_paused: false,
         part_of: None,
