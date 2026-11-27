@@ -1718,7 +1718,8 @@ async fn list_games(
     // folder moved (another PC, a backup restored) it's found by its name.
     let covers = app.state::<DataDir>().0.join("covers");
     for game in games.iter_mut() {
-        if let Some(kept) = game.cover_path.clone().filter(|p| !Path::new(p).is_file() && p.contains("covers")) {
+        // The name first: a disk check for each of ~1000 games' covers costs more than all the rest.
+        if let Some(kept) = game.cover_path.clone().filter(|p| p.contains("covers") && !Path::new(p).is_file()) {
             game.cover_path = art_custom::in_folder(&covers, &kept);
         }
     }

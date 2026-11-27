@@ -22,6 +22,8 @@ pub struct ArtCache {
     dir: PathBuf,
     /// Addresses being fetched now, so two listings don't fetch the same one twice.
     busy: Mutex<HashSet<String>>,
+    /// The folder's file names, with the folder's time when listed.
+    listed: Mutex<Option<(std::time::SystemTime, std::collections::HashSet<std::ffi::OsString>)>>,
     /// Sites whose pictures failed, already said this run (one line per site, not per picture).
     told: Mutex<HashSet<String>>,
     /// Where a failure is said (the history), set once the app is up.
@@ -48,7 +50,7 @@ fn sites_to_tell(failed: &[(String, String)], told: &mut HashSet<String>) -> Vec
 
 impl ArtCache {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, busy: Mutex::new(HashSet::new()), told: Mutex::new(HashSet::new()), on_failure: std::sync::OnceLock::new() }
+        Self { dir, busy: Mutex::new(HashSet::new()), listed: Mutex::new(None), told: Mutex::new(HashSet::new()), on_failure: std::sync::OnceLock::new() }
     }
 
     /// Says pictures that wouldn't come (`site`, how many, why), once per site.
@@ -74,10 +76,23 @@ impl ArtCache {
     /// otherwise notes the address in `missing`.
     /// The pictures on disk, listed once (a listing of a thousand games would
     /// otherwise ask the disk about each picture).
+    /// The pictures in the folder: listed again only when the folder changed
+    /// (thousands of names, asked for on every library listing).
     fn on_disk(&self) -> std::collections::HashSet<std::ffi::OsString> {
-        std::fs::read_dir(&self.dir)
+        let changed = std::fs::metadata(&self.dir).and_then(|m| m.modified()).ok();
+        let mut kept = self.listed.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, names)) = kept.as_ref() {
+            if changed.is_some() && Some(*at) == changed {
+                return names.clone();
+            }
+        }
+        let names: std::collections::HashSet<std::ffi::OsString> = std::fs::read_dir(&self.dir)
             .map(|entries| entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name()).collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if let Some(at) = changed {
+            *kept = Some((at, names.clone()));
+        }
+        names
     }
 
     fn swap(&self, value: &mut Option<String>, missing: &mut Vec<String>, here: &std::collections::HashSet<std::ffi::OsString>) {
@@ -156,7 +171,10 @@ impl ArtCache {
         let file = self.file_for(url);
         let temp = file.with_extension("part");
         fs::write(&temp, &bytes).map_err(|e| e.to_string())?;
-        fs::rename(&temp, &file).map_err(|e| e.to_string())
+        fs::rename(&temp, &file).map_err(|e| e.to_string())?;
+        // A new picture: the folder is listed again next time.
+        *self.listed.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        Ok(())
     }
 
     /// Deletes every copy; they come back as pages need them.
@@ -185,6 +203,17 @@ fn is_image(bytes: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_kept_listing_sees_a_picture_added_to_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ArtCache::new(dir.path().to_path_buf());
+        assert!(cache.on_disk().is_empty());
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(dir.path().join("a.jpg"), b"x").unwrap();
+        assert!(cache.on_disk().contains(std::ffi::OsStr::new("a.jpg")), "the folder changed: listed again");
+        assert_eq!(cache.on_disk().len(), 1);
+    }
 
     #[test]
     fn a_failing_site_is_said_once_not_per_picture() {
