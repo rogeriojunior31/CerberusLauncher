@@ -39,7 +39,8 @@ const RECENT: usize = 40;
 
 /// What Steam's files looked like when they were last read: how many, the newest change, and the play-time file's.
 type Mark = (usize, SystemTime, Option<SystemTime>);
-type SteamPart = (Vec<AchievementGame>, Vec<RecentUnlock>);
+/// The games, the unlocks, and each game's whole list as read from disk (app, key, list).
+type SteamPart = (Vec<AchievementGame>, Vec<RecentUnlock>, Vec<(u32, String, Vec<cerberus_shared::Achievement>)>);
 
 /// The last reading, reused while Steam's files stay the same.
 static LAST: Mutex<Option<(Mark, SteamPart)>> = Mutex::new(None);
@@ -72,6 +73,7 @@ fn steam_part() -> Option<SteamPart> {
     let installed: HashMap<String, String> = crate::steam::installed_games().into_iter().map(|g| (g.id, g.name)).collect();
     let mut games = Vec::new();
     let mut recent = Vec::new();
+    let mut lists = Vec::new();
     for app in steam::apps(&account) {
         let Some((mut name, list)) = steam::read_game(&account, app) else { continue };
         if list.is_empty() {
@@ -81,14 +83,54 @@ fn steam_part() -> Option<SteamPart> {
             name = installed.get(&format!("steam:{app}")).cloned().unwrap_or_default();
         }
         let entry = steam::game_entry(app, name, &list, played.get(&app));
-        for a in list.into_iter().filter(|a| a.unlocked_at.is_some_and(|t| t > 0)) {
-            recent.push(RecentUnlock { source: AchievementSource::Steam, game_key: entry.key.clone(), game_name: entry.name.clone(), achievement: a });
+        for a in list.iter().filter(|a| a.unlocked_at.is_some_and(|t| t > 0)) {
+            recent.push(RecentUnlock { source: AchievementSource::Steam, game_key: entry.key.clone(), game_name: entry.name.clone(), achievement: a.clone() });
         }
+        lists.push((app, entry.key.clone(), list));
         games.push(entry);
     }
-    let part = (games, recent);
+    let part = (games, recent, lists);
     *LAST.lock().unwrap_or_else(|p| p.into_inner()) = Some((now, part.clone()));
     Some(part)
+}
+
+/// Games in progress whose rarity is read per update (1 question each, kept 7 days).
+const STEAM_RARITY_PER_UPDATE: usize = 3;
+
+/// The whole lists read from Steam's files go in the database too (no
+/// question asked), so Next and Rarest have Steam's games: the rarity already
+/// known is kept, and a few games in progress get theirs each update.
+async fn keep_steam_lists(
+    http: &reqwest::Client,
+    data_dir: &Path,
+    db: &mut Store,
+    scope: &Scope,
+    games: &[AchievementGame],
+    lists: Vec<(u32, String, Vec<cerberus_shared::Achievement>)>,
+    online: bool,
+) {
+    let played = |key: &str| games.iter().find(|g| g.key == key).and_then(|g| g.last_played).unwrap_or(0);
+    let started = |key: &str| games.iter().any(|g| g.key == key && g.unlocked > 0 && g.unlocked < g.total);
+    let mut asked = 0;
+    for (app, key, mut list) in lists {
+        let kept = db.list(scope, &key).map(|(_, l)| l).unwrap_or_default();
+        for a in &mut list {
+            if a.rarity.is_none() {
+                a.rarity = kept.iter().find(|k| k.id == a.id).and_then(|k| k.rarity);
+            }
+        }
+        if online && asked < STEAM_RARITY_PER_UPDATE && started(&key) && list.iter().all(|a| a.rarity.is_none()) {
+            asked += 1;
+            let rarity = steam::rarity(http, &data_dir.join("cache").join("achievements"), app).await;
+            for a in &mut list {
+                a.rarity = rarity.get(&a.id).copied();
+            }
+        }
+        // Written only when something changed (unlocks or rarity), not on every open.
+        if kept != list {
+            db.keep_list(scope, &key, played(&key), &list);
+        }
+    }
 }
 
 /// Steam's own play time per game: this PC's (localconfig.vdf) and, with the
@@ -631,12 +673,12 @@ pub async fn hub(
     online: bool,
 ) -> AchievementsHub {
     let mut hub = AchievementsHub::default();
-    let (mut games, mut recent) = match tauri::async_runtime::spawn_blocking(steam_part).await {
+    let (mut games, mut recent, steam_lists) = match tauri::async_runtime::spawn_blocking(steam_part).await {
         Ok(Some(part)) => {
             hub.steam = true;
             part
         }
-        _ => (Vec::new(), Vec::new()),
+        _ => (Vec::new(), Vec::new(), Vec::new()),
     };
     if let Some((key, id)) = &steam_api_account {
         hub.steam = true;
@@ -672,6 +714,7 @@ pub async fn hub(
         for (game, list) in by_game {
             db.keep_unlocks(&scope, &game, &list);
         }
+        keep_steam_lists(http, data_dir, &mut db, &scope, &games, steam_lists, online).await;
         scopes.push(scope);
     }
     if let Some((user, key)) = retro_account {
@@ -989,7 +1032,7 @@ mod tests {
     #[ignore = "reads this PC's Steam"]
     fn real_steam_hub_reads_this_pc() {
         let start = std::time::Instant::now();
-        let (games, recent) = super::steam_part().expect("Steam with achievement data");
+        let (games, recent, _) = super::steam_part().expect("Steam with achievement data");
         let unlocked: u32 = games.iter().map(|g| g.unlocked).sum();
         let total: u32 = games.iter().map(|g| g.total).sum();
         let with_time = games.iter().filter(|g| g.playtime_secs.is_some()).count();

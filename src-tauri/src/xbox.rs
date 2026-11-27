@@ -82,6 +82,11 @@ fn gaming_root(bytes: &[u8]) -> Option<String> {
 fn read_install(game_dir: &Path) -> Option<Install> {
     let content = game_dir.join("Content");
     let config = fs::read_to_string(content.join("MicrosoftGame.config")).ok()?;
+    // A DLC (Age of Empires II's "Dawn of the Dukes") is a package of its own
+    // that names the game it belongs to: it isn't a game in the library.
+    if config.contains("<MainPackageDependency") {
+        return None;
+    }
     let package = attribute(&config, "Identity", "Name")?;
     let publisher = attribute(&config, "Identity", "Publisher")?;
     let shown = attribute(&config, "ShellVisuals", "DefaultDisplayName").filter(|n| !n.starts_with("ms-resource:"));
@@ -100,15 +105,42 @@ fn read_install(game_dir: &Path) -> Option<Install> {
 
 pub fn installed_games() -> Vec<Game> {
     let mut games = Vec::new();
+    let mut dlcs = Vec::new();
     for root in roots() {
         let Ok(entries) = fs::read_dir(&root) else { continue };
         for entry in entries.flatten() {
             if let Some(install) = read_install(&entry.path()) {
                 games.push(to_game(install));
+            } else if let Some(dlc) = read_dlc(&entry.path()) {
+                dlcs.push(dlc);
             }
         }
     }
+    attach_dlcs(&mut games, dlcs);
     games
+}
+
+/// An add-on's package: the game's package it belongs to, and its name.
+fn read_dlc(dir: &Path) -> Option<(String, String)> {
+    let config = fs::read_to_string(dir.join("Content").join("MicrosoftGame.config")).ok()?;
+    let main = attribute(&config, "MainPackageDependency", "Name")?;
+    let name = attribute(&config, "ShellVisuals", "DefaultDisplayName").filter(|n| !n.starts_with("ms-resource:"))?;
+    Some((main, name))
+}
+
+/// Each add-on under the game it belongs to (by the game's package name).
+fn attach_dlcs(games: &mut [Game], dlcs: Vec<(String, String)>) {
+    for (main, name) in dlcs {
+        let prefix = format!("{}_", main.to_lowercase());
+        if let Some(game) = games.iter_mut().find(|g| matches!(&g.source, Source::Xbox { family, .. } if family.to_lowercase().starts_with(&prefix))) {
+            if !game.dlcs.contains(&name) {
+                game.dlcs.push(name);
+            }
+        }
+    }
+    for game in games {
+        game.dlcs.sort();
+    }
 }
 
 /// Starts the game the way the Start menu does.
@@ -146,6 +178,7 @@ fn to_game(install: Install) -> Game {
         collections: Vec::new(),
         status: None,
         rating: 0,
+        dlcs: Vec::new(),
         notes: String::new(),
         updates_paused: false,
         part_of: None,
@@ -183,6 +216,24 @@ mod tests {
         assert_eq!(install.family, "FEATHERWEIGHTGAMESPTYLIMI.ChainedBeasts_ad46npcgb9ttj");
         assert_eq!(install.app, "Game");
         assert_eq!(install.program.as_deref(), Some("ChainedBeasts.exe"));
+        // A DLC names the game it belongs to: not listed as a game, but under it.
+        let dlc = dir.path().join("Dawn of the Dukes");
+        fs::create_dir_all(dlc.join("Content")).unwrap();
+        fs::write(
+            dlc.join("Content").join("MicrosoftGame.config"),
+            r#"<Game><Identity Name="Microsoft.PhoenixPDLC02" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+            <ShellVisuals DefaultDisplayName="Dawn of the Dukes" />
+            <DesktopRegistration><MainPackageDependency Name="Microsoft.MSPhoenix" /></DesktopRegistration></Game>"#,
+        )
+        .unwrap();
+        assert!(read_install(&dlc).is_none());
+        let found = read_dlc(&dlc).unwrap();
+        assert_eq!(found, ("Microsoft.MSPhoenix".to_string(), "Dawn of the Dukes".to_string()));
+        let mut aoe = crate::library::blank_game();
+        aoe.source = Source::Xbox { family: "Microsoft.MSPhoenix_8wekyb3d8bbwe".into(), app: "App".into(), product: String::new(), game_pass: false };
+        let mut list = vec![aoe];
+        attach_dlcs(&mut list, vec![found, ("Other.Game".into(), "Elsewhere".into())]);
+        assert_eq!(list[0].dlcs, vec!["Dawn of the Dukes".to_string()]);
         // The saves folder beside the games isn't one.
         fs::create_dir_all(dir.path().join("GameSave").join("wgs")).unwrap();
         assert!(read_install(&dir.path().join("GameSave")).is_none());

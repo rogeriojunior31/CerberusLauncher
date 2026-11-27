@@ -101,6 +101,28 @@ pub fn set_in(data: &Path, collection: &str, id: &str, on: bool) -> Result<(), S
     })
 }
 
+/// A game known by another id now (a Game Pass game installed): its
+/// collections and hidden mark follow it.
+pub fn move_game(data: &Path, old: &str, new: &str) {
+    if !load(data).collections.iter().any(|c| c.games.iter().any(|g| g == old)) && !load(data).hidden.contains(old) {
+        return;
+    }
+    let _ = change(data, |shelf| {
+        for c in &mut shelf.collections {
+            for g in &mut c.games {
+                if g == old {
+                    *g = new.to_string();
+                }
+            }
+            c.games.dedup();
+        }
+        if shelf.hidden.remove(old) {
+            shelf.hidden.insert(new.to_string());
+        }
+        Ok(())
+    });
+}
+
 pub fn rename(data: &Path, old: &str, typed: &str) -> Result<String, String> {
     let name = name_of(typed)?;
     change(data, |shelf| {

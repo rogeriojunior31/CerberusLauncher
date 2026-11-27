@@ -96,8 +96,10 @@ pub struct Settings {
     /// The folders the emulators already list games from are looked through too.
     #[serde(default = "yes")]
     pub emulator_folders: bool,
-    /// PC Game Pass's games listed in the library (not installed until the Xbox app installs them).
-    #[serde(default = "yes")]
+    /// PC Game Pass's games listed in the library (not installed until the Xbox
+    /// app installs them). Off until the player says they subscribe: a player
+    /// without it would see hundreds of games they can't play.
+    #[serde(default)]
     pub game_pass: bool,
     /// What happens while a game is open.
     #[serde(default)]
@@ -195,6 +197,13 @@ pub fn folder_size(dir: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_pass_is_off_until_the_player_turns_it_on_and_a_saved_choice_stays() {
+        assert!(!Settings::default().game_pass, "a new player: off");
+        let chose: Settings = serde_json::from_str(r#"{"game_pass": true}"#).unwrap();
+        assert!(chose.game_pass, "one who turned it on keeps it");
+    }
 
     #[test]
     fn the_site_catalog_is_on_unless_turned_off() {

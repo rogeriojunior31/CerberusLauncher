@@ -42,10 +42,46 @@ fn now() -> u64 {
 
 /// The market and language the catalog is asked in, from the app's language.
 pub fn market() -> (&'static str, &'static str) {
-    match cerberus_shared::i18n::lang() {
-        cerberus_shared::i18n::Lang::Pt => ("BR", "pt-br"),
-        _ => ("US", "en-us"),
-    }
+    market_for(region(), cerberus_shared::i18n::lang())
+}
+
+/// The Windows region (Settings › Time & language › Region), as two letters:
+/// where the player lives, not the language the app is in. Read once.
+fn region() -> &'static str {
+    static REGION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    REGION.get_or_init(|| windows_region().unwrap_or_default())
+}
+
+#[cfg(windows)]
+fn windows_region() -> Option<String> {
+    use windows_sys::Win32::Globalization::GetUserDefaultGeoName;
+    let mut buffer = [0u16; 16];
+    // SAFETY: the buffer and its length are ours.
+    let len = unsafe { GetUserDefaultGeoName(buffer.as_mut_ptr(), buffer.len() as i32) };
+    let name = String::from_utf16_lossy(&buffer[..(len.max(1) as usize - 1).min(buffer.len())]);
+    (name.len() == 2 && name.chars().all(|c| c.is_ascii_alphabetic())).then(|| name.to_ascii_uppercase())
+}
+
+#[cfg(not(windows))]
+fn windows_region() -> Option<String> {
+    None
+}
+
+/// The store's market and language: the region's market (Portugal gets
+/// Portugal's catalog, Brazil Brazil's, whatever the app's language), the
+/// texts in the app's language. No region known: by the language, as before.
+fn market_for(region: &'static str, lang: cerberus_shared::i18n::Lang) -> (&'static str, &'static str) {
+    let pt = lang == cerberus_shared::i18n::Lang::Pt;
+    let market = match region {
+        "" => if pt { "BR" } else { "US" },
+        other => other,
+    };
+    let language = match (pt, market) {
+        (true, "BR") => "pt-br",
+        (true, _) => "pt-pt",
+        (false, _) => "en-us",
+    };
+    (market, language)
 }
 
 /// What was read last time; nothing (and no wait) before the first answer.
@@ -191,15 +227,34 @@ pub fn drop_owned_elsewhere(games: &mut Vec<Game>) {
     games.retain(|g| !catalog_only(g) || !elsewhere.contains(&plain(&g.name)));
 }
 
+/// Game Pass games listed without a package family are `xbox:<product>`;
+/// installed, the Xbox app gives them `xbox:<family>`. The pairs (old id, new
+/// id) for those installed now, matched by name, so the player's data follows.
+pub fn moved_ids(games: &[Game], catalog: &[Product]) -> Vec<(String, String)> {
+    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    games
+        .iter()
+        .filter(|g| matches!(g.source, Source::Xbox { .. }) && !g.install_dir.is_empty())
+        .filter_map(|g| {
+            let p = catalog.iter().find(|p| p.family.is_empty() && plain(&p.title) == plain(&g.name))?;
+            let old = format!("xbox:{}", p.id);
+            (old != g.id).then(|| (old, g.id.clone()))
+        })
+        .collect()
+}
+
 pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
-    let by_family: HashMap<&str, &Product> = catalog.iter().filter(|p| !p.family.is_empty()).map(|p| (p.family.as_str(), p)).collect();
+    // Package families compared without case (the app and the catalog may write them differently).
+    let by_family: HashMap<String, &Product> = catalog.iter().filter(|p| !p.family.is_empty()).map(|p| (p.family.to_lowercase(), p)).collect();
     let mut here = std::collections::HashSet::new();
     for game in games.iter_mut() {
         let Source::Xbox { family, product, game_pass, .. } = &mut game.source else { continue };
         here.insert(family.to_lowercase());
-        if let Some(p) = by_family.get(family.as_str()) {
+        if let Some(p) = by_family.get(&family.to_lowercase()) {
             *product = p.id.clone();
-            *game_pass = true;
+            // The account's own copy, not installed, stays the player's (not "Game Pass").
+            let owned_by_account = game.install_dir.is_empty();
+            *game_pass = *game_pass || !owned_by_account;
             if p.poster.is_some() {
                 game.cover_url = p.poster.clone();
                 game.cover_path = None;
@@ -236,6 +291,43 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_game_the_account_owns_isnt_marked_game_pass() {
+        let catalog = vec![Product { id: "9P".into(), title: "Halo".into(), family: "Microsoft.Halo_8wekyb".into(), ..Default::default() }];
+        let mut owned = crate::library::blank_game();
+        owned.id = "xbox:Microsoft.Halo_8wekyb".into();
+        owned.name = "Halo".into();
+        owned.source = Source::Xbox { family: "microsoft.halo_8wekyb".into(), app: "Game".into(), product: String::new(), game_pass: false };
+        let mut games = vec![owned];
+        merge(&mut games, &catalog);
+        assert_eq!(games.len(), 1, "not listed twice (the family matched without case)");
+        assert!(matches!(&games[0].source, Source::Xbox { game_pass: false, product, .. } if product == "9P"), "the player's, with the store's product");
+    }
+
+    #[test]
+    fn a_game_pass_game_installed_keeps_its_old_id_for_the_players_data() {
+        let product = |id: &str, title: &str, family: &str| Product { id: id.into(), title: title.into(), family: family.into(), ..Default::default() };
+        let catalog = vec![product("9P1", "Anno 1800", ""), product("9P2", "Halo", "Microsoft.Halo_8wekyb")];
+        let mut installed = crate::library::blank_game();
+        installed.id = "xbox:Ubisoft.Anno1800_abc".into();
+        installed.name = "Anno 1800".into();
+        installed.install_dir = r"C:\XboxGames\Anno".into();
+        installed.source = Source::Xbox { family: "Ubisoft.Anno1800_abc".into(), app: "Game".into(), product: String::new(), game_pass: false };
+        assert_eq!(moved_ids(&[installed.clone()], &catalog), vec![("xbox:9P1".to_string(), "xbox:Ubisoft.Anno1800_abc".to_string())]);
+        installed.install_dir.clear();
+        assert!(moved_ids(&[installed], &catalog).is_empty(), "not installed: nothing moved");
+    }
+
+    #[test]
+    fn the_market_is_the_windows_region_and_the_texts_the_apps_language() {
+        use cerberus_shared::i18n::Lang;
+        assert_eq!(market_for("PT", Lang::Pt), ("PT", "pt-pt"), "Portugal gets Portugal's catalog");
+        assert_eq!(market_for("BR", Lang::Pt), ("BR", "pt-br"));
+        assert_eq!(market_for("BR", Lang::En), ("BR", "en-us"), "living in Brazil with the app in English: still Brazil's");
+        assert_eq!(market_for("", Lang::Pt), ("BR", "pt-br"), "no region known: as before");
+        assert_eq!(market_for("", Lang::En), ("US", "en-us"));
+    }
 
     #[test]
     fn a_game_owned_elsewhere_hides_its_game_pass_entry() {
@@ -276,6 +368,8 @@ mod tests {
         let mut games = vec![Game {
             id: "xbox:Pub.Here_abc".into(),
             name: "Here".into(),
+            // Installed by the Xbox app (it gives a folder).
+            install_dir: r"C:\XboxGames\Here".into(),
             source: Source::Xbox { family: "Pub.Here_abc".into(), app: "Game".into(), product: String::new(), game_pass: false },
             ..crate::library::blank_game()
         }];

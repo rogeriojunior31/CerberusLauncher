@@ -132,6 +132,7 @@ fn read_product(p: &Value) -> Option<StoreDetails> {
         .unwrap_or_default();
     let one = |k: &str| -> Vec<String> { Some(text(k)).filter(|s| !s.is_empty()).into_iter().collect() };
     Some(StoreDetails {
+        origin: "msstore".into(),
         app: 0,
         name,
         short: text("ShortDescription").lines().next().unwrap_or_default().trim().to_string(),
@@ -177,6 +178,7 @@ mod tests {
         assert_eq!(d.about.iter().map(|b| b.kind.as_str()).collect::<Vec<_>>(), vec!["p", "li", "li"]);
         assert_eq!(d.screenshots[0].full, "https://store-images.s-microsoft.com/a");
         assert_eq!(d.background.as_deref(), Some("https://store-images.s-microsoft.com/h"));
+        assert_eq!(d.origin, "msstore", "the page says where it came from");
         assert_eq!(d.genres, vec!["Sports"]);
     }
 }

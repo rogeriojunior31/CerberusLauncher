@@ -114,6 +114,7 @@ pub fn parse(app: u32, d: &Value) -> StoreDetails {
         .collect();
     let requirements = |which: &str| d.pointer(&format!("/pc_requirements/{which}")).and_then(Value::as_str).map(requirement_rows).unwrap_or_default();
     StoreDetails {
+        origin: "steam".into(),
         app,
         name: text(d, "name"),
         short: plain(&text(d, "short_description")),
