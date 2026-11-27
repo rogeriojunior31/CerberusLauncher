@@ -160,21 +160,35 @@ pub fn steam_playtimes(data_dir: &Path, steam_id: Option<&str>) -> HashMap<u32, 
 async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [AchievementGame], recent: &mut [RecentUnlock], online: bool) {
     let file = data_dir.join("cache").join("achievements").join("steam-names.json");
     let mut known: HashMap<String, String> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    // Apps the store gave no name for, and when it was asked: not asked again for a few days.
+    let tried_file = data_dir.join("cache").join("achievements").join("steam-names-unknown.json");
+    let mut tried: HashMap<String, u64> = std::fs::read_to_string(&tried_file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let now = store::now();
     let nameless = |g: &AchievementGame| g.source == AchievementSource::Steam && g.name == format!("App {}", g.key);
-    let missing: Vec<String> = if online { games.iter().filter(|g| nameless(g) && !known.contains_key(&g.key)).map(|g| g.key.clone()).collect() } else { Vec::new() };
-    let mut learned = false;
+    let missing: Vec<String> = if online {
+        games.iter().filter(|g| nameless(g) && !known.contains_key(&g.key) && tried.get(&g.key).is_none_or(|at| now >= at + NAMELESS_ASKED_AGAIN)).map(|g| g.key.clone()).collect()
+    } else {
+        Vec::new()
+    };
+    let (mut learned, mut failed) = (false, false);
     for chunk in missing.chunks(6) {
         let asks = chunk.iter().map(|app| steam::store_name(http, app));
         for (app, name) in chunk.iter().zip(futures_util::future::join_all(asks).await) {
             if let Some(name) = name {
                 known.insert(app.clone(), name);
                 learned = true;
+            } else {
+                tried.insert(app.clone(), now);
+                failed = true;
             }
         }
     }
+    let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
     if learned {
-        let _ = std::fs::create_dir_all(file.parent().unwrap_or(data_dir));
         let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
+    }
+    if failed {
+        let _ = crate::state_file::write_bytes(&tried_file, serde_json::to_string(&tried).unwrap_or_default().as_bytes());
     }
     for g in games.iter_mut().filter(|g| nameless(g)) {
         if let Some(name) = known.get(&g.key) {
@@ -187,6 +201,10 @@ async fn fill_names(http: &reqwest::Client, data_dir: &Path, games: &mut [Achiev
         }
     }
 }
+
+/// An app the store gave no name for is asked again after this long (an old
+/// or removed app has none; a failed question gets another try then).
+const NAMELESS_ASKED_AGAIN: u64 = 3 * 86_400;
 
 /// Steam's edge servers turn the key away for a while when asked too fast:
 /// one question at a time, with a pause after each one that reached Steam.
@@ -520,7 +538,8 @@ async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
     let (games, last_played) = xbox::games(http, &session).await?;
     // Minutes played too: a hundred titles per question.
     let titles: Vec<String> = last_played.iter().map(|(_, title, _)| title.clone()).collect();
-    let minutes = xbox::minutes(http, &session, &titles).await;
+    // Refused (busy): the whole sync waits, as for any other question.
+    let minutes = xbox::minutes(http, &session, &titles).await?;
     // The library knows a game by its package; achievements are by title.
     for (pfn, title, _) in &last_played {
         if let Ok(title) = title.parse::<u64>() {
@@ -642,11 +661,12 @@ async fn sync_epic_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
         let kept = db.list(scope, &o.namespace);
         let fresh = kept.as_ref().is_some_and(|(at, _)| *at >= secs.max(1));
         // One that failed lately keeps what it had and lets the others go first.
-        let list = if fresh || asked >= EPIC_GAMES_PER_SYNC || failed_lately(db, scope, &o.namespace, now) {
+        // Never played: nothing unlocked to read (its page reads it when opened).
+        let list = if fresh || secs == 0 || asked >= EPIC_GAMES_PER_SYNC || failed_lately(db, scope, &o.namespace, now) {
             kept.map(|(_, l)| l)
         } else {
             asked += 1;
-            match epic::game_list(http, &access, &account, &o.namespace).await {
+            match epic::game_list(http, &data_dir.join("cache").join("achievements"), &access, &account, &o.namespace).await {
                 Ok(list) => {
                     misses.game_answered();
                     db.keep_current_list(scope, &o.namespace, secs.max(1), &list);
@@ -1004,7 +1024,7 @@ pub async fn game(
                 kept => {
                     let fresh = async {
                         let (access, account) = epic_session(http, data_dir).await?;
-                        epic::game_list(http, &access, &account, key).await
+                        epic::game_list(http, &data_dir.join("cache").join("achievements"), &access, &account, key).await
                     }
                     .await;
                     match (fresh, kept) {

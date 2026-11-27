@@ -63,11 +63,41 @@ fn seconds(text: &str) -> Option<u64> {
     super::xbox::seconds(text)
 }
 
+/// How long a game's achievement definitions are kept: they almost never change.
+const DEFINITIONS_KEPT: u64 = 30 * 86_400;
+
+/// A game's definitions as kept on disk: when read, and the list (empty: the game has none).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct KeptDefinitions {
+    at: u64,
+    list: Vec<Value>,
+}
+
+fn definitions_file(cache: &std::path::Path, namespace: &str, locale: &str) -> Option<std::path::PathBuf> {
+    // Namespaces are hex; anything else isn't used as a file name.
+    namespace.chars().all(|c| c.is_ascii_alphanumeric()).then(|| cache.join("epic-definitions").join(format!("{namespace}-{locale}.json")))
+}
+
 /// A game's whole list with the player's unlocks (empty: the game has none).
-pub async fn game_list(http: &reqwest::Client, access: &str, account: &str, namespace: &str) -> Result<Vec<Achievement>, String> {
+/// The definitions come from the copy kept in `cache` while it's under 30
+/// days old: a game played again costs one question, the player's.
+pub async fn game_list(http: &reqwest::Client, cache: &std::path::Path, access: &str, account: &str, namespace: &str) -> Result<Vec<Achievement>, String> {
     let locale = if cerberus_shared::i18n::lang() == cerberus_shared::i18n::Lang::Pt { "pt-BR" } else { "en-US" };
-    let defs = ask(http, access, DEFINITIONS, json!({ "sandboxId": namespace, "locale": locale })).await?;
-    let list = defs.pointer("/data/Achievement/productAchievementsRecordBySandbox/achievements").and_then(Value::as_array).cloned().unwrap_or_default();
+    let file = definitions_file(cache, namespace, locale);
+    let now = super::store::now();
+    let kept: Option<KeptDefinitions> = file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).and_then(|t| serde_json::from_str(&t).ok());
+    let list = match kept.filter(|k| now < k.at + DEFINITIONS_KEPT) {
+        Some(k) => k.list,
+        None => {
+            let defs = ask(http, access, DEFINITIONS, json!({ "sandboxId": namespace, "locale": locale })).await?;
+            let list = defs.pointer("/data/Achievement/productAchievementsRecordBySandbox/achievements").and_then(Value::as_array).cloned().unwrap_or_default();
+            if let Some(f) = &file {
+                let _ = std::fs::create_dir_all(f.parent().unwrap_or(cache));
+                let _ = crate::state_file::write_bytes(f, serde_json::to_string(&KeptDefinitions { at: now, list: list.clone() }).unwrap_or_default().as_bytes());
+            }
+            list
+        }
+    };
     if list.is_empty() {
         return Ok(Vec::new());
     }

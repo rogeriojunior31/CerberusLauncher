@@ -101,12 +101,23 @@ pub async fn games(http: &reqwest::Client, s: &Session) -> Result<(Vec<Achieveme
 }
 
 /// Minutes played per title, many titles per question (Xbox Live's user stats).
-pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> HashMap<String, u64> {
+/// Minutes played per title, a hundred titles per question. A store that says
+/// "too many" (429) or can't be reached is a refusal: the sync waits, instead
+/// of carrying on with half the times.
+pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> Result<HashMap<String, u64>, String> {
     let mut found = HashMap::new();
     for chunk in titles.chunks(100) {
         let stats: Vec<Value> = chunk.iter().map(|t| json!({ "name": "MinutesPlayed", "titleid": t })).collect();
         let body = json!({ "arrangebyfield": "xuid", "xuids": [s.xuid], "stats": stats });
-        let Ok(response) = crate::net::send(http.post("https://userstats.xboxlive.com/batch").header("Authorization", &s.auth).header("x-xbl-contract-version", "2").json(&body)).await else { break };
+        let response = crate::net::send(http.post("https://userstats.xboxlive.com/batch").header("Authorization", &s.auth).header("x-xbl-contract-version", "2").json(&body))
+            .await
+            .map_err(|e| tr!("O Xbox não respondeu: {}", e))?;
+        match response.status().as_u16() {
+            200..=299 => {}
+            429 | 500..=599 => return Err(tr!("O Xbox pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.").into()),
+            // Not allowed for this account (privacy): no times, the rest goes on.
+            _ => break,
+        }
         let Ok(v) = response.json::<Value>().await else { break };
         for stat in v.pointer("/statlistscollection/0/stats").and_then(Value::as_array).into_iter().flatten() {
             let (Some(title), Some(value)) = (stat.get("titleid").and_then(Value::as_str), stat.get("value").and_then(Value::as_str).and_then(|m| m.parse::<u64>().ok())) else { continue };
@@ -114,7 +125,7 @@ pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> 
         }
         tokio::time::sleep(PAUSE).await;
     }
-    found
+    Ok(found)
 }
 
 fn read_games(v: &Value) -> Vec<AchievementGame> {

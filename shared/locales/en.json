@@ -1252,6 +1252,8 @@
   "O Xbox Live não entregou as conquistas.": "Xbox Live didn't return the achievements.",
   "O Xbox Live não entregou os jogos da conta.": "Xbox Live didn't return the account's games.",
   "O Xbox Live pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.": "Xbox Live asked for a pause in requests. Cerberus shows what it had and tries again later.",
+  "O Xbox não respondeu: {}": "Xbox didn't answer: {}",
+  "O Xbox pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.": "Xbox asked for a pause in questions. Cerberus shows what it had and tries again later.",
   "O analógico esquerdo só começa a mover depois de ser visto parado, para um controle com drift não andar sozinho.": "The left stick only starts moving after it's seen at rest, so a drifting controller doesn't move on its own.",
   "O antivírus bloqueou o jogo. Se você confia no recomp, libere a pasta dele no antivírus e use Reparar instalação na aba Gerenciar.": "The antivirus blocked the game. If you trust the recomp, allow its folder in the antivirus and use Repair installation in the Manage tab.",
   "O app Xbox abre na página de {}: instale por lá. Quando terminar, ele aparece pronto para jogar.": "The Xbox app opens on {}'s page: install it there. When it's done, it shows up ready to play.",
