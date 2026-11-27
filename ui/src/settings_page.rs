@@ -1828,11 +1828,19 @@ fn XboxCard() -> impl IntoView {
         library.games.refetch();
     });
     on_cleanup(move || focus.remove());
+    // Signing out takes a second click (it forgets the account's achievements here).
+    let armed = RwSignal::new(false);
     let account = move || match settings.get().and_then(Result::ok).and_then(|s| s.xbox_user) {
         Some(name) => view! {
             <div class="set-row">
                 <div><b>{tr!("Conta Xbox")}</b><p class="muted small">{tr!("Conectada como {}. Os jogos de PC da conta que não estão neste PC aparecem na Biblioteca como não instalados.", name)}</p></div>
-                <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| {
+                <button type="button" class="btn sm" class:warn=move || armed.get() disabled=move || busy.get() on:blur=move |_| armed.set(false) on:click=move |_| {
+                    if !armed.get_untracked() {
+                        armed.set(true);
+                        set_timeout(move || armed.set(false), std::time::Duration::from_secs(5));
+                        return;
+                    }
+                    armed.set(false);
                     busy.set(true);
                     spawn_local(async move {
                         let _ = library.report(api::xbox_logout().await);
@@ -1840,7 +1848,7 @@ fn XboxCard() -> impl IntoView {
                         library.games.refetch();
                         busy.set(false);
                     });
-                }>{tr!("Sair")}</button>
+                }>{move || if armed.get() { tr!("Clique de novo para sair") } else { tr!("Sair") }}</button>
             </div>
         }
         .into_any(),
@@ -1857,13 +1865,16 @@ fn XboxCard() -> impl IntoView {
             let all = g.as_ref().and_then(|r| r.as_ref().ok());
             let xbox = |g: &&cerberus_shared::Game| matches!(g.source, cerberus_shared::Source::Xbox { .. });
             let here = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| !g.install_dir.is_empty()).count());
-            let pass = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| g.install_dir.is_empty()).count());
-            (here, pass)
+            // Not installed, from the Game Pass list (the account's own count apart).
+            let in_pass = |g: &&cerberus_shared::Game| matches!(g.source, cerberus_shared::Source::Xbox { game_pass: true, .. });
+            let pass = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| g.install_dir.is_empty()).filter(in_pass).count());
+            let owned = all.map_or(0, |all| all.iter().filter(xbox).filter(|g| g.install_dir.is_empty()).count()) - pass;
+            (here, pass, owned)
         })
     };
     let body = move || {
         let on = settings.get().and_then(Result::ok).is_some_and(|s| s.game_pass);
-        let (here, pass) = counts();
+        let (here, pass, owned) = counts();
         let installed = match here {
             0 => tr!("Nenhum jogo instalado pelo app Xbox. Os que você instalar entram sozinhos na Biblioteca.").to_string(),
             1 => tr!("1 jogo instalado pelo app Xbox está na Biblioteca.").to_string(),
@@ -1889,7 +1900,7 @@ fn XboxCard() -> impl IntoView {
                 switch(on, tr!("PC Game Pass na Biblioteca"), busy, toggle),
             )}
             <div class="row">
-                <button type="button" class="btn sm" disabled=here + pass == 0 on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
+                <button type="button" class="btn sm" disabled=here + pass + owned == 0 on:click=move |_| library.go(Route::Library)>{tr!("Ver na Biblioteca")}</button>
                 <button type="button" class="btn sm" on:click=move |_| spawn_local(async move { library.report(api::xbox_open().await); })>
                     <Svg icon=Icon::External size=16 />{tr!("Abrir o app Xbox")}
                 </button>
@@ -1923,13 +1934,21 @@ fn EpicCard() -> impl IntoView {
     });
     on_cleanup(move || focus.remove());
     let busy = RwSignal::new(false);
+    // Signing out takes a second click (it forgets the account's achievements here).
+    let armed = RwSignal::new(false);
     let signed = move || {
         let user = account.get().and_then(Result::ok).and_then(|s| s.epic_user);
         match user {
             Some(name) => view! {
                 <div class="set-row">
                     <div><b>{tr!("Conta Epic")}</b><p class="muted small">{tr!("Conectada como {}. Os jogos da conta que não estão neste PC aparecem na Biblioteca como não instalados.", name)}</p></div>
-                    <button type="button" class="btn sm" disabled=move || busy.get() on:click=move |_| {
+                    <button type="button" class="btn sm" class:warn=move || armed.get() disabled=move || busy.get() on:blur=move |_| armed.set(false) on:click=move |_| {
+                        if !armed.get_untracked() {
+                            armed.set(true);
+                            set_timeout(move || armed.set(false), std::time::Duration::from_secs(5));
+                            return;
+                        }
+                        armed.set(false);
                         busy.set(true);
                         spawn_local(async move {
                             let _ = library.report(api::epic_logout().await);
@@ -1937,7 +1956,7 @@ fn EpicCard() -> impl IntoView {
                             library.games.refetch();
                             busy.set(false);
                         });
-                    }>{tr!("Sair")}</button>
+                    }>{move || if armed.get() { tr!("Clique de novo para sair") } else { tr!("Sair") }}</button>
                 </div>
             }
             .into_any(),
@@ -1977,7 +1996,7 @@ fn EpicCard() -> impl IntoView {
                         <Svg icon=Icon::External size=16 />{tr!("Abrir a Epic")}
                     </button>
                 </div>
-                <p class="muted small">{tr!("Os jogos instalados vêm do que a Epic já guarda no PC, sem conta. Abrem e instalam pela Epic, que precisa estar instalada. Tempo de jogo é contado; conquistas da Epic ainda não.")}</p>
+                <p class="muted small">{tr!("Os jogos instalados vêm do que a Epic já guarda no PC, sem conta. Abrem e instalam pela Epic, que precisa estar instalada. Tempo de jogo é contado, e com a conta conectada as conquistas da Epic aparecem em Conquistas.")}</p>
             }
             .into_any()
         }

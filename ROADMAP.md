@@ -819,7 +819,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [ ] Resposta parcial, limites de uso e custo de cada sincronização (L5). — M
 - [ ] Tokens fora do texto puro (Cofre de credenciais do Windows) (L6). — M
 - [x] Endurecer a janela de login (L7). — P (27/11/2026: a passagem do código da Epic só vale com o segredo deste login, que só a página de retorno da Epic recebe; a janela da Epic e a da Microsoft só mostram os sites de login, Epic, Microsoft e os provedores da Epic, e o resto abre no navegador; pop-ups idem; teste; o login real não foi refeito, a conta daqui já está conectada; PKCE da Microsoft fica de fora)
-- [ ] Cartões de conta com carregando, erro, "sincronizado há" e "Atualizar agora" (L8). — P/M
+- [ ] Cartões de conta com carregando, erro, "sincronizado há" e "Atualizar agora" (L8). — P/M (27/11/2026, parte: Sair pede um segundo clique; o Xbox conta os do Game Pass à parte dos da conta, 467 e 74 aqui; o texto da Epic não diz mais que não há conquistas; o cartão já se atualizava depois de entrar, pelo catalog-changed; falta "sincronizado há" e "Atualizar agora")
 - [ ] Xbox: "jogos da conta" vem do histórico, não da posse (L9); pacotes instalados de verdade (L10). — M
 - [ ] Epic: plataforma, demos e limite de páginas (L11). — M
 - [ ] Game Pass: padrão, mercado e selos (L12); mesmo jogo com nomes diferentes entre lojas (L13). — M
