@@ -459,6 +459,7 @@ impl Store {
             source: scope.source,
             synced_at: self.stamp(scope, "synced").filter(|s| *s > 0),
             wait_until: self.stamp(scope, "wait_until").filter(|w| *w > now),
+            syncing: false,
         }
     }
 

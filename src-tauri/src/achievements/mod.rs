@@ -428,6 +428,16 @@ fn retro_stale<'a>(db: &Store, scope: &Scope, games: &'a [AchievementGame], now:
     stale
 }
 
+/// Another sync (the library's, which can take minutes the first time) holds
+/// the accounts: the hub answers with what it has instead of waiting, and says so.
+fn syncing_elsewhere(busy: &mut Vec<AchievementSource>, source: AchievementSource) -> bool {
+    let held = SYNCING.try_lock().is_err();
+    if held {
+        busy.push(source);
+    }
+    held
+}
+
 /// One account sync at a time.
 static SYNCING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -788,11 +798,12 @@ pub async fn hub(
         }
         scopes.push(scope);
     }
+    let mut busy = Vec::new();
     let chosen = crate::settings::load(data_dir);
     if let (Some(refresh), Some(user)) = (chosen.xbox_refresh, chosen.xbox_user) {
         hub.xbox = true;
         let scope = Scope::new(AchievementSource::Xbox, &user);
-        if online && db.due_now(&scope, force) {
+        if online && db.due_now(&scope, force) && !syncing_elsewhere(&mut busy, AchievementSource::Xbox) {
             if let Err(e) = sync_xbox(http, data_dir, &mut db, &scope, &refresh, force).await {
                 hub.problems.push(tr!("Xbox: {}", shown(&e)));
             }
@@ -803,7 +814,7 @@ pub async fn hub(
     if let (Some(_), Some(user)) = (chosen.epic_refresh, chosen.epic_user) {
         hub.epic = true;
         let scope = Scope::new(AchievementSource::Epic, &user);
-        if online && db.due_now(&scope, force) {
+        if online && db.due_now(&scope, force) && !syncing_elsewhere(&mut busy, AchievementSource::Epic) {
             if let Err(e) = sync_epic(http, data_dir, &mut db, &scope, force).await {
                 hub.problems.push(tr!("Epic: {}", shown(&e)));
             }
@@ -816,7 +827,11 @@ pub async fn hub(
     }
     hub.recent = db.recent(&scopes, RECENT);
     hub.revoked = db.revoked(&scopes, RECENT);
-    hub.sources = scopes.iter().filter(|s| s.source != AchievementSource::Steam).map(|s| db.status(s)).collect();
+    hub.sources = scopes
+        .iter()
+        .filter(|s| s.source != AchievementSource::Steam)
+        .map(|s| cerberus_shared::SourceStatus { syncing: busy.contains(&s.source), ..db.status(s) })
+        .collect();
     (hub.next, hub.rarest) = db.highlights(&scopes, 12);
     if let Some((key, _)) = &steam_api_account {
         fill_recent_icons(http, data_dir, key, &mut hub.recent, online).await;
@@ -1124,6 +1139,18 @@ mod tests {
         // A new unlock after the read makes it stale again.
         games[2].last_unlock = Some(400);
         assert!(retro_stale(&db, &scope, &games, store::now()).iter().any(|g| g.key == "read"));
+    }
+
+    #[test]
+    fn a_sync_running_elsewhere_is_told_not_waited_for() {
+        use super::*;
+        let mut busy = Vec::new();
+        {
+            let _library = SYNCING.try_lock().unwrap();
+            assert!(syncing_elsewhere(&mut busy, AchievementSource::Xbox), "held by the library: skipped");
+        }
+        assert!(!syncing_elsewhere(&mut busy, AchievementSource::Epic), "free: the hub syncs");
+        assert_eq!(busy, vec![AchievementSource::Xbox]);
     }
 
     #[test]

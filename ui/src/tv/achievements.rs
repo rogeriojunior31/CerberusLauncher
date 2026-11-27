@@ -1,7 +1,8 @@
 //! Achievements on the TV: the totals, then rows of games: the ones nearly at
 //! 100%, the platinums, and the ones with unlocks lately. Read from what's
-//! kept on this PC, so it opens at once. A opens the game's page (Steam games
-//! in the library), or else the game's own list of achievements.
+//! kept on this PC, so it opens at once, then the accounts are asked (when
+//! due). A opens the game's page (Steam and Epic games in the library), or
+//! else the game's own list of achievements.
 
 use cerberus_shared::tr;
 use cerberus_shared::{AchievementGame, AchievementSource};
@@ -14,11 +15,18 @@ use crate::{Library, api, format};
 
 /// The library id of the game, when it can be opened on the TV.
 fn library_id(library: Library, g: &AchievementGame) -> Option<String> {
-    if g.source != AchievementSource::Steam {
-        return None;
-    }
-    let id = format!("steam:{}", g.key);
-    library.games.with(|all| all.as_ref().and_then(|r| r.as_ref().ok()).and_then(|list| list.iter().any(|x| x.id == id).then_some(id)))
+    library.games.with(|all| {
+        let list = all.as_ref().and_then(|r| r.as_ref().ok())?;
+        match g.source {
+            AchievementSource::Steam => {
+                let id = format!("steam:{}", g.key);
+                list.iter().any(|x| x.id == id).then_some(id)
+            }
+            // Epic's achievements are by namespace; the library's game has it in its source.
+            AchievementSource::Epic => list.iter().find(|x| matches!(&x.source, cerberus_shared::Source::Epic { namespace, .. } if *namespace == g.key)).map(|x| x.id.clone()),
+            _ => None,
+        }
+    })
 }
 
 /// Where A takes a game: its page in the library, or else its own list of achievements.
@@ -149,7 +157,19 @@ pub fn Achievements() -> impl IntoView {
     let tv = expect_context::<Tv>();
     let focus = Focus::new("ach", false);
     tv.keep_position(focus);
-    let hub = LocalResource::new(|| api::achievements_hub(false));
+    // What's on this PC at once, then the accounts (when due): the TV used to never update.
+    let hub = RwSignal::new(None::<Result<cerberus_shared::AchievementsHub, String>>);
+    leptos::task::spawn_local(async move {
+        let kept = api::achievements_hub(false).await;
+        if hub.try_set(Some(kept)).is_some() {
+            return;
+        }
+        let fresh = api::achievements_hub(true).await;
+        // A failed update keeps what's on screen; the page may be gone by now.
+        if fresh.is_ok() {
+            let _ = hub.try_set(Some(fresh));
+        }
+    });
     // "All games" can hold hundreds: drawn a stretch at a time, growing as the focus moves along it.
     let shown = RwSignal::new(30usize);
 
@@ -216,6 +236,13 @@ pub fn Achievements() -> impl IntoView {
         let total: u32 = hub.games.iter().map(|g| g.total).sum();
         let plats = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
         let pct = if total == 0 { 0 } else { unlocked as u64 * 100 / total as u64 };
+        // The account synced longest ago tells how fresh this is.
+        let oldest = hub.sources.iter().filter(|s| s.wait_until.is_none()).filter_map(|s| s.synced_at).min();
+        let synced = match (hub.sources.iter().filter_map(|s| s.wait_until).max(), oldest) {
+            (Some(w), _) => tr!("Uma loja pediu para esperar; tenta de novo às {}", format::clock(w)),
+            (None, Some(at)) => tr!("Contas atualizadas {}", format::synced_ago(at)),
+            (None, None) => String::new(),
+        };
         Some(view! {
             <div class="tv-ach-sum">
                 <span><b>{format::count(unlocked as u64)}</b>{tr!(" de {} conquistas", format::count(total as u64))}</span>
@@ -223,6 +250,8 @@ pub fn Achievements() -> impl IntoView {
                 <span class="gold"><b>{plats}</b>{tr!(" platinados")}</span>
                 <div class="tv-ach-bar"><i style=format!("width: {}%", pct.max(1))></i></div>
             </div>
+            <p class="tv-ach-sync">{synced}</p>
+            {hub.problems.iter().map(|p| view! { <p class="tv-ach-problem">{p.clone()}</p> }).collect_view()}
         })
     };
     let body = move || {

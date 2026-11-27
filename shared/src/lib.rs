@@ -773,6 +773,9 @@ pub struct SourceStatus {
     /// The store said no: asked again from then on (Unix seconds).
     #[serde(default)]
     pub wait_until: Option<u64>,
+    /// Being synced elsewhere (the library) right now: the numbers come when it ends.
+    #[serde(default)]
+    pub syncing: bool,
 }
 
 /// A game with achievements, as the hub lists it.

@@ -231,11 +231,12 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let sync_line = move |src: AchievementSource| {
         let s = sources.iter().find(|s| s.source == src)?;
         let text = match (s.wait_until, s.synced_at) {
+            _ if s.syncing => tr!("Atualizando pela Biblioteca; aperte Atualizar daqui a pouco").to_string(),
             (Some(w), _) => tr!("A loja pediu para esperar; tenta de novo às {}", format::clock(w)),
             (None, Some(at)) => tr!("Atualizado {}", format::synced_ago(at)),
             (None, None) => return None,
         };
-        Some(view! { <small class="ach-synced" class:waiting=s.wait_until.is_some()>{text}</small> })
+        Some(view! { <small class="ach-synced" class:waiting=s.wait_until.is_some() || s.syncing>{text}</small> })
     };
     let stores = (by_source.len() > 1).then(|| view! {
         <section class="ach-stores" aria-label=tr!("Por plataforma")>
