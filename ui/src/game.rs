@@ -590,7 +590,7 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
     });
     if let Some(app) = steam_app {
         let details = LocalResource::new(move || async move { api::steam_details(app).await });
-        return view! { <StoreOverview details links=Some(app) play_card note_card tab /> }.into_any();
+        return view! { <StoreOverview details links=Some(app) play_card note_card tab store=None /> }.into_any();
     }
     // Epic and Xbox games: their store page from Steam or the Microsoft Store.
     if let Some(g) = game.as_ref().filter(|g| matches!(g.source, Source::Epic { .. } | Source::Xbox { .. })) {
@@ -603,7 +603,12 @@ fn Overview(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) 
             let (name, product) = (name.clone(), product.clone());
             async move { api::store_page(&name, &product).await }
         });
-        return view! { <StoreOverview details links=None play_card note_card tab /> }.into_any();
+        let kind = if matches!(g.source, Source::Epic { .. }) { "epic" } else { "xbox" };
+        let product_id = match &g.source {
+            Source::Xbox { product, .. } => product.clone(),
+            _ => String::new(),
+        };
+        return view! { <StoreOverview details links=None play_card note_card tab store=Some((kind, product_id)) /> }.into_any();
     }
 
     let about = entry.as_ref().map(|e| e.about.clone()).filter(|a| !a.is_empty()).map(|text| view! { <p class="about">{text}</p> });
@@ -742,16 +747,43 @@ fn StoreOverview(
     play_card: Option<AnyView>,
     note_card: Option<AnyView>,
     tab: RwSignal<Tab>,
+    /// An Epic or Xbox game: its store ("epic" or "xbox", and the product), for
+    /// when there's no page to show.
+    store: Option<(&'static str, String)>,
 ) -> impl IntoView {
     let on_all = Callback::new(move |_| tab.set(Tab::Achievements));
+    let store_link = StoredValue::new(store);
     let store = move || match details.get() {
         None => view! { <crate::game_overview::StoreSkeleton /> }.into_any(),
-        Some(Err(e)) => (!e.is_empty()).then(|| view! { <p class="muted small">{e}</p> }).into_any(),
-        Some(Ok(d)) => view! {
-            <crate::game_overview::Gallery details=d.clone() />
-            <crate::game_overview::About details=d />
+        // No page anywhere: said, with the way to the game's own store.
+        Some(Err(e)) if e.is_empty() => store_link.get_value().map(|(kind, product)| {
+            let label = if kind == "epic" { tr!("Abrir na Epic") } else { tr!("Abrir na Microsoft Store") };
+            view! {
+                <section class="card">
+                    <h3>{tr!("Sem página da loja para este jogo")}</h3>
+                    <p class="muted small">{tr!("O Cerberus não achou este jogo na Steam nem na Microsoft Store.")}</p>
+                    <button type="button" class="btn" on:click=move |_| {
+                        let product = product.clone();
+                        leptos::task::spawn_local(async move { api::open_in_store(kind, &product).await });
+                    }>{label}</button>
+                </section>
+            }
+        }).into_any(),
+        Some(Err(e)) => view! { <p class="muted small">{e}</p> }.into_any(),
+        Some(Ok(d)) => {
+            // Whose page it is (an Epic game's page may be the Steam version's).
+            let source = match d.origin.as_str() {
+                "steam" if store_link.with_value(Option::is_some) => Some(tr!("Informações da loja Steam")),
+                "msstore" => Some(tr!("Informações da Microsoft Store")),
+                _ => None,
+            };
+            view! {
+                {source.map(|s| view! { <p class="muted small store-origin">{s}</p> })}
+                <crate::game_overview::Gallery details=d.clone() />
+                <crate::game_overview::About details=d />
+            }
+            .into_any()
         }
-        .into_any(),
     };
     let rail = move || match details.get() {
         Some(Ok(d)) => {

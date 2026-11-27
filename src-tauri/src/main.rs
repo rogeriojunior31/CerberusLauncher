@@ -1276,7 +1276,9 @@ async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id:
 async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: String, product: Option<String>) -> Result<Option<cerberus_shared::StoreDetails>, String> {
     let data = app.state::<DataDir>().0.clone();
     if let Some(steam) = steam_store::app_for(&http, &data, &name).await {
-        if let Ok(page) = steam_details::details(&http, &data, steam).await {
+        if let Ok(mut page) = steam_details::details(&http, &data, steam).await {
+            // Pages kept from before the origin was written say it too.
+            page.origin = "steam".into();
             return Ok(Some(page));
         }
     }
@@ -1285,9 +1287,26 @@ async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: Stri
         None => ms_store::find(&http, &data, &name).await,
     };
     Ok(match product {
-        Some(p) => ms_store::details(&http, &data, &p).await,
+        Some(p) => ms_store::details(&http, &data, &p).await.map(|mut page| {
+            page.origin = "msstore".into();
+            page
+        }),
         None => None,
     })
+}
+
+/// An Epic or Xbox game's store, when Cerberus has no page for it: the Epic
+/// store, or the product's page in the Microsoft Store.
+#[tauri::command]
+fn open_in_store(app: AppHandle, kind: String, product: String) -> Result<(), String> {
+    let url = match kind.as_str() {
+        "epic" => "com.epicgames.launcher://store/".to_string(),
+        // Store ids are letters and digits only: nothing else goes into the address.
+        "xbox" if !product.is_empty() && product.chars().all(|c| c.is_ascii_alphanumeric()) => format!("ms-windows-store://pdp/?productid={product}"),
+        "xbox" => "ms-windows-store://home".to_string(),
+        _ => return Err(tr!("Essa loja não é conhecida.").into()),
+    };
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 /// What the developers of these Steam games (app id, name) posted lately.
@@ -3949,6 +3968,7 @@ fn main() {
             steam_details,
             store_page,
             steam_news,
+            open_in_store,
             standalone_status,
             install_standalone,
             pick_standalone,

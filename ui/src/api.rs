@@ -798,6 +798,16 @@ pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>
 }
 
 /// Opens a page about a Steam game in the browser: "store", "steamdb", "pcgw" or "site".
+/// The Epic store, or an Xbox game's page in the Microsoft Store.
+pub async fn open_in_store(kind: &str, product: &str) {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        kind: &'a str,
+        product: &'a str,
+    }
+    let _ = call::<_, ()>("open_in_store", &Arg { kind, product }).await;
+}
+
 pub async fn open_store_link(app_id: u32, kind: &str) -> Result<(), String> {
     #[derive(serde::Serialize)]
     #[serde(rename_all = "camelCase")]

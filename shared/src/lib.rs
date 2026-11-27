@@ -624,6 +624,10 @@ pub struct NewsItem {
 /// A game's page on the Steam store, as Cerberus shows it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoreDetails {
+    /// Where the page came from: "steam" or "msstore" (shown, as an Epic game's
+    /// page may be the Steam version's).
+    #[serde(default)]
+    pub origin: String,
     pub app: u32,
     pub name: String,
     pub short: String,

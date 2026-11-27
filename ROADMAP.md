@@ -823,7 +823,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 - [ ] Xbox: "jogos da conta" vem do histórico, não da posse (L9); pacotes instalados de verdade (L10). — M
 - [ ] Epic: plataforma, demos e limite de páginas (L11). — M
 - [ ] Game Pass: padrão, mercado e selos (L12); mesmo jogo com nomes diferentes entre lojas (L13). — M
-- [ ] Página da loja: vazio, fonte e "abrir na loja" (L14). — P
+- [x] Página da loja: vazio, fonte e "abrir na loja" (L14). — P (27/11/2026: a página diz de onde vieram as informações, Steam ou Microsoft Store; sem página, um cartão "Sem página da loja para este jogo" com "Abrir na Epic" ou "Abrir na Microsoft Store"; teste; conferido no app com "3 out of 10, EP 1")
 - [ ] Big Picture e Início coerentes com a Biblioteca (L15). — M
 - [ ] Instalar, desinstalar e verificar pela loja com o launcher ausente (L16; ver também o plano da Steam). — P/M
 - [ ] Testes que faltam (L17). — M
