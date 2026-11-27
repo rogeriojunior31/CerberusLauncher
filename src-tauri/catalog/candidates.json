@@ -29,7 +29,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 8450
+    "stars": 8454
   },
   {
     "id": "s2arm",
@@ -61,7 +61,7 @@
       }
     },
     "size_text": "225 MB",
-    "stars": 3927
+    "stars": 3952
   },
   {
     "id": "xbox2windows",
@@ -93,7 +93,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 1949
+    "stars": 1964
   },
   {
     "id": "ps3recomp",
@@ -131,7 +131,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 744
+    "stars": 746
   },
   {
     "id": "gb-recompiled",
@@ -186,8 +186,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.3.0",
-    "released": "2026-11-25",
+    "tag": "v0.4.1",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
@@ -198,16 +198,16 @@
     },
     "files": {
       "windows": {
-        "name": "fefw-recomp-0.3.0-win64.zip",
-        "sha256": "1d51d5bd8bb64c27480c4795f09a4f27f37aeb7785e7e066cd41d10f9336a722"
+        "name": "fefw-recomp-0.4.1-win64.zip",
+        "sha256": "f24a2c40ceeaaa97c0a2f785b796288d31f5b60e25d989c0b403c6f633c9f573"
       },
       "linux": {
-        "name": "fefw-recomp-0.3.0-linux-x64.tar.gz",
-        "sha256": "79034aad205b58f7518ee7525daeabd702a330ca464f180a0bbaca0d9088edfb"
+        "name": "fefw-recomp-0.4.1-linux-x64.tar.gz",
+        "sha256": "d9f80b94c8f4464024ad000b0c02b4c32fa3c13fb38a9f6fc2bb0c7dbc1fcb10"
       }
     },
-    "size_text": "158 MB",
-    "stars": 434
+    "size_text": "159 MB",
+    "stars": 457
   },
   {
     "id": "recompstore",
@@ -239,7 +239,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 417
+    "stars": 419
   },
   {
     "id": "nfsu2recomp",
@@ -271,7 +271,7 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 302
+    "stars": 305
   },
   {
     "id": "mk8-online",
@@ -309,7 +309,7 @@
       }
     },
     "size_text": "50 MB",
-    "stars": 289
+    "stars": 296
   },
   {
     "id": "switchwakerhd",
@@ -353,7 +353,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 283
+    "stars": 286
   },
   {
     "id": "bo2-mac",
@@ -385,7 +385,7 @@
       }
     },
     "size_text": "107 MB",
-    "stars": 280
+    "stars": 281
   },
   {
     "id": "ps2-native-recomp",
@@ -417,7 +417,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 239
+    "stars": 244
   },
   {
     "id": "decomp-buddy",
@@ -493,71 +493,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 153
-  },
-  {
-    "id": "gow-pc-port-classic-recompiled",
-    "title": "gow-pc-port-classic-recompiled",
-    "name": "gow pc port classic recompiled",
-    "repo": "martina1713/gow-pc-port-classic-recompiled",
-    "about": "God of War Classic Greek Saga PC Port & Static Recompilation v3.7.9: Native Windows 10/11 (x64) studio environment with pre-configured.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v3.7.9",
-    "released": "2026-11-25",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "gow-pc-port-classic-recompiled-*-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "gow-pc-port-classic-recompiled-v3.7.9-win64.zip",
-        "sha256": "6ce9acc3f7fc522d31b02123db348447407769a5ca40a81524ab8ef1083103b1"
-      }
-    },
-    "size_text": "5 MB",
-    "stars": 151
-  },
-  {
-    "id": "gow-pc-port-classic-recompiled",
-    "title": "gow-pc-port-classic-recompiled",
-    "name": "gow pc port classic recompiled",
-    "repo": "mywilliam211/gow-pc-port-classic-recompiled",
-    "about": "God of War Classic Greek Saga PC Port & Static Recompilation (v4.1.3) — Portable 64-bit Windows workstation build with CUDA/DirectML.",
-    "license": "MIT",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v4.1.3",
-    "released": "2026-11-25",
-    "systems": [
-      "windows"
-    ],
-    "assets": {
-      "windows": "gow-pc-port-classic-recompiled-*-win64.zip"
-    },
-    "files": {
-      "windows": {
-        "name": "gow-pc-port-classic-recompiled-v4.1.3-win64.zip",
-        "sha256": "72c2cdb053bcb9f3527b10d86a313e811d77a24c8ded865d5b1aeb0dc5050413"
-      }
-    },
-    "size_text": "5 MB",
-    "stars": 103
+    "stars": 158
   },
   {
     "id": "gta-stories-recompiled",
@@ -606,8 +542,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.0.16",
-    "released": "2026-11-25",
+    "tag": "v1.0.18",
+    "released": "2026-11-26",
     "systems": [
       "windows"
     ],
@@ -616,12 +552,12 @@
     },
     "files": {
       "windows": {
-        "name": "OpenTM2-v1.0.16-Windows-x64.zip",
-        "sha256": "ba15531f3678f0e8948605b6b3ec3dea01ddd5f8eaa12c3456df0c2eed0e787b"
+        "name": "OpenTM2-v1.0.18-Windows-x64.zip",
+        "sha256": "bc4d9ed9840bf5c936fdf242f4dea6815a4a268b5cfc9ecdb7a3cc68aa336fcb"
       }
     },
     "size_text": "18 MB",
-    "stars": 55
+    "stars": 58
   },
   {
     "id": "yakuza-kenzan-recomp",
@@ -638,28 +574,28 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "V1.0.0",
-    "released": "2026-11-24",
+    "tag": "V1.0.2",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux"
     ],
     "assets": {
-      "windows": "Kenzan-Windows.zip",
-      "linux": "Kenzan-x86_64.AppImage"
+      "windows": "Kenzan-Windows-Japanese.zip",
+      "linux": "Kenzan-Japanese-x86_64.AppImage"
     },
     "files": {
       "windows": {
-        "name": "Kenzan-Windows.zip",
-        "sha256": "79e238e9b06ec8c14826e22de178abd79369bcfab94783b3b86e270c72272958"
+        "name": "Kenzan-Windows-Japanese.zip",
+        "sha256": "530fe877b5ef0a252de4942cc7790ab9ac4f3b2e89659a00c5b49acdfca64f63"
       },
       "linux": {
-        "name": "Kenzan-x86_64.AppImage",
-        "sha256": "7e606ae5f249d0da38a6955c53a3e09cd2a470e039a034a110abce658cca1612"
+        "name": "Kenzan-Japanese-x86_64.AppImage",
+        "sha256": "b6c7647cd8eb73d705f7bca01c7a7a15fa22b202adb95011f3ba1ebfb8d6e47b"
       }
     },
-    "size_text": "344 MB",
-    "stars": 44
+    "size_text": "697 MB",
+    "stars": 51
   },
   {
     "id": "thpsource2",
@@ -691,7 +627,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 39
+    "stars": 40
   },
   {
     "id": "midtown-madness-3-recomp",
