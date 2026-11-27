@@ -471,7 +471,7 @@ fn in_state(g: &AchievementGame, s: State) -> bool {
 fn PlatCard(g: AchievementGame) -> impl IntoView {
     let library = expect_context::<Library>();
     let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
-    let when = g.last_unlock.map(|t| tr!("Platinado {}", format::ago(t))).unwrap_or_else(|| tr!("Platinado").to_string());
+    let when = g.last_unlock.filter(|t| format::known_date(*t)).map(|t| tr!("Platinado {}", format::ago(t))).unwrap_or_else(|| tr!("Platinado").to_string());
     view! {
         <button type="button" class="plat-c" title=format!("{} · {} {}", g.name, g.total, tr!("conquistas")) on:click=move |_| library.go(route.clone())>
             <span class="plat-art"><Poster sources=g.art.iter().map(|a| crate::art::src(a)).collect() title=g.name.clone() /></span>
@@ -530,7 +530,7 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
                 <span class="ach-bar"><i style=format!("width: {pct}%") class:done=pct == 100></i></span>
                 <span class="ach-line-n"><b>{format!("{pct}%")}</b><small>{format!("{}/{}", g.unlocked, g.total)}</small></span>
             </span>
-            <small class="ach-line-w">{g.last_unlock.map(format::ago).unwrap_or_default()}</small>
+            <small class="ach-line-w">{g.last_unlock.filter(|t| format::known_date(*t)).map(format::ago).unwrap_or_default()}</small>
         </button>
     }
 }
@@ -632,7 +632,7 @@ fn GameBody(d: GameAchievements, #[prop(optional)] embedded: bool) -> impl IntoV
     if let Some(t) = g.last_played {
         stats.push((tr!("Última vez").to_string(), format::ago(t)));
     }
-    if let Some(t) = g.last_unlock {
+    if let Some(t) = g.last_unlock.filter(|t| format::known_date(*t)) {
         stats.push((tr!("Última conquista").to_string(), format::ago(t)));
     }
     if g.points_total > 0 {
@@ -684,7 +684,7 @@ fn GameBody(d: GameAchievements, #[prop(optional)] embedded: bool) -> impl IntoV
             <div class="ach-tab-h">
                 {award_badge(g.award, g.award_at)}
                 {progress(g.unlocked, g.total)}
-                {g.last_unlock.map(|t| view! { <small class="muted">{tr!("Última conquista {}", format::ago(t))}</small> })}
+                {g.last_unlock.filter(|t| format::known_date(*t)).map(|t| view! { <small class="muted">{tr!("Última conquista {}", format::ago(t))}</small> })}
             </div>
         }
         .into_any()
@@ -783,7 +783,7 @@ fn AchRow(a: Achievement, reveal_all: RwSignal<bool>, revealed: RwSignal<std::co
         let shown = if r < 0.1 { "<0.1".to_string() } else { format::decimal(format!("{r:.1}")) };
         tr!("{}% dos jogadores", shown)
     });
-    let when = a.unlocked_at.map(|t| if t == 0 { tr!("Desbloqueada").to_string() } else { format::date_time(t) });
+    let when = a.unlocked_at.map(|t| if format::known_date(t) { format::date_time(t) } else { tr!("Desbloqueada").to_string() });
     view! {
         <div class="ach-row" class:unlocked=unlocked>
             <AchIcon a=a.clone() unlocked />

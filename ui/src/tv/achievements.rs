@@ -117,7 +117,7 @@ pub fn GameList(source: String, key: String) -> impl IntoView {
                 let icon = if got { a.icon.clone() } else { a.icon_locked.clone().or_else(|| a.icon.clone()) };
                 let (name, about) = if secret { (tr!("Conquista secreta").to_string(), tr!("Escondida até você desbloquear.").to_string()) } else { (a.name.clone(), a.description.clone()) };
                 let when = match a.unlocked_at {
-                    Some(t) => format::ago(t),
+                    Some(t) => format::unlocked_when(t),
                     None => a.rarity.map(|p| tr!("{}% dos jogadores", crate::format::decimal(format!("{p:.1}")))).unwrap_or_default(),
                 };
                 let points = (a.points > 0).then(|| view! { <em>{tr!("{} pts", a.points)}</em> });

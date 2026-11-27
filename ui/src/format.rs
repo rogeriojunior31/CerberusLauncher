@@ -62,6 +62,18 @@ pub fn playtime(seconds: u64) -> String {
     }
 }
 
+/// Xbox and Epic mark an unlock whose date didn't come with 1 (0 elsewhere):
+/// a real date is after that, never 31/12/1969.
+pub fn known_date(seconds: u64) -> bool {
+    seconds > 1
+}
+
+/// When an achievement was unlocked: "há 3 dias", or just "Desbloqueada"
+/// when the store didn't say.
+pub fn unlocked_when(seconds: u64) -> String {
+    if known_date(seconds) { ago(seconds) } else { tr!("Desbloqueada").to_string() }
+}
+
 /// How long ago, in words: "agora há pouco", "há 3 h", "ontem", "há 5 dias", or the date.
 pub fn ago(seconds: u64) -> String {
     let now = (js_sys::Date::now() / 1000.0) as u64;
@@ -83,4 +95,13 @@ pub fn date_time(seconds: u64) -> String {
     let _ = set("dateStyle", "short");
     let _ = set("timeStyle", "short");
     date.to_locale_string(if lang() == Lang::En { "en-US" } else { "pt-BR" }, &options).into()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_missing_unlock_date_is_never_shown_as_1969() {
+        assert!(!super::known_date(0) && !super::known_date(1));
+        assert!(super::known_date(1_795_000_000));
+    }
 }

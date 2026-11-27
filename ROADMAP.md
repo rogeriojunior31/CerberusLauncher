@@ -831,7 +831,7 @@ quando os itens da sua revisão estiverem resolvidos ou conscientemente adiados 
 ### 8.2 Conquistas e tempo de jogo — [revisão completa](docs/roadmap/conquistas-e-tempo.md)
 
 - [ ] Sessão vencida aparece como "loja ocupada" (L4). — P/M
-- [ ] Data desconhecida aparece como 31/12/1969 (L5). — P
+- [x] Data desconhecida aparece como 31/12/1969 (L5). — P (27/11/2026: format::unlocked_when diz "Desbloqueada" quando a data não veio, na lista do jogo, na visão geral e na TV; "Última conquista" e "Platinado" sem data não aparecem; teste; conferido que a tela de Conquistas daqui não mostra 1969)
 - [ ] Conquistas revogadas ou zeradas nunca saem do hub (L6). — M
 - [ ] Listas guardadas sem idioma (L7). — P/M
 - [ ] Steam e RetroAchievements quase não alimentam Próximas e Mais raras; página da Epic só lê o banco (L8). — M

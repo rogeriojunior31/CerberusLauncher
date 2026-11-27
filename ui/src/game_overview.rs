@@ -414,8 +414,8 @@ pub fn AchievementsCard(data: LocalResource<Result<cerberus_shared::GameAchievem
                             <span>
                                 <b>{if secret { tr!("Conquista secreta").to_string() } else { a.name.clone() }}</b>
                                 <small>{match (a.unlocked_at, a.rarity) {
-                                    (Some(t), Some(r)) => format!("{} · {}", format::ago(t), tr!("{}% dos jogadores", format::decimal(format!("{r:.1}")))),
-                                    (Some(t), None) => format::ago(t),
+                                    (Some(t), Some(r)) => format!("{} · {}", format::unlocked_when(t), tr!("{}% dos jogadores", format::decimal(format!("{r:.1}")))),
+                                    (Some(t), None) => format::unlocked_when(t),
                                     (None, Some(r)) => tr!("Bloqueada · {}% dos jogadores", format::decimal(format!("{r:.1}"))),
                                     (None, None) => tr!("Bloqueada").to_string(),
                                 }}</small>
