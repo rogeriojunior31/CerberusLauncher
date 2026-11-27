@@ -209,6 +209,12 @@ pub fn backup_saves(folders: &Folders, recomp_id: &str, install_dir: &Path, reas
     backup_saves_to(folders, recomp_id, install_dir, reason, true)
 }
 
+/// The same, kept on this PC only (the cloud wasn't checked before playing:
+/// sent up, these saves could pass over newer ones from another PC).
+pub fn backup_saves_here(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str) -> Result<Option<Backup>, String> {
+    backup_saves_to(folders, recomp_id, install_dir, reason, false)
+}
+
 /// `to_cloud: false` for a safety copy of saves about to be replaced: sending
 /// it up would make the old saves the cloud's newest, and bring them back.
 fn backup_saves_to(folders: &Folders, recomp_id: &str, install_dir: &Path, reason: &str, to_cloud: bool) -> Result<Option<Backup>, String> {

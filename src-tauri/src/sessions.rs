@@ -218,6 +218,13 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
         let folders = app.state::<recomp::Folders>();
         // A cloud folder that doesn't answer (OneDrive signed out, a drive away) isn't waited on.
         let answered = recomp::cloud_answers(&folders, recomp_id, Duration::from_secs(10));
+        let mut unchecked = CLOUD_UNCHECKED.lock().unwrap_or_else(|p| p.into_inner());
+        if answered {
+            unchecked.remove(&game.id);
+        } else {
+            unchecked.insert(game.id.clone());
+        }
+        drop(unchecked);
         if !answered {
             let message = tr!("A pasta da nuvem não respondeu em 10 segundos, então o jogo abriu com os saves deste PC. Se jogou em outro PC, confira os backups antes de jogar muito.");
             crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Err(message.to_string()));
@@ -607,8 +614,17 @@ fn close_session(
         notices.push(tr!("Não foi possível gravar o tempo de {0}: {1}", game.name, e));
     }
     if let Source::Recomp { recomp_id, .. } = &game.source {
-        let result = recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"));
+        // The cloud wasn't checked before this session: kept here, not sent up.
+        let unchecked = CLOUD_UNCHECKED.lock().unwrap_or_else(|p| p.into_inner()).remove(&game.id);
+        let result = if unchecked {
+            recomp::backup_saves_here(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"))
+        } else {
+            recomp::backup_saves(folders, recomp_id, Path::new(&game.install_dir), tk!("Depois de jogar"))
+        };
         trail.note(&game.id, tk!("Backup depois de jogar"), &backup_outcome(&result));
+        if unchecked && result.is_ok() {
+            trail.note(&game.id, tk!("Saves da nuvem"), &Err(tr!("O backup ficou só neste PC: a nuvem não foi conferida antes da partida, e enviar estes saves poderia passar por cima dos de outro PC. Quando a nuvem voltar, se estes forem os mais novos, use \"Fazer backup agora\".").into()));
+        }
         if let Err(e) = result {
             notices.push(tr!("Falha no backup de {0}: {1}", game.name, e));
         }
@@ -616,11 +632,14 @@ fn close_session(
     notices
 }
 
+/// Games whose cloud folder didn't answer before this session.
+static CLOUD_UNCHECKED: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+
 /// "1 h 5 min", "3 min", "40 s".
 /// "1 min jogado", "5 min jogados": what a session's history line says.
 pub fn played_text(seconds: u64) -> String {
     let time = duration_text(seconds);
-    if time == "1 min" || time == "1 s" { format!("{time} jogado") } else { format!("{time} jogados") }
+    if time == "1 min" || time == "1 s" { tr!("{} jogado", time) } else { tr!("{} jogados", time) }
 }
 
 fn duration_text(seconds: u64) -> String {
