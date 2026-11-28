@@ -42,7 +42,7 @@
       }
     },
     "size_text": "28 MB",
-    "stars": 7782
+    "stars": 7783
   },
   {
     "id": "starfox64recomp",
@@ -87,7 +87,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 413
+    "stars": 414
   },
   {
     "id": "mariokart64recomp",
@@ -178,7 +178,7 @@
       }
     },
     "size_text": "18 MB",
-    "stars": 2156
+    "stars": 2158
   },
   {
     "id": "goemon64recomp",
@@ -223,7 +223,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 343
+    "stars": 344
   },
   {
     "id": "shipwright",
@@ -268,7 +268,7 @@
       }
     },
     "size_text": "70 MB",
-    "stars": 6177
+    "stars": 6183
   },
   {
     "id": "2ship2harkinian",
@@ -311,7 +311,7 @@
       }
     },
     "size_text": "43 MB",
-    "stars": 2535
+    "stars": 2538
   },
   {
     "id": "starship",
@@ -339,7 +339,7 @@
     },
     "files": {},
     "size_text": "5 MB",
-    "stars": 2160
+    "stars": 2162
   },
   {
     "id": "spaghettikart",
@@ -382,7 +382,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 2514
+    "stars": 2515
   },
   {
     "id": "unleashedrecomp",
@@ -411,7 +411,7 @@
     },
     "files": {},
     "size_text": "51 MB",
-    "stars": 5431
+    "stars": 5435
   },
   {
     "id": "symphonyrecomp",
@@ -456,7 +456,7 @@
       }
     },
     "size_text": "61 MB",
-    "stars": 1182,
+    "stars": 1185,
     "license": ""
   },
   {
@@ -502,7 +502,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 1101,
+    "stars": 1107,
     "license": "BSD-3-Clause"
   },
   {
@@ -542,7 +542,7 @@
       }
     },
     "size_text": "148 MB",
-    "stars": 1058,
+    "stars": 1060,
     "license": "GPL-3.0"
   },
   {
@@ -576,7 +576,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 968,
+    "stars": 973,
     "license": ""
   },
   {
@@ -610,7 +610,7 @@
       }
     },
     "size_text": "102 MB",
-    "stars": 732,
+    "stars": 738,
     "license": "MIT"
   },
   {
@@ -650,7 +650,7 @@
       }
     },
     "size_text": "211 MB",
-    "stars": 636,
+    "stars": 638,
     "license": "MIT"
   },
   {
@@ -690,7 +690,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 598,
+    "stars": 599,
     "license": "GPL-3.0"
   },
   {
@@ -730,7 +730,7 @@
       }
     },
     "size_text": "34 MB",
-    "stars": 587,
+    "stars": 591,
     "license": "NOASSERTION"
   },
   {
@@ -770,7 +770,7 @@
       }
     },
     "size_text": "184 MB",
-    "stars": 533,
+    "stars": 534,
     "license": "BSD-3-Clause"
   },
   {
@@ -804,7 +804,7 @@
       }
     },
     "size_text": "125 MB",
-    "stars": 622,
+    "stars": 627,
     "license": "MIT"
   },
   {
@@ -844,7 +844,7 @@
       }
     },
     "size_text": "379 MB",
-    "stars": 453,
+    "stars": 455,
     "license": "GPL-3.0"
   },
   {
@@ -884,7 +884,7 @@
       }
     },
     "size_text": "7 MB",
-    "stars": 455,
+    "stars": 456,
     "license": "NOASSERTION"
   },
   {
@@ -924,7 +924,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 443,
+    "stars": 445,
     "license": "MIT"
   },
   {
@@ -958,7 +958,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 380,
+    "stars": 381,
     "license": "BSD-3-Clause"
   },
   {
@@ -998,7 +998,7 @@
       }
     },
     "size_text": "85 MB",
-    "stars": 371,
+    "stars": 376,
     "license": ""
   },
   {
@@ -1017,8 +1017,8 @@
     "needs": "Sua cópia de Ninja Gaiden Black (Xbox).",
     "saves": [],
     "start": "NinjaGaidenBlack.exe",
-    "tag": "v1.0.4",
-    "released": "2026-11-27",
+    "tag": "v1.0.5",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -1030,15 +1030,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaidenBlack-windows-x64.zip",
-        "sha256": "a06c151e4ad404408f37fe0a81d7df7e9b8439885a66551723729f3f549b3065"
+        "sha256": "4b85526450f95de73a5449aa29a20986597f4d0cacb2f6c0d788389892c400af"
       },
       "linux": {
         "name": "NinjaGaidenBlack-x86_64.AppImage",
-        "sha256": "8c62fe8933ace0a7fdefb8c7d1071bd5124631ec825018abab2570048522863b"
+        "sha256": "bbad519591db3aaaac97bb3347c0395c6e1ddf7e319b6f924f55c8bf1cc46cf8"
       }
     },
     "size_text": "20 MB",
-    "stars": 406,
+    "stars": 408,
     "license": "GPL-3.0"
   },
   {
@@ -1158,7 +1158,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 319,
+    "stars": 320,
     "license": "BSD-3-Clause"
   },
   {
@@ -1244,7 +1244,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 291,
+    "stars": 292,
     "license": "GPL-3.0"
   },
   {
@@ -1283,7 +1283,7 @@
       }
     },
     "size_text": "64 MB",
-    "stars": 292,
+    "stars": 293,
     "license": "NOASSERTION"
   },
   {
@@ -1302,8 +1302,8 @@
     "needs": "Sua cópia de Dead or Alive Xtreme Beach Volleyball (Xbox).",
     "saves": [],
     "start": "Launcher.cmd",
-    "tag": "v0.8.0",
-    "released": "2026-11-23",
+    "tag": "v0.8.1",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux",
@@ -1316,20 +1316,20 @@
     },
     "files": {
       "windows": {
-        "name": "DOAXBV-0.8.0.zip",
-        "sha256": "a4b80511a2d538b30a76358068fcc47ddb0837360b6fb952e0ef92358dd1f48c"
+        "name": "DOAXBV-0.8.1.zip",
+        "sha256": "a9c603b7e59113cf547f9968de6423fa31ece8f693228754618ceb3c6e03c693"
       },
       "linux": {
-        "name": "DOAXBV-0.8.0-Linux.zip",
-        "sha256": "021b90c3ec947b2894549b68b0087bb81deb0d9f482d9289f9d4063b89a8d689"
+        "name": "DOAXBV-0.8.1-Linux.zip",
+        "sha256": "7bb61539acf3931fb43cde958602eaca92dbca0ffd43277328d3fe30203fd76b"
       },
       "macos": {
-        "name": "DOAXBV-0.8.0-macOS.zip",
-        "sha256": "b3f807d948b41160ad212facf60b2e815335c2c17fdade11e7616d605d6fe0b6"
+        "name": "DOAXBV-0.8.1-macOS.zip",
+        "sha256": "3929175ac6cf46f7f1534315e88e8ef228093cf7f3be813b7b506b70aa2e74cb"
       }
     },
     "size_text": "105 MB",
-    "stars": 280,
+    "stars": 281,
     "license": "GPL-3.0"
   },
   {
@@ -1369,7 +1369,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 287,
+    "stars": 290,
     "license": "GPL-3.0"
   },
   {
@@ -1403,7 +1403,7 @@
       }
     },
     "size_text": "55 MB",
-    "stars": 252,
+    "stars": 254,
     "license": "GPL-3.0"
   },
   {
@@ -1443,7 +1443,7 @@
       }
     },
     "size_text": "193 MB",
-    "stars": 246,
+    "stars": 245,
     "license": ""
   },
   {
@@ -1529,7 +1529,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 253,
+    "stars": 256,
     "license": "GPL-3.0"
   },
   {
@@ -1575,7 +1575,7 @@
       }
     },
     "size_text": "45 MB",
-    "stars": 222,
+    "stars": 224,
     "license": "GPL-3.0"
   },
   {
@@ -1609,7 +1609,7 @@
       }
     },
     "size_text": "49 MB",
-    "stars": 230,
+    "stars": 231,
     "license": "GPL-3.0"
   },
   {
@@ -1643,7 +1643,7 @@
       }
     },
     "size_text": "131 MB",
-    "stars": 230,
+    "stars": 229,
     "license": "MIT"
   },
   {
@@ -1683,7 +1683,7 @@
       }
     },
     "size_text": "17 MB",
-    "stars": 221,
+    "stars": 226,
     "license": "GPL-3.0"
   },
   {
@@ -1702,8 +1702,8 @@
     "needs": "Sua cópia de Super Street Fighter II Turbo; Street Fighter Alpha; Street Fighter Alpha 2; Street Fighter Zero 2 Alpha; Street Fighter (Other).",
     "saves": [],
     "start": "cps2recomp-launcher.exe",
-    "tag": "v1.6.0-beta.6",
-    "released": "2026-11-25",
+    "tag": "v1.6.0-beta.7",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux",
@@ -1717,19 +1717,19 @@
     "files": {
       "windows": {
         "name": "CPS2Recomp-windows-x64.zip",
-        "sha256": "b5431c77495ec7c6eb07ccdd8707ef25921bf8d91bb4791942eddbac22b7db8a"
+        "sha256": "efa7a5a929f0e1b66dc13c95739a60e633994d34d144560236821e78c3b3e970"
       },
       "linux": {
         "name": "CPS2Recomp-linux-x86_64.tar.gz",
-        "sha256": "db522b6f0c556aca546228c869adc0205727d0391c33cc2412a54e354cc75b1a"
+        "sha256": "46c079a087d95b0e82a5d967828a9b490bcd758b4abb1d28547d21ce925cb1d0"
       },
       "macos": {
         "name": "CPS2Recomp-macOS.zip",
-        "sha256": "c42fe99f844d151fc705bde1cf197f44c74ed20701fb50a983e14c6c1ae57a3e"
+        "sha256": "6f4ff6b5285a7460fa5970da0dba2e0b8fa697e8a51218303d70c155507d7b7c"
       }
     },
-    "size_text": "166 MB",
-    "stars": 219,
+    "size_text": "169 MB",
+    "stars": 222,
     "license": "GPL-3.0"
   },
   {
@@ -1763,7 +1763,7 @@
       }
     },
     "size_text": "26 MB",
-    "stars": 217,
+    "stars": 218,
     "license": "MIT"
   },
   {
@@ -1803,7 +1803,7 @@
       }
     },
     "size_text": "40 MB",
-    "stars": 201,
+    "stars": 202,
     "license": "MIT"
   },
   {
@@ -1843,7 +1843,7 @@
       }
     },
     "size_text": "110 MB",
-    "stars": 196,
+    "stars": 197,
     "license": "BSD-3-Clause"
   },
   {
@@ -1911,7 +1911,7 @@
       }
     },
     "size_text": "353 MB",
-    "stars": 197,
+    "stars": 198,
     "license": "NOASSERTION"
   },
   {
@@ -1997,7 +1997,7 @@
       }
     },
     "size_text": "42 MB",
-    "stars": 147,
+    "stars": 148,
     "license": "GPL-2.0"
   },
   {
@@ -2037,7 +2037,7 @@
       }
     },
     "size_text": "68 MB",
-    "stars": 131,
+    "stars": 132,
     "license": ""
   },
   {
@@ -2077,7 +2077,7 @@
       }
     },
     "size_text": "67 MB",
-    "stars": 132,
+    "stars": 131,
     "license": "GPL-3.0"
   },
   {
@@ -2237,7 +2237,7 @@
       }
     },
     "size_text": "85 MB",
-    "stars": 121,
+    "stars": 124,
     "license": ""
   },
   {
@@ -2357,7 +2357,7 @@
       }
     },
     "size_text": "29 MB",
-    "stars": 107,
+    "stars": 108,
     "license": ""
   },
   {
@@ -2397,7 +2397,7 @@
       }
     },
     "size_text": "20 MB",
-    "stars": 88,
+    "stars": 89,
     "license": "GPL-2.0"
   },
   {
@@ -2437,7 +2437,7 @@
       }
     },
     "size_text": "24 MB",
-    "stars": 81,
+    "stars": 82,
     "license": ""
   },
   {
@@ -2551,7 +2551,7 @@
       }
     },
     "size_text": "42 MB",
-    "stars": 77,
+    "stars": 78,
     "license": "GPL-3.0"
   },
   {
@@ -2631,7 +2631,7 @@
       }
     },
     "size_text": "21 MB",
-    "stars": 60,
+    "stars": 61,
     "license": "NOASSERTION"
   },
   {
@@ -2797,7 +2797,7 @@
       }
     },
     "size_text": "27 MB",
-    "stars": 46,
+    "stars": 47,
     "license": "GPL-3.0"
   },
   {
@@ -2911,7 +2911,7 @@
       }
     },
     "size_text": "163 MB",
-    "stars": 8381,
+    "stars": 8434,
     "license": "MIT"
   },
   {
@@ -2929,8 +2929,8 @@
     "adds": "",
     "needs": "Sua cópia de Mario Kart World (Nintendo Switch 2).",
     "saves": [],
-    "tag": "v0.1.18",
-    "released": "2026-11-23",
+    "tag": "v0.1.19",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -2941,16 +2941,16 @@
     },
     "files": {
       "windows": {
-        "name": "mkw-recomp-0.1.18-windows-x64-noavx2.zip",
-        "sha256": "7ce3148d23a2fe255ee36536bd24e027bc4313c54eff50a590e73cb33fa32ccc"
+        "name": "mkw-recomp-0.1.19-windows-x64-noavx2.zip",
+        "sha256": "a113377d37b50c8edf299e149e3c2e94c0d51faefa6f9c5369710cb9812373f3"
       },
       "linux": {
-        "name": "mkw-recomp-0.1.18-x86_64.AppImage",
-        "sha256": "2f480f4d7d43651dcaaf6979317b1b4db91356c207f3a1bf59df342375cae74d"
+        "name": "mkw-recomp-0.1.19-x86_64.AppImage",
+        "sha256": "fba76bc6142e285a77adea10423955df635644e9e5c60e3de530a7ba456de99a"
       }
     },
-    "size_text": "212 MB",
-    "stars": 1849,
+    "size_text": "213 MB",
+    "stars": 1874,
     "license": "MIT"
   },
   {
@@ -2984,7 +2984,7 @@
       }
     },
     "size_text": "111 MB",
-    "stars": 1257,
+    "stars": 1253,
     "license": "GPL-3.0"
   },
   {
@@ -3002,28 +3002,28 @@
     "adds": "",
     "needs": "Sua cópia de Donkey Kong Bananza (Nintendo Switch 2).",
     "saves": [],
-    "tag": "v0.5.2",
-    "released": "2026-11-24",
+    "tag": "v0.5.4",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
     ],
     "assets": {
-      "windows": "DKB-Setup-*+a58af05-windows.zip",
-      "linux": "DKB-Setup-*+a58af05-linux-x86_64.tar.gz"
+      "windows": "DKB-Setup-*+364bffc-windows.zip",
+      "linux": "DKB-Setup-*+364bffc-linux-x86_64.tar.gz"
     },
     "files": {
       "windows": {
-        "name": "DKB-Setup-0.5.2+a58af05-windows.zip",
-        "sha256": "28536fe035ee710a2d2a238c8249b37e43db8744a8140c0333bd508a2cb97fff"
+        "name": "DKB-Setup-0.5.4+364bffc-windows.zip",
+        "sha256": "fb1a9b4336b85d5bf7ae47842ba45c89a8f7de255bb651446b3479c17a438345"
       },
       "linux": {
-        "name": "DKB-Setup-0.5.2+a58af05-linux-x86_64.tar.gz",
-        "sha256": "831d092e76ceff69935d6b1caa7f42f19f0192c80d0f0733002824f03f4dae7a"
+        "name": "DKB-Setup-0.5.4+364bffc-linux-x86_64.tar.gz",
+        "sha256": "56fe96891cf913a6bfed01d0db7f606e44eae39fc92d29a64815a2bf49160858"
       }
     },
-    "size_text": "126 MB",
-    "stars": 1449,
+    "size_text": "127 MB",
+    "stars": 1467,
     "license": "GPL-3.0"
   },
   {
@@ -3063,7 +3063,7 @@
       }
     },
     "size_text": "160 MB",
-    "stars": 1097,
+    "stars": 1102,
     "license": "GPL-2.0"
   },
   {
@@ -3102,7 +3102,7 @@
       }
     },
     "size_text": "154 MB",
-    "stars": 973,
+    "stars": 978,
     "license": "GPL-3.0"
   },
   {
@@ -3120,8 +3120,8 @@
     "adds": "",
     "needs": "Sua cópia de Pokemon Pokopia (Nintendo Switch 2).",
     "saves": [],
-    "tag": "v0.18.0",
-    "released": "2026-11-27",
+    "tag": "v0.18.1",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -3132,16 +3132,16 @@
     },
     "files": {
       "windows": {
-        "name": "PokopiaRecomp-0.18.0-win64.zip",
-        "sha256": "fceb9fc4bec45297a6a37a25c2096f91b658daf04835d5d41ddf5e2b6a5fda66"
+        "name": "PokopiaRecomp-0.18.1-win64.zip",
+        "sha256": "8eec3cc7884a4aca10b2dfbf49ff11b58b4e4f1ed4575763b6556278d2ee9d35"
       },
       "linux": {
-        "name": "PokopiaRecomp-0.18.0-linux-x64.tar.gz",
-        "sha256": "f584faad99f62807c9348bdc62bb5bdaa947a551a18251ec4e3ff8969ec371d6"
+        "name": "PokopiaRecomp-0.18.1-linux-x64.tar.gz",
+        "sha256": "fabea5e4ec9c7ca66ce137b775854d8f0e8bcd578bc438e0afdf7c30b5ada963"
       }
     },
     "size_text": "188 MB",
-    "stars": 1064,
+    "stars": 1077,
     "license": "GPL-3.0"
   },
   {
@@ -3175,7 +3175,7 @@
       }
     },
     "size_text": "101 MB",
-    "stars": 656,
+    "stars": 653,
     "license": "GPL-3.0"
   },
   {
@@ -3215,7 +3215,7 @@
       }
     },
     "size_text": "146 MB",
-    "stars": 488,
+    "stars": 490,
     "license": "Apache-2.0"
   },
   {
@@ -3233,8 +3233,8 @@
     "adds": "",
     "needs": "Sua cópia de Super Mario Odyssey (Nintendo Switch).",
     "saves": [],
-    "tag": "v1.0.4",
-    "released": "2026-11-27",
+    "tag": "v1.0.5",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -3245,16 +3245,16 @@
     },
     "files": {
       "windows": {
-        "name": "Super.Odyssey.PC.Recomp-1.0.4-windows.zip",
-        "sha256": "172583413b581ecb56249bafc0a9c62b6e095b07d71759116ceca847bb82f806"
+        "name": "Super.Odyssey.PC.Recomp-1.0.5-windows.zip",
+        "sha256": "dd33ec892c2690c1452f75c2361623d1d1fa5c14ec410907d0331aeac3e4f0ec"
       },
       "linux": {
-        "name": "Super.Odyssey.PC.Recomp-1.0.4-linux-x86_64.AppImage",
-        "sha256": "32a3f7de7a9b46073a530b5742c81ca1b13c601e7c481bab5ab20417a2c0bd5a"
+        "name": "Super.Odyssey.PC.Recomp-1.0.5-linux-x86_64.AppImage",
+        "sha256": "7b5c46584884ee76dfdca0df28c8216a2a826c3d8a2c015b8aec11e441f87dcd"
       }
     },
     "size_text": "221 MB",
-    "stars": 677,
+    "stars": 692,
     "license": "NOASSERTION"
   },
   {
@@ -3288,7 +3288,7 @@
       }
     },
     "size_text": "142 MB",
-    "stars": 405,
+    "stars": 407,
     "license": "MIT"
   },
   {
@@ -3361,7 +3361,7 @@
       }
     },
     "size_text": "4 MB",
-    "stars": 302,
+    "stars": 305,
     "license": "MIT"
   },
   {
@@ -3395,7 +3395,7 @@
       }
     },
     "size_text": "72 MB",
-    "stars": 185,
+    "stars": 187,
     "license": "NOASSERTION"
   },
   {
@@ -3428,7 +3428,7 @@
       }
     },
     "size_text": "150 MB",
-    "stars": 202,
+    "stars": 207,
     "license": "NOASSERTION"
   },
   {
@@ -3473,7 +3473,7 @@
       }
     },
     "size_text": "38 MB",
-    "stars": 4216,
+    "stars": 4219,
     "license": "NOASSERTION"
   },
   {
@@ -3518,7 +3518,7 @@
       }
     },
     "size_text": "29 MB",
-    "stars": 1844,
+    "stars": 1847,
     "license": ""
   },
   {
@@ -3551,7 +3551,7 @@
       }
     },
     "size_text": "37 MB",
-    "stars": 1003,
+    "stars": 1009,
     "license": "GPL-3.0"
   },
   {
@@ -3590,7 +3590,7 @@
       }
     },
     "size_text": "81 MB",
-    "stars": 775,
+    "stars": 789,
     "license": "GPL-3.0"
   },
   {
@@ -3674,7 +3674,7 @@
       }
     },
     "size_text": "30 MB",
-    "stars": 460,
+    "stars": 461,
     "license": "GPL-3.0"
   },
   {
@@ -3707,7 +3707,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 348,
+    "stars": 350,
     "license": "MIT"
   },
   {
@@ -3725,8 +3725,8 @@
     "adds": "",
     "needs": "Sua cópia de Ninja Gaiden II (Xbox 360).",
     "saves": [],
-    "tag": "v0.9.0",
-    "released": "2026-11-27",
+    "tag": "v0.9.1",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -3738,15 +3738,15 @@
     "files": {
       "windows": {
         "name": "NinjaGaiden2-windows-x64.zip",
-        "sha256": "7b62c8fb0222ce4931279fa10ab7f75ce4398e723d7deb27ca1454980683cf09"
+        "sha256": "dd666153a1e171fac53c52eb5a2be6bc4c7a8904c68eed6ccc93df8cf9d5a173"
       },
       "linux": {
         "name": "NinjaGaiden2-x86_64.AppImage",
-        "sha256": "86cc05d032420fa90d9e70076801736b1ddc3bede02814f031064b2c42d132dc"
+        "sha256": "54f466248edf75232ca1cc5d948d934bbd3fc21f1d2d1ee35431d5ecbae6589c"
       }
     },
     "size_text": "156 MB",
-    "stars": 356,
+    "stars": 364,
     "license": "GPL-3.0"
   },
   {
@@ -3785,7 +3785,7 @@
       }
     },
     "size_text": "19 MB",
-    "stars": 242,
+    "stars": 245,
     "license": "MIT"
   },
   {
@@ -3857,7 +3857,7 @@
       }
     },
     "size_text": "133 MB",
-    "stars": 196,
+    "stars": 197,
     "license": "GPL-3.0"
   },
   {
@@ -3902,7 +3902,7 @@
       }
     },
     "size_text": "52 MB",
-    "stars": 141,
+    "stars": 143,
     "license": "GPL-3.0"
   },
   {
@@ -3935,7 +3935,7 @@
       }
     },
     "size_text": "7 MB",
-    "stars": 96,
+    "stars": 97,
     "license": ""
   },
   {
@@ -3974,7 +3974,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 100,
+    "stars": 101,
     "license": "GPL-3.0"
   },
   {
@@ -4052,7 +4052,7 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 78,
+    "stars": 77,
     "license": "NOASSERTION"
   },
   {
@@ -4124,7 +4124,7 @@
       }
     },
     "size_text": "56 MB",
-    "stars": 58,
+    "stars": 59,
     "license": "GPL-3.0"
   },
   {
@@ -4214,7 +4214,7 @@
     "adds": "",
     "needs": "Sua cópia de Conker: Live & Reloaded (Xbox).",
     "saves": [],
-    "tag": "v6.0.0",
+    "tag": "v6.0.1",
     "released": "2026-11-27",
     "systems": [
       "windows",
@@ -4226,16 +4226,16 @@
     },
     "files": {
       "windows": {
-        "name": "LiveAndRecompiled-v6.0.0-windows-x86_64.zip",
-        "sha256": "7a45da4980931f6d5d6020024722c02fb05e998224c5ddf9a69c2583410521e5"
+        "name": "LiveAndRecompiled-v6.0.1-windows-x86_64.zip",
+        "sha256": "1e7b572aa98ac5a49e2158e579eeeeacb239b53d5a3f32407712b647ce4edbd8"
       },
       "linux": {
-        "name": "LiveAndRecompiled-v6.0.0-linux-x86_64.tar.gz",
-        "sha256": "f8ddaeb8e7fb7f9faba356f81bd5d6eea6b0b65a062ffc952982e984f03a7b25"
+        "name": "LiveAndRecompiled-v6.0.1-linux-x86_64.tar.gz",
+        "sha256": "145d193a3d6597b290eadab03ebc20d6905612f8222f29120b788797c65efd59"
       }
     },
     "size_text": "135 MB",
-    "stars": 47,
+    "stars": 49,
     "license": "GPL-3.0"
   },
   {
@@ -4380,7 +4380,7 @@
       }
     },
     "size_text": "149 MB",
-    "stars": 504
+    "stars": 512
   },
   {
     "id": "yfm-redecomp",
@@ -4483,7 +4483,7 @@
       }
     },
     "size_text": "44 MB",
-    "stars": 98
+    "stars": 100
   },
   {
     "id": "mhgurecomp",
@@ -4521,7 +4521,7 @@
       }
     },
     "size_text": "44 MB",
-    "stars": 775,
+    "stars": 785,
     "handoff": {
       "kind": "folder",
       "folder": "data"
@@ -4549,8 +4549,8 @@
     "adds": "",
     "needs": "Sua cópia de Dragon Ball Z: Budokai Tenkaichi 3 (mod Tenkaichi 4) (PlayStation 2).",
     "saves": [],
-    "tag": "v0.1.39.6-R3.3",
-    "released": "2026-11-27",
+    "tag": "v0.1.39.6-R3.7",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -4562,14 +4562,14 @@
     "files": {
       "windows": {
         "name": "BT4decomp-windows-x64.zip",
-        "sha256": "0b2d3e2dd3ab13180366688a8f68f6f3f9bade43e8cf3a0579da78fa10351119"
+        "sha256": "7e0dd14cf5f33ad4743665cdbe895bf6b68b4b2c02f64dbea86c675973407ac3"
       },
       "linux": {
         "name": "BT4decomp-linux-x64.zip",
-        "sha256": "1ba4bd7c22f630443320ce3d696c50e8a862d025f28a31de3ef5a8ed7eb51e72"
+        "sha256": "042e80205e1b165b21ea3418d1e1032dc809f2fed817e472ea47847060a69732"
       }
     },
-    "size_text": "89 MB",
-    "stars": 139
+    "size_text": "92 MB",
+    "stars": 140
   }
 ]
