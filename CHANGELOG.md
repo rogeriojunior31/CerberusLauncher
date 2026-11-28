@@ -29,6 +29,7 @@
 
 - A Descoberta não carrega mais as listas das fontes inteiras: elas são buscadas pelo app, uma página por vez, em **Jogos das suas listas**.
 - Menos consultas às lojas a cada sincronização.
+- O Cerberus abre mais rápido: a primeira tela aparece em cerca de 0,6 s, antes 1,5 s.
 
 ## 0.11.0 — conquistas, Novidades e do seu jeito
 
