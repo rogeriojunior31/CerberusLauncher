@@ -238,6 +238,8 @@ pub fn start(app: &AppHandle, game: &Game, exe: &Path) -> Result<(), String> {
             Ok(None) => {}
             // Playing matters more than syncing; say so and carry on.
             Err(error) => {
+                // Played on saves that may be behind: they stay on this PC, not sent up as the newest.
+                CLOUD_UNCHECKED.lock().unwrap_or_else(|p| p.into_inner()).insert(game.id.clone());
                 crate::trail::note(app, &game.id, tk!("Saves da nuvem"), &Err(error.clone()));
                 let _ = app.emit("toast", tr!("Não foi possível conferir os saves da nuvem: {}", error));
             }

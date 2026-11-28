@@ -273,6 +273,11 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let places = saves::places(&entry.saves);
     let local_dir = folders.backups_dir(recomp_id);
     let here = saves::current_fingerprint(&places, install_dir);
+    // No saves here (reinstalled, or a new PC): nothing to lose, the cloud's come
+    // down. Otherwise the game would start empty and that save would win upstairs.
+    if here.is_none() {
+        return bring_down(folders, recomp_id, install_dir, &cloud, &cloud_newest.name, &cloud_print, &places);
+    }
     if here.as_deref() == Some(cloud_print.as_str()) {
         saves::set_anchor(&local_dir, &cloud, &cloud_print);
         return Ok(None);
@@ -2539,6 +2544,18 @@ mod tests {
 
         // Same saves on both: nothing more to do.
         assert!(pull_from_cloud(&laptop, "shipwright", &laptop_game).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_reinstalled_game_without_saves_gets_the_cloud_ones() {
+        let root = temp("cloud-reinstalled");
+        let cloud = root.join("OneDrive");
+        let (pc_, game) = pc(&root.join("pc"), &cloud, "level 9");
+        backup_saves(&pc_, "shipwright", &game, "Depois de jogar").unwrap();
+        // Uninstalled and installed again: the folder has no saves, the anchor is still there.
+        fs::remove_dir_all(game.join("Save")).unwrap();
+        assert!(pull_from_cloud(&pc_, "shipwright", &game).unwrap().is_some());
+        assert_eq!(fs::read_to_string(game.join("Save/file1.sav")).unwrap(), "level 9");
     }
 
     #[test]

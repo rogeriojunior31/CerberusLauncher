@@ -58,7 +58,7 @@ fn send(archive: &Path, root: &Path, destination: &Path, folders: &Folders) -> i
     let current = folders.cloud.read().unwrap_or_else(|p| p.into_inner());
     if current.as_deref() == Some(root) {
         publish(temp, &destination.join(name))?;
-        super::saves::prune_cloud(destination);
+        super::saves::prune_cloud(destination, &name.to_string_lossy());
         // Sent: this is now the version this PC and the cloud agree on.
         if let (Some(print), Some(backups)) = (super::saves::fingerprint_in(archive), archive.parent()) {
             super::saves::set_anchor(backups, destination, &print);
@@ -81,7 +81,11 @@ fn pending(backups: &Path, destination: &Path) -> io::Result<Vec<PathBuf>> {
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue, // Another retry finished.
             Err(e) => return Err(e),
         };
-        let queued: PathBuf = serde_json::from_reader(receipt)?;
+        // A damaged marker (power cut, a sync tool) is skipped, not a reason to stop every other upload.
+        let Ok(queued) = serde_json::from_reader::<_, PathBuf>(receipt) else {
+            eprintln!("cloud: unreadable upload marker {}", marker.display());
+            continue;
+        };
         let archive = marker.with_extension("zip");
         if queued == destination && archive.try_exists()? { pending.push(archive); }
     }
