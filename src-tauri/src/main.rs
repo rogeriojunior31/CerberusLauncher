@@ -161,7 +161,8 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         rom_dirs: chosen.rom_dirs.iter().map(|d| d.to_string_lossy().into_owned()).collect(),
         roms_found: app.state::<RomIndex>().get().len(),
         roms_matched: owned_games(app).len(),
-        catalog_count: recomp::catalog::all().len(),
+        // Recomps only: the games of the player's lists are counted apart, in Discover.
+        catalog_count: recomp::catalog::all().iter().filter(|e| !e.from_source).count(),
         catalog_source: recomp::catalog::SOURCE_NAME.to_string(),
         pending_uploads: recomp::cloud::pending_count(&folders),
         cloud_dir: chosen.cloud_dir.map(|d| d.to_string_lossy().into_owned()),

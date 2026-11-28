@@ -456,7 +456,9 @@ pub async fn after_session(app: &tauri::AppHandle, http: &reqwest::Client, data_
         Xbox { refresh: String, title: String },
         Epic { namespace: String },
     }
-    let (scope, key, name, ask) = {
+    // The list's freshness mark, as the sync reads it: Xbox's is a date (now),
+    // Epic's is the play time Epic reported (read again once it grows).
+    let (scope, key, name, ask, mark) = {
         let Ok(db) = Store::open(data_dir) else { return };
         if let Some(family) = game_id.strip_prefix("xbox:") {
             let (Some(refresh), Some(user)) = (chosen.xbox_refresh.clone(), chosen.xbox_user.clone()) else { return };
@@ -466,7 +468,7 @@ pub async fn after_session(app: &tauri::AppHandle, http: &reqwest::Client, data_
                 return;
             }
             let name = db.game(&scope, &title).map(|g| g.name).unwrap_or_default();
-            (scope, title.clone(), name, Ask::Xbox { refresh, title })
+            (scope, title.clone(), name, Ask::Xbox { refresh, title }, store::now())
         } else if let Some(app_name) = game_id.strip_prefix("epic:") {
             let (Some(_), Some(user)) = (chosen.epic_refresh.as_ref(), chosen.epic_user.clone()) else { return };
             let scope = Scope::new(AchievementSource::Epic, &user);
@@ -474,7 +476,8 @@ pub async fn after_session(app: &tauri::AppHandle, http: &reqwest::Client, data_
             if !db.ready(&scope) {
                 return;
             }
-            (scope, owned.namespace.clone(), owned.title, Ask::Epic { namespace: owned.namespace })
+            let secs = db.played(&scope).get(app_name).map_or(0, |p| p.0);
+            (scope, owned.namespace.clone(), owned.title, Ask::Epic { namespace: owned.namespace }, secs.max(1))
         } else {
             return;
         }
@@ -491,11 +494,11 @@ pub async fn after_session(app: &tauri::AppHandle, http: &reqwest::Client, data_
     };
     let Some(list) = list.ok().filter(|l| !l.is_empty()) else { return };
     let Ok(mut db) = Store::open(data_dir) else { return };
-    let before: std::collections::HashSet<String> =
-        db.list(&scope, &key).map(|(_, l)| l.into_iter().filter(|a| a.unlocked_at.is_some()).map(|a| a.id).collect()).unwrap_or_default();
-    let (fresh, complete) = live::news(&before, &list);
-    // Read now: marked as played now, so the next sync doesn't ask it again.
-    db.keep_current_list(&scope, &key, store::now(), &list);
+    // No list kept yet: what is unlocked may be years old, so nothing is announced.
+    let before: Option<std::collections::HashSet<String>> =
+        db.list(&scope, &key).map(|(_, l)| l.into_iter().filter(|a| a.unlocked_at.is_some()).map(|a| a.id).collect());
+    let (fresh, complete) = before.as_ref().map(|b| live::news(b, &list)).unwrap_or_default();
+    db.keep_current_list(&scope, &key, mark, &list);
     if !fresh.is_empty() {
         live::tell(app, game_id, &name, &fresh, complete);
     }
@@ -607,7 +610,14 @@ async fn sync_xbox_now(http: &reqwest::Client, data_dir: &Path, db: &mut Store, 
         &last_played.into_iter().map(|(pfn, title, last)| (pfn.to_lowercase(), minutes.get(&title).copied().unwrap_or(0) * 60, last)).collect::<Vec<_>>(),
     );
     if db.stamp(scope, "all_lists_v4").is_none() {
-        let lists = xbox::all_lists(http, &session).await?;
+        // A refusal halfway still keeps the games (their counts): the hub isn't left empty.
+        let lists = match xbox::all_lists(http, &session).await {
+            Ok(lists) => lists,
+            Err(e) => {
+                keep_xbox_games(db, scope, games);
+                return Err(e);
+            }
+        };
         for g in &games {
             if let Some(list) = lists.get(&g.key) {
                 db.keep_current_list(scope, &g.key, g.last_played.unwrap_or(0), list);
@@ -915,14 +925,16 @@ pub async fn hub(
 }
 
 /// A Steam game's achievements from the Web API: the player's unlocks with the
-/// game's icons and secret flags.
-async fn steam_api_game(http: &reqwest::Client, data_dir: &Path, key: &str, id: &str, app: u32) -> Result<Option<(String, Vec<cerberus_shared::Achievement>, Option<steam_api::Owned>)>, String> {
+/// game's icons and secret flags, and whether they are what the account has now
+/// (only then may they take unlocks away).
+async fn steam_api_game(http: &reqwest::Client, data_dir: &Path, key: &str, id: &str, app: u32) -> Result<Option<(String, Vec<cerberus_shared::Achievement>, Option<steam_api::Owned>, bool)>, String> {
     let owned = steam_api::owned(http, data_dir, key, id, true).await.ok().and_then(|list| list.into_iter().find(|o| o.app == app));
-    let last_played = owned.as_ref().map(|o| o.last_played).unwrap_or(u64::MAX);
-    let (mine, schema) = futures_util::join!(steam_api::mine(http, data_dir, key, id, app, last_played, true), steam_api::schema(http, data_dir, key, app, true));
-    let mine = match mine {
-        Ok(list) => list,
-        Err(_) => steam_api::mine(http, data_dir, key, id, app, last_played, false).await?,
+    // Unknown (Steam busy): 0, so a kept list is used but never taken as current.
+    let last_played = owned.as_ref().map(|o| o.last_played).unwrap_or(0);
+    let (mine, schema) = futures_util::join!(steam_api::mine_now(http, data_dir, key, id, app, last_played, true), steam_api::schema(http, data_dir, key, app, true));
+    let (mine, current) = match mine {
+        Ok(found) => found,
+        Err(_) => (steam_api::mine(http, data_dir, key, id, app, last_played, false).await?, false),
     };
     let schema = schema.unwrap_or_default();
     if mine.is_empty() && schema.is_empty() {
@@ -965,7 +977,7 @@ async fn steam_api_game(http: &reqwest::Client, data_dir: &Path, key: &str, id: 
             .collect()
     };
     let name = owned.as_ref().map(|o| o.name.clone()).unwrap_or_default();
-    Ok(Some((name, list, owned)))
+    Ok(Some((name, list, owned, current)))
 }
 
 /// Achievements without a picture get Steam's local one, or the Web API's game
@@ -1028,9 +1040,9 @@ pub async fn game(
                 .as_ref()
                 .map(|(_, l, _)| l.iter().map(|a| (a.id.clone(), (a.icon.clone(), a.icon_locked.clone()))).collect())
                 .unwrap_or_default();
-            let from_web = from_api.is_some();
+            let from_web = from_api.as_ref().is_some_and(|(_, _, _, current)| *current);
             let (name, mut list, played) = match (from_api, read) {
-                (Some((api_name, list, owned)), local) => {
+                (Some((api_name, list, owned, _)), local) => {
                     let name = if api_name.is_empty() { local.as_ref().map(|l| l.0.clone()).unwrap_or_default() } else { api_name };
                     let played = owned
                         .map(|o| (o.minutes * 60, (o.last_played > 0).then_some(o.last_played)))

@@ -273,16 +273,30 @@ struct MineFile {
     last_played: u64,
     lang: String,
     list: Vec<Mine>,
+    /// Steam said "not public": the empty list is a guess, not what the account has.
+    #[serde(default)]
+    private: bool,
 }
 
 /// The player's achievements in a game (empty when it has none), kept until
 /// the game is played again.
 pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, app: u32, last_played: u64, online: bool) -> Result<Vec<Mine>, String> {
+    mine_now(http, data_dir, key, steamid, app, last_played, online).await.map(|(list, _)| list)
+}
+
+/// `mine`, and whether the list is what the account has now: Steam answered it
+/// in this call, or it was kept since the game was last played (when that is
+/// known). A kept list that may be behind, or the empty one kept after "not
+/// public", is not: it must never take unlocks away.
+pub async fn mine_now(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &str, app: u32, last_played: u64, online: bool) -> Result<(Vec<Mine>, bool), String> {
     let file = cache_dir(data_dir).join(format!("mine-{steamid}-{app}.json"));
     let lang_now = steam_lang();
     if let Some(kept) = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<MineFile>(&t).ok()) {
-        if !online || (kept.last_played >= last_played && kept.lang == lang_now) {
-            return Ok(kept.list);
+        // u64::MAX: written by an older version when the play date wasn't known; never "newer".
+        let fresh = kept.last_played != u64::MAX && kept.last_played >= last_played && kept.lang == lang_now;
+        if !online || fresh {
+            let current = fresh && last_played > 0 && !kept.private;
+            return Ok((kept.list, current));
         }
     } else if !online {
         return Err(OFFLINE.into());
@@ -299,7 +313,7 @@ pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
     // (demos, free weekends, shared games): remembered as empty until played again.
     if matches!(&v, Err(e) if *e == cerberus_shared::i18n::t(NOT_PUBLIC)) {
         let _ = fs::create_dir_all(cache_dir(data_dir));
-        let kept = MineFile { last_played, lang: lang_now.into(), list: Vec::new() };
+        let kept = MineFile { last_played, lang: lang_now.into(), list: Vec::new(), private: true };
         let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&kept).unwrap_or_default().as_bytes());
     }
     let v = v?;
@@ -322,9 +336,9 @@ pub async fn mine(http: &reqwest::Client, data_dir: &Path, key: &str, steamid: &
         })
         .unwrap_or_default();
     let _ = fs::create_dir_all(cache_dir(data_dir));
-    let kept = MineFile { last_played, lang: lang_now.into(), list: list.clone() };
+    let kept = MineFile { last_played, lang: lang_now.into(), list: list.clone(), private: false };
     let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&kept).unwrap_or_default().as_bytes());
-    Ok(list)
+    Ok((list, true))
 }
 
 /// A game's achievement list with icons and secret flags, kept for a month.

@@ -321,6 +321,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let has_achievements = move || {
         steam_app.is_some() || achievements.and_then(|r| r.get()).and_then(Result::ok).is_some_and(|d| d.game.total > 0)
     };
+    // A session that just ended (Xbox, Epic) or a sync brings new unlocks: read again.
+    if let Some(data) = achievements {
+        api::on_achievements_changed_here(move || data.refetch());
+    }
     let tab_key = store_key.clone();
     provide_context(GameAchievementsData(achievements));
 
