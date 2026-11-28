@@ -481,6 +481,9 @@ pub struct SettingsView {
     /// recomplauncher.com's catalog is in use.
     #[serde(default)]
     pub site_catalog: bool,
+    /// The recomp catalog is shown (Discover, Home, Big Picture).
+    #[serde(default)]
+    pub recomp_catalog: bool,
     /// Closing the window keeps Cerberus in the tray.
     #[serde(default)]
     pub close_to_tray: bool,

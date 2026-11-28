@@ -138,6 +138,8 @@ pub struct Library {
     /// The same game in several stores: each copy's id to the whole group,
     /// the copy shown first leading.
     copies: Memo<HashMap<String, Vec<String>>>,
+    /// The recomp catalog is shown (the player can turn it off in Settings).
+    catalog_on: RwSignal<bool>,
 }
 
 impl Library {
@@ -317,6 +319,7 @@ fn App() -> impl IntoView {
         failed: RwSignal::new(Default::default()),
         speed: RwSignal::new(HashMap::new()),
         started: RwSignal::new(HashMap::new()),
+        catalog_on: RwSignal::new(true),
     };
     provide_context(library);
     provide_context(game_menu::GameMenu(RwSignal::new(None)));
@@ -392,6 +395,7 @@ fn App() -> impl IntoView {
     spawn_local(async move {
         let Ok(settings) = api::get_settings().await else { return };
         i18n::follow(settings.language.as_deref());
+        library.catalog_on.set(settings.recomp_catalog);
         if !settings.setup_done {
             first_run_open.set(true);
             first_run.set(Some(settings));

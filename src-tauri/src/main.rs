@@ -174,6 +174,7 @@ fn settings_view(app: &AppHandle) -> SettingsView {
         steamgriddb_key: chosen.steamgriddb_key.clone(),
         start_page: chosen.start_page.clone(),
         site_catalog: chosen.site_catalog,
+        recomp_catalog: chosen.recomp_catalog,
         close_to_tray: chosen.close_to_tray,
         game_pass: chosen.game_pass,
         autostart: {
@@ -1480,6 +1481,14 @@ async fn set_site_catalog(app: AppHandle, http: State<'_, reqwest::Client>, on: 
     Ok(settings_view(&app))
 }
 
+/// Shows or hides the whole recomp catalog. Installed recomps stay either way.
+#[tauri::command]
+async fn set_recomp_catalog(app: AppHandle, on: bool) -> Result<SettingsView, String> {
+    settings::update(&app.state::<DataDir>().0, |s| s.recomp_catalog = on)?;
+    let _ = app.emit("catalog-changed", ());
+    Ok(settings_view(&app))
+}
+
 /// Shows the first-run setup again the next time it is asked for.
 #[tauri::command(async)]
 fn rerun_setup(app: AppHandle) -> Result<SettingsView, String> {
@@ -2565,6 +2574,13 @@ fn remove_game(
     Ok(())
 }
 
+/// Whether `list_recomps` sends this entry. The source lists' games come only
+/// when installed or busy (Discover pages the rest); with the catalog turned
+/// off, so do the recomps: the library and Downloads still need those.
+fn keep_listed(installed: bool, from_source: bool, catalog_shown: bool, busy: bool) -> bool {
+    installed || busy || (catalog_shown && !from_source)
+}
+
 #[tauri::command]
 async fn list_recomps(
     app: AppHandle,
@@ -2573,8 +2589,9 @@ async fn list_recomps(
     art: State<'_, Arc<ArtCache>>,
 ) -> Result<Vec<RecompEntry>, String> {
     let cache = app.state::<DataDir>().cache();
+    let shown = settings::load(&app.state::<DataDir>().0).recomp_catalog;
     let first_time = !cache.join("pc-catalog.json").exists();
-    if first_time {
+    if first_time && shown {
         // Nothing on disk yet: wait for the list, falling back to the bundled one.
         let _ = recomp::catalog::refresh(&http, &cache, false).await;
     } else {
@@ -2601,7 +2618,7 @@ async fn list_recomps(
         .into_iter()
         .chain(downloads::waiting(&app.state::<DataDir>().0).into_iter().map(|p| p.recomp_id))
         .collect();
-    entries.retain(|e| !e.from_source || e.installed.is_some() || busy.contains(&e.id));
+    entries.retain(|e| keep_listed(e.installed.is_some(), e.from_source, shown, busy.contains(&e.id)));
     // Copies already on disk are used, but 1900 recomps' art is not fetched
     // ahead: the window loads what it shows, and games in the library keep theirs.
     let mut not_fetched = Vec::new();
@@ -4237,6 +4254,7 @@ fn main() {
             install_core,
             play_classic,
             set_site_catalog,
+            set_recomp_catalog,
             set_close_to_tray,
             list_screenshots,
             dlss_list,
@@ -4486,6 +4504,22 @@ fn settings_are_changed_under_their_lock_not_loaded_and_saved_whole() {
                 panic!("{file}:{}: use settings::update instead of load + save: {}", n + 1, line.trim());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod catalog_switch_tests {
+    use super::keep_listed;
+
+    #[test]
+    fn turned_off_the_catalog_keeps_only_what_the_player_has_or_is_getting() {
+        // (installed, from a list, catalog shown, downloading) -> sent
+        assert!(keep_listed(false, false, true, false), "on: a recomp not installed shows in Discover");
+        assert!(!keep_listed(false, true, true, false), "a list's game comes a page at a time instead");
+        assert!(!keep_listed(false, false, false, false), "off: a recomp not installed is left out");
+        assert!(keep_listed(true, false, false, false), "off: an installed recomp stays in the library");
+        assert!(keep_listed(false, false, false, true), "off: one downloading still shows in Downloads");
+        assert!(keep_listed(true, true, false, false), "an installed game from a list stays");
     }
 }
 

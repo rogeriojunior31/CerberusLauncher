@@ -2,6 +2,10 @@
 
 ## Próxima versão
 
+### Recomps opcionais
+
+- **O catálogo de recomps pode ser desligado**, no primeiro uso ("Só a minha biblioteca") ou em **Configurações → Catálogo e fontes**. Desligado, o Descobrir, o Início e o Big Picture deixam de mostrar recomps; os que você já instalou continuam na Biblioteca, com atualizações.
+
 ### Lojas e contas
 
 - **App Xbox, conta Microsoft e conta Epic:** os jogos que você tem aparecem mesmo sem estar instalados. O **PC Game Pass** só aparece se você ligar (é para quem assina), do catálogo da região do seu Windows.

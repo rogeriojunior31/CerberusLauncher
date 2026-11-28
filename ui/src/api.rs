@@ -715,6 +715,14 @@ pub async fn set_site_catalog(on: bool) -> Result<SettingsView, String> {
     call("set_site_catalog", &Arg { on }).await
 }
 
+pub async fn set_recomp_catalog(on: bool) -> Result<SettingsView, String> {
+    #[derive(serde::Serialize)]
+    struct Arg {
+        on: bool,
+    }
+    call("set_recomp_catalog", &Arg { on }).await
+}
+
 pub async fn set_start_page(page: String) -> Result<SettingsView, String> {
     call("set_start_page", &PageArg { page }).await
 }
