@@ -72,6 +72,10 @@ pub struct Settings {
     /// recomplauncher.com's catalog is used besides Cerberus's own (on unless turned off).
     #[serde(default = "yes")]
     pub site_catalog: bool,
+    /// The recomp catalog is shown at all (on unless turned off). Off, only the
+    /// recomps already installed stay, in the library, with their updates.
+    #[serde(default = "yes")]
+    pub recomp_catalog: bool,
     /// Closing the window keeps Cerberus in the notification area (tray).
     #[serde(default)]
     pub close_to_tray: bool,
@@ -212,6 +216,15 @@ mod tests {
         assert!(old.site_catalog);
         let off: Settings = serde_json::from_str(r#"{"site_catalog": false}"#).unwrap();
         assert!(!off.site_catalog);
+    }
+
+    #[test]
+    fn the_recomp_catalog_is_on_unless_turned_off() {
+        assert!(Settings::default().recomp_catalog);
+        let old: Settings = serde_json::from_str(r#"{"rom_dirs": []}"#).unwrap();
+        assert!(old.recomp_catalog, "settings saved before the switch existed: on");
+        let off: Settings = serde_json::from_str(r#"{"recomp_catalog": false}"#).unwrap();
+        assert!(!off.recomp_catalog);
     }
 
     #[test]

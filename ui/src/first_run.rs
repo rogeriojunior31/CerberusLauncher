@@ -12,7 +12,9 @@ use crate::art::{Poster, recomp_covers};
 use crate::icons::{Icon, Svg};
 use crate::{Library, Route, api, format::disk_size};
 
-const STEPS: usize = 6;
+const STEPS: usize = 7;
+/// The step about where recomps install, left out when the catalog is off.
+const RECOMPS_DIR_STEP: usize = 4;
 
 /// One recomp per game the player has, most popular first, for the "found" covers.
 fn found_games(library: Library) -> Vec<RecompEntry> {
@@ -123,6 +125,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
         busy.set(true);
         spawn_local(async move {
             if let Some(next) = library.report(task.await) {
+                library.catalog_on.set(next.recomp_catalog);
                 state.set(next);
                 library.recomps.refetch();
             }
@@ -149,8 +152,13 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
         if step.get_untracked() + 1 >= STEPS {
             finish();
         } else {
-            step.update(|s| *s += 1);
+            let on = state.get_untracked().recomp_catalog;
+            step.update(|s| *s = if *s + 1 == RECOMPS_DIR_STEP && !on { *s + 2 } else { *s + 1 });
         }
+    };
+    let back = move || {
+        let on = state.get_untracked().recomp_catalog;
+        step.update(|s| *s = if *s - 1 == RECOMPS_DIR_STEP && !on { *s - 2 } else { *s - 1 });
     };
 
     let body = move || match step.get() {
@@ -189,6 +197,30 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             .into_any()
         }
         2 => {
+            let on = state.get().recomp_catalog;
+            let pick = move |shown: bool| {
+                view! {
+                    <button type="button" role="radio" class="fr-pick" class:on=move || on == shown aria-checked=(on == shown).to_string()
+                        disabled=move || busy.get()
+                        on:click=move |_| if on != shown { change(Box::pin(api::set_recomp_catalog(shown))) }>
+                        <Svg icon=if shown { Icon::Discover } else { Icon::Library } size=40 />
+                        <b>{if shown { tr!("Biblioteca e recomps") } else { tr!("Só a minha biblioteca") }}</b>
+                        <span>{if shown {
+                            tr!("Seus jogos, mais o catálogo de recomps: versões nativas para PC de clássicos de console, para instalar com um clique.")
+                        } else {
+                            tr!("Steam, Epic, Xbox, os jogos que você adicionar e as suas ROMs. Sem catálogo de recomps.")
+                        }}</span>
+                    </button>
+                }
+            };
+            view! {
+                <h1>{tr!("Quer o catálogo de recomps?")}</h1>
+                <p class="fr-lead">{tr!("Dá para ligar ou desligar quando quiser em Configurações.")}</p>
+                <div class="fr-two" role="radiogroup" aria-label=tr!("Quer o catálogo de recomps?")>{pick(true)}{pick(false)}</div>
+            }
+            .into_any()
+        }
+        3 => {
             let s = state.get();
             let dirs = s
                 .rom_dirs
@@ -210,7 +242,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             } else if !found.is_empty() {
                 let text = if found.len() == 1 { tr!("1 jogo seu já tem recomp").to_string() } else { tr!("{} jogos seus já têm recomp", found.len()) };
                 view! { <p class="fr-status ok"><Svg icon=Icon::Check size=18 />{text}</p>{covers(found)} }.into_any()
-            } else if !s.rom_dirs.is_empty() {
+            } else if !s.rom_dirs.is_empty() && s.recomp_catalog {
                 view! { <p class="fr-status">{tr!("Nenhum desses jogos tem recomp ainda. Quando aparecer, ele mostra no Descobrir.")}</p> }.into_any()
             } else {
                 ().into_any()
@@ -218,7 +250,11 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             let main = s.rom_dirs.is_empty();
             view! {
                 <h1>{tr!("Onde ficam seus jogos?")}</h1>
-                <p class="fr-lead">{tr!("As pastas com suas ROMs, imagens de disco e backups. O Cerberus encontra os que têm recomp. Nada sai do seu PC.")}</p>
+                <p class="fr-lead">{if s.recomp_catalog {
+                    tr!("As pastas com suas ROMs, imagens de disco e backups. O Cerberus encontra os que têm recomp. Nada sai do seu PC.")
+                } else {
+                    tr!("As pastas com suas ROMs e imagens de disco. Elas abrem no RetroArch, que o Cerberus instala e configura. Nada sai do seu PC.")
+                }}</p>
                 <div class="fr-box">
                     {dirs}
                     <button type="button" class="btn" class:main=main disabled=move || busy.get()
@@ -230,7 +266,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             }
             .into_any()
         }
-        3 => {
+        4 => {
             let s = state.get();
             let free = s.install_free_bytes.map(|b| view! { <p class="fr-note">{tr!("{} livres neste disco", disk_size(b))}</p> });
             view! {
@@ -247,7 +283,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             }
             .into_any()
         }
-        4 => {
+        5 => {
             let s = state.get();
             let chosen = s.cloud_dir.clone().map(|d| {
                 view! {
@@ -278,6 +314,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             let found = found_games(library);
             let waiting = found.iter().filter(|e| e.installed.is_none()).count();
             let lead = match (found.len(), waiting) {
+                _ if !state.get().recomp_catalog => tr!("Sua biblioteca está pronta.").to_string(),
                 (0, _) => tr!("Encontre algo para jogar no Descobrir.").to_string(),
                 (1, 0) => tr!("Seu jogo com recomp já está instalado. É só jogar.").to_string(),
                 (n, 0) => tr!("Seus {} jogos com recomp já estão instalados. É só jogar.", n),
@@ -346,7 +383,7 @@ pub fn FirstRun(settings: SettingsView, open: RwSignal<bool>) -> impl IntoView {
             <div class="fr-foot">
                 <div class="fr-side">
                     <Show when=started>
-                        <button type="button" class="btn" on:click=move |_| step.update(|s| *s -= 1)>
+                        <button type="button" class="btn" on:click=move |_| back()>
                             <Svg icon=Icon::Back size=16 />{tr!("Voltar")}
                         </button>
                     </Show>

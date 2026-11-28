@@ -300,6 +300,7 @@ pub fn SettingsPage() -> impl IntoView {
         busy.set(true);
         spawn_local(async move {
             if let Some(next) = library.report(task.await) {
+                library.catalog_on.set(next.recomp_catalog);
                 view_state.set(Some(next));
                 if !done.is_empty() {
                     library.toast(done);
@@ -1012,6 +1013,12 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
     view! {
         <section class="card set">
             <h3>{tr!("Catálogo de recomps")}</h3>
+            {row(tr!("Mostrar recomps"), tr!("Os recomps no Descobrir, no Início e no Big Picture. Desligado, o Cerberus fica só com a sua biblioteca; os recomps que você já instalou continuam nela, com atualizações."),
+                switch(s.recomp_catalog, tr!("Mostrar recomps"), busy, move || {
+                    let on = !s.recomp_catalog;
+                    apply(Box::pin(api::set_recomp_catalog(on)), if on { tr!("Catálogo de recomps ligado.") } else { tr!("Catálogo de recomps desligado.") })
+                }))}
+            {s.recomp_catalog.then(|| view! {
             {row({
                 // Versions, and the games they are of (Descobrir counts games): said together.
                 let library = expect_context::<Library>();
@@ -1027,6 +1034,7 @@ fn catalog(s: SettingsView, busy: RwSignal<bool>, apply: impl Fn(Task, &'static 
                     let on = !s.site_catalog;
                     apply(Box::pin(api::set_site_catalog(on)), if on { tr!("Catálogo do recomplauncher.com ligado.") } else { tr!("Usando só o catálogo do Cerberus.") })
                 }))}
+            })}
         </section>
     }
 }

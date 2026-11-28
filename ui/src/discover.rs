@@ -378,6 +378,23 @@ pub fn DiscoverPage() -> impl IntoView {
     };
 
     let grid = move || {
+        if !library.catalog_on.get() {
+            return view! {
+                <div class="empty">
+                    <Svg icon=Icon::Discover size=32 />
+                    <h2>{tr!("Catálogo de recomps desligado")}</h2>
+                    <p class="muted">{tr!("Ligue para ver e instalar recomps. Os recomps que você já tem continuam na Biblioteca.")}</p>
+                    <div class="row">
+                        <button type="button" class="btn main" on:click=move |_| spawn_local(async move {
+                            if let Some(next) = library.report(api::set_recomp_catalog(true).await) {
+                                library.catalog_on.set(next.recomp_catalog);
+                            }
+                        })>{tr!("Ligar catálogo")}</button>
+                    </div>
+                </div>
+            }
+            .into_any();
+        }
         if library.recomps.get().is_none() {
             return view! { <p class="muted">{tr!("Carregando o catálogo...")}</p> }.into_any();
         }
