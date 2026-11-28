@@ -184,28 +184,41 @@ pub fn apply_pending(data: &Path) -> Option<Result<(usize, std::path::PathBuf), 
 fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
     let stage = staging(data);
     let before = data.join(format!("before-restore-{}", now()));
-    let result = apply_into(data, &stage, &before);
-    if result.is_err() && before.is_dir() {
-        // Half done (a file in use midway): what was here goes back, all of it.
+    let mut replacing = false;
+    let result = apply_into(data, &stage, &before, &mut replacing);
+    // Half done (a file in use midway): what was here goes back, all of it. A
+    // failure while `before` was still being made replaced nothing (and `before`
+    // may be incomplete), so nothing is put back then.
+    if result.is_err() && replacing {
         undo(data, &before);
     }
     result
 }
 
-/// Puts back what `apply_into` kept in `before`.
+/// Puts back what `apply_into` kept in `before`: its files copied over, and
+/// the ones this PC didn't have before the restore removed.
 fn undo(data: &Path, before: &Path) {
-    for name in FILES.iter().chain([&SETTINGS]) {
-        let kept = before.join(name);
+    let put_back = |kept: &Path, here: &Path| {
         if kept.exists() {
-            let _ = replace(&kept, &data.join(name));
+            if let Ok(bytes) = fs::read(kept) {
+                let _ = crate::state_file::write_bytes(here, &bytes);
+            }
+        } else {
+            let _ = fs::remove_file(here);
         }
+    };
+    for name in FILES.iter().chain([&SETTINGS]) {
+        put_back(&before.join(name), &data.join(name));
+    }
+    for entry in fs::read_dir(data.join("covers")).into_iter().flatten().flatten() {
+        put_back(&before.join("covers").join(entry.file_name()), &entry.path());
     }
     for entry in fs::read_dir(before.join("covers")).into_iter().flatten().flatten() {
-        let _ = replace(&entry.path(), &data.join("covers").join(entry.file_name()));
+        put_back(&entry.path(), &data.join("covers").join(entry.file_name()));
     }
 }
 
-fn apply_into(data: &Path, stage: &Path, before: &Path) -> Result<(usize, std::path::PathBuf), String> {
+fn apply_into(data: &Path, stage: &Path, before: &Path, replacing: &mut bool) -> Result<(usize, std::path::PathBuf), String> {
     // What's here now, kept before anything is replaced: all of it, or nothing is replaced.
     fs::create_dir_all(before.join("covers")).map_err(|e| e.to_string())?;
     for name in FILES.iter().chain([&SETTINGS]) {
@@ -221,6 +234,7 @@ fn apply_into(data: &Path, stage: &Path, before: &Path) -> Result<(usize, std::p
     if incoming_achievements.exists() && data.join(ACHIEVEMENTS).exists() {
         crate::achievements::store::copy_to(data, &before.join(ACHIEVEMENTS)).map_err(|e| tr!("Não foi possível guardar os dados atuais antes de trazer a cópia ({}): nada foi trocado.", e))?;
     }
+    *replacing = true;
     let mut count = 0;
     for name in FILES {
         let incoming = stage.join(name);
@@ -397,6 +411,27 @@ mod tests {
         let ids: std::collections::BTreeSet<String> = Store::open(here.path()).unwrap().recent(&[scope], 10).into_iter().map(|r| r.achievement.id).collect();
         assert!(ids.contains("from-old-pc") && ids.contains("from-this-pc"), "{ids:?}");
         assert!(before.join(ACHIEVEMENTS).exists(), "this PC's database kept first");
+    }
+
+    #[test]
+    fn a_restore_that_fails_midway_puts_everything_back() {
+        use crate::achievements::store::{Scope, Store};
+        let old_pc = tempfile::tempdir().unwrap();
+        write(old_pc.path(), "library.json", r#"[{"id":"from-copy"}]"#);
+        write(old_pc.path(), "collections.json", r#"{"collections":[]}"#);
+        Store::open(old_pc.path()).unwrap().keep_unlocks(&Scope::new(cerberus_shared::AchievementSource::Epic, "p"), "g", &[]);
+        let zip = old_pc.path().join("copy.zip");
+        export(old_pc.path(), &zip).unwrap();
+
+        let here = tempfile::tempdir().unwrap();
+        write(here.path(), "library.json", r#"[{"id":"mine"}]"#);
+        Store::open(here.path()).unwrap();
+        stage(here.path(), &zip).unwrap();
+        // The copy's achievements can't be read: the last step fails after the files were replaced.
+        fs::write(staging(here.path()).join(ACHIEVEMENTS), b"not a database").unwrap();
+        assert!(apply_pending(here.path()).unwrap().is_err());
+        assert_eq!(fs::read_to_string(here.path().join("library.json")).unwrap(), r#"[{"id":"mine"}]"#, "this PC's library is back");
+        assert!(!here.path().join("collections.json").exists(), "a file only the copy had is gone again");
     }
 
     #[test]

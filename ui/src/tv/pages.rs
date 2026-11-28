@@ -319,7 +319,11 @@ pub fn Home() -> impl IntoView {
         let all = shelves.get();
         if all.iter().all(|(_, items)| items.is_empty()) {
             // Still reading, or read and empty (a new player, or nothing installed yet).
-            let text = if library.games.get().is_none() { tr!("Carregando sua biblioteca...") } else { tr!("Nenhum jogo instalado ainda. Os jogos da Steam, Epic e Xbox aparecem aqui sozinhos.") };
+            let text = match library.games.get() {
+                None => tr!("Carregando sua biblioteca...").to_string(),
+                Some(Err(e)) => e,
+                Some(Ok(_)) => tr!("Nenhum jogo instalado ainda. Os jogos da Steam, Epic e Xbox aparecem aqui sozinhos.").to_string(),
+            };
             return view! { <p class="tv-empty">{text}</p> }.into_any();
         }
         all.into_iter()

@@ -103,14 +103,17 @@ pub fn merge_from(data: &Path, other: &Path) -> Result<(), String> {
         let tx = db.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
         tx.execute_batch(
             "INSERT OR IGNORE INTO games(source, account, key, data) SELECT source, account, key, data FROM other.games;
-             -- The first time a game reached 100% is the earliest either side knew.
+             -- The first time a game reached 100% is the earliest either side knew. A date
+             -- only the copy has counts while this PC still has as many unlocks (after a
+             -- stats reset here, the old platinum doesn't come back).
              UPDATE games SET data = json_set(data, '$.completed_at',
                     (SELECT json_extract(o.data, '$.completed_at') FROM other.games o
                       WHERE o.source = games.source AND o.account = games.account AND o.key = games.key))
               WHERE EXISTS (SELECT 1 FROM other.games o
                       WHERE o.source = games.source AND o.account = games.account AND o.key = games.key
                         AND json_extract(o.data, '$.completed_at') IS NOT NULL
-                        AND (json_extract(games.data, '$.completed_at') IS NULL
+                        AND ((json_extract(games.data, '$.completed_at') IS NULL
+                              AND COALESCE(json_extract(games.data, '$.unlocked'), 0) >= COALESCE(json_extract(o.data, '$.unlocked'), 0))
                              OR json_extract(o.data, '$.completed_at') < json_extract(games.data, '$.completed_at')));
              INSERT OR IGNORE INTO lists(source, account, game, played, data) SELECT source, account, game, played, data FROM other.lists;
              -- Same date rule as a sync: a real date beats an unknown one, the earliest wins.
@@ -608,7 +611,8 @@ mod tests {
         std::fs::create_dir_all(&copy).unwrap();
         let db = Store::open(&here).unwrap();
         db.0.execute_batch(
-            "INSERT INTO games VALUES('epic', 'p', 'g', '{\"name\":\"G\",\"completed_at\":null}');
+            "INSERT INTO games VALUES('epic', 'p', 'g', '{\"name\":\"G\",\"unlocked\":5,\"completed_at\":null}');
+             INSERT INTO games VALUES('epic', 'p', 'reset', '{\"name\":\"R\",\"unlocked\":3,\"completed_at\":null}');
              INSERT INTO unlocks(source, account, game, id, unlocked_at, data) VALUES('epic', 'p', 'g', 'a', 1, '{}');",
         )
         .unwrap();
@@ -619,7 +623,8 @@ mod tests {
         c.execute_batch(MIGRATIONS[1]).unwrap();
         c.execute_batch(
             "PRAGMA user_version = 2;
-             INSERT INTO games VALUES('epic', 'p', 'g', '{\"name\":\"G\",\"completed_at\":50}');
+             INSERT INTO games VALUES('epic', 'p', 'g', '{\"name\":\"G\",\"unlocked\":5,\"completed_at\":50}');
+             INSERT INTO games VALUES('epic', 'p', 'reset', '{\"name\":\"R\",\"unlocked\":50,\"completed_at\":40}');
              INSERT INTO unlocks VALUES('epic', 'p', 'g', 'a', 90, '{}');
              INSERT INTO unlocks VALUES('epic', 'p', 'g', 'b', 70, '{}');",
         )
@@ -630,8 +635,9 @@ mod tests {
         let at = |id: &str| db.0.query_row("SELECT unlocked_at, revoked_at FROM unlocks WHERE id=?1", [id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))).unwrap();
         assert_eq!(at("a"), (90, 0), "a real date replaces an unknown one");
         assert_eq!(at("b"), (70, 0), "an unlock only the copy had comes back, not revoked");
-        let done: Option<i64> = db.0.query_row("SELECT json_extract(data, '$.completed_at') FROM games", [], |r| r.get(0)).unwrap();
-        assert_eq!(done, Some(50), "the copy's first 100% is kept");
+        let done = |key: &str| -> Option<i64> { db.0.query_row("SELECT json_extract(data, '$.completed_at') FROM games WHERE key=?1", [key], |r| r.get(0)).unwrap() };
+        assert_eq!(done("g"), Some(50), "the copy's first 100% is kept");
+        assert_eq!(done("reset"), None, "stats reset here since the copy: its platinum doesn't come back");
 
         // A copy that knew an unlock was taken back keeps it apart.
         let c = Connection::open(copy.join("achievements.db")).unwrap();

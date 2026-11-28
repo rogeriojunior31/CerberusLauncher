@@ -79,6 +79,13 @@ pub fn waiting(data: &Path) -> Vec<InstallProgress> {
 }
 
 /// Marks a recomp as waiting its turn, at the end of the line.
+/// Waiting in line now, and not paused or cancelled while waiting (resuming one
+/// of those asks for it again, and must go through).
+pub fn is_queued(id: &str) -> bool {
+    let waiting = QUEUED.lock().unwrap_or_else(|p| p.into_inner()).iter().any(|q| q == id);
+    waiting && !WITHDRAWN.lock().unwrap_or_else(|p| p.into_inner()).get_or_insert_with(HashMap::new).contains_key(id)
+}
+
 pub fn queue(id: &str) {
     let mut queued = QUEUED.lock().unwrap_or_else(|p| p.into_inner());
     if !queued.iter().any(|q| q == id) {

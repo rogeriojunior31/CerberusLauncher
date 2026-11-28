@@ -110,7 +110,10 @@ impl Update {
         // player changed since (a setting, a mod, a swapped DLL) is kept.
         let shipped = release_files(&self.candidate());
         let installed = read_release_files(&self.target);
-        preserve(&self.target, &self.candidate(), Path::new(""), installed.as_ref())
+        // When the install was made: our marker is written after the files, so a
+        // file changed after it was changed by the player.
+        let installed_at = fs::metadata(self.target.join(super::MARKER)).and_then(|m| m.modified()).ok();
+        preserve(&self.target, &self.candidate(), Path::new(""), installed.as_ref(), installed_at)
             .map_err(|e| tr!("Falha ao preparar a atualização: {}", e))?;
         write_release_files(&self.candidate(), &shipped);
         if !new_has_it {
@@ -278,7 +281,7 @@ fn read_release_files(dir: &Path) -> Option<std::collections::BTreeMap<String, S
 // the live directory. A hard link avoids duplicating large ROMs; copying also works on exFAT.
 // A file both have that the player changed since the installed release shipped it stays the
 // player's; the new release's copy is kept beside it as `<name>.cerberus-new`.
-fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collections::BTreeMap<String, String>>) -> io::Result<()> {
+fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collections::BTreeMap<String, String>>, installed_at: Option<std::time::SystemTime>) -> io::Result<()> {
     ordinary_file_type(from)?;
     ordinary_file_type(to)?;
     for entry in fs::read_dir(from)? {
@@ -290,7 +293,7 @@ fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collecti
         if exists(&dest)? {
             let new = ordinary_file_type(&dest)?;
             if ty.is_dir() && new.is_dir() {
-                preserve(&src, &dest, &here, installed)?;
+                preserve(&src, &dest, &here, installed, installed_at)?;
             } else if !(ty.is_file() && new.is_file()) {
                 return Err(io::Error::other(tr!("Tipo de arquivo incompatível: {}", src.display())));
             } else {
@@ -298,9 +301,12 @@ fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collecti
                 let changed = match installed.and_then(|files| files.get(&key)) {
                     Some(shipped) => hash_of(&src).is_some_and(|now| &now != shipped),
                     // Not known what the installed release shipped (installed by an
-                    // older Cerberus, or too big to hash): a settings file that
-                    // differs from the new one is taken as the player's.
-                    None => is_settings_file(&here) && hash_of(&src).is_some_and(|now| Some(now) != hash_of(&dest)),
+                    // older Cerberus, or too big to hash): a settings file changed
+                    // after the install, and different from the new one, is the player's.
+                    None => {
+                        let edited = installed_at.is_some_and(|at| fs::metadata(&src).and_then(|m| m.modified()).is_ok_and(|m| m > at));
+                        edited && is_settings_file(&here) && hash_of(&src).is_some_and(|now| Some(now) != hash_of(&dest))
+                    }
                 };
                 if changed {
                     let mut aside = dest.file_name().map(|n| n.to_os_string()).unwrap_or_default();
@@ -311,7 +317,7 @@ fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collecti
             }
         } else if ty.is_dir() {
             fs::create_dir(&dest)?;
-            preserve(&src, &dest, &here, installed)?;
+            preserve(&src, &dest, &here, installed, installed_at)?;
         } else if fs::hard_link(&src, &dest).is_err() {
             fs::copy(src, dest)?;
         }
@@ -319,10 +325,15 @@ fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collecti
     Ok(())
 }
 
-/// A file players edit to change settings (kept on update when in doubt).
+/// A file players edit to change settings (kept on update when in doubt). Not
+/// the developer's own file, nor ours, nor data formats games ship content in.
 fn is_settings_file(path: &Path) -> bool {
+    let name = path.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if name == super::manifest::FILE.to_ascii_lowercase() || name.starts_with(".cerberus") {
+        return false;
+    }
     let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    matches!(ext.as_str(), "ini" | "cfg" | "conf" | "toml" | "json" | "yaml" | "yml" | "xml")
+    matches!(ext.as_str(), "ini" | "cfg" | "conf" | "toml")
 }
 
 #[cfg(test)]
@@ -505,18 +516,22 @@ mod tests {
         let release = root.path().join("release.zip");
         let library = LocalLibrary::load(root.path());
         let entry = CatalogEntry { id: "demo".into(), start: Some("Game.exe".into()), ..Default::default() };
-        make_zip(&release, &[("Game.exe", "v1"), ("config.ini", "A"), ("data.pak", "d1")]);
+        make_zip(&release, &[("Game.exe", "v1"), ("config.ini", "A"), ("other.ini", "o1"), ("data.pak", "d1")]);
         let (exe, _) = prepare_release(&release, &target, &entry, None, &entry.id).unwrap();
         let original = register(&library, &entry, None, "v1", &exe, &target, false).unwrap();
         // Installed before the record of shipped files existed.
         fs::remove_file(target.join(RELEASE_FILES)).unwrap();
+        // Edited later than the install (the marker's time).
+        std::thread::sleep(std::time::Duration::from_millis(50));
         fs::write(target.join("config.ini"), "B").unwrap();
-        make_zip(&release, &[("Game.exe", "v2"), ("config.ini", "A2"), ("data.pak", "d2")]);
+        make_zip(&release, &[("Game.exe", "v2"), ("config.ini", "A2"), ("other.ini", "o2"), ("data.pak", "d2")]);
         let (exe, tx) = prepare_release(&release, &target, &entry, Some(&original), &entry.id).unwrap();
         tx.unwrap().finish(register(&library, &entry, Some(&original), "v2", &exe, &target, false)).unwrap();
         assert_eq!(fs::read_to_string(target.join("config.ini")).unwrap(), "B", "the player's setting stays");
         assert_eq!(fs::read_to_string(target.join("config.ini.cerberus-new")).unwrap(), "A2");
         assert_eq!(fs::read_to_string(target.join("data.pak")).unwrap(), "d2", "game data takes the new version");
+        assert!(!target.join("other.ini.cerberus-new").exists(), "a setting the player never touched takes the new version");
+        assert_eq!(fs::read_to_string(target.join("other.ini")).unwrap(), "o2");
     }
 
     #[test]
