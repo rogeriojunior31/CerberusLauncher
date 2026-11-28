@@ -146,10 +146,7 @@ async fn fetch_json<T: serde::de::DeserializeOwned>(request: reqwest::RequestBui
 
 /// "DARK SOULS™ III" and "Dark Souls III" should count as the same game.
 fn normalize(name: &str) -> String {
-    name.chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
+    cerberus_shared::names::key(name)
 }
 
 #[cfg(test)]

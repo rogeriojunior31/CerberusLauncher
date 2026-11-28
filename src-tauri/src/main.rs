@@ -1,6 +1,7 @@
 // Release builds on Windows would otherwise open a console window next to the app.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod accounts;
 mod art_cache;
 mod authenticode;
 mod emulator_saves;
@@ -1156,9 +1157,9 @@ fn retro_account(app: &AppHandle) -> Option<(String, String)> {
 
 /// The achievements hub: Steam and RetroAchievements together.
 #[tauri::command]
-async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>, online: Option<bool>) -> Result<cerberus_shared::AchievementsHub, String> {
+async fn achievements_hub(app: AppHandle, http: State<'_, reqwest::Client>, online: Option<bool>, force: Option<bool>) -> Result<cerberus_shared::AchievementsHub, String> {
     let data = app.state::<DataDir>().0.clone();
-    Ok(net::secure_all(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app), online.unwrap_or(true)).await))
+    Ok(net::secure_all(achievements::hub(&http, &data, retro_account(&app), steam_api_account(&app), online.unwrap_or(true), force.unwrap_or(false)).await))
 }
 
 /// Opens a page about a Steam game: the store, SteamDB, PCGamingWiki, or the
@@ -1275,6 +1276,15 @@ async fn steam_details(app: AppHandle, http: State<'_, reqwest::Client>, app_id:
 #[tauri::command]
 async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: String, product: Option<String>) -> Result<Option<cerberus_shared::StoreDetails>, String> {
     let data = app.state::<DataDir>().0.clone();
+    let product = product.filter(|p| !p.is_empty());
+    // A game whose store product is known gets its own page first: a Steam
+    // game with the same name may be another one ("DOOM", "Prey").
+    if let Some(p) = &product {
+        if let Some(mut page) = ms_store::details(&http, &data, p).await {
+            page.origin = "msstore".into();
+            return Ok(Some(page));
+        }
+    }
     if let Some(steam) = steam_store::app_for(&http, &data, &name).await {
         if let Ok(mut page) = steam_details::details(&http, &data, steam).await {
             // Pages kept from before the origin was written say it too.
@@ -1282,7 +1292,7 @@ async fn store_page(app: AppHandle, http: State<'_, reqwest::Client>, name: Stri
             return Ok(Some(page));
         }
     }
-    let product = match product.filter(|p| !p.is_empty()) {
+    let product = match product {
         Some(p) => Some(p),
         None => ms_store::find(&http, &data, &name).await,
     };
@@ -1898,6 +1908,69 @@ static STORES: std::sync::Mutex<Option<(std::time::Instant, u64, Vec<Game>)>> = 
 static STORES_CHANGED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 const STORES_FRESH: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// What the stores' install folders hold now: each entry's name, size and
+/// time, one level deep. A game installed or removed by its store changes it.
+fn install_fingerprint(folders: &[PathBuf]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    for folder in folders {
+        let Ok(entries) = std::fs::read_dir(folder) else { continue };
+        let mut seen: Vec<(std::ffi::OsString, u64, Option<std::time::SystemTime>)> = entries
+            .flatten()
+            .map(|e| {
+                let meta = e.metadata().ok();
+                (e.file_name(), meta.as_ref().map_or(0, |m| m.len()), meta.and_then(|m| m.modified().ok()))
+            })
+            .collect();
+        seen.sort();
+        folder.hash(&mut hash);
+        seen.hash(&mut hash);
+    }
+    hash.finish()
+}
+
+/// Watches the stores' install folders: a game installed or uninstalled by
+/// Steam, Epic or the Xbox app shows in the library within seconds, without
+/// pressing anything. A store downloading changes its files all the time:
+/// the library is read again at most every 15 s.
+fn watch_store_installs(app: AppHandle) {
+    std::thread::spawn(move || {
+        let folders = || {
+            let mut all = steam::install_folders();
+            all.extend(epic::install_folders());
+            all.extend(xbox::install_folders());
+            all
+        };
+        let mut watched = folders();
+        let mut listed_at = std::time::Instant::now();
+        let mut last = install_fingerprint(&watched);
+        let mut pending = false;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            // A library added in Steam, or a drive plugged in: the folders are found again now and then.
+            if listed_at.elapsed() > std::time::Duration::from_secs(60) {
+                watched = folders();
+                listed_at = std::time::Instant::now();
+            }
+            let now = install_fingerprint(&watched);
+            if now != last {
+                last = now;
+                pending = true;
+            }
+            if pending && LAST_INSTALL_NEWS.lock().map_or(true, |at| at.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(15))) {
+                pending = false;
+                if let Ok(mut at) = LAST_INSTALL_NEWS.lock() {
+                    *at = Some(std::time::Instant::now());
+                }
+                stores_changed();
+                let _ = app.emit("catalog-changed", ());
+            }
+        }
+    });
+}
+
+static LAST_INSTALL_NEWS: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
 /// The stores' listing is out of date.
 fn stores_changed() {
     STORES_CHANGED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1931,7 +2004,9 @@ async fn store_games(app: &AppHandle, http: &reqwest::Client) -> Vec<Game> {
 /// the background when an hour old (renewing the token), the library listed again then.
 fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) {
     let data = app.state::<DataDir>().0.clone();
-    let Some(refresh) = settings::load(&data).epic_refresh else { return };
+    if settings::load(&data).epic_refresh.is_none() {
+        return;
+    }
     epic_account::merge(games, &epic_account::cached(&data));
     if !epic_account::stale(&data) {
         return;
@@ -1943,9 +2018,9 @@ fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
     let (app, http) = (app.clone(), http.clone());
     tauri::async_runtime::spawn(async move {
         let result = async {
-            let session = epic_account::token(&http, epic_account::Grant::Refresh(&refresh)).await?;
-            settings::renew_token(&data, settings::Account::Epic, &refresh, &session.refresh);
-            epic_account::library(&http, &session.access).await
+            // The same session the achievements use: one renewal, never two at once.
+            let (access, _) = achievements::epic_session(&http, &data).await?;
+            epic_account::library(&http, &access).await
         }
         .await;
         ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -2084,8 +2159,8 @@ fn xbox_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
     let (app, http) = (app.clone(), http.clone());
     tauri::async_runtime::spawn(async move {
         let result = async {
-            let session = xbox_account::sign_in(&http, xbox_account::Grant::Refresh(&refresh)).await?;
-            settings::renew_token(&data, settings::Account::Xbox, &refresh, &session.refresh);
+            // The same session the achievements use: one sign-in, never two at once.
+            let session = achievements::xbox::session(&http, &refresh, |r| settings::renew_token(&data, settings::Account::Xbox, &refresh, r)).await?;
             let owned = xbox_account::library(&http, &session).await?;
             Ok::<_, String>(xbox_account::with_store_details(&http, owned).await)
         }
@@ -2517,11 +2592,54 @@ async fn list_recomps(
         });
     }
     let mut entries = recomp::entries(&library, &owned_games(&app))?;
+    // The source lists' tens of thousands of games stay here: Discover asks
+    // for a page of them (search_lists). The ones installed come, the library needs them.
+    // So do the ones downloading, paused or waiting: Downloads shows them by name.
+    let busy: std::collections::HashSet<String> = app
+        .state::<recomp::Installing>()
+        .busy_ids()
+        .into_iter()
+        .chain(downloads::waiting(&app.state::<DataDir>().0).into_iter().map(|p| p.recomp_id))
+        .collect();
+    entries.retain(|e| !e.from_source || e.installed.is_some() || busy.contains(&e.id));
     // Copies already on disk are used, but 1900 recomps' art is not fetched
     // ahead: the window loads what it shows, and games in the library keep theirs.
     let mut not_fetched = Vec::new();
     art.use_copies_for_recomps(&mut entries, &mut not_fetched);
     Ok(entries)
+}
+
+/// A page of the source lists' games for Discover, searched and sorted here.
+#[tauri::command]
+async fn search_lists(
+    app: AppHandle,
+    library: State<'_, LocalLibrary>,
+    art: State<'_, Arc<ArtCache>>,
+    needle: String,
+    console: String,
+    owned: bool,
+    sort: String,
+    limit: usize,
+) -> Result<cerberus_shared::CatalogPage, String> {
+    let entries = recomp::entries(&library, &owned_games(&app))?;
+    let mut page = recomp::search_lists(entries, &recomp::ListQuery { needle: &needle, console: &console, owned, sort: &sort, limit: limit.min(2000) });
+    let mut shown: Vec<RecompEntry> = page.games.iter().map(|(e, _)| e.clone()).collect();
+    let mut not_fetched = Vec::new();
+    art.use_copies_for_recomps(&mut shown, &mut not_fetched);
+    for ((e, _), with_art) in page.games.iter_mut().zip(shown) {
+        *e = with_art;
+    }
+    Ok(page)
+}
+
+/// One catalog entry by its id, source lists included (a page opened for a
+/// list's game the window doesn't hold).
+#[tauri::command]
+async fn catalog_entry(app: AppHandle, library: State<'_, LocalLibrary>, art: State<'_, Arc<ArtCache>>, id: String) -> Result<Option<RecompEntry>, String> {
+    let mut found: Vec<RecompEntry> = recomp::entries(&library, &owned_games(&app))?.into_iter().filter(|e| e.id == id).collect();
+    let mut not_fetched = Vec::new();
+    art.use_copies_for_recomps(&mut found, &mut not_fetched);
+    Ok(found.pop())
 }
 
 /// Installs or updates a recomp; progress arrives as `recomp-progress` events.
@@ -2924,17 +3042,21 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
     // Store games go through their own launcher, which handles updates, DRM and
     // overlays; the rest are started, and watched, by us.
     let url = match &game.source {
-        // Not on this PC yet: Steam's own install window.
-        Source::Steam { app_id } if game.install_dir.is_empty() => format!("steam://install/{app_id}"),
-        Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
-        // Owned, not on this PC: the Epic launcher installs it.
-        Source::Epic { app_name, namespace, item_id } if game.install_dir.is_empty() => epic_account::install_url(namespace, item_id, app_name),
-        Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
         // Through Windows, as the Start menu does (Xbox app sign-in and Game Pass included).
-        // Not on this PC: its page in the Xbox app, where it installs (Game Pass or bought).
-        Source::Xbox { product, .. } if game.install_dir.is_empty() => format!("msxbox://game/?productId={product}"),
-        Source::Xbox { family, app: app_id, .. } => {
+        Source::Xbox { family, app: app_id, .. } if !game.install_dir.is_empty() => {
             return xbox::launch(family, app_id).map_err(|e| tr!("Não foi possível abrir o jogo pelo app Xbox: {}", e));
+        }
+        Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. } => {
+            let epic_found = !matches!(game.source, Source::Epic { .. }) || epic::launcher_found();
+            match store_url(&game, epic_found) {
+                Ok(url) => url,
+                Err(e) if e == EPIC_MISSING => {
+                    // Its download page instead of a link Windows can't open.
+                    let _ = app.opener().open_url("https://store.epicgames.com/download", None::<&str>);
+                    return Err(tr!("A Epic Games Launcher não está neste PC: abrimos a página para baixar. Instale, entre com sua conta e tente de novo.").into());
+                }
+                Err(e) => return Err(e),
+            }
         }
         Source::Local { .. } => {
             let current = app.state::<LocalLibrary>().get(&game.id)?.ok_or(tr!("O jogo foi removido da biblioteca."))?;
@@ -2954,6 +3076,62 @@ fn play(app: AppHandle, game: Game, mode: Option<String>, pad: Option<String>) -
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| tr!("Não foi possível abrir o launcher da loja: {}", e))
+}
+
+const EPIC_MISSING: &str = "epic-missing";
+
+/// The address that plays or installs a store game through its own launcher.
+/// Never one with an empty id: an Xbox game whose product isn't known opens
+/// the store's search by its name. `epic_found`: the Epic launcher is on this PC.
+fn store_url(game: &Game, epic_found: bool) -> Result<String, String> {
+    let installed = !game.install_dir.is_empty();
+    Ok(match &game.source {
+        Source::Steam { app_id } if *app_id == 0 => return Err(tr!("Esse jogo não tem id da Steam.").into()),
+        // Not on this PC yet: Steam's own install window.
+        Source::Steam { app_id } if !installed => format!("steam://install/{app_id}"),
+        Source::Steam { app_id } => format!("steam://rungameid/{app_id}"),
+        Source::Epic { .. } if !epic_found => return Err(EPIC_MISSING.into()),
+        Source::Epic { app_name, .. } if app_name.is_empty() => return Err(tr!("Esse jogo não tem id da Epic.").into()),
+        // Owned, not on this PC: the Epic launcher installs it.
+        Source::Epic { app_name, namespace, item_id } if !installed => epic_account::install_url(namespace, item_id, app_name),
+        Source::Epic { app_name, namespace, item_id } => epic::launch_url(namespace, item_id, app_name),
+        // Not on this PC: its page in the Xbox app, where it installs (Game Pass or bought).
+        Source::Xbox { product, .. } if !product.is_empty() && product.chars().all(|c| c.is_ascii_alphanumeric()) => format!("msxbox://game/?productId={product}"),
+        Source::Xbox { .. } => format!("ms-windows-store://search/?query={}", percent(&game.name)),
+        _ => return Err(tr!("Esse jogo não é de uma loja.").into()),
+    })
+}
+
+/// Where a store game is uninstalled or checked: the store's own window, or,
+/// where the store has no address for it, the place to do it (Windows'
+/// installed apps for the Xbox app, Epic's library).
+fn store_manage_url(game: &Game, verify: bool) -> Result<String, String> {
+    match (&game.source, verify) {
+        (Source::Steam { app_id }, _) if *app_id == 0 => Err(tr!("Esse jogo não tem id da Steam.").into()),
+        (Source::Steam { app_id }, false) => Ok(format!("steam://uninstall/{app_id}")),
+        (Source::Steam { app_id }, true) => Ok(format!("steam://validate/{app_id}")),
+        (Source::Xbox { .. }, false) => Ok("ms-settings:appsfeatures".into()),
+        (Source::Epic { .. }, _) => Ok("com.epicgames.launcher://store/library".into()),
+        _ => Err(tr!("Essa loja não verifica arquivos por aqui.").into()),
+    }
+}
+
+/// Letters, digits and -_.~ as they are; everything else as %XX (UTF-8 bytes).
+fn percent(text: &str) -> String {
+    text.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
+/// Opens the store's own place to uninstall (or, `verify`, check the files of)
+/// one of its games. The store asks before removing anything.
+#[tauri::command]
+fn store_manage(app: AppHandle, game: Game, verify: bool) -> Result<(), String> {
+    if matches!(game.source, Source::Epic { .. }) && !epic::launcher_found() {
+        return Err(tr!("A Epic Games Launcher não está neste PC.").into());
+    }
+    let url = store_manage_url(&game, verify)?;
+    app.opener().open_url(url, None::<&str>).map_err(|e| tr!("Não foi possível abrir o launcher da loja: {}", e))
 }
 
 /// Play refuses what the button wouldn't offer: a recomp without its game copy
@@ -3832,6 +4010,7 @@ fn main() {
             let chosen = settings::load(&data_dir);
             language::apply(chosen.language.as_deref());
             app.manage(LocalLibrary::load(&data_dir));
+            watch_store_installs(app.handle().clone());
             // Copies lost by an update made before this fix (or a folder cleaned by hand) go back now.
             {
                 let handle = app.handle().clone();
@@ -4004,6 +4183,8 @@ fn main() {
             pick_cover,
             remove_game,
             list_recomps,
+            search_lists,
+            catalog_entry,
             install_recomp,
             open_project,
             open_recomp_request,
@@ -4078,6 +4259,7 @@ fn main() {
             store_page,
             steam_news,
             open_in_store,
+            store_manage,
             standalone_status,
             install_standalone,
             pick_standalone,
@@ -4304,5 +4486,56 @@ fn settings_are_changed_under_their_lock_not_loaded_and_saved_whole() {
                 panic!("{file}:{}: use settings::update instead of load + save: {}", n + 1, line.trim());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod store_url_tests {
+    use super::*;
+
+    fn game(source: Source, installed: bool) -> Game {
+        Game { name: "Forza Horizon 5".into(), source, install_dir: if installed { r"C:\Games\x".into() } else { String::new() }, ..library::blank_game() }
+    }
+
+    #[test]
+    fn no_button_opens_an_address_with_an_empty_id() {
+        let xbox = |product: &str| Source::Xbox { family: "f".into(), app: "Game".into(), product: product.into(), game_pass: false };
+        assert_eq!(store_url(&game(xbox("9NKX70BBCDRN"), false), true).unwrap(), "msxbox://game/?productId=9NKX70BBCDRN");
+        assert_eq!(store_url(&game(xbox(""), false), true).unwrap(), "ms-windows-store://search/?query=Forza%20Horizon%205", "no product: the store's search by name");
+        assert!(store_url(&game(Source::Steam { app_id: 0 }, false), true).is_err());
+        assert_eq!(store_url(&game(Source::Steam { app_id: 10 }, false), true).unwrap(), "steam://install/10");
+        assert_eq!(store_url(&game(Source::Steam { app_id: 10 }, true), true).unwrap(), "steam://rungameid/10");
+        let epic = Source::Epic { app_name: "Fortnite".into(), namespace: "fn".into(), item_id: "i".into() };
+        assert_eq!(store_url(&game(epic.clone(), false), false).unwrap_err(), EPIC_MISSING, "without the Epic launcher: its download page instead");
+        assert!(store_url(&game(epic, false), true).unwrap().ends_with("?action=install"));
+        assert!(store_url(&game(Source::Local { exe: "x.exe".into() }, true), true).is_err());
+    }
+
+    #[test]
+    fn each_store_has_a_way_to_uninstall() {
+        let xbox = Source::Xbox { family: "f".into(), app: "Game".into(), product: "p".into(), game_pass: false };
+        let epic = Source::Epic { app_name: "a".into(), namespace: "n".into(), item_id: "i".into() };
+        assert_eq!(store_manage_url(&game(Source::Steam { app_id: 10 }, true), false).unwrap(), "steam://uninstall/10");
+        assert_eq!(store_manage_url(&game(Source::Steam { app_id: 10 }, true), true).unwrap(), "steam://validate/10");
+        assert_eq!(store_manage_url(&game(xbox.clone(), true), false).unwrap(), "ms-settings:appsfeatures");
+        assert!(store_manage_url(&game(xbox, true), true).is_err(), "the Xbox app checks files only in its own window");
+        assert_eq!(store_manage_url(&game(epic, true), false).unwrap(), "com.epicgames.launcher://store/library");
+    }
+}
+
+#[cfg(test)]
+mod install_watch_tests {
+    #[test]
+    fn a_manifest_removed_or_added_changes_the_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let folders = vec![dir.path().to_path_buf(), dir.path().join("not-there")];
+        std::fs::write(dir.path().join("appmanifest_1.acf"), "a").unwrap();
+        let first = super::install_fingerprint(&folders);
+        assert_eq!(super::install_fingerprint(&folders), first, "nothing changed: the same");
+        std::fs::remove_file(dir.path().join("appmanifest_1.acf")).unwrap();
+        let removed = super::install_fingerprint(&folders);
+        assert_ne!(removed, first, "uninstalled: changed");
+        std::fs::write(dir.path().join("appmanifest_2.acf"), "b").unwrap();
+        assert_ne!(super::install_fingerprint(&folders), removed, "installed: changed");
     }
 }

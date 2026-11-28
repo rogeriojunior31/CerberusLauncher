@@ -66,6 +66,7 @@ struct LiveToken {
 }
 
 /// The account's Xbox Live access: the header value and its user id.
+#[derive(Clone)]
 pub struct Session {
     pub refresh: String,
     pub auth: String,
@@ -100,7 +101,7 @@ pub async fn sign_in(client: &reqwest::Client, grant: Grant<'_>) -> Result<Sessi
             encode(SCOPE)
         ),
     };
-    let refused = || crate::achievements::needs_login(&tr!("A Microsoft recusou o acesso: entre de novo em Configurações › Xbox."));
+    let refused = |status: u16| crate::accounts::refusal("Microsoft", tr!("Configurações › Xbox"), status);
     let live = client
         .post("https://login.live.com/oauth20_token.srf")
         .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -109,7 +110,7 @@ pub async fn sign_in(client: &reqwest::Client, grant: Grant<'_>) -> Result<Sessi
         .await
         .map_err(|e| e.to_string())?;
     if !live.status().is_success() {
-        return Err(refused());
+        return Err(refused(live.status().as_u16()));
     }
     let live: LiveToken = live.json().await.map_err(|e| e.to_string())?;
     let user = client
@@ -124,7 +125,7 @@ pub async fn sign_in(client: &reqwest::Client, grant: Grant<'_>) -> Result<Sessi
         .await
         .map_err(|e| e.to_string())?;
     if !user.status().is_success() {
-        return Err(refused());
+        return Err(refused(user.status().as_u16()));
     }
     let user: XblReply = user.json().await.map_err(|e| e.to_string())?;
     let xsts = client
@@ -138,14 +139,16 @@ pub async fn sign_in(client: &reqwest::Client, grant: Grant<'_>) -> Result<Sessi
         .send()
         .await
         .map_err(|e| e.to_string())?;
+    // 401 here: signed in, but no Xbox profile yet; a pause or the service down is a wait.
     if !xsts.status().is_success() {
-        return Err(tr!("Essa conta Microsoft ainda não tem um perfil Xbox: abra o app Xbox uma vez e crie o seu.").into());
+        let status = xsts.status().as_u16();
+        return Err(if status == 429 || status >= 500 { refused(status) } else { tr!("Essa conta Microsoft ainda não tem um perfil Xbox: abra o app Xbox uma vez e crie o seu.").into() });
     }
     let xsts: XblReply = xsts.json().await.map_err(|e| e.to_string())?;
     let claim = |name: &str| xsts.display_claims.xui.first().and_then(|c| c.get(name)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let (uhs, xuid) = (claim("uhs"), claim("xid"));
     if uhs.is_empty() || xuid.is_empty() {
-        return Err(refused());
+        return Err(refused(401));
     }
     Ok(Session { refresh: live.refresh_token, auth: format!("XBL3.0 x={uhs};{}", xsts.token), xuid, gamertag: claim("gtg") })
 }
@@ -294,7 +297,7 @@ pub fn merge(games: &mut Vec<Game>, owned: &[Owned]) {
             _ => None,
         })
         .collect();
-    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let plain = cerberus_shared::names::key;
     let installed: std::collections::HashSet<String> = games.iter().filter(|g| !g.install_dir.is_empty()).map(|g| plain(&g.name)).collect();
     for o in owned {
         if families.contains(&o.family.to_lowercase()) || installed.contains(&plain(&o.name)) {

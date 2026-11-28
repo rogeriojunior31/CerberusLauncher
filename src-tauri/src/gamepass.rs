@@ -221,9 +221,11 @@ pub async fn refresh(client: &reqwest::Client, data: &Path) -> Result<Vec<Produc
 /// A Game Pass game not installed whose name the player already has from
 /// another store (owned on Epic, Steam...): only the owned copy shows.
 pub fn drop_owned_elsewhere(games: &mut Vec<Game>) {
-    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+    let plain = cerberus_shared::names::key;
     let catalog_only = |g: &Game| matches!(g.source, Source::Xbox { game_pass: true, .. }) && g.install_dir.is_empty();
-    let elsewhere: std::collections::HashSet<String> = games.iter().filter(|g| !catalog_only(g)).map(|g| plain(&g.name)).collect();
+    // Only a store's own copy hides it: a ROM, a recomp or a game added by hand with the same name doesn't.
+    let a_store = |g: &Game| matches!(g.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. });
+    let elsewhere: std::collections::HashSet<String> = games.iter().filter(|g| !catalog_only(g) && a_store(g)).map(|g| plain(&g.name)).collect();
     games.retain(|g| !catalog_only(g) || !elsewhere.contains(&plain(&g.name)));
 }
 
@@ -231,7 +233,7 @@ pub fn drop_owned_elsewhere(games: &mut Vec<Game>) {
 /// installed, the Xbox app gives them `xbox:<family>`. The pairs (old id, new
 /// id) for those installed now, matched by name, so the player's data follows.
 pub fn moved_ids(games: &[Game], catalog: &[Product]) -> Vec<(String, String)> {
-    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let plain = cerberus_shared::names::key;
     games
         .iter()
         .filter(|g| matches!(g.source, Source::Xbox { .. }) && !g.install_dir.is_empty())
@@ -263,7 +265,7 @@ pub fn merge(games: &mut Vec<Game>, catalog: &[Product]) {
         }
     }
     // A game already installed from another store (9 Kings on Steam) isn't listed again.
-    let plain = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let plain = cerberus_shared::names::key;
     let installed: std::collections::HashSet<String> = games.iter().filter(|g| !g.install_dir.is_empty()).map(|g| plain(&g.name)).collect();
     for p in catalog {
         if !p.family.is_empty() && here.contains(&p.family.to_lowercase()) {
@@ -341,6 +343,21 @@ mod tests {
         drop_owned_elsewhere(&mut games);
         let names: Vec<_> = games.iter().map(|g| g.name.as_str()).collect();
         assert_eq!(names, vec!["Rocket League", "Halo Infinite"]);
+    }
+
+    #[test]
+    fn an_edition_name_still_matches_and_a_rom_hides_nothing() {
+        let game = |name: &str, source: Source| Game { name: name.into(), source, ..crate::library::blank_game() };
+        let pass = |name: &str| game(name, Source::Xbox { family: "f".into(), app: "Game".into(), product: "p".into(), game_pass: true });
+        let mut games = vec![
+            pass("Forza Horizon 5 Standard Edition"),
+            game("Forza Horizon 5", Source::Steam { app_id: 1551360 }),
+            pass("Halo"),
+            game("Halo", Source::Local { exe: r"C:\Roms\halo.exe".into() }),
+        ];
+        drop_owned_elsewhere(&mut games);
+        let names: Vec<_> = games.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, vec!["Forza Horizon 5", "Halo", "Halo"], "the edition goes; a game added by hand hides nothing");
     }
 
     const PAGE: &str = r#"{"Products":[{"ProductId":"9NNM7PKZN3JF","LocalizedProperties":[{"ProductTitle":"9 Kings ","Images":[

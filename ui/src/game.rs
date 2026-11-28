@@ -40,6 +40,57 @@ thread_local! {
     static SHOW_REMOVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// A store game on this PC: its store uninstalls it (and asks first).
+pub fn by_store(game: &Game) -> bool {
+    !game.install_dir.is_empty() && matches!(game.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. })
+}
+
+/// What removing the game is called, wherever it's offered (the "..." menu, Gerenciar).
+pub fn uninstall_label(game: &Game) -> String {
+    match &game.source {
+        Source::Xbox { .. } if by_store(game) => tr!("Desinstalar pelo Windows").to_string(),
+        Source::Steam { .. } | Source::Epic { .. } if by_store(game) => tr!("Desinstalar pela {}", crate::tiles::source_name(&game.source)),
+        Source::Recomp { .. } if !game.external => tr!("Desinstalar").to_string(),
+        _ => tr!("Remover da biblioteca").to_string(),
+    }
+}
+
+/// Whether the game can be uninstalled (or taken off the library) from here.
+pub fn can_uninstall(game: &Game) -> bool {
+    by_store(game) || matches!(game.source, Source::Recomp { .. } | Source::Local { .. })
+}
+
+/// Uninstalls the game where it was asked, after the player confirmed: a
+/// recomp's folder goes (saves backed up first), a game added by hand leaves
+/// the library, a store game opens its store's own uninstall. `Err` carries
+/// the stop code (saves not backed up, folder not ours) and why.
+pub async fn uninstall(library: Library, game: Game, without_backup: bool, keep_folder: bool) -> Result<(), (Option<&'static str>, String)> {
+    if by_store(&game) {
+        api::store_manage(&game, false).await.map_err(|e| (None, e))?;
+        library.toast(match &game.source {
+            Source::Xbox { .. } => tr!("Aplicativos instalados aberto: procure {} e desinstale por lá.", game.name),
+            _ => tr!("A {} vai pedir para confirmar a desinstalação.", crate::tiles::source_name(&game.source)),
+        });
+        return Ok(());
+    }
+    match api::remove_game_with(&game.id, without_backup, keep_folder).await {
+        Ok(()) => {
+            library.games.refetch();
+            library.recomps.refetch();
+            library.toast(if keep_folder || game.external || matches!(game.source, Source::Local { .. }) { tr!("Tirado da biblioteca. A pasta continua no PC.") } else { tr!("Desinstalado.") });
+            // Its page is gone with it.
+            if library.route.get_untracked() == crate::Route::Game(game.id.clone()) {
+                library.go(crate::Route::Library);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let (code, why) = cerberus_shared::uninstall::split(&e);
+            Err((code, why.to_string()))
+        }
+    }
+}
+
 /// Opens a game's Gerenciar tab at its "Desinstalar" / "Remover da biblioteca".
 pub fn open_to_remove(library: Library, id: String) {
     // Already on its page (the "..." menu there): going to the same page does
@@ -89,15 +140,32 @@ pub fn GamePage(id: String) -> impl IntoView {
         scroll_to_removal();
     });
     on_cleanup(move || removal.remove());
+    // A source list's game the window doesn't hold (the lists stay in the
+    // app): asked by its id once, when the catalog the window has lacks it.
+    let asked = LocalResource::new(move || {
+        let rid = id.get_value().strip_prefix("recomp:").map(str::to_string);
+        let known = library.recomps.with_untracked(|r| match (r, &rid) {
+            (Some(Ok(all)), Some(rid)) => all.iter().any(|e| &e.id == rid),
+            (_, None) => true,
+            // Not loaded yet (the app just opened on this page): asked, to be sure.
+            _ => false,
+        });
+        async move {
+            match rid {
+                Some(rid) if !known => api::catalog_entry(&rid).await.ok().flatten(),
+                _ => None,
+            }
+        }
+    });
     let content = move || {
         let game = library.games.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|g| g.id == id.get_value()));
         let recomp_id = id.get_value().strip_prefix("recomp:").map(str::to_string);
         let entry = recomp_id.and_then(|rid| {
             let all = library.recomps.get().and_then(Result::ok)?;
             all.into_iter().find(|e| e.id == rid)
-        });
+        }).or_else(|| asked.get().flatten());
         if game.is_none() && entry.is_none() {
-            let loading = library.games.get().is_none() || library.recomps.get().is_none();
+            let loading = library.games.get().is_none() || library.recomps.get().is_none() || asked.get().is_none();
             let text = if loading { tr!("Carregando...") } else { tr!("Esse jogo não está mais na biblioteca.") };
             return view! { <div class="page"><p class="muted">{text}</p></div> }.into_any();
         }
@@ -433,6 +501,42 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     }
 }
 
+/// The same game in several stores: one button per store, this copy's
+/// pressed; another shows that copy's page, whose button installs or plays
+/// through that store.
+fn store_choice(library: Library, id: &str) -> Option<impl IntoView + use<>> {
+    let ids = library.copies_of(id);
+    if ids.len() < 2 {
+        return None;
+    }
+    let copies: Vec<Game> = library.games.with_untracked(|listed| {
+        let all = listed.as_ref().and_then(|r| r.as_ref().ok());
+        ids.iter().filter_map(|i| all.and_then(|all| all.iter().find(|g| &g.id == i)).cloned()).collect()
+    });
+    let here = id.to_string();
+    let buttons = copies
+        .into_iter()
+        .map(|g| {
+            let on = g.id == here;
+            let store = crate::tiles::source_name(&g.source);
+            let state = if g.next_step == cerberus_shared::NextStep::Install { tr!("não instalado") } else { tr!("instalado") };
+            let title = tr!("{} · {}", store, state);
+            let logo = crate::tiles::source_marks(&g.source).into_iter().next().and_then(|m| match m.mark {
+                crate::tiles::Mark::Store(name) => Some(view! { <i class=format!("store-logo {name}") aria-hidden="true"></i> }),
+                _ => None,
+            });
+            let id = g.id.clone();
+            view! {
+                <button type="button" class="seg copy-store" role="radio" class:on=on aria-checked=on.to_string() title=title
+                    on:click=move |_| if !on { library.replace(crate::Route::Game(id.clone())) }>
+                    {logo}<span>{store}</span>
+                </button>
+            }
+        })
+        .collect_view();
+    Some(view! { <div class="segs copy-stores" role="radiogroup" aria-label=tr!("Jogar por qual loja")>{buttons}</div> })
+}
+
 /// Play, Playing, Install with its size, the install's progress, or Update.
 fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool, tab: RwSignal<Tab>) -> impl IntoView {
     let library = expect_context::<Library>();
@@ -475,7 +579,7 @@ fn primary_action(game: Option<Game>, entry: Option<RecompEntry>, several: bool,
             // With the player's own copy, two named ways to play side by side. The one
             // used last leads; the other stays one click away.
             let Some((copy, console)) = original else {
-                return view! { {play}{update_button} }.into_any();
+                return view! { {play}{update_button}{store_choice(library, &game_id)} }.into_any();
             };
             let players = library.players.get_untracked().unwrap_or_default();
             let emulator = crate::classics::ready_player(&players, &console);
@@ -1631,19 +1735,59 @@ fn Manage(game: Option<Game>, entry: Option<RecompEntry>) -> impl IntoView {
             </button>
         }
     });
+    // A store game on this PC: uninstalled and checked by its store, which asks first.
+    let store_game = game.clone().filter(|g| !g.install_dir.is_empty() && matches!(g.source, Source::Steam { .. } | Source::Epic { .. } | Source::Xbox { .. }));
+    let store_button = move |verify: bool| {
+        let g = store_game.clone()?;
+        let store = crate::tiles::source_name(&g.source);
+        let (title, detail) = match (&g.source, verify) {
+            (Source::Steam { .. }, false) => (tr!("Desinstalar pela {}", store), tr!("Abre a janela da Steam, que pede confirmação. Os backups de saves continuam guardados.").to_string()),
+            (Source::Steam { .. }, true) => (tr!("Verificar arquivos").to_string(), tr!("A Steam confere os arquivos do jogo e baixa de novo o que estiver faltando ou estragado.").to_string()),
+            (Source::Xbox { .. }, false) => (tr!("Desinstalar pelo Windows").to_string(), tr!("Abre Aplicativos instalados: procure {} e desinstale por lá. O app Xbox não tem um link para isso.", g.name)),
+            (Source::Epic { .. }, false) => (tr!("Desinstalar pela {}", store), tr!("Abre a biblioteca da Epic: nos três pontos do jogo, escolha Desinstalar.").to_string()),
+            (Source::Epic { .. }, true) => (tr!("Verificar arquivos").to_string(), tr!("Abre a biblioteca da Epic: nos três pontos do jogo, Gerenciar › Verificar.").to_string()),
+            _ => return None,
+        };
+        let g = StoredValue::new(g);
+        // Uninstalling asks for a second click, here and in the "..." menu.
+        let confirm = RwSignal::new(false);
+        let label = move || if !verify && confirm.get() { tr!("Clique de novo para confirmar").to_string() } else { title.clone() };
+        Some(view! {
+            <button type="button" class=if verify { "row-btn" } else { "row-btn danger" }
+                on:click=move |_| {
+                    if verify {
+                        spawn_local(async move { library.report(api::store_manage(&g.get_value(), true).await); });
+                    } else if !confirm.get_untracked() {
+                        confirm.set(true);
+                    } else {
+                        confirm.set(false);
+                        spawn_local(async move {
+                            if let Err((_, e)) = uninstall(library, g.get_value(), false, false).await {
+                                library.report::<()>(Err(e));
+                            }
+                        });
+                    }
+                }>
+                <Svg icon=if verify { Icon::Check } else { Icon::Trash } />
+                <span><b>{label}</b><small>{detail}</small></span>
+            </button>
+        })
+    };
+    let verify = store_button(true);
+    let store_remove = store_button(false);
     // Grouped by what they touch, the risky one last and apart.
     let group = |title: &'static str, any: bool| any.then(|| view! { <h3 class="mg-h">{title}</h3> });
-    let files_h = group(tr!("Arquivos"), folder.is_some() || relocate.is_some() || repair.is_some() || hold.is_some());
+    let files_h = group(tr!("Arquivos"), folder.is_some() || relocate.is_some() || repair.is_some() || hold.is_some() || verify.is_some());
     let links_h = group(tr!("Integração"), shortcut.is_some() || steam.is_some() || project.is_some());
     let look_h = group(tr!("Aparência"), customize.is_some() || edit.is_some());
-    let danger_h = remove.is_some().then(|| view! { <h3 class="mg-h danger">{tr!("Zona de perigo")}</h3> });
+    let danger_h = (remove.is_some() || store_remove.is_some()).then(|| view! { <h3 class="mg-h danger">{tr!("Zona de perigo")}</h3> });
     view! {
         <div class="manage">
             {outside}{link}{program}{options}{dlss}{history}
-            {files_h}{folder}{relocate}{repair}{hold}
+            {files_h}{folder}{relocate}{repair}{hold}{verify}
             {links_h}{shortcut}{steam}{project}
             {look_h}{customize}{edit}
-            {danger_h}{remove}
+            {danger_h}{remove}{store_remove}
         </div>
     }
 }

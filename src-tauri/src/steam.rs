@@ -196,6 +196,11 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
 }
 
 /// The main Steam folder plus every extra library the user added (other drives etc).
+/// The folders whose files say what Steam has installed (each library's steamapps).
+pub fn install_folders() -> Vec<PathBuf> {
+    steam_root().map(|root| library_folders(&root).into_iter().map(|l| l.join("steamapps")).collect()).unwrap_or_default()
+}
+
 fn library_folders(root: &Path) -> Vec<PathBuf> {
     let mut candidates = vec![root.to_path_buf()];
     let vdf = root.join("steamapps").join("libraryfolders.vdf");

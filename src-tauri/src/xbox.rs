@@ -57,6 +57,11 @@ fn attribute(xml: &str, element: &str, name: &str) -> Option<String> {
 }
 
 /// The folders the Xbox app installs into, from each drive's `.GamingRoot`.
+/// The folders the Xbox app installs games in.
+pub fn install_folders() -> Vec<PathBuf> {
+    roots()
+}
+
 fn roots() -> Vec<PathBuf> {
     let mut found = Vec::new();
     for letter in b'C'..=b'Z' {

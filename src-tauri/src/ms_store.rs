@@ -23,7 +23,7 @@ fn dir(data: &Path) -> PathBuf {
 
 /// "DARK SOULS™ III" and "Dark Souls III" are the same game.
 fn plain(name: &str) -> String {
-    name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+    cerberus_shared::names::key(name)
 }
 
 #[derive(Serialize, Deserialize)]

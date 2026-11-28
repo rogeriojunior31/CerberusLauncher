@@ -2,6 +2,7 @@
 //! renamed on one side fails to compile on the other, instead of breaking at runtime.
 
 pub mod i18n;
+pub mod names;
 
 use serde::{Deserialize, Serialize};
 
@@ -763,6 +764,21 @@ impl GameAward {
     }
 }
 
+/// How an account's achievements sync stands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceStatus {
+    pub source: AchievementSource,
+    /// The last sync that went through, in Unix seconds.
+    #[serde(default)]
+    pub synced_at: Option<u64>,
+    /// The store said no: asked again from then on (Unix seconds).
+    #[serde(default)]
+    pub wait_until: Option<u64>,
+    /// Being synced elsewhere (the library) right now: the numbers come when it ends.
+    #[serde(default)]
+    pub syncing: bool,
+}
+
 /// A game with achievements, as the hub lists it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AchievementGame {
@@ -795,11 +811,25 @@ pub struct AchievementGame {
     pub award: Option<GameAward>,
     #[serde(default)]
     pub award_at: Option<u64>,
+    /// When it first reached 100% (Unix seconds): kept when a DLC adds
+    /// achievements later, so it stays a platinum "before the DLC".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<u64>,
 }
 
 impl AchievementGame {
     pub fn percent(&self) -> u32 {
         if self.total == 0 { 0 } else { self.unlocked * 100 / self.total }
+    }
+
+    /// Every achievement unlocked now.
+    pub fn complete(&self) -> bool {
+        self.total > 0 && self.unlocked == self.total
+    }
+
+    /// A platinum now, or one before a DLC added more.
+    pub fn platinum(&self) -> bool {
+        self.complete() || self.completed_at.is_some()
     }
 }
 
@@ -852,6 +882,14 @@ pub struct AchievementsHub {
     pub games: Vec<AchievementGame>,
     /// Newest first.
     pub recent: Vec<RecentUnlock>,
+    /// Unlocks the store took back (seen once, gone from its list now): kept
+    /// apart, not counted.
+    #[serde(default)]
+    pub revoked: Vec<RecentUnlock>,
+    /// Each account's sync: when it last went through, and until when the
+    /// store asked to wait (Steam's files are read every time: not listed).
+    #[serde(default)]
+    pub sources: Vec<SourceStatus>,
     /// Steam is installed and has achievement data on this PC.
     pub steam: bool,
     /// A RetroAchievements account is connected.
@@ -1078,6 +1116,15 @@ pub enum Source {
         #[serde(default)]
         generation: u64,
     },
+}
+
+/// A page of games from the player's source lists, searched where they're
+/// kept: each game's lead version and how many versions it has, and how many
+/// games matched in all.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CatalogPage {
+    pub games: Vec<(RecompEntry, usize)>,
+    pub total: usize,
 }
 
 /// One recomp in Discover: what the catalog says about it, plus what we know right now.

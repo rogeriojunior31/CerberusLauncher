@@ -104,13 +104,14 @@ pub fn AchievementsPage() -> impl IntoView {
     let refresh_later = StoredValue::new(None::<Callback<()>>);
     // The answers can arrive after the page was left: then its signals are gone,
     // and reading them must not bring the window down (try_ reads).
-    let refresh = move || {
+    // `force`: the player pressed Update (asks again a minute after the last sync).
+    let refresh = move |force: bool| {
         if refreshing.try_get_untracked() != Some(false) {
             return;
         }
         refreshing.set(true);
         leptos::task::spawn_local(async move {
-            let got = api::achievements_hub(true).await;
+            let got = api::achievements_hub_now(true, force).await;
             let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
             let again = got.as_ref().is_ok_and(|h| h.retry_soon);
             // A failed refresh keeps what's already on screen.
@@ -131,14 +132,22 @@ pub fn AchievementsPage() -> impl IntoView {
             }
         });
     };
-    refresh_later.set_value(Some(Callback::new(move |_| refresh())));
+    refresh_later.set_value(Some(Callback::new(move |_| refresh(false))));
+    // A game just closed and its new unlocks were kept: shown from what's kept, no store asked.
+    api::on_achievements_changed_here(move || {
+        leptos::task::spawn_local(async move {
+            if let Ok(fresh) = api::achievements_hub(false).await {
+                let _ = hub.try_set(Some(Ok(fresh)));
+            }
+        });
+    });
     leptos::task::spawn_local(async move {
         let got = api::achievements_hub(false).await;
         let Some(shown) = hub.try_with_untracked(|h| h.is_some()) else { return };
         if !shown {
             hub.set(Some(got));
         }
-        refresh();
+        refresh(false);
     });
 
     let body = move || match hub.get() {
@@ -157,7 +166,7 @@ pub fn AchievementsPage() -> impl IntoView {
                     <Show when=move || refreshing.get()>
                         <span class="ach-sync" role="status"><span class="spin"></span>{tr!("Atualizando")}</span>
                     </Show>
-                    <button type="button" class="btn" disabled=move || refreshing.get() on:click=move |_| refresh()>
+                    <button type="button" class="btn" disabled=move || refreshing.get() on:click=move |_| refresh(true)>
                         <Svg icon=Icon::Refresh size=16 />{tr!("Atualizar")}
                     </button>
                 </div>
@@ -172,7 +181,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     let library = expect_context::<Library>();
     let unlocked: u32 = hub.games.iter().map(|g| g.unlocked).sum();
     let total: u32 = hub.games.iter().map(|g| g.total).sum();
-    let complete = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+    let complete = hub.games.iter().filter(|g| g.platinum()).count();
     let beaten = hub.games.iter().filter(|g| g.award.is_some_and(|a| !a.full())).count();
     let hardcore_awards = hub.games.iter().filter(|g| g.award.is_some_and(GameAward::hardcore)).count();
 
@@ -222,9 +231,21 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         }
         let got: u32 = mine.iter().map(|g| g.unlocked).sum();
         let all: u32 = mine.iter().map(|g| g.total).sum();
-        let done = mine.iter().filter(|g| g.total > 0 && g.unlocked == g.total).count();
+        let done = mine.iter().filter(|g| g.platinum()).count();
         by_source.push((p, src, mine.len(), got, all, done));
     }
+    // When each account last synced, or until when its store asked to wait.
+    let sources = hub.sources.clone();
+    let sync_line = move |src: AchievementSource| {
+        let s = sources.iter().find(|s| s.source == src)?;
+        let text = match (s.wait_until, s.synced_at) {
+            _ if s.syncing => tr!("Atualizando pela Biblioteca; aperte Atualizar daqui a pouco").to_string(),
+            (Some(w), _) => tr!("A loja pediu para esperar; tenta de novo às {}", format::clock(w)),
+            (None, Some(at)) => tr!("Atualizado {}", format::synced_ago(at)),
+            (None, None) => return None,
+        };
+        Some(view! { <small class="ach-synced" class:waiting=s.wait_until.is_some() || s.syncing>{text}</small> })
+    };
     let stores = (by_source.len() > 1).then(|| view! {
         <section class="ach-stores" aria-label=tr!("Por plataforma")>
             {by_source.into_iter().map(|(p, src, games, got, all, done)| {
@@ -237,6 +258,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
                         <small>{if games == 1 { tr!("1 jogo").to_string() } else { tr!("{} jogos", games) }}
                             {(done > 0).then(|| format!(" · {}", if done == 1 { tr!("1 platinado").to_string() } else { tr!("{} platinados", done) }))}</small>
                         <span class="ach-bar"><i style=format!("width: {}%", pct.max(1))></i></span>
+                        {sync_line(src)}
                     </button>
                 }
             }).collect_view()}
@@ -267,7 +289,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
     };
 
     // Every achievement unlocked: the trophy shelf, newest platinum first.
-    let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.total > 0 && g.unlocked == g.total).cloned().collect();
+    let mut plats: Vec<AchievementGame> = hub.games.iter().filter(|g| g.platinum()).cloned().collect();
     plats.sort_by(|a, b| b.last_unlock.cmp(&a.last_unlock));
     let plats = (!plats.is_empty()).then(|| {
         let n = plats.len();
@@ -351,6 +373,31 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         }
     });
 
+    // Taken back by the store: apart and closed, they no longer count.
+    let revoked = (!hub.revoked.is_empty()).then(|| {
+        let count = hub.revoked.len();
+        let items = hub.revoked.iter().map(|r| {
+            let a = r.achievement.clone();
+            let route = Route::AchievementGame(r.source.code().to_string(), r.game_key.clone());
+            let title = a.description.clone();
+            view! {
+                <button type="button" class="ach-unlock locked" title=title on:click=move |_| library.go(route.clone())>
+                    <AchIcon a=a.clone() unlocked=false />
+                    <b>{a.name.clone()}</b>
+                    <small>{r.game_name.clone()}</small>
+                    <small class="ach-ago">{a.unlocked_at.filter(|t| *t > 1).map(format::ago).unwrap_or_default()}</small>
+                </button>
+            }
+        }).collect_view();
+        view! {
+            <details class="shelf ach-revoked">
+                <summary class="shelf-h"><div><h2>{tr!("Revogadas")}<small class="chip-n">{count}</small></h2>
+                    <p class="muted small shelf-sub">{tr!("Desbloqueadas um dia, mas a loja não as mostra mais (estatísticas zeradas ou conquista removida do jogo). Ficam guardadas e não contam.")}</p></div></summary>
+                <div class="ach-strip">{items}</div>
+            </details>
+        }
+    });
+
     let games = hub.games.clone();
     let list = move || {
         let needle = search.get().trim().to_lowercase();
@@ -428,6 +475,7 @@ fn HubBody(hub: AchievementsHub, search: RwSignal<String>, platform: RwSignal<Pl
         {next}
         {recent}
         {rarest}
+        {revoked}
         <section class="shelf" id="ach-all">
             <div class="shelf-h"><h2>{tr!("Todos os jogos")}</h2></div>
             <div class="ach-tools" aria-label=tr!("Filtros das conquistas")>
@@ -461,7 +509,7 @@ fn in_state(g: &AchievementGame, s: State) -> bool {
         State::All => true,
         State::Started => g.unlocked > 0 && g.unlocked < g.total,
         State::Beaten => g.award.is_some(),
-        State::Done => g.total > 0 && g.unlocked == g.total,
+        State::Done => g.platinum(),
         State::NotStarted => g.unlocked == 0,
     }
 }
@@ -509,7 +557,7 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
     let route = Route::AchievementGame(g.source.code().to_string(), g.key.clone());
     let hard = g.award.is_some_and(GameAward::hardcore);
     let pct = g.percent();
-    let done = g.total > 0 && g.unlocked == g.total;
+    let done = g.platinum();
     let mut meta = vec![g.platform.clone()];
     if let Some(t) = g.playtime_secs {
         meta.push(tr!("{} jogados", format::playtime(t)));
@@ -522,7 +570,11 @@ fn GameLine(g: AchievementGame) -> impl IntoView {
                 <span class="ach-line-h">
                     <b>{g.name.clone()}</b>
                     {award_badge(g.award, g.award_at)}
-                    {(done && g.award.is_none()).then(|| view! { <span class="plat-badge"><Svg icon=Icon::Trophy size=12 />{tr!("Platinado")}</span> })}
+                    {(done && g.award.is_none()).then(|| {
+                        // 100% once, and a DLC added more since: still a platinum, said so.
+                        let (label, tip) = if g.complete() { (tr!("Platinado"), None) } else { (tr!("Platinado antes do DLC"), Some(tr!("Chegou a 100%; depois o jogo ganhou conquistas novas."))) };
+                        view! { <span class="plat-badge" title=tip><Svg icon=Icon::Trophy size=12 />{label}</span> }
+                    })}
                 </span>
                 <small>{meta.join(" · ")}</small>
             </span>

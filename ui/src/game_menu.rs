@@ -172,6 +172,69 @@ fn step_items(e: &web_sys::KeyboardEvent) {
     }
 }
 
+/// "Desinstalar" in the menu: the first click asks to confirm, the second
+/// uninstalls here, without leaving the page. When the launcher stops (saves
+/// not backed up, a folder it didn't make), why and the way on show in the menu.
+#[component]
+fn UninstallItem(game: Game) -> impl IntoView {
+    let library = expect_context::<Library>();
+    let menu = expect_context::<GameMenu>();
+    let armed = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let stopped = RwSignal::new(None::<(&'static str, String)>);
+    let label = crate::game::uninstall_label(&game);
+    let game = StoredValue::new(game);
+    let run = move |without_backup: bool, keep_folder: bool| {
+        busy.set(true);
+        leptos::task::spawn_local(async move {
+            match crate::game::uninstall(library, game.get_value(), without_backup, keep_folder).await {
+                Ok(()) => menu.close(),
+                Err((Some(code), why)) => {
+                    let _ = busy.try_set(false);
+                    let _ = stopped.try_set(Some((code, why)));
+                }
+                Err((None, e)) => {
+                    menu.close();
+                    library.report::<()>(Err(e));
+                }
+            }
+        });
+    };
+    move || match stopped.get() {
+        None => {
+            let label = label.clone();
+            view! {
+                <button type="button" role="menuitem" class="danger" disabled=move || busy.get()
+                    on:click=move |e| {
+                        // The menu stays open: the second click confirms.
+                        e.stop_propagation();
+                        if !armed.get_untracked() {
+                            armed.set(true);
+                            return;
+                        }
+                        run(false, false);
+                    }>
+                    <Svg icon=Icon::Trash size=16 />
+                    {move || if busy.get() { tr!("Desinstalando…").to_string() } else if armed.get() { tr!("Clique de novo para confirmar").to_string() } else { label.clone() }}
+                </button>
+            }
+            .into_any()
+        }
+        Some((code, why)) => {
+            let no_backup = code == cerberus_shared::uninstall::NO_BACKUP;
+            let title = if no_backup { tr!("Desinstalar sem backup dos saves") } else { tr!("Tirar da biblioteca e manter a pasta") };
+            view! {
+                <p class="ctx-why" role="alert">{why}</p>
+                <button type="button" role="menuitem" class="danger" disabled=move || busy.get()
+                    on:click=move |e| { e.stop_propagation(); run(no_backup, !no_backup); }>
+                    <Svg icon=Icon::Trash size=16 />{title}
+                </button>
+            }
+            .into_any()
+        }
+    }
+}
+
 #[component]
 pub fn GameMenuLayer() -> impl IntoView {
     let library = expect_context::<Library>();
@@ -193,10 +256,9 @@ pub fn GameMenuLayer() -> impl IntoView {
         let running = library.running.with(|all| all.contains(&game.id));
         let (play_label, play_icon) = if running { (tr!("Jogando"), Icon::Play) } else { crate::launch_action(&game) };
         let has_folder = !game.install_dir.is_empty();
-        // Recomps and games added by hand are the launcher's to remove.
-        let removable = matches!(game.source, cerberus_shared::Source::Recomp { .. } | cerberus_shared::Source::Local { .. });
-        let remove_label = if matches!(game.source, cerberus_shared::Source::Recomp { .. }) && !game.external { tr!("Desinstalar…") } else { tr!("Remover da biblioteca…") };
-        let remove_id = game.id.clone();
+        // Uninstalled right here, after a second click: recomps and games added
+        // by hand by the launcher, store games by their store.
+        let removable = crate::game::can_uninstall(&game).then(|| game.clone());
         let (id, on) = (game.id.clone(), game.favorite);
         let page_id = game.id.clone();
         let folder_id = game.id.clone();
@@ -287,14 +349,7 @@ pub fn GameMenuLayer() -> impl IntoView {
                 }>
                     <Svg icon=Icon::EyeOff size=16 />{if hidden { tr!("Mostrar na biblioteca") } else { tr!("Ocultar da biblioteca") }}
                 </button>
-                {removable.then(|| view! {
-                    <button type="button" role="menuitem" class="danger" on:click=move |_| {
-                        menu.close();
-                        crate::game::open_to_remove(library, remove_id.clone());
-                    }>
-                        <Svg icon=Icon::Trash size=16 />{remove_label}
-                    </button>
-                })}
+                {removable.map(|game| view! { <UninstallItem game /> })}
             </div>
         })
     }

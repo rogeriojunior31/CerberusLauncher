@@ -28,6 +28,17 @@ pub struct ArtCache {
     told: Mutex<HashSet<String>>,
     /// Where a failure is said (the history), set once the app is up.
     on_failure: std::sync::OnceLock<Box<dyn Fn(&str, usize, &str) + Send + Sync>>,
+    /// Addresses the site said don't exist (404, 410), and when: not asked
+    /// again for a week, so a picture taken down isn't fetched (and reported)
+    /// on every start. Kept beside the folder.
+    gone: Mutex<std::collections::HashMap<String, u64>>,
+}
+
+/// How long an address that doesn't exist (404, 410) is left alone.
+const GONE_FOR: u64 = 7 * 86_400;
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default()
 }
 
 /// The sites, among `failed` (address, reason), not said yet: each with how
@@ -50,7 +61,30 @@ fn sites_to_tell(failed: &[(String, String)], told: &mut HashSet<String>) -> Vec
 
 impl ArtCache {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, busy: Mutex::new(HashSet::new()), listed: Mutex::new(None), told: Mutex::new(HashSet::new()), on_failure: std::sync::OnceLock::new() }
+        let gone = fs::read_to_string(Self::gone_file_in(&dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        Self { dir, busy: Mutex::new(HashSet::new()), listed: Mutex::new(None), told: Mutex::new(HashSet::new()), on_failure: std::sync::OnceLock::new(), gone: Mutex::new(gone) }
+    }
+
+    /// Beside the art folder, not in it (the folder's names are the pictures).
+    fn gone_file_in(dir: &Path) -> PathBuf {
+        dir.with_file_name("art-gone.json")
+    }
+
+    /// The address was said not to exist lately.
+    fn is_gone(&self, url: &str, now: u64) -> bool {
+        self.gone.lock().unwrap_or_else(|p| p.into_inner()).get(url).is_some_and(|at| now < at + GONE_FOR)
+    }
+
+    fn mark_gone(&self, urls: &[String], now: u64) {
+        if urls.is_empty() {
+            return;
+        }
+        let mut gone = self.gone.lock().unwrap_or_else(|p| p.into_inner());
+        gone.retain(|_, at| now < *at + GONE_FOR);
+        for url in urls {
+            gone.insert(url.clone(), now);
+        }
+        let _ = crate::state_file::write_bytes(&Self::gone_file_in(&self.dir), serde_json::to_string(&*gone).unwrap_or_default().as_bytes());
     }
 
     /// Says pictures that wouldn't come (`site`, how many, why), once per site.
@@ -132,9 +166,10 @@ impl ArtCache {
 
     /// Fetches what's missing, one at a time, in the background.
     pub fn fetch_later(self: &Arc<Self>, client: Client, urls: Vec<String>) {
+        let now = now_secs();
         let fresh: Vec<String> = {
             let mut busy = self.busy.lock().unwrap_or_else(|p| p.into_inner());
-            urls.into_iter().filter(|url| busy.insert(url.clone())).collect()
+            urls.into_iter().filter(|url| !self.is_gone(url, now) && busy.insert(url.clone())).collect()
         };
         if fresh.is_empty() {
             return;
@@ -142,13 +177,21 @@ impl ArtCache {
         let cache = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             let mut failed = Vec::new();
+            let mut gone = Vec::new();
             for url in fresh {
-                // A picture that won't come now is tried again on the next listing.
-                if let Err(why) = cache.fetch(&client, &url).await {
-                    failed.push((url.clone(), why));
+                // A picture that won't come now is tried again on the next listing;
+                // one the site says doesn't exist, only after a week.
+                match cache.fetch(&client, &url).await {
+                    Err(Fetch::Gone(why)) => {
+                        gone.push(url.clone());
+                        failed.push((url.clone(), why));
+                    }
+                    Err(Fetch::Failed(why)) => failed.push((url.clone(), why)),
+                    Ok(()) => {}
                 }
                 cache.busy.lock().unwrap_or_else(|p| p.into_inner()).remove(&url);
             }
+            cache.mark_gone(&gone, now_secs());
             let tell = sites_to_tell(&failed, &mut cache.told.lock().unwrap_or_else(|p| p.into_inner()));
             if let Some(say) = cache.on_failure.get() {
                 for (site, count, why) in tell {
@@ -158,20 +201,23 @@ impl ArtCache {
         });
     }
 
-    async fn fetch(&self, client: &Client, url: &str) -> Result<(), String> {
-        let reply = crate::net::send(client.get(url)).await.map_err(|e| e.to_string())?;
+    async fn fetch(&self, client: &Client, url: &str) -> Result<(), Fetch> {
+        let failed = |e: String| Fetch::Failed(e);
+        let reply = crate::net::send(client.get(url)).await.map_err(|e| failed(e.to_string()))?;
+        let status = reply.status().as_u16();
         if !reply.status().is_success() {
-            return Err(cerberus_shared::tr!("o site respondeu {}", reply.status().as_u16()));
+            let why = cerberus_shared::tr!("o site respondeu {}", status);
+            return Err(if matches!(status, 404 | 410) { Fetch::Gone(why) } else { Fetch::Failed(why) });
         }
-        let bytes = crate::net::read_limited(reply, MAX_BYTES as u64).await?;
+        let bytes = crate::net::read_limited(reply, MAX_BYTES as u64).await.map_err(failed)?;
         if !is_image(&bytes) {
-            return Err(cerberus_shared::tr!("não veio uma imagem").into());
+            return Err(Fetch::Failed(cerberus_shared::tr!("não veio uma imagem").into()));
         }
-        fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        fs::create_dir_all(&self.dir).map_err(|e| failed(e.to_string()))?;
         let file = self.file_for(url);
         let temp = file.with_extension("part");
-        fs::write(&temp, &bytes).map_err(|e| e.to_string())?;
-        fs::rename(&temp, &file).map_err(|e| e.to_string())?;
+        fs::write(&temp, &bytes).map_err(|e| failed(e.to_string()))?;
+        fs::rename(&temp, &file).map_err(|e| failed(e.to_string()))?;
         // A new picture: the folder is listed again next time.
         *self.listed.lock().unwrap_or_else(|p| p.into_inner()) = None;
         Ok(())
@@ -191,6 +237,13 @@ impl ArtCache {
     }
 }
 
+/// Why a picture didn't come: the site says it doesn't exist (left alone for a
+/// week), or anything else (tried again next time).
+enum Fetch {
+    Gone(String),
+    Failed(String),
+}
+
 /// PNG, JPEG or WebP, by their first bytes. Some hosts answer 200 with a small
 /// text file (a link to another file, an error page), which must not become a cover.
 fn is_image(bytes: &[u8]) -> bool {
@@ -202,6 +255,21 @@ fn is_image(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_picture_that_does_not_exist_is_left_alone_for_a_week_across_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let art = dir.path().join("art");
+        let cache = super::ArtCache::new(art.clone());
+        let url = "https://shared.akamai.steamstatic.com/x/header.jpg".to_string();
+        cache.mark_gone(&[url.clone()], 1_000);
+        assert!(cache.is_gone(&url, 1_000 + 60));
+        // Another start reads it back.
+        let again = super::ArtCache::new(art);
+        assert!(again.is_gone(&url, 1_000 + 3600), "kept across starts");
+        assert!(!again.is_gone(&url, 1_000 + super::GONE_FOR), "asked again after a week");
+        assert!(!again.is_gone("https://other/y.jpg", 1_000));
+    }
     use super::*;
 
     #[test]

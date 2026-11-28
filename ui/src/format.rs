@@ -87,6 +87,24 @@ pub fn ago(seconds: u64) -> String {
     }
 }
 
+/// How long since an account synced, to the minute: "agora", "há 3 min", then as `ago`.
+pub fn synced_ago(seconds: u64) -> String {
+    let now = (js_sys::Date::now() / 1000.0) as u64;
+    match now.saturating_sub(seconds) {
+        0..60 => tr!("agora").to_string(),
+        e @ 60..3_600 => tr!("há {} min", e / 60),
+        _ => ago(seconds),
+    }
+}
+
+/// Unix seconds as a local time of day, e.g. "14:05".
+pub fn clock(seconds: u64) -> String {
+    let date = js_sys::Date::new(&JsValue::from_f64(seconds as f64 * 1000.0));
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&options, &"timeStyle".into(), &"short".into());
+    date.to_locale_time_string_with_options(if lang() == Lang::En { "en-US" } else { "pt-BR" }, &options).into()
+}
+
 /// Unix seconds as a local date and time, e.g. "18/11/2026, 14:05".
 pub fn date_time(seconds: u64) -> String {
     let date = js_sys::Date::new(&JsValue::from_f64(seconds as f64 * 1000.0));

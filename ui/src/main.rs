@@ -135,6 +135,9 @@ pub struct Library {
     speed: RwSignal<HashMap<String, Vec<f64>>>,
     /// When each running game was seen starting (ms since 1970).
     started: RwSignal<HashMap<String, f64>>,
+    /// The same game in several stores: each copy's id to the whole group,
+    /// the copy shown first leading.
+    copies: Memo<HashMap<String, Vec<String>>>,
 }
 
 impl Library {
@@ -150,6 +153,16 @@ impl Library {
     /// Goes somewhere without leaving a step to come back to, like switching versions of a game.
     pub fn replace(self, route: Route) {
         self.route.set(route);
+    }
+
+    /// The game's copies in every store (its own first when it leads), or none.
+    pub fn copies_of(self, id: &str) -> Vec<String> {
+        self.copies.with(|all| all.get(id).cloned().unwrap_or_default())
+    }
+
+    /// A copy shown under another one: left out of lists, which show the lead copy with every store's logo.
+    pub fn is_extra_copy(self, id: &str) -> bool {
+        self.copies.with(|all| all.get(id).is_some_and(|group| group.first().is_some_and(|lead| lead != id)))
     }
 
     pub fn back(self) {
@@ -273,8 +286,23 @@ pub fn play_game(library: Library, game: Game) {
 
 #[component]
 fn App() -> impl IntoView {
+    let games = LocalResource::new(api::list_games);
+    let copies = Memo::new(move |_| {
+        games.with(|listed| {
+            let mut map = HashMap::new();
+            if let Some(Ok(all)) = listed {
+                for group in cerberus_shared::names::copies(all) {
+                    for id in &group {
+                        map.insert(id.clone(), group.clone());
+                    }
+                }
+            }
+            map
+        })
+    });
     let library = Library {
-        games: LocalResource::new(api::list_games),
+        games,
+        copies,
         recomps: LocalResource::new(api::list_recomps),
         roms: LocalResource::new(|| async { api::get_settings().await.map(|s| s.roms).unwrap_or_default() }),
         players: LocalResource::new(api::classic_players),

@@ -1,5 +1,36 @@
 # Novidades
 
+## Próxima versão
+
+### Lojas e contas
+
+- **App Xbox, conta Microsoft e conta Epic:** os jogos que você tem aparecem mesmo sem estar instalados. O **PC Game Pass** só aparece se você ligar (é para quem assina), do catálogo da região do seu Windows.
+- **O mesmo jogo em duas lojas** é um card só, com os logos das duas; na página, você escolhe por qual loja instalar ou jogar. Nomes como "Standard Edition", "(PC)" e "III" contra "3" já não duplicam jogos.
+- **DLCs** que você tem aparecem na página do jogo; DLCs do app Xbox não aparecem mais como jogos.
+- **Desinstalar e verificar pela loja**, no Gerenciar e no menu **…**, com um segundo clique para confirmar. Instalar ou desinstalar pela loja aparece na Biblioteca em segundos.
+- Sem a Epic instalada, **Instalar** abre a página para baixá-la; nenhum botão abre mais um link vazio.
+- Entrar na Epic e na Microsoft ficou mais estável: uma sessão só por conta, e só um acesso revogado pede para entrar de novo.
+- O logo volta a aparecer na barra de tarefas.
+
+### Conquistas
+
+- **Xbox e Epic** no hub, com a página de cada jogo; as do Xbox e da Epic aparecem logo depois de fechar o jogo.
+- **Próximas** e **Mais raras** com Steam e RetroAchievements também.
+- Cada conta diz quando atualizou; **Atualizar** consulta de novo.
+- **Platinado antes do DLC:** um jogo que chegou a 100% continua platinado quando uma DLC traz conquistas novas.
+- Conquistas que a loja tirou ficam à parte, em **Revogadas**.
+- A cópia dos seus dados leva as conquistas, e restaurar junta em vez de trocar.
+
+### Big Picture Mode
+
+- Aba **Não instalados**, que instala pela loja com o **A**; logos das lojas nas capas; jogos do Xbox e da Epic com descrição e conquistas; a tela de conquistas atualiza as contas.
+
+### Mais leve
+
+- A Descoberta não carrega mais as listas das fontes inteiras: elas são buscadas pelo app, uma página por vez, em **Jogos das suas listas**.
+- Menos consultas às lojas a cada sincronização.
+- O Cerberus abre mais rápido: a primeira tela aparece em cerca de 0,6 s, antes 1,5 s.
+
 ## 0.11.0 — conquistas, Novidades e do seu jeito
 
 ### Idiomas

@@ -48,6 +48,12 @@ fn on_event<T: DeserializeOwned + 'static>(event: &'static str, mut handler: imp
     });
 }
 
+/// A game's achievements changed (an unlock seen live, or a store game's list
+/// read again when it closed): while the page that asked is on screen.
+pub fn on_achievements_changed_here(mut handler: impl FnMut() + 'static) {
+    on_event_here("achievements-changed", move |_: serde::de::IgnoredAny| handler());
+}
+
 /// Calls `handler` for every `event` while the component that asked is on
 /// screen: the listener goes when it does (one per visit otherwise, each
 /// reading the component's state after it was gone).
@@ -312,6 +318,29 @@ pub async fn remove_game_with(id: &str, without_backup: bool, keep_folder: bool)
 
 pub async fn list_recomps() -> Result<Vec<RecompEntry>, String> {
     call("list_recomps", &()).await
+}
+
+/// A page of the source lists' games, searched and sorted by the app (the
+/// window never holds the lists whole).
+pub async fn search_lists(needle: &str, console: &str, owned: bool, sort: &str, limit: usize) -> Result<cerberus_shared::CatalogPage, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        needle: &'a str,
+        console: &'a str,
+        owned: bool,
+        sort: &'a str,
+        limit: usize,
+    }
+    call("search_lists", &Arg { needle, console, owned, sort, limit }).await
+}
+
+/// One catalog entry by id, a source list's game included.
+pub async fn catalog_entry(id: &str) -> Result<Option<RecompEntry>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+    }
+    call("catalog_entry", &Arg { id }).await
 }
 
 /// Resolves when the install finishes; progress comes through `on_install_progress`.
@@ -799,6 +828,16 @@ pub async fn game_sessions(id: &str) -> Result<Vec<cerberus_shared::PlaySession>
 
 /// Opens a page about a Steam game in the browser: "store", "steamdb", "pcgw" or "site".
 /// The Epic store, or an Xbox game's page in the Microsoft Store.
+/// Opens the store's own place to uninstall (or `verify`) one of its games.
+pub async fn store_manage(game: &Game, verify: bool) -> Result<(), String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        game: &'a Game,
+        verify: bool,
+    }
+    call("store_manage", &Arg { game, verify }).await
+}
+
 pub async fn open_in_store(kind: &str, product: &str) {
     #[derive(serde::Serialize)]
     struct Arg<'a> {
@@ -880,13 +919,19 @@ pub async fn steam_open(page: &str) -> Result<(), String> {
     call("steam_open", &Arg { page }).await
 }
 
-/// `online` off: only what's on this PC, at once; on: asks Steam and RetroAchievements too.
+/// `online` off: only what's on this PC, at once; on: asks the accounts too,
+/// when due. `force` (the player pressed Update): asks a minute after the last time.
 pub async fn achievements_hub(online: bool) -> Result<cerberus_shared::AchievementsHub, String> {
+    achievements_hub_now(online, false).await
+}
+
+pub async fn achievements_hub_now(online: bool, force: bool) -> Result<cerberus_shared::AchievementsHub, String> {
     #[derive(serde::Serialize)]
     struct Arg {
         online: bool,
+        force: bool,
     }
-    call("achievements_hub", &Arg { online }).await
+    call("achievements_hub", &Arg { online, force }).await
 }
 
 pub async fn game_achievements(source: &str, key: &str) -> Result<cerberus_shared::GameAchievements, String> {

@@ -7,42 +7,34 @@
 //! in for each question.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use cerberus_shared::{tr, Achievement, AchievementGame, AchievementSource};
 use serde_json::{json, Value};
 
 use crate::xbox_account::{self, Session};
 
-/// The session, kept between questions (a sign-in is three requests).
-static SESSION: Mutex<Option<(Instant, String, Session)>> = Mutex::new(None);
+/// The account's one session (the library's too): a sign-in is three
+/// requests, and Microsoft hands a new refresh token each time.
+static SESSION: crate::accounts::Kept<Session> = crate::accounts::Kept::new();
 const SESSION_FOR: Duration = Duration::from_secs(3600);
 
 /// Forgets the session kept in memory (signed out, or another account).
 pub fn forget_session() {
-    if let Ok(mut kept) = SESSION.lock() {
-        *kept = None;
-    }
+    SESSION.forget();
 }
 
-/// Signs in with the kept refresh token, or reuses the last hour's session.
-/// The new refresh token, when there is one, is handed to `save`.
+/// Signs in with the kept refresh token, or reuses the last hour's session;
+/// one sign-in at a time for the whole app. The new refresh token is handed to `save`.
 pub async fn session(http: &reqwest::Client, refresh: &str, save: impl FnOnce(&str)) -> Result<Session, String> {
-    if let Ok(kept) = SESSION.lock() {
-        if let Some((at, from, s)) = kept.as_ref() {
-            if from == refresh && at.elapsed() < SESSION_FOR {
-                return Ok(Session { refresh: s.refresh.clone(), auth: s.auth.clone(), xuid: s.xuid.clone(), gamertag: s.gamertag.clone() });
-            }
-        }
-    }
-    let fresh = xbox_account::sign_in(http, xbox_account::Grant::Refresh(refresh)).await?;
-    save(&fresh.refresh);
-    if let Ok(mut kept) = SESSION.lock() {
-        let copy = Session { refresh: fresh.refresh.clone(), auth: fresh.auth.clone(), xuid: fresh.xuid.clone(), gamertag: fresh.gamertag.clone() };
-        *kept = Some((Instant::now(), fresh.refresh.clone(), copy));
-    }
-    Ok(fresh)
+    SESSION
+        .get(refresh, SESSION_FOR, || async {
+            let fresh = xbox_account::sign_in(http, xbox_account::Grant::Refresh(refresh)).await?;
+            save(&fresh.refresh);
+            let next = fresh.refresh.clone();
+            Ok((fresh, next))
+        })
+        .await
 }
 
 pub(super) async fn get(http: &reqwest::Client, s: &Session, url: &str, contract: &str) -> Result<Value, String> {
@@ -101,12 +93,25 @@ pub async fn games(http: &reqwest::Client, s: &Session) -> Result<(Vec<Achieveme
 }
 
 /// Minutes played per title, many titles per question (Xbox Live's user stats).
-pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> HashMap<String, u64> {
+/// Minutes played per title, a hundred titles per question. A store that says
+/// "too many" (429) or can't be reached is a refusal: the sync waits. The
+/// stats service failing alone (5xx) only skips the times this round.
+pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> Result<HashMap<String, u64>, String> {
     let mut found = HashMap::new();
     for chunk in titles.chunks(100) {
         let stats: Vec<Value> = chunk.iter().map(|t| json!({ "name": "MinutesPlayed", "titleid": t })).collect();
         let body = json!({ "arrangebyfield": "xuid", "xuids": [s.xuid], "stats": stats });
-        let Ok(response) = crate::net::send(http.post("https://userstats.xboxlive.com/batch").header("Authorization", &s.auth).header("x-xbl-contract-version", "2").json(&body)).await else { break };
+        let response = crate::net::send(http.post("https://userstats.xboxlive.com/batch").header("Authorization", &s.auth).header("x-xbl-contract-version", "2").json(&body))
+            .await
+            .map_err(|e| tr!("O Xbox não respondeu: {}", e))?;
+        match response.status().as_u16() {
+            200..=299 => {}
+            // "Too many": the whole sync waits, as for any other question.
+            429 => return Err(tr!("O Xbox pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.").into()),
+            // The stats service down, or not allowed for this account (privacy):
+            // no times this round, the achievements go on (times only grow, nothing is lost).
+            _ => break,
+        }
         let Ok(v) = response.json::<Value>().await else { break };
         for stat in v.pointer("/statlistscollection/0/stats").and_then(Value::as_array).into_iter().flatten() {
             let (Some(title), Some(value)) = (stat.get("titleid").and_then(Value::as_str), stat.get("value").and_then(Value::as_str).and_then(|m| m.parse::<u64>().ok())) else { continue };
@@ -114,7 +119,7 @@ pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> 
         }
         tokio::time::sleep(PAUSE).await;
     }
-    found
+    Ok(found)
 }
 
 fn read_games(v: &Value) -> Vec<AchievementGame> {
@@ -146,6 +151,7 @@ fn read_games(v: &Value) -> Vec<AchievementGame> {
             last_played: t.pointer("/titleHistory/lastTimePlayed").and_then(Value::as_str).and_then(seconds),
             award: None,
             award_at: None,
+            completed_at: None,
         });
     }
     games
