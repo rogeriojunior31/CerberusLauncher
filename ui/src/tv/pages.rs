@@ -318,7 +318,9 @@ pub fn Home() -> impl IntoView {
     let body = move || {
         let all = shelves.get();
         if all.iter().all(|(_, items)| items.is_empty()) {
-            return view! { <p class="tv-empty">{tr!("Carregando sua biblioteca...")}</p> }.into_any();
+            // Still reading, or read and empty (a new player, or nothing installed yet).
+            let text = if library.games.get().is_none() { tr!("Carregando sua biblioteca...") } else { tr!("Nenhum jogo instalado ainda. Os jogos da Steam, Epic e Xbox aparecem aqui sozinhos.") };
+            return view! { <p class="tv-empty">{text}</p> }.into_any();
         }
         all.into_iter()
             .enumerate()
@@ -382,8 +384,7 @@ pub fn LibraryGrid() -> impl IntoView {
     let focus = Focus::new("lib", true);
     tv.keep_position(focus);
     // Row 0 is the chips: kinds of game, then the order.
-    let kind = RwSignal::new(0usize);
-    let order = RwSignal::new(0usize);
+    let (kind, order) = (tv.lib_kind, tv.lib_order);
     // The desktop library's tabs, in its order.
     // Not installed last: the account's and Game Pass games, which A installs through their store.
     let kinds: [&'static str; 6] = [tr!("Todos"), tr!("Favoritos"), tr!("Nativos"), "PC", tr!("Clássicos"), tr!("Não instalados")];
@@ -588,7 +589,7 @@ pub fn LibraryGrid() -> impl IntoView {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Order {
+pub enum Order {
     Popular,
     Newest,
     Name,
@@ -601,10 +602,9 @@ pub fn Discover() -> impl IntoView {
     let tv = expect_context::<Tv>();
     let focus = Focus::new("disc", true);
     tv.keep_position(focus);
-    let owned_only = RwSignal::new(false);
-    let order = RwSignal::new(Order::Popular);
+    let (owned_only, order) = (tv.disc_owned, tv.disc_order);
     // A genre from the catalog ("" for all), changed by A on its chip.
-    let genre = RwSignal::new(String::new());
+    let genre = tv.disc_genre;
     // The catalog's genres, the most common first.
     let genres = Memo::new(move |_| {
         let mut counts: Vec<(String, usize)> = Vec::new();
@@ -620,8 +620,9 @@ pub fn Discover() -> impl IntoView {
         counts.sort_by(|a, b| b.1.cmp(&a.1));
         counts.into_iter().map(|(g, _)| g).collect::<Vec<_>>()
     });
-    // The grid grows as the focus nears its end.
-    let shown = RwSignal::new(48usize);
+    // The grid grows as the focus nears its end; back from a game far down, it
+    // starts long enough to hold that row (else the focus would be clamped away).
+    let shown = RwSignal::new(48usize.max((focus.row.get_untracked() + 3) * COLUMNS));
 
     let results = Memo::new(move |_| {
         let needle = fold(&tv.search.get());
@@ -754,7 +755,9 @@ pub fn Discover() -> impl IntoView {
                 {chip(3, Box::new(move || match order.get() { Order::Popular => tr!("Ordem: populares"), Order::Newest => tr!("Ordem: novos"), Order::Name => tr!("Ordem: A a Z") }.to_string()))}
             </div>
             <div class="tv-grid">{grid}</div>
-            {move || results.with(Vec::is_empty).then(|| view! { <p class="tv-empty">{tr!("Nenhum jogo encontrado.")}</p> })}
+            {move || results.with(Vec::is_empty).then(|| view! { <p class="tv-empty">{
+                if library.catalog_on.get() { tr!("Nenhum jogo encontrado.") } else { tr!("Catálogo de recomps desligado. Ligue em Configurações para ver e instalar recomps.") }
+            }</p> })}
         </div>
     }
 }
@@ -766,7 +769,8 @@ pub fn Downloads() -> impl IntoView {
     let tv = expect_context::<Tv>();
     let focus = Focus::new("dl", true);
     tv.keep_position(focus);
-    let entries = Memo::new(move |_| catalog(library));
+    // Every recomp known, games from the player's lists too (their downloads show here as on the desktop).
+    let entries = Memo::new(move |_| library.recomps.get().and_then(Result::ok).unwrap_or_default());
     let active = Memo::new(move |_| {
         let ids: Vec<String> = library.progress.with(|p| p.keys().cloned().collect());
         entries.with(|all| ids.iter().filter_map(|id| all.iter().find(|e| e.id == *id).cloned()).collect::<Vec<_>>())

@@ -97,8 +97,10 @@ fn language_pick() -> impl IntoView {
         view! {
             <button type="button" role="radio" class="fr-lang" class:on=on aria-checked=on.to_string()
                 on:click=move |_| spawn_local(async move {
-                    let _ = api::set_language(code.map(str::to_string)).await;
-                    crate::i18n::choose(code);
+                    // Not saved: reloading would only switch back. Said, and nothing changes.
+                    if expect_context::<crate::Library>().report(api::set_language(code.map(str::to_string)).await).is_some() {
+                        crate::i18n::choose(code);
+                    }
                 })>{label}</button>
         }
     };

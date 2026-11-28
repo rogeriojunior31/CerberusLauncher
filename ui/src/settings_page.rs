@@ -519,6 +519,8 @@ fn MonitorRow(chosen: Option<String>) -> impl IntoView {
 fn language_row() -> impl IntoView {
     use cerberus_shared::i18n::Lang;
     let chosen = crate::i18n::choice();
+    let library = expect_context::<Library>();
+    let before = chosen.clone();
     let options = Lang::ALL.iter().map(|lang| {
         let on = chosen.as_deref().is_some_and(|c| Lang::from_code(c) == *lang);
         view! { <option value=lang.code() selected=on>{lang.name()}</option> }
@@ -530,9 +532,14 @@ fn language_row() -> impl IntoView {
                 let code = (!code.is_empty()).then_some(code);
                 // Kept first: the menu and notice windows, reloaded by the backend, read it.
                 crate::i18n::remember(code.as_deref());
+                let before = before.clone();
                 spawn_local(async move {
-                    let _ = api::set_language(code.clone()).await;
-                    crate::i18n::choose(code.as_deref());
+                    // Not saved: the other windows go back to the language that is, and nothing reloads.
+                    if library.report(api::set_language(code.clone()).await).is_some() {
+                        crate::i18n::choose(code.as_deref());
+                    } else {
+                        crate::i18n::remember(before.as_deref());
+                    }
                 });
             }>
                 <option value="" selected=chosen.is_none()>{tr!("Automático (idioma do sistema)")}</option>

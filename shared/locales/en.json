@@ -2042,5 +2042,8 @@
   "Ligar catálogo": "Turn on the catalog",
   "Esse recomp já está baixando.": "This recomp is already downloading.",
   "Esse jogo não está instalado.": "This game isn't installed.",
-  "Biblioteca da Epic aberta: nos três pontos de {}, escolha Desinstalar.": "Epic library opened: in the three dots of {}, choose Uninstall."
+  "Biblioteca da Epic aberta: nos três pontos de {}, escolha Desinstalar.": "Epic library opened: in the three dots of {}, choose Uninstall.",
+  "Nenhum jogo instalado ainda. Os jogos da Steam, Epic e Xbox aparecem aqui sozinhos.": "No games installed yet. Steam, Epic and Xbox games show up here on their own.",
+  "Catálogo de recomps desligado. Ligue em Configurações para ver e instalar recomps.": "Recomp catalog turned off. Turn it on in Settings to see and install recomps.",
+  "{} › Fotos": "{} › Screenshots"
 }

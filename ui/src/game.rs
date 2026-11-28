@@ -1922,7 +1922,7 @@ pub fn History(id: String) -> impl IntoView {
     move || {
         let list = entries.get().unwrap_or_default();
         // "No emulation for this console" is a known limit, logged before it stopped being one: not a failure.
-        let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation");
+        let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation") || e.message.contains("have emulation");
         if list.iter().all(limit) {
             return None;
         }
@@ -1930,10 +1930,10 @@ pub fn History(id: String) -> impl IntoView {
         let latest_failed = list.iter().find(|e| !limit(e)).is_some_and(|e| !e.ok);
         let summary = match &failure {
             Some(f) if latest_failed => view! {
-                <p class="problem">{tr!("Última falha · {} · {}", f.step, format::date_time(f.at))}<br/>{f.message.clone()}</p>
+                <p class="problem">{tr!("Última falha · {} · {}", cerberus_shared::i18n::translate(&f.step), format::date_time(f.at))}<br/>{f.message.clone()}</p>
             }.into_any(),
             Some(f) => view! {
-                <p class="muted">{tr!("Tudo certo desde a última falha ({}, {}).", f.step, format::ago(f.at))}</p>
+                <p class="muted">{tr!("Tudo certo desde a última falha ({}, {}).", cerberus_shared::i18n::translate(&f.step), format::ago(f.at))}</p>
             }.into_any(),
             None => view! { <p class="muted">{tr!("Nenhuma falha registrada.")}</p> }.into_any(),
         };

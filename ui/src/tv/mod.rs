@@ -87,6 +87,13 @@ pub struct Tv {
     pub search: RwSignal<String>,
     /// The Library's own search, apart from Discover's.
     pub lib_search: RwSignal<String>,
+    /// The Library's and Discover's chips, kept while a game's page is open, so
+    /// B lands back on the same game in the same list.
+    pub lib_kind: RwSignal<usize>,
+    pub lib_order: RwSignal<usize>,
+    pub disc_owned: RwSignal<bool>,
+    pub disc_order: RwSignal<pages::Order>,
+    pub disc_genre: RwSignal<String>,
     /// The on-screen keyboard types into the Library's search (else Discover's).
     pub kb_lib: RwSignal<bool>,
     pub hints: RwSignal<Vec<(Btn, &'static str)>>,
@@ -232,6 +239,11 @@ pub fn TvMode() -> impl IntoView {
         pad: RwSignal::new(PadKind::default()),
         search: RwSignal::new(String::new()),
         lib_search: RwSignal::new(String::new()),
+        lib_kind: RwSignal::new(0),
+        lib_order: RwSignal::new(0),
+        disc_owned: RwSignal::new(false),
+        disc_order: RwSignal::new(pages::Order::Popular),
+        disc_genre: RwSignal::new(String::new()),
         kb_lib: RwSignal::new(false),
         hints: RwSignal::new(Vec::new()),
         sheet_hints: RwSignal::new(Vec::new()),
