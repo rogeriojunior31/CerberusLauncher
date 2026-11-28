@@ -1126,6 +1126,9 @@ async fn steam_connect(app: AppHandle, http: State<'_, reqwest::Client>, key: St
         s.steam_key = Some(key);
         s.steam_id = Some(id);
     })?;
+    // The account's games not installed show now, not at some later listing.
+    stores_changed();
+    let _ = app.emit("catalog-changed", ());
     Ok(account)
 }
 
@@ -1135,7 +1138,10 @@ fn steam_disconnect(app: AppHandle) -> Result<(), String> {
     settings::update(&data.0, |s| {
         s.steam_key = None;
         s.steam_id = None;
-    })
+    })?;
+    stores_changed();
+    let _ = app.emit("catalog-changed", ());
+    Ok(())
 }
 
 /// Opens Steam's page for the key, the privacy settings, or the profile.
@@ -1888,6 +1894,7 @@ fn steam_dlc_names(app: &AppHandle, http: &reqwest::Client, games: &mut [Game]) 
     let (app, http) = (app.clone(), http.clone());
     tauri::async_runtime::spawn(async move {
         let mut known: std::collections::HashMap<u32, String> = crate::state_file::load_or_default(&file);
+        let mut learned = 0;
         for id in missing.into_iter().take(30) {
             let url = format!("https://store.steampowered.com/api/appdetails?appids={id}&filters=basic");
             let name = match net::send(http.get(&url)).await {
@@ -1897,17 +1904,22 @@ fn steam_dlc_names(app: &AppHandle, http: &reqwest::Client, games: &mut [Game]) 
                     .ok()
                     .and_then(|v| v[id.to_string()]["data"]["name"].as_str().map(str::to_string))
                     .unwrap_or_default(),
-                // Not answered now: asked again another time.
-                _ => continue,
+                // Not answered now (offline, the store resting): the rest wait for another time.
+                _ => break,
             };
             // Empty: the store doesn't know it (kept, so it isn't asked again).
             known.insert(id, name);
+            learned += 1;
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         }
-        let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
         ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
-        stores_changed();
-        let _ = app.emit("catalog-changed", ());
+        // Only news lists the library again: with nothing learned it would ask, fail
+        // and list again in a loop while offline.
+        if learned > 0 {
+            let _ = crate::state_file::write_bytes(&file, serde_json::to_string(&known).unwrap_or_default().as_bytes());
+            stores_changed();
+            let _ = app.emit("catalog-changed", ());
+        }
     });
 }
 
@@ -2030,7 +2042,7 @@ fn epic_library(app: &AppHandle, http: &reqwest::Client, games: &mut Vec<Game>) 
         let result = async {
             // The same session the achievements use: one renewal, never two at once.
             let (access, _) = achievements::epic_session(&http, &data).await?;
-            epic_account::library(&http, &access).await
+            epic_account::library(&http, &access, &epic_account::cached(&data)).await
         }
         .await;
         ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -2124,7 +2136,8 @@ async fn finish_epic_login(app: AppHandle, code: String) {
         // Connected: said at once; the account's games follow in the background.
         let (app2, http2, data2, access) = (app.clone(), http.clone(), data.clone(), session.access.clone());
         tauri::async_runtime::spawn(async move {
-            match epic_account::library(&http2, &access).await {
+            // A new sign-in: the last account's games aren't carried over.
+            match epic_account::library(&http2, &access, &[]).await {
                 Ok(owned) => {
                     epic_account::keep(&data2, owned);
                     let _ = app2.emit("catalog-changed", ());
@@ -3873,7 +3886,11 @@ fn open_screenshots_folder(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn open_folder(app: AppHandle, library: State<'_, LocalLibrary>, id: String) -> Result<(), String> {
-    let game = library.get(&id)?.ok_or(tr!("Esse jogo não está mais na biblioteca."))?;
+    // Store games (Steam, Epic, Xbox) too, not only the ones Cerberus keeps.
+    let game = any_game(&library, &id)?;
+    if game.install_dir.is_empty() {
+        return Err(tr!("Esse jogo não está instalado.").into());
+    }
     app.opener()
         .open_path(game.install_dir, None::<&str>)
         .map_err(|e| tr!("Não foi possível abrir a pasta: {}", e))

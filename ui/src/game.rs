@@ -69,6 +69,7 @@ pub async fn uninstall(library: Library, game: Game, without_backup: bool, keep_
         api::store_manage(&game, false).await.map_err(|e| (None, e))?;
         library.toast(match &game.source {
             Source::Xbox { .. } => tr!("Aplicativos instalados aberto: procure {} e desinstale por lá.", game.name),
+            Source::Epic { .. } => tr!("Biblioteca da Epic aberta: nos três pontos de {}, escolha Desinstalar.", game.name),
             _ => tr!("A {} vai pedir para confirmar a desinstalação.", crate::tiles::source_name(&game.source)),
         });
         return Ok(());
