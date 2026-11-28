@@ -2592,11 +2592,54 @@ async fn list_recomps(
         });
     }
     let mut entries = recomp::entries(&library, &owned_games(&app))?;
+    // The source lists' tens of thousands of games stay here: Discover asks
+    // for a page of them (search_lists). The ones installed come, the library needs them.
+    // So do the ones downloading, paused or waiting: Downloads shows them by name.
+    let busy: std::collections::HashSet<String> = app
+        .state::<recomp::Installing>()
+        .busy_ids()
+        .into_iter()
+        .chain(downloads::waiting(&app.state::<DataDir>().0).into_iter().map(|p| p.recomp_id))
+        .collect();
+    entries.retain(|e| !e.from_source || e.installed.is_some() || busy.contains(&e.id));
     // Copies already on disk are used, but 1900 recomps' art is not fetched
     // ahead: the window loads what it shows, and games in the library keep theirs.
     let mut not_fetched = Vec::new();
     art.use_copies_for_recomps(&mut entries, &mut not_fetched);
     Ok(entries)
+}
+
+/// A page of the source lists' games for Discover, searched and sorted here.
+#[tauri::command]
+async fn search_lists(
+    app: AppHandle,
+    library: State<'_, LocalLibrary>,
+    art: State<'_, Arc<ArtCache>>,
+    needle: String,
+    console: String,
+    owned: bool,
+    sort: String,
+    limit: usize,
+) -> Result<cerberus_shared::CatalogPage, String> {
+    let entries = recomp::entries(&library, &owned_games(&app))?;
+    let mut page = recomp::search_lists(entries, &recomp::ListQuery { needle: &needle, console: &console, owned, sort: &sort, limit: limit.min(2000) });
+    let mut shown: Vec<RecompEntry> = page.games.iter().map(|(e, _)| e.clone()).collect();
+    let mut not_fetched = Vec::new();
+    art.use_copies_for_recomps(&mut shown, &mut not_fetched);
+    for ((e, _), with_art) in page.games.iter_mut().zip(shown) {
+        *e = with_art;
+    }
+    Ok(page)
+}
+
+/// One catalog entry by its id, source lists included (a page opened for a
+/// list's game the window doesn't hold).
+#[tauri::command]
+async fn catalog_entry(app: AppHandle, library: State<'_, LocalLibrary>, art: State<'_, Arc<ArtCache>>, id: String) -> Result<Option<RecompEntry>, String> {
+    let mut found: Vec<RecompEntry> = recomp::entries(&library, &owned_games(&app))?.into_iter().filter(|e| e.id == id).collect();
+    let mut not_fetched = Vec::new();
+    art.use_copies_for_recomps(&mut found, &mut not_fetched);
+    Ok(found.pop())
 }
 
 /// Installs or updates a recomp; progress arrives as `recomp-progress` events.
@@ -4140,6 +4183,8 @@ fn main() {
             pick_cover,
             remove_game,
             list_recomps,
+            search_lists,
+            catalog_entry,
             install_recomp,
             open_project,
             open_recomp_request,

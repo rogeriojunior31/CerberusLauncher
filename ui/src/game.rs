@@ -140,15 +140,32 @@ pub fn GamePage(id: String) -> impl IntoView {
         scroll_to_removal();
     });
     on_cleanup(move || removal.remove());
+    // A source list's game the window doesn't hold (the lists stay in the
+    // app): asked by its id once, when the catalog the window has lacks it.
+    let asked = LocalResource::new(move || {
+        let rid = id.get_value().strip_prefix("recomp:").map(str::to_string);
+        let known = library.recomps.with_untracked(|r| match (r, &rid) {
+            (Some(Ok(all)), Some(rid)) => all.iter().any(|e| &e.id == rid),
+            (_, None) => true,
+            // Not loaded yet (the app just opened on this page): asked, to be sure.
+            _ => false,
+        });
+        async move {
+            match rid {
+                Some(rid) if !known => api::catalog_entry(&rid).await.ok().flatten(),
+                _ => None,
+            }
+        }
+    });
     let content = move || {
         let game = library.games.get().and_then(Result::ok).and_then(|all| all.into_iter().find(|g| g.id == id.get_value()));
         let recomp_id = id.get_value().strip_prefix("recomp:").map(str::to_string);
         let entry = recomp_id.and_then(|rid| {
             let all = library.recomps.get().and_then(Result::ok)?;
             all.into_iter().find(|e| e.id == rid)
-        });
+        }).or_else(|| asked.get().flatten());
         if game.is_none() && entry.is_none() {
-            let loading = library.games.get().is_none() || library.recomps.get().is_none();
+            let loading = library.games.get().is_none() || library.recomps.get().is_none() || asked.get().is_none();
             let text = if loading { tr!("Carregando...") } else { tr!("Esse jogo não está mais na biblioteca.") };
             return view! { <div class="page"><p class="muted">{text}</p></div> }.into_any();
         }

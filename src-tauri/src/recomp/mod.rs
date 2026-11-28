@@ -189,6 +189,13 @@ impl Installing {
         }
     }
 
+    /// The recomps downloading, installing, moving or paused now.
+    pub fn busy_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.0.lock().unwrap_or_else(|p| p.into_inner()).keys().cloned().collect();
+        ids.extend(self.1.lock().unwrap_or_else(|p| p.into_inner()).keys().cloned());
+        ids
+    }
+
     /// A recomp is downloading or installing right now.
     pub fn any_active(&self) -> bool {
         !self.0.lock().unwrap_or_else(|p| p.into_inner()).is_empty()
@@ -1252,6 +1259,65 @@ pub fn entries(library: &LocalLibrary, owned: &HashMap<String, String>) -> Resul
             }
         })
         .collect())
+}
+
+/// What Discover asks of the source lists: words to find, a platform, only
+/// games the player has a copy of, the order, and how many to bring.
+pub struct ListQuery<'a> {
+    pub needle: &'a str,
+    pub console: &'a str,
+    pub owned: bool,
+    pub sort: &'a str,
+    pub limit: usize,
+}
+
+/// The source lists' games matching `q`, one per game (its lead version: the
+/// installed one, else the recommended one, else the first), sorted, the first
+/// `limit` of them. Done here so the window never holds the lists' tens of
+/// thousands of entries, only the page it shows.
+pub fn search_lists(entries: Vec<RecompEntry>, q: &ListQuery) -> cerberus_shared::CatalogPage {
+    let needle = q.needle.trim().to_lowercase();
+    let words: Vec<&str> = needle.split_whitespace().collect();
+    let found = |e: &RecompEntry| {
+        let haystack = format!("{} {} {} {}", e.name, e.game, e.author, e.parts.join(" ")).to_lowercase();
+        words.iter().all(|w| haystack.contains(w))
+    };
+    let mut groups: Vec<(String, Vec<RecompEntry>)> = Vec::new();
+    let mut at: HashMap<String, usize> = HashMap::new();
+    for e in entries.into_iter().filter(|e| e.from_source) {
+        match at.get(&e.title) {
+            Some(&i) => groups[i].1.push(e),
+            None => {
+                at.insert(e.title.clone(), groups.len());
+                groups.push((e.title.clone(), vec![e]));
+            }
+        }
+    }
+    let mut games: Vec<(RecompEntry, usize)> = groups
+        .into_iter()
+        .filter_map(|(_, group)| {
+            let n = group.len();
+            let lead = group.iter().position(|e| e.installed.is_some()).or_else(|| group.iter().position(|e| e.recommended)).unwrap_or(0);
+            let lead_entry = group[lead].clone();
+            if !(q.console.is_empty() || lead_entry.origin == q.console) || (q.owned && lead_entry.owned_copy.is_none()) {
+                return None;
+            }
+            // A game shows when any of its versions matches; the tile then shows that one.
+            if found(&lead_entry) {
+                return Some((lead_entry, n));
+            }
+            group.into_iter().find(|e| found(e)).map(|hit| (hit, n))
+        })
+        .collect();
+    match q.sort {
+        "newest" => games.sort_by(|(a, _), (b, _)| b.added.cmp(&a.added)),
+        "updated" => games.sort_by(|(a, _), (b, _)| b.released.cmp(&a.released)),
+        "name" => games.sort_by_key(|(e, _)| e.name.to_lowercase()),
+        _ => games.sort_by_key(|(e, _)| std::cmp::Reverse(e.downloads)),
+    }
+    let total = games.len();
+    games.truncate(q.limit);
+    cerberus_shared::CatalogPage { games, total }
 }
 
 /// Why a recomp can't be installed here, if it can't.
@@ -2779,3 +2845,34 @@ fn real_downloads_resolve_on_every_server() {
     });
 }
 
+
+#[cfg(test)]
+mod search_lists_tests {
+    use super::*;
+
+    fn listed(id: &str, title: &str, name: &str, downloads: u64, from_source: bool) -> RecompEntry {
+        let entry = catalog::CatalogEntry { id: id.into(), title: title.into(), name: name.into(), origin: "pc".into(), downloads, from_source, ..Default::default() };
+        to_entry(&entry, &[], &HashMap::new())
+    }
+
+    #[test]
+    fn lists_are_searched_one_per_game_and_paged() {
+        let entries = vec![
+            listed("a1", "alpha", "Alpha Game", 10, true),
+            listed("a2", "alpha", "Alpha Game Deluxe", 99, true),
+            listed("b", "beta", "Beta Racing", 50, true),
+            listed("r", "recomp", "Alpha Recompiled", 1000, false),
+        ];
+        let q = |needle: &'static str, limit| ListQuery { needle, console: "", owned: false, sort: "popular", limit };
+        let page = search_lists(entries.clone(), &q("", 10));
+        assert_eq!(page.total, 2, "recomps are not the lists' games; two versions of alpha are one game");
+        assert_eq!(page.games[0].0.id, "b", "most downloaded first (by its lead version)");
+        assert_eq!(page.games[1].1, 2, "alpha has two versions");
+        let deluxe = search_lists(entries.clone(), &q("deluxe", 10));
+        assert_eq!(deluxe.games.iter().map(|(e, _)| e.id.as_str()).collect::<Vec<_>>(), vec!["a2"], "the matching version shows");
+        let one = search_lists(entries.clone(), &q("", 1));
+        assert_eq!((one.games.len(), one.total), (1, 2), "a page, and how many in all");
+        let other = search_lists(entries, &ListQuery { needle: "", console: "n64", owned: false, sort: "name", limit: 10 });
+        assert_eq!(other.total, 0);
+    }
+}

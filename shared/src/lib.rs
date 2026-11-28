@@ -1118,6 +1118,15 @@ pub enum Source {
     },
 }
 
+/// A page of games from the player's source lists, searched where they're
+/// kept: each game's lead version and how many versions it has, and how many
+/// games matched in all.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CatalogPage {
+    pub games: Vec<(RecompEntry, usize)>,
+    pub total: usize,
+}
+
 /// One recomp in Discover: what the catalog says about it, plus what we know right now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecompEntry {

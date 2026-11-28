@@ -320,6 +320,29 @@ pub async fn list_recomps() -> Result<Vec<RecompEntry>, String> {
     call("list_recomps", &()).await
 }
 
+/// A page of the source lists' games, searched and sorted by the app (the
+/// window never holds the lists whole).
+pub async fn search_lists(needle: &str, console: &str, owned: bool, sort: &str, limit: usize) -> Result<cerberus_shared::CatalogPage, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        needle: &'a str,
+        console: &'a str,
+        owned: bool,
+        sort: &'a str,
+        limit: usize,
+    }
+    call("search_lists", &Arg { needle, console, owned, sort, limit }).await
+}
+
+/// One catalog entry by id, a source list's game included.
+pub async fn catalog_entry(id: &str) -> Result<Option<RecompEntry>, String> {
+    #[derive(serde::Serialize)]
+    struct Arg<'a> {
+        id: &'a str,
+    }
+    call("catalog_entry", &Arg { id }).await
+}
+
 /// Resolves when the install finishes; progress comes through `on_install_progress`.
 pub async fn install_recomp(id: &str) -> Result<Game, String> {
     call("install_recomp", &Id { id }).await

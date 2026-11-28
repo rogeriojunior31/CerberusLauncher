@@ -259,6 +259,7 @@ pub fn DiscoverPage() -> impl IntoView {
     // Recomps by their own names ("Zelda 64: Recompiled"), or by the game they bring back ("Majora's Mask").
     let by_game = RwSignal::new(by_game_saved());
     let shown = RwSignal::new(PAGE);
+    let lists_shown = RwSignal::new(PAGE);
     // A new search or filter starts from the top of the list again.
     Effect::new(move |_| {
         search.track();
@@ -269,9 +270,42 @@ pub fn DiscoverPage() -> impl IntoView {
         genre.track();
         feature.track();
         shown.set(PAGE);
+        lists_shown.set(PAGE);
+    });
+    // The source lists' games: asked a page at a time (searched by the app),
+    // not held whole. Genres and features are the catalog's own: a list has none.
+    let lists = LocalResource::new(move || {
+        let wanted = source_kind.get() != "recomp" && genre.get().is_empty() && feature.get().is_empty();
+        let (needle, platform, owned, limit) = (search.get(), console.get(), only_owned.get(), lists_shown.get());
+        let order = match sort.get() {
+            Sort::Popular => "popular",
+            Sort::Newest => "newest",
+            Sort::Updated => "updated",
+            Sort::Name => "name",
+        };
+        async move {
+            if !wanted {
+                return None;
+            }
+            api::search_lists(&needle, &platform, owned, order, limit).await.ok()
+        }
+    });
+    // What was shown is known to the rest of the app (its page, Downloads).
+    Effect::new(move |_| {
+        let Some(Some(page)) = lists.get() else { return };
+        library.recomps.update(|known| {
+            if let Some(Ok(all)) = known {
+                for (entry, _) in &page.games {
+                    if !all.iter().any(|e| e.id == entry.id) {
+                        all.push(entry.clone());
+                    }
+                }
+            }
+        });
     });
 
-    let entries = move || library.recomps.get().and_then(Result::ok).unwrap_or_default();
+    // The recomps; the source lists' games come by `lists` (the few held here are ones shown or installed).
+    let entries = move || library.recomps.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|e| !e.from_source).collect::<Vec<_>>();
 
     // The consoles with recomps, most recomps first, for the filter.
     let consoles = move || {
@@ -352,6 +386,10 @@ pub fn DiscoverPage() -> impl IntoView {
         }
         let games = filtered();
         let total = games.len();
+        // Nothing among the recomps, but the lists have it: they show below, no "not found".
+        if total == 0 && lists.get().flatten().is_some_and(|p| p.total > 0) {
+            return ().into_any();
+        }
         if total == 0 {
             return view! {
                 <div class="empty">
@@ -366,6 +404,9 @@ pub fn DiscoverPage() -> impl IntoView {
                 </div>
             }
             .into_any();
+        }
+        if source_kind.get() == "list" {
+            return ().into_any();
         }
         let tiles = games
             .into_iter()
@@ -407,6 +448,47 @@ pub fn DiscoverPage() -> impl IntoView {
                 {more}
             </section>
         }.into_any()
+    };
+
+    // The source lists' games, apart from the recomps, a page at a time.
+    let lists_view = move || {
+        let page = lists.get().flatten()?;
+        if page.total == 0 {
+            return None;
+        }
+        let total = page.total;
+        let tiles = page
+            .games
+            .into_iter()
+            .map(|(entry, versions)| {
+                let mut info = recomp_tile(&entry);
+                if !by_game.get() {
+                    info.title = entry.name.clone();
+                }
+                info.sub = if versions > 1 { tr!("{} · {} versões", entry.console, versions) } else { entry.console.clone() };
+                if entry.owned_copy.is_some() && info.badge.is_none() {
+                    info.badge = Some(tr!("Você tem").to_string());
+                }
+                if info.badge.is_none() {
+                    info.badge = Some(tr!("Lista").to_string());
+                }
+                view! { <Tile info /> }
+            })
+            .collect_view();
+        let more = (total > lists_shown.get()).then(|| view! {
+            <div class="more">
+                <button type="button" class="btn" on:click=move |_| lists_shown.update(|n| *n += PAGE)>
+                    {tr!("Mostrar mais ({} de {})", lists_shown.get().min(total), total)}
+                </button>
+            </div>
+        });
+        Some(view! {
+            <section class="catalog-results">
+                <h2>{if total == 1 { tr!("1 jogo das suas listas").to_string() } else { tr!("{} jogos das suas listas", total) }}</h2>
+                <div class="grid">{tiles}</div>
+                {more}
+            </section>
+        })
     };
 
     view! {
@@ -525,6 +607,7 @@ pub fn DiscoverPage() -> impl IntoView {
                 </div>
             </section>
             {grid}
+            {lists_view}
         </div>
     }
 }
