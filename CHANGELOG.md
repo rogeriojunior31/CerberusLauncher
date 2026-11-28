@@ -1,6 +1,19 @@
 # Novidades
 
-## Próxima versão
+## 0.12.0 — todas as lojas, conquistas de tudo e mais estável
+
+Baixe `Cerberus-Launcher_0.12.0_x64-setup.exe` em Assets e instale. Quem já tem a 0.11.0 pode instalar por cima: biblioteca, saves, conquistas e configurações continuam.
+
+### Mais estável
+
+Uma revisão completa do app, área por área, antes desta versão:
+
+- **Saves:** um recomp reinstalado (ou num PC novo) traz os saves da nuvem em vez de abrir vazio; se a pasta da nuvem não puder ser conferida, os saves desta partida não sobem por cima dos do outro PC; a limpeza da pasta da nuvem nunca apaga a cópia que acabou de subir.
+- **Recomps:** instalar de novo numa pasta que ficou no PC (com saves, mods e configurações) nunca mais apaga essa pasta; atualizar uma instalação feita pela 0.11.0 mantém as configurações que você mudou (a nova fica ao lado, como `.cerberus-new`).
+- **Conquistas:** abrir a página de um jogo da Steam compartilhado, demo ou com a Steam ocupada nunca mais tira conquistas; jogos da Epic continuam atualizando depois da primeira partida; restaurar uma cópia dos dados traz as revogadas e a data da primeira platina.
+- **Cópia dos dados:** restaurar mantém as horas jogadas depois da cópia e os jogos adicionados depois dela; se algo falhar no meio, tudo volta como estava.
+- **Lojas:** sem internet, a biblioteca não fica se atualizando sem parar; **Abrir pasta do jogo** funciona com Steam, Epic e Xbox; um jogo da Steam baixando atualização continua instalado; uma falha no catálogo da Epic não some com seus jogos.
+- **Big Picture:** voltar de um jogo mantém os filtros da Biblioteca e do Descobrir; Downloads mostra também os jogos das suas listas; telas vazias dizem o que está acontecendo.
 
 ### Recomps opcionais
 
