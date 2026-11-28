@@ -295,9 +295,13 @@ fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collecti
                 return Err(io::Error::other(tr!("Tipo de arquivo incompatível: {}", src.display())));
             } else {
                 let key = here.to_string_lossy().replace('\\', "/");
-                let changed = installed
-                    .and_then(|files| files.get(&key))
-                    .is_some_and(|shipped| hash_of(&src).is_some_and(|now| &now != shipped));
+                let changed = match installed.and_then(|files| files.get(&key)) {
+                    Some(shipped) => hash_of(&src).is_some_and(|now| &now != shipped),
+                    // Not known what the installed release shipped (installed by an
+                    // older Cerberus, or too big to hash): a settings file that
+                    // differs from the new one is taken as the player's.
+                    None => is_settings_file(&here) && hash_of(&src).is_some_and(|now| Some(now) != hash_of(&dest)),
+                };
                 if changed {
                     let mut aside = dest.file_name().map(|n| n.to_os_string()).unwrap_or_default();
                     aside.push(".cerberus-new");
@@ -313,6 +317,12 @@ fn preserve(from: &Path, to: &Path, rel: &Path, installed: Option<&std::collecti
         }
     }
     Ok(())
+}
+
+/// A file players edit to change settings (kept on update when in doubt).
+fn is_settings_file(path: &Path) -> bool {
+    let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    matches!(ext.as_str(), "ini" | "cfg" | "conf" | "toml" | "json" | "yaml" | "yml" | "xml")
 }
 
 #[cfg(test)]
@@ -486,6 +496,27 @@ mod tests {
         assert_eq!(fs::read_to_string(target.join("config.ini.cerberus-new")).unwrap(), "A2", "the new default is beside it");
         assert_eq!(fs::read_to_string(target.join("readme.txt")).unwrap(), "r2", "untouched files take the new version");
         assert_eq!(fs::read_to_string(target.join("Game.exe")).unwrap(), "v2");
+    }
+
+    #[test]
+    fn an_install_from_an_older_cerberus_keeps_edited_settings_too() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("game");
+        let release = root.path().join("release.zip");
+        let library = LocalLibrary::load(root.path());
+        let entry = CatalogEntry { id: "demo".into(), start: Some("Game.exe".into()), ..Default::default() };
+        make_zip(&release, &[("Game.exe", "v1"), ("config.ini", "A"), ("data.pak", "d1")]);
+        let (exe, _) = prepare_release(&release, &target, &entry, None, &entry.id).unwrap();
+        let original = register(&library, &entry, None, "v1", &exe, &target, false).unwrap();
+        // Installed before the record of shipped files existed.
+        fs::remove_file(target.join(RELEASE_FILES)).unwrap();
+        fs::write(target.join("config.ini"), "B").unwrap();
+        make_zip(&release, &[("Game.exe", "v2"), ("config.ini", "A2"), ("data.pak", "d2")]);
+        let (exe, tx) = prepare_release(&release, &target, &entry, Some(&original), &entry.id).unwrap();
+        tx.unwrap().finish(register(&library, &entry, Some(&original), "v2", &exe, &target, false)).unwrap();
+        assert_eq!(fs::read_to_string(target.join("config.ini")).unwrap(), "B", "the player's setting stays");
+        assert_eq!(fs::read_to_string(target.join("config.ini.cerberus-new")).unwrap(), "A2");
+        assert_eq!(fs::read_to_string(target.join("data.pak")).unwrap(), "d2", "game data takes the new version");
     }
 
     #[test]

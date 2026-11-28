@@ -2677,6 +2677,11 @@ async fn install_recomp(
         let progress = InstallProgress { recomp_id: id.clone(), step };
         let _ = app.emit("recomp-progress", progress);
     };
+    // Already downloading ("Atualizar todos" while one row was clicked): asked
+    // again, it would wait for it and then download the same version a second time.
+    if installing.is_active(&id) {
+        return Err(tr!("Esse recomp já está baixando.").into());
+    }
     // One download at a time: the others say they're waiting their turn.
     downloads::queue(&id);
     // In line: the slot free and this one first (the player can put one first).

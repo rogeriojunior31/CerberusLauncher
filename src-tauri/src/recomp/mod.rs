@@ -196,6 +196,13 @@ impl Installing {
         ids
     }
 
+    /// This recomp is downloading or installing right now (a paused one is not:
+    /// installing it again is how it resumes).
+    pub fn is_active(&self, id: &str) -> bool {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).contains_key(&key)
+    }
+
     /// A recomp is downloading or installing right now.
     pub fn any_active(&self) -> bool {
         !self.0.lock().unwrap_or_else(|p| p.into_inner()).is_empty()
@@ -1143,6 +1150,12 @@ pub(crate) fn fill_folder(dir: &Path, fill: impl FnOnce(&Path) -> Result<(), Str
         return Err(e);
     }
     let old = beside(dir, ".cerberus-old");
+    if !dir.exists() && old.is_dir() {
+        // A crash between the two renames left the old folder as the only copy
+        // (saves may be in it): set aside under its own name, never deleted.
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+        let _ = fs::rename(&old, beside(dir, &format!(".cerberus-recovered-{secs}")));
+    }
     let _ = fs::remove_dir_all(&old);
     if dir.exists() {
         if let Err(e) = fs::rename(dir, &old) {
@@ -2033,9 +2046,14 @@ pub fn sweep_removed(folders: &Folders) {
 /// written over, or deleted on uninstall.
 fn free_install_dir(folders: &Folders, recomp_id: &str) -> PathBuf {
     let first = folders.install_dir(recomp_id);
-    // Only our own marker counts here (not the old "default folder" allowance).
+    // Empty, or holding nothing but our marker. A folder of ours with files in it
+    // was kept when the game left the library (saves, mods, configs inside): a
+    // new install would replace it whole, so it goes beside it instead.
     let ours = |dir: &Path| fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
-    let usable = |dir: &Path| !dir.exists() || ours(dir) || fs::read_dir(dir).is_ok_and(|mut d| d.next().is_none());
+    let only = |dir: &Path, allowed: &[&str]| {
+        fs::read_dir(dir).is_ok_and(|d| d.flatten().all(|e| allowed.iter().any(|a| e.file_name() == *a)))
+    };
+    let usable = |dir: &Path| !dir.exists() || only(dir, &[]) || (ours(dir) && only(dir, &[MARKER]));
     if usable(&first) {
         return first;
     }
@@ -2127,8 +2145,13 @@ mod tests {
         let picked = free_install_dir(&folders, "zelda");
         assert_ne!(picked, theirs);
         assert!(picked.ends_with("zelda-2"));
-        // Ours (marked) or empty: used as is.
+        // Ours, but kept with files in it when the game left the library: never replaced either.
         fs::write(theirs.join(MARKER), "zelda").unwrap();
+        assert!(free_install_dir(&folders, "zelda").ends_with("zelda-2"));
+        // Ours with nothing else, or empty: used as is.
+        fs::remove_file(theirs.join("texture-pack.zip")).unwrap();
+        assert_eq!(free_install_dir(&folders, "zelda"), theirs);
+        fs::remove_file(theirs.join(MARKER)).unwrap();
         assert_eq!(free_install_dir(&folders, "zelda"), theirs);
     }
 
