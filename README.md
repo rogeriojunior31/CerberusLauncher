@@ -7,6 +7,8 @@
 **One library for your PC games, native PC recomps of console classics, and your own ROMs.**
 
 [![Latest release](https://img.shields.io/github/v/release/rogeriojunior31/CerberusLauncher?label=download&color=ff5a3c)](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest)
+[![Total downloads](https://img.shields.io/github/downloads/rogeriojunior31/CerberusLauncher/total?label=downloads&color=2ea44f)](https://github.com/rogeriojunior31/CerberusLauncher/releases)
+[![Latest release downloads](https://img.shields.io/github/downloads/rogeriojunior31/CerberusLauncher/latest/total?label=latest%20release&color=2ea44f)](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)
 ![Built with Rust](https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri%20%2B%20Leptos-orange?logo=rust)

@@ -7,6 +7,8 @@
 **Uma biblioteca só para os seus jogos de PC, os recomps de clássicos de console e as suas ROMs.**
 
 [![Última versão](https://img.shields.io/github/v/release/rogeriojunior31/CerberusLauncher?label=baixar&color=ff5a3c)](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest)
+[![Downloads no total](https://img.shields.io/github/downloads/rogeriojunior31/CerberusLauncher/total?label=downloads&color=2ea44f)](https://github.com/rogeriojunior31/CerberusLauncher/releases)
+[![Downloads da última versão](https://img.shields.io/github/downloads/rogeriojunior31/CerberusLauncher/latest/total?label=%C3%BAltima%20vers%C3%A3o&color=2ea44f)](https://github.com/rogeriojunior31/CerberusLauncher/releases/latest)
 [![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows)
 ![Feito em Rust](https://img.shields.io/badge/feito%20em-Rust%20%2B%20Tauri%20%2B%20Leptos-orange?logo=rust)
