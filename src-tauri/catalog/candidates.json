@@ -61,7 +61,7 @@
       }
     },
     "size_text": "225 MB",
-    "stars": 3952
+    "stars": 3973
   },
   {
     "id": "xbox2windows",
@@ -93,7 +93,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 1964
+    "stars": 2043
   },
   {
     "id": "ps3recomp",
@@ -131,7 +131,45 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 746
+    "stars": 750
+  },
+  {
+    "id": "fefw-recomp",
+    "title": "fefw-recomp",
+    "name": "fefw recomp",
+    "repo": "metrist38/fefw-recomp",
+    "about": "Native Windows PC port of Fire Emblem: Fortune's Weave by static recompilation. Bring your own dump; no game files included.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v0.5.0",
+    "released": "2026-11-27",
+    "systems": [
+      "windows",
+      "linux"
+    ],
+    "assets": {
+      "windows": "fefw-recomp-*-win64.zip",
+      "linux": "fefw-recomp-*-linux-x64.tar.gz"
+    },
+    "files": {
+      "windows": {
+        "name": "fefw-recomp-0.5.0-win64.zip",
+        "sha256": "ab814996cf4930def854a63eed796be2327b72fe5cd3f17a7f8609500cdd7dae"
+      },
+      "linux": {
+        "name": "fefw-recomp-0.5.0-linux-x64.tar.gz",
+        "sha256": "f39fa5c1c42b644f5faa32e398bf551769d64aa5f040e4762ad2908ddcd8d60f"
+      }
+    },
+    "size_text": "159 MB",
+    "stars": 479
   },
   {
     "id": "gb-recompiled",
@@ -170,44 +208,6 @@
     },
     "size_text": "3 MB",
     "stars": 467
-  },
-  {
-    "id": "fefw-recomp",
-    "title": "fefw-recomp",
-    "name": "fefw recomp",
-    "repo": "metrist38/fefw-recomp",
-    "about": "Native Windows PC port of Fire Emblem: Fortune's Weave by static recompilation. Bring your own dump; no game files included.",
-    "license": "GPL-3.0",
-    "game": "",
-    "console": "",
-    "origin": "",
-    "needs": "",
-    "cover": null,
-    "hero": null,
-    "icon": null,
-    "saves": [],
-    "tag": "v0.4.1",
-    "released": "2026-11-26",
-    "systems": [
-      "windows",
-      "linux"
-    ],
-    "assets": {
-      "windows": "fefw-recomp-*-win64.zip",
-      "linux": "fefw-recomp-*-linux-x64.tar.gz"
-    },
-    "files": {
-      "windows": {
-        "name": "fefw-recomp-0.4.1-win64.zip",
-        "sha256": "f24a2c40ceeaaa97c0a2f785b796288d31f5b60e25d989c0b403c6f633c9f573"
-      },
-      "linux": {
-        "name": "fefw-recomp-0.4.1-linux-x64.tar.gz",
-        "sha256": "d9f80b94c8f4464024ad000b0c02b4c32fa3c13fb38a9f6fc2bb0c7dbc1fcb10"
-      }
-    },
-    "size_text": "159 MB",
-    "stars": 457
   },
   {
     "id": "recompstore",
@@ -271,7 +271,7 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 305
+    "stars": 328
   },
   {
     "id": "mk8-online",
@@ -309,7 +309,7 @@
       }
     },
     "size_text": "50 MB",
-    "stars": 296
+    "stars": 303
   },
   {
     "id": "switchwakerhd",
@@ -385,7 +385,7 @@
       }
     },
     "size_text": "107 MB",
-    "stars": 281
+    "stars": 283
   },
   {
     "id": "ps2-native-recomp",
@@ -417,7 +417,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 244
+    "stars": 247
   },
   {
     "id": "decomp-buddy",
@@ -434,8 +434,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.34.1",
-    "released": "2026-11-19",
+    "tag": "v0.34.3",
+    "released": "2026-11-26",
     "systems": [
       "windows",
       "linux",
@@ -448,20 +448,20 @@
     },
     "files": {
       "windows": {
-        "name": "Decomp.Buddy.0.34.1.Portable.exe",
-        "sha256": "46fc63cc1c5d276ea0388148f9357bc0c32b6d81883f6e5853390f28a622d549"
+        "name": "Decomp.Buddy.0.34.3.Portable.exe",
+        "sha256": "88d306b0d134b59e6d0cada96aa10647d81aede1a046b2e4d944c7cc1f6a80c8"
       },
       "linux": {
-        "name": "Decomp.Buddy-0.34.1.AppImage",
-        "sha256": "b7a91832eb95ff8b37e7169511367a742ccead808a4be8186a9d183dfb1c8336"
+        "name": "Decomp.Buddy-0.34.3.AppImage",
+        "sha256": "a3544b8903a16f5485be0ea9489b500251c356c44fcbcb855a6b76925ffabb0a"
       },
       "macos": {
-        "name": "Decomp.Buddy-0.34.1-x64-mac.zip",
-        "sha256": "dbd09c09971b8f55e2a9cf82054cd4206386a903b4f76fc23c5acf9f26fc64a6"
+        "name": "Decomp.Buddy-0.34.3-x64-mac.zip",
+        "sha256": "14b03f9ebb161e31b276eb2b3754dce2db16d409be6544d32dc7bf5b377cdf93"
       }
     },
-    "size_text": "119 MB",
-    "stars": 196
+    "size_text": "120 MB",
+    "stars": 197
   },
   {
     "id": "super-mario-3d-land-recompiled",
@@ -478,8 +478,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.1.7",
-    "released": "2026-11-25",
+    "tag": "v1.1.9",
+    "released": "2026-11-27",
     "systems": [
       "linux"
     ],
@@ -488,12 +488,12 @@
     },
     "files": {
       "linux": {
-        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.7.tar.gz",
-        "sha256": "84a7b55d68afd1f593a7d51563370e5a82bf7c741b2734987a7f0882b7cc0e2d"
+        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.9.tar.gz",
+        "sha256": "2d53cb3a0549f5110e4e08471cd052be94e4f78fc7cfc007b8784476133a03ac"
       }
     },
     "size_text": "1 MB",
-    "stars": 158
+    "stars": 162
   },
   {
     "id": "gta-stories-recompiled",
@@ -525,7 +525,7 @@
       }
     },
     "size_text": "97 MB",
-    "stars": 82
+    "stars": 85
   },
   {
     "id": "opentm2",
@@ -542,8 +542,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.0.18",
-    "released": "2026-11-26",
+    "tag": "v1.0.19",
+    "released": "2026-11-27",
     "systems": [
       "windows"
     ],
@@ -552,12 +552,12 @@
     },
     "files": {
       "windows": {
-        "name": "OpenTM2-v1.0.18-Windows-x64.zip",
-        "sha256": "bc4d9ed9840bf5c936fdf242f4dea6815a4a268b5cfc9ecdb7a3cc68aa336fcb"
+        "name": "OpenTM2-v1.0.19-Windows-x64.zip",
+        "sha256": "17c91a1a418e9497f366d6857e55f16a41f897fb603cb30ee8beed6cd55ddd83"
       }
     },
     "size_text": "18 MB",
-    "stars": 58
+    "stars": 61
   },
   {
     "id": "yakuza-kenzan-recomp",
@@ -595,7 +595,7 @@
       }
     },
     "size_text": "697 MB",
-    "stars": 51
+    "stars": 55
   },
   {
     "id": "thpsource2",
@@ -627,7 +627,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 40
+    "stars": 41
   },
   {
     "id": "midtown-madness-3-recomp",
@@ -691,6 +691,6 @@
       }
     },
     "size_text": "12 MB",
-    "stars": 28
+    "stars": 29
   }
 ]
