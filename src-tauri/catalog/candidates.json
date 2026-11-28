@@ -29,7 +29,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 8454
+    "stars": 8453
   },
   {
     "id": "s2arm",
@@ -61,7 +61,7 @@
       }
     },
     "size_text": "225 MB",
-    "stars": 3973
+    "stars": 3997
   },
   {
     "id": "xbox2windows",
@@ -93,7 +93,7 @@
       }
     },
     "size_text": "1 MB",
-    "stars": 2043
+    "stars": 2057
   },
   {
     "id": "ps3recomp",
@@ -131,7 +131,39 @@
       }
     },
     "size_text": "6 MB",
-    "stars": 750
+    "stars": 751
+  },
+  {
+    "id": "leonida",
+    "title": "leonida",
+    "name": "leonida",
+    "repo": "ProjectLeonidaL/leonida",
+    "about": "Continuation of Project Leonida, aiming to bring GTA VI from Xbox to PC through static recompilation.",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "build-694",
+    "released": "2026-11-28",
+    "systems": [
+      "windows"
+    ],
+    "assets": {
+      "windows": "leonida-windows-x64.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "leonida-windows-x64.zip",
+        "sha256": "61c7695a7513e0bfe1b601f7cc223be3b08f393208fe95576f27a6ebdcaeb0ac"
+      }
+    },
+    "size_text": "5 MB",
+    "stars": 575
   },
   {
     "id": "fefw-recomp",
@@ -148,8 +180,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.5.0",
-    "released": "2026-11-27",
+    "tag": "v0.5.1",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux"
@@ -160,16 +192,16 @@
     },
     "files": {
       "windows": {
-        "name": "fefw-recomp-0.5.0-win64.zip",
-        "sha256": "ab814996cf4930def854a63eed796be2327b72fe5cd3f17a7f8609500cdd7dae"
+        "name": "fefw-recomp-0.5.1-win64.zip",
+        "sha256": "e253130f2a5b95ed12cdbd2c8143c5c24e5bba258aa5ef266ebc22983149f42e"
       },
       "linux": {
-        "name": "fefw-recomp-0.5.0-linux-x64.tar.gz",
-        "sha256": "f39fa5c1c42b644f5faa32e398bf551769d64aa5f040e4762ad2908ddcd8d60f"
+        "name": "fefw-recomp-0.5.1-linux-x64.tar.gz",
+        "sha256": "1a0bec11e5e00ca8f36041041e541ea22bf13c20ffce25a3f562b0a9ac73ad28"
       }
     },
     "size_text": "159 MB",
-    "stars": 479
+    "stars": 505
   },
   {
     "id": "gb-recompiled",
@@ -239,7 +271,7 @@
       }
     },
     "size_text": "25 MB",
-    "stars": 419
+    "stars": 422
   },
   {
     "id": "nfsu2recomp",
@@ -271,7 +303,7 @@
       }
     },
     "size_text": "95 MB",
-    "stars": 328
+    "stars": 336
   },
   {
     "id": "mk8-online",
@@ -309,7 +341,7 @@
       }
     },
     "size_text": "50 MB",
-    "stars": 303
+    "stars": 308
   },
   {
     "id": "switchwakerhd",
@@ -353,7 +385,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 286
+    "stars": 288
   },
   {
     "id": "bo2-mac",
@@ -417,7 +449,7 @@
       }
     },
     "size_text": "2 MB",
-    "stars": 247
+    "stars": 249
   },
   {
     "id": "decomp-buddy",
@@ -434,8 +466,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v0.34.3",
-    "released": "2026-11-26",
+    "tag": "v0.34.4",
+    "released": "2026-11-28",
     "systems": [
       "windows",
       "linux",
@@ -448,20 +480,20 @@
     },
     "files": {
       "windows": {
-        "name": "Decomp.Buddy.0.34.3.Portable.exe",
-        "sha256": "88d306b0d134b59e6d0cada96aa10647d81aede1a046b2e4d944c7cc1f6a80c8"
+        "name": "Decomp.Buddy.0.34.4.Portable.exe",
+        "sha256": "3a3799b3cf061ab577cb9f99a066ae7a270c12694028471e93a156479d7331dc"
       },
       "linux": {
-        "name": "Decomp.Buddy-0.34.3.AppImage",
-        "sha256": "a3544b8903a16f5485be0ea9489b500251c356c44fcbcb855a6b76925ffabb0a"
+        "name": "Decomp.Buddy-0.34.4.AppImage",
+        "sha256": "b6bebf4d272fdc13a8616de4eb9ba333271194a06d76dd67b82af174e461ba9c"
       },
       "macos": {
-        "name": "Decomp.Buddy-0.34.3-x64-mac.zip",
-        "sha256": "14b03f9ebb161e31b276eb2b3754dce2db16d409be6544d32dc7bf5b377cdf93"
+        "name": "Decomp.Buddy-0.34.4-x64-mac.zip",
+        "sha256": "f773814f5ffef82608c42b68520aaaeb0a4b14643a0802b0f1a894095011536e"
       }
     },
     "size_text": "120 MB",
-    "stars": 197
+    "stars": 198
   },
   {
     "id": "super-mario-3d-land-recompiled",
@@ -478,8 +510,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.1.9",
-    "released": "2026-11-27",
+    "tag": "v1.1.10",
+    "released": "2026-11-28",
     "systems": [
       "linux"
     ],
@@ -488,12 +520,12 @@
     },
     "files": {
       "linux": {
-        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.9.tar.gz",
-        "sha256": "2d53cb3a0549f5110e4e08471cd052be94e4f78fc7cfc007b8784476133a03ac"
+        "name": "Super-Mario-3D-Land-Linux-x64-v1.1.10.tar.gz",
+        "sha256": "35e29c2412fcedc9b14a97028939120c10185716046973bea25b840e5dfaa1ba"
       }
     },
     "size_text": "1 MB",
-    "stars": 162
+    "stars": 166
   },
   {
     "id": "gta-stories-recompiled",
@@ -525,7 +557,7 @@
       }
     },
     "size_text": "97 MB",
-    "stars": 85
+    "stars": 86
   },
   {
     "id": "opentm2",
@@ -542,8 +574,8 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "v1.0.19",
-    "released": "2026-11-27",
+    "tag": "v1.0.23",
+    "released": "2026-11-28",
     "systems": [
       "windows"
     ],
@@ -552,20 +584,20 @@
     },
     "files": {
       "windows": {
-        "name": "OpenTM2-v1.0.19-Windows-x64.zip",
-        "sha256": "17c91a1a418e9497f366d6857e55f16a41f897fb603cb30ee8beed6cd55ddd83"
+        "name": "OpenTM2-v1.0.23-Windows-x64.zip",
+        "sha256": "5e3b113383c1585dfdc09765e7f0c8b8d932b17dcba541537e7b7e2d6ee21f09"
       }
     },
     "size_text": "18 MB",
-    "stars": 61
+    "stars": 64
   },
   {
-    "id": "yakuza-kenzan-recomp",
-    "title": "yakuza-kenzan-recomp",
-    "name": "Yakuza Kenzan Recomp",
-    "repo": "IvanBarbosaFilho/Yakuza-Kenzan-Recomp",
-    "about": "Unofficial native PC port of Ryu ga Gotoku Kenzan! (PS3, BLJM60064) for Linux and Windows. Statically recompiled with ps3recomp and rendered with Vulkan, with the English fan translation, 30/60/120 FPS options and a launcher that installs from your own copy of the game. No game files included.",
-    "license": "",
+    "id": "grand-theft-auto-2-recompiled",
+    "title": "grand-theft-auto-2-recompiled",
+    "name": "Grand Theft Auto 2 Recompiled",
+    "repo": "almost-drowned-rat/Grand-Theft-Auto-2-Recompiled",
+    "about": "GTA 2 (PC, 2004 freeware) statically recompiled for Linux, Windows and Android - Vulkan, no game data included",
+    "license": "MIT",
     "game": "",
     "console": "",
     "origin": "",
@@ -574,8 +606,40 @@
     "hero": null,
     "icon": null,
     "saves": [],
-    "tag": "V1.0.2",
-    "released": "2026-11-26",
+    "tag": "v0.9.2",
+    "released": "2026-11-28",
+    "systems": [
+      "linux"
+    ],
+    "assets": {
+      "linux": "GTA2-linux-x86_64.tar.gz"
+    },
+    "files": {
+      "linux": {
+        "name": "GTA2-linux-x86_64.tar.gz",
+        "sha256": "1a9d31657c2c07910c9752afc46122a8b0b3b7afd59a7a11d4105fb1b2cc19df"
+      }
+    },
+    "size_text": "128 MB",
+    "stars": 57
+  },
+  {
+    "id": "yakuza-kenzan-recomp",
+    "title": "yakuza-kenzan-recomp",
+    "name": "Yakuza Kenzan Recomp",
+    "repo": "IvanBarbosaFilho/Yakuza-Kenzan-Recomp",
+    "about": "Unofficial native PC port of Ryu ga Gotoku Kenzan! (PS3, BLJM60064) for Linux and Windows. Statically recompiled with ps3recomp and rendered with Vulkan, with the English fan translation, 30/60/120 FPS options and a launcher that installs from your own copy of the game. No game files included.",
+    "license": "NOASSERTION",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "V1.0.3",
+    "released": "2026-11-27",
     "systems": [
       "windows",
       "linux"
@@ -587,15 +651,59 @@
     "files": {
       "windows": {
         "name": "Kenzan-Windows-Japanese.zip",
-        "sha256": "530fe877b5ef0a252de4942cc7790ab9ac4f3b2e89659a00c5b49acdfca64f63"
+        "sha256": "7901458c994eb9d36e796108c25cfcda141bbb98d247c03bbe92e81203750ecb"
       },
       "linux": {
         "name": "Kenzan-Japanese-x86_64.AppImage",
-        "sha256": "b6c7647cd8eb73d705f7bca01c7a7a15fa22b202adb95011f3ba1ebfb8d6e47b"
+        "sha256": "61d0711e270135461c40ff62a2ce36c19a5f52497928aa9e1f3867f61b3f0b12"
       }
     },
     "size_text": "697 MB",
-    "stars": 55
+    "stars": 56
+  },
+  {
+    "id": "roguesquadron64recomp",
+    "title": "roguesquadron64recomp",
+    "name": "RogueSquadron64Recomp",
+    "repo": "MikeSemicolonD/RogueSquadron64Recomp",
+    "about": "A fully playable (AI assisted) static recompilation of Star Wars: Rogue Squadron on N64 for Windows 10, Linux, MacOS & Android",
+    "license": "GPL-3.0",
+    "game": "",
+    "console": "",
+    "origin": "",
+    "needs": "",
+    "cover": null,
+    "hero": null,
+    "icon": null,
+    "saves": [],
+    "tag": "v1.0.0",
+    "released": "2026-11-28",
+    "systems": [
+      "windows",
+      "linux",
+      "macos"
+    ],
+    "assets": {
+      "windows": "RecompModTool-windows-x64-*.zip",
+      "linux": "RogueSquadron64Recomp-*-x86_64.AppImage",
+      "macos": "RogueSquadron64Recomp-macos-*.zip"
+    },
+    "files": {
+      "windows": {
+        "name": "RecompModTool-windows-x64-v1.0.0.zip",
+        "sha256": "7b3f7f10fc764c72a7357e3092f5469f5e46f184adbe241a66fd56c1e5d373e3"
+      },
+      "linux": {
+        "name": "RogueSquadron64Recomp-v1.0.0-x86_64.AppImage",
+        "sha256": "27cb1a25617679a18dd5e9b0689a9f3da47e42f98468161d4c2b56166f96d451"
+      },
+      "macos": {
+        "name": "RogueSquadron64Recomp-macos-v1.0.0.zip",
+        "sha256": "acd98134f4be961b7e12a552cda0fc5c54583e8340a363e7dd3b3136e0d4ccea"
+      }
+    },
+    "size_text": "1 MB",
+    "stars": 49
   },
   {
     "id": "thpsource2",
@@ -627,7 +735,7 @@
       }
     },
     "size_text": "8 MB",
-    "stars": 41
+    "stars": 42
   },
   {
     "id": "midtown-madness-3-recomp",
@@ -691,6 +799,6 @@
       }
     },
     "size_text": "12 MB",
-    "stars": 29
+    "stars": 28
   }
 ]
