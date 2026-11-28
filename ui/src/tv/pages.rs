@@ -173,8 +173,10 @@ fn open_classic(library: Library, _tv: Tv, rom: &cerberus_shared::RomView, conso
     crate::classics::play_original(library, rom.path.clone(), console.to_string());
 }
 
+/// The recomps (and the source lists' games installed). The lists' others
+/// stay in the app: the few the desktop's Discover showed aren't a sample to offer here.
 fn catalog(library: Library) -> Vec<RecompEntry> {
-    library.recomps.get().and_then(Result::ok).unwrap_or_default()
+    library.recomps.get().and_then(Result::ok).unwrap_or_default().into_iter().filter(|e| !e.from_source || e.installed.is_some()).collect()
 }
 
 /// The opening screen: a big picture of the game in focus, the games played

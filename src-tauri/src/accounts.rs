@@ -25,7 +25,8 @@ use std::time::{Duration, Instant};
 
 /// A session kept for a while, renewed by one caller at a time.
 pub struct Kept<T> {
-    inner: tokio::sync::Mutex<Option<(Instant, String, T)>>,
+    /// When renewed, the refresh token used, the one it gave, and the session.
+    inner: tokio::sync::Mutex<Option<(Instant, String, String, T)>>,
 }
 
 impl<T: Clone> Kept<T> {
@@ -43,13 +44,15 @@ impl<T: Clone> Kept<T> {
     {
         // Held while renewing: whoever asks meanwhile waits, then finds it kept.
         let mut kept = self.inner.lock().await;
-        if let Some((at, from, session)) = kept.as_ref() {
-            if from == refresh && at.elapsed() < fresh_for {
+        if let Some((at, used, next, session)) = kept.as_ref() {
+            // The token read before the renewal that rotated it (`used`) is the
+            // same account as the new one: renewing with it again would be refused.
+            if (refresh == next || refresh == used) && at.elapsed() < fresh_for {
                 return Ok(session.clone());
             }
         }
         let (session, next) = renew().await?;
-        *kept = Some((Instant::now(), next, session.clone()));
+        *kept = Some((Instant::now(), refresh.to_string(), next, session.clone()));
         Ok(session)
     }
 }
@@ -83,6 +86,24 @@ mod tests {
             assert!(!again(status).starts_with(&needs_login("")), "{status}: a wait, the account stays");
         }
         assert!(again(503).contains("503"));
+    }
+
+    #[test]
+    fn askers_holding_the_rotated_token_get_the_new_session() {
+        static KEPT: Kept<String> = Kept::new();
+        static CALLS: AtomicU32 = AtomicU32::new(0);
+        // Both read "r1" before the first renewal rotated it to "r2".
+        let ask = |refresh: &'static str| async move {
+            KEPT.get(refresh, Duration::from_secs(60), || async {
+                CALLS.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                Ok(("access".to_string(), "r2".to_string()))
+            })
+            .await
+        };
+        let all = tauri::async_runtime::block_on(async { futures_util::future::join_all([ask("r1"), ask("r1"), ask("r2")]).await });
+        assert!(all.iter().all(|r| r.as_deref() == Ok("access")));
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1, "the old token isn't renewed a second time");
     }
 
     #[test]

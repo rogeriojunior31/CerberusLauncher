@@ -94,8 +94,8 @@ pub async fn games(http: &reqwest::Client, s: &Session) -> Result<(Vec<Achieveme
 
 /// Minutes played per title, many titles per question (Xbox Live's user stats).
 /// Minutes played per title, a hundred titles per question. A store that says
-/// "too many" (429) or can't be reached is a refusal: the sync waits, instead
-/// of carrying on with half the times.
+/// "too many" (429) or can't be reached is a refusal: the sync waits. The
+/// stats service failing alone (5xx) only skips the times this round.
 pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> Result<HashMap<String, u64>, String> {
     let mut found = HashMap::new();
     for chunk in titles.chunks(100) {
@@ -106,8 +106,10 @@ pub async fn minutes(http: &reqwest::Client, s: &Session, titles: &[String]) -> 
             .map_err(|e| tr!("O Xbox não respondeu: {}", e))?;
         match response.status().as_u16() {
             200..=299 => {}
-            429 | 500..=599 => return Err(tr!("O Xbox pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.").into()),
-            // Not allowed for this account (privacy): no times, the rest goes on.
+            // "Too many": the whole sync waits, as for any other question.
+            429 => return Err(tr!("O Xbox pediu uma pausa nas consultas. O Cerberus mostra o que já tinha e tenta de novo mais tarde.").into()),
+            // The stats service down, or not allowed for this account (privacy):
+            // no times this round, the achievements go on (times only grow, nothing is lost).
             _ => break,
         }
         let Ok(v) = response.json::<Value>().await else { break };
