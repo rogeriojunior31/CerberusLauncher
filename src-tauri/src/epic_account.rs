@@ -215,7 +215,9 @@ fn image(item: &Item, kinds: &[&str]) -> Option<String> {
 }
 
 /// Everything the account owns that is a game, with its name and art.
-pub async fn library(client: &reqwest::Client, access: &str) -> Result<Vec<Owned>, String> {
+/// `previous`: the games kept from the last listing; a page of the catalog that
+/// fails now keeps those games instead of dropping them for an hour.
+pub async fn library(client: &reqwest::Client, access: &str, previous: &[Owned]) -> Result<Vec<Owned>, String> {
     let mut records = Vec::new();
     let mut cursor: Option<String> = None;
     for _ in 0..50 {
@@ -253,8 +255,14 @@ pub async fn library(client: &reqwest::Client, access: &str) -> Result<Vec<Owned
                 encode(&namespace),
                 ids.join(",")
             );
-            let Ok(response) = client.get(&url).bearer_auth(access).send().await else { continue };
-            let Ok(items) = response.json::<HashMap<String, Item>>().await else { continue };
+            let items = match client.get(&url).bearer_auth(access).send().await {
+                Ok(response) if response.status().is_success() => response.json::<HashMap<String, Item>>().await.ok(),
+                _ => None,
+            };
+            let Some(items) = items else {
+                owned.extend(previous.iter().filter(|p| chunk.iter().any(|r| r.app_name == p.app_name)).cloned());
+                continue;
+            };
             for record in chunk {
                 let Some(item) = items.get(&record.catalog_item_id) else { continue };
                 if !is_game(&namespace, item) || item.title.trim().is_empty() {

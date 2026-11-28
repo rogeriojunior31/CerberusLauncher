@@ -174,14 +174,52 @@ pub fn apply_pending(data: &Path) -> Option<Result<(usize, std::path::PathBuf), 
     let result = apply(data);
     let _ = fs::remove_file(pending_mark(data));
     let _ = fs::remove_dir_all(staging(data));
-    prune_before(data, 3);
+    // A failed restore was put back as it was; its own `before` folder is not one to rotate others out for.
+    if result.is_ok() {
+        prune_before(data, 3);
+    }
     Some(result)
 }
 
 fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
     let stage = staging(data);
-    // What's here now, kept before anything is replaced: all of it, or nothing is replaced.
     let before = data.join(format!("before-restore-{}", now()));
+    let mut replacing = false;
+    let result = apply_into(data, &stage, &before, &mut replacing);
+    // Half done (a file in use midway): what was here goes back, all of it. A
+    // failure while `before` was still being made replaced nothing (and `before`
+    // may be incomplete), so nothing is put back then.
+    if result.is_err() && replacing {
+        undo(data, &before);
+    }
+    result
+}
+
+/// Puts back what `apply_into` kept in `before`: its files copied over, and
+/// the ones this PC didn't have before the restore removed.
+fn undo(data: &Path, before: &Path) {
+    let put_back = |kept: &Path, here: &Path| {
+        if kept.exists() {
+            if let Ok(bytes) = fs::read(kept) {
+                let _ = crate::state_file::write_bytes(here, &bytes);
+            }
+        } else {
+            let _ = fs::remove_file(here);
+        }
+    };
+    for name in FILES.iter().chain([&SETTINGS]) {
+        put_back(&before.join(name), &data.join(name));
+    }
+    for entry in fs::read_dir(data.join("covers")).into_iter().flatten().flatten() {
+        put_back(&before.join("covers").join(entry.file_name()), &entry.path());
+    }
+    for entry in fs::read_dir(before.join("covers")).into_iter().flatten().flatten() {
+        put_back(&entry.path(), &data.join("covers").join(entry.file_name()));
+    }
+}
+
+fn apply_into(data: &Path, stage: &Path, before: &Path, replacing: &mut bool) -> Result<(usize, std::path::PathBuf), String> {
+    // What's here now, kept before anything is replaced: all of it, or nothing is replaced.
     fs::create_dir_all(before.join("covers")).map_err(|e| e.to_string())?;
     for name in FILES.iter().chain([&SETTINGS]) {
         let here = data.join(name);
@@ -196,6 +234,7 @@ fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
     if incoming_achievements.exists() && data.join(ACHIEVEMENTS).exists() {
         crate::achievements::store::copy_to(data, &before.join(ACHIEVEMENTS)).map_err(|e| tr!("Não foi possível guardar os dados atuais antes de trazer a cópia ({}): nada foi trocado.", e))?;
     }
+    *replacing = true;
     let mut count = 0;
     for name in FILES {
         let incoming = stage.join(name);
@@ -204,6 +243,9 @@ fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
         }
         if matches!(name, "store-playtime.json" | "classics.json") {
             merge_time(&data.join(name), &incoming)?;
+        }
+        if name == "library.json" {
+            merge_library(&data.join(name), &incoming)?;
         }
         replace(&incoming, &data.join(name))?;
         count += 1;
@@ -224,7 +266,7 @@ fn apply(data: &Path) -> Result<(usize, std::path::PathBuf), String> {
         crate::achievements::store::merge_from(data, &incoming_achievements)?;
         count += 1;
     }
-    Ok((count, before))
+    Ok((count, before.to_path_buf()))
 }
 
 fn replace(from: &Path, to: &Path) -> Result<(), String> {
@@ -252,6 +294,37 @@ fn merge_time(here: &Path, incoming: &Path) -> Result<(), String> {
             _ => {
                 theirs.insert(game, mine);
             }
+        }
+    }
+    crate::state_file::write_bytes(incoming, serde_json::to_string_pretty(&theirs).map_err(|e| e.to_string())?.as_bytes())
+}
+
+/// The library from the copy, with each game's play time and last session the
+/// larger of the two, and games added here since the copy kept (a recomp
+/// installed after it is still on disk).
+fn merge_library(here: &Path, incoming: &Path) -> Result<(), String> {
+    let read = |p: &Path| -> Vec<Value> { fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default() };
+    let mine = read(here);
+    if mine.is_empty() {
+        return Ok(());
+    }
+    let mut theirs = read(incoming);
+    let id = |g: &Value| g.get("id").and_then(Value::as_str).map(str::to_string);
+    for game in mine {
+        let Some(game_id) = id(&game) else { continue };
+        match theirs.iter_mut().find(|g| id(g).as_deref() == Some(&game_id)) {
+            Some(other) => {
+                if let Some(obj) = other.as_object_mut() {
+                    for key in ["playtime_secs", "last_played"] {
+                        let a = game.get(key).and_then(Value::as_u64);
+                        let b = obj.get(key).and_then(Value::as_u64);
+                        if let Some(best) = a.max(b) {
+                            obj.insert(key.into(), Value::from(best));
+                        }
+                    }
+                }
+            }
+            None => theirs.push(game),
         }
     }
     crate::state_file::write_bytes(incoming, serde_json::to_string_pretty(&theirs).map_err(|e| e.to_string())?.as_bytes())
@@ -338,6 +411,45 @@ mod tests {
         let ids: std::collections::BTreeSet<String> = Store::open(here.path()).unwrap().recent(&[scope], 10).into_iter().map(|r| r.achievement.id).collect();
         assert!(ids.contains("from-old-pc") && ids.contains("from-this-pc"), "{ids:?}");
         assert!(before.join(ACHIEVEMENTS).exists(), "this PC's database kept first");
+    }
+
+    #[test]
+    fn a_restore_that_fails_midway_puts_everything_back() {
+        use crate::achievements::store::{Scope, Store};
+        let old_pc = tempfile::tempdir().unwrap();
+        write(old_pc.path(), "library.json", r#"[{"id":"from-copy"}]"#);
+        write(old_pc.path(), "collections.json", r#"{"collections":[]}"#);
+        Store::open(old_pc.path()).unwrap().keep_unlocks(&Scope::new(cerberus_shared::AchievementSource::Epic, "p"), "g", &[]);
+        let zip = old_pc.path().join("copy.zip");
+        export(old_pc.path(), &zip).unwrap();
+
+        let here = tempfile::tempdir().unwrap();
+        write(here.path(), "library.json", r#"[{"id":"mine"}]"#);
+        Store::open(here.path()).unwrap();
+        stage(here.path(), &zip).unwrap();
+        // The copy's achievements can't be read: the last step fails after the files were replaced.
+        fs::write(staging(here.path()).join(ACHIEVEMENTS), b"not a database").unwrap();
+        assert!(apply_pending(here.path()).unwrap().is_err());
+        assert_eq!(fs::read_to_string(here.path().join("library.json")).unwrap(), r#"[{"id":"mine"}]"#, "this PC's library is back");
+        assert!(!here.path().join("collections.json").exists(), "a file only the copy had is gone again");
+    }
+
+    #[test]
+    fn a_copy_keeps_recomp_hours_played_since_and_games_added_after_it() {
+        let old_pc = tempfile::tempdir().unwrap();
+        write(old_pc.path(), "library.json", r#"[{"id":"recomp:a","playtime_secs":100,"last_played":10,"note":"copy"}]"#);
+        let zip = old_pc.path().join("copy.zip");
+        export(old_pc.path(), &zip).unwrap();
+
+        let here = tempfile::tempdir().unwrap();
+        write(here.path(), "library.json", r#"[{"id":"recomp:a","playtime_secs":900,"last_played":50},{"id":"recomp:b","playtime_secs":5}]"#);
+        stage(here.path(), &zip).unwrap();
+        apply_pending(here.path()).unwrap().unwrap();
+        let games: Vec<Value> = serde_json::from_str(&fs::read_to_string(here.path().join("library.json")).unwrap()).unwrap();
+        let a = games.iter().find(|g| g["id"] == "recomp:a").unwrap();
+        assert_eq!((a["playtime_secs"].as_u64(), a["last_played"].as_u64()), (Some(900), Some(50)), "hours played since the copy stay");
+        assert_eq!(a["note"], "copy", "the rest comes from the copy");
+        assert!(games.iter().any(|g| g["id"] == "recomp:b"), "a game added after the copy stays");
     }
 
     #[test]

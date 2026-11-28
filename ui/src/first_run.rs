@@ -92,13 +92,16 @@ fn OnThisPc() -> impl IntoView {
 fn language_pick() -> impl IntoView {
     use cerberus_shared::i18n::Lang;
     let chosen = crate::i18n::choice().filter(|c| c != "auto");
-    let pick = |code: Option<&'static str>, label: String| {
+    let library = expect_context::<Library>();
+    let pick = move |code: Option<&'static str>, label: String| {
         let on = chosen.as_deref() == code;
         view! {
             <button type="button" role="radio" class="fr-lang" class:on=on aria-checked=on.to_string()
                 on:click=move |_| spawn_local(async move {
-                    let _ = api::set_language(code.map(str::to_string)).await;
-                    crate::i18n::choose(code);
+                    // Not saved: reloading would only switch back. Said, and nothing changes.
+                    if library.report(api::set_language(code.map(str::to_string)).await).is_some() {
+                        crate::i18n::choose(code);
+                    }
                 })>{label}</button>
         }
     };

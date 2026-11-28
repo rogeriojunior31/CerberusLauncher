@@ -126,7 +126,7 @@ fn take(app: &AppHandle) {
     // next press (or Ctrl+F12) mustn't wait on it.
     let (app, window) = (app.clone(), window as isize);
     std::thread::spawn(move || match shoot(&app, window as win::Window, &game) {
-        Ok(()) => crate::notify::tell(&app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &format!("{} › Fotos", game.name)),
+        Ok(()) => crate::notify::tell(&app, crate::notify::Kind::Screenshot, tr!("Foto salva"), &tr!("{} › Fotos", game.name)),
         Err(e) => crate::notify::tell(&app, crate::notify::Kind::Reply, tr!("Não foi possível tirar a foto"), &e),
     });
 }

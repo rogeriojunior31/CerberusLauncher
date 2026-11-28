@@ -3,24 +3,26 @@
 Comparado ao RecompLauncher (referência de comportamento), ao Hydra, ao Playnite e ao Heroic. Cada onda só
 fecha com teste real, não só compilação.
 
-## Mapa rápido (atualizado em 25/11/2026)
+## Mapa rápido (atualizado em 28/11/2026)
 
 Onde estamos e o que vem a seguir, para não se perder. O detalhe de cada item está nas ondas abaixo; a Onda 7 é o
 levantamento de 25/11 (um agente por launcher: Heroic, Hydra, Playnite e RecompLauncher).
 
-**Feito agora (branch `ajustes-rapidos`, 23 a 25/11, sem PR ainda):**
+**Na 0.12.0 (PRs #17, #19, #20 e #21, 23 a 28/11):**
 
-- Lojas: jogos do app Xbox e do PC Game Pass (com arte oficial e instalação pelo app Xbox), login da Epic (inclusive
-  com Xbox/Google/Apple) e da conta Microsoft, biblioteca inteira das duas contas com os não instalados, filtro por
-  plataforma e não instalados em Todos; Game Pass não duplica jogo comprado em outra loja.
-- Conquistas: banco local `achievements.db` (SQLite) que nunca perde um desbloqueio, sincronização econômica com espera
-  gravada depois de recusa; Xbox completo (249 jogos na conta real) e Epic; cartão por plataforma, Platinados e Perto
-  dos 100% com Ver todos, Próximas conquistas e Suas mais raras; aba Conquistas nos jogos Epic e Xbox.
-- Tempo de jogo das contas Xbox (horas e última vez) e Epic na Biblioteca, sincronizado em segundo plano.
-- Página do jogo com dados da loja também para Epic e Xbox (Steam quando vende lá, senão Microsoft Store).
-- Capas com selo de origem (Steam, Epic, Xbox/Game Pass, Recomp, emulador e console) e fotos reais dos consoles
-  (Hydra + domínio público do Evan Amos).
-- Backup dos saves dos emuladores, Xenia e xemu para os clássicos de Xbox, varredura de bugs do backend.
+- Lojas: app Xbox, conta Microsoft e conta Epic com os jogos não instalados; PC Game Pass só para quem liga; o mesmo
+  jogo em várias lojas é um card só; DLCs na página do jogo; desinstalar e verificar pela loja; a biblioteca percebe
+  sozinha o que a loja instalou ou desinstalou.
+- Conquistas das quatro fontes (Steam, Xbox, Epic, RetroAchievements) num banco que nunca perde um desbloqueio, com
+  revogadas à parte, platina antes do DLC e o estado de cada conta.
+- Catálogo de recomps opcional (primeiro uso e Configurações); Descobrir mais leve, abertura em ~0,6 s.
+- Revisão completa antes da versão (5 áreas): saves da nuvem, pastas de recomp mantidas, conquistas revogadas por
+  engano, restauração dos dados, loop sem internet, filtros do Big Picture.
+
+**Ficou para depois da revisão (baixo risco, anotado):** sair da conta Xbox/Epic apaga o histórico de conquistas
+dela; back-off da Web API da Steam depois de recusa; arte do Xbox marcada como "não existe" quando a rede falha;
+`library.json` de outra conta voltando se a renovação terminar depois de sair; I/O de backup e de banco ainda no
+runtime async; atualização de recomp com tag sem arquivo direto (usa a release mais nova do servidor).
 
 **Próximos, nesta ordem:**
 

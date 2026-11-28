@@ -69,6 +69,7 @@ pub async fn uninstall(library: Library, game: Game, without_backup: bool, keep_
         api::store_manage(&game, false).await.map_err(|e| (None, e))?;
         library.toast(match &game.source {
             Source::Xbox { .. } => tr!("Aplicativos instalados aberto: procure {} e desinstale por lá.", game.name),
+            Source::Epic { .. } => tr!("Biblioteca da Epic aberta: nos três pontos de {}, escolha Desinstalar.", game.name),
             _ => tr!("A {} vai pedir para confirmar a desinstalação.", crate::tiles::source_name(&game.source)),
         });
         return Ok(());
@@ -321,6 +322,10 @@ fn Page(game: Option<Game>, entry: Option<RecompEntry>, tab: RwSignal<Tab>) -> i
     let has_achievements = move || {
         steam_app.is_some() || achievements.and_then(|r| r.get()).and_then(Result::ok).is_some_and(|d| d.game.total > 0)
     };
+    // A session that just ended (Xbox, Epic) or a sync brings new unlocks: read again.
+    if let Some(data) = achievements {
+        api::on_achievements_changed_here(move || data.refetch());
+    }
     let tab_key = store_key.clone();
     provide_context(GameAchievementsData(achievements));
 
@@ -1917,7 +1922,7 @@ pub fn History(id: String) -> impl IntoView {
     move || {
         let list = entries.get().unwrap_or_default();
         // "No emulation for this console" is a known limit, logged before it stopped being one: not a failure.
-        let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation");
+        let limit = |e: &cerberus_shared::TrailEntry| e.message.contains("ainda não tem emulação") || e.message.contains("no emulation") || e.message.contains("have emulation");
         if list.iter().all(limit) {
             return None;
         }
@@ -1925,10 +1930,10 @@ pub fn History(id: String) -> impl IntoView {
         let latest_failed = list.iter().find(|e| !limit(e)).is_some_and(|e| !e.ok);
         let summary = match &failure {
             Some(f) if latest_failed => view! {
-                <p class="problem">{tr!("Última falha · {} · {}", f.step, format::date_time(f.at))}<br/>{f.message.clone()}</p>
+                <p class="problem">{tr!("Última falha · {} · {}", cerberus_shared::i18n::translate(&f.step), format::date_time(f.at))}<br/>{f.message.clone()}</p>
             }.into_any(),
             Some(f) => view! {
-                <p class="muted">{tr!("Tudo certo desde a última falha ({}, {}).", f.step, format::ago(f.at))}</p>
+                <p class="muted">{tr!("Tudo certo desde a última falha ({}, {}).", cerberus_shared::i18n::translate(&f.step), format::ago(f.at))}</p>
             }.into_any(),
             None => view! { <p class="muted">{tr!("Nenhuma falha registrada.")}</p> }.into_any(),
         };

@@ -206,17 +206,6 @@ pub fn watch(app: AppHandle) {
             let ended: Vec<String> = playing.keys().filter(|id| !now_running.contains(*id)).cloned().collect();
             for id in ended {
                 let Some(started) = playing.remove(&id) else { continue };
-                // Xbox and Epic keep unlocks on their servers: that game's list is read
-                // again once the store has had a moment to record the last one.
-                if id.starts_with("xbox:") || id.starts_with("epic:") {
-                    let (app, id) = (app.clone(), id.clone());
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(Duration::from_secs(20)).await;
-                        let Ok(data) = app.path().app_data_dir() else { return };
-                        let http = app.state::<reqwest::Client>().inner().clone();
-                        crate::achievements::after_session(&app, &http, &data, &id).await;
-                    });
-                }
                 if let Some(n) = steam_app(&id) {
                     // Steam may store the last unlock as the game closes.
                     live.check(&app);
@@ -229,6 +218,17 @@ pub fn watch(app: AppHandle) {
                 // A blink (a launcher checking for updates) isn't a session.
                 if seconds < 30 {
                     continue;
+                }
+                // Xbox and Epic keep unlocks on their servers: that game's list is read
+                // again once the store has had a moment to record the last one.
+                if id.starts_with("xbox:") || id.starts_with("epic:") {
+                    let (app, id) = (app.clone(), id.clone());
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(Duration::from_secs(20)).await;
+                        let Ok(data) = app.path().app_data_dir() else { return };
+                        let http = app.state::<reqwest::Client>().inner().clone();
+                        crate::achievements::after_session(&app, &http, &data, &id).await;
+                    });
                 }
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
                 let Ok(data) = app.path().app_data_dir() else { continue };

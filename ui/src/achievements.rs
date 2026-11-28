@@ -647,6 +647,7 @@ pub fn AchievementsTab(source: String, key: String) -> impl IntoView {
     let source = StoredValue::new(source);
     let key = StoredValue::new(key);
     let data = LocalResource::new(move || async move { api::game_achievements(&source.get_value(), &key.get_value()).await });
+    api::on_achievements_changed_here(move || data.refetch());
     move || match data.get() {
         None => view! { <div class="ach-loading" role="status"><span class="spin"></span>{tr!("Lendo as conquistas…")}</div> }.into_any(),
         Some(Err(e)) => view! {

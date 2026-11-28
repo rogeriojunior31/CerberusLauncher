@@ -129,9 +129,11 @@ pub fn Home() -> impl IntoView {
         let read_error = library_state.as_ref().and_then(|state| state.as_ref().err()).cloned();
         // Home is about what's on this PC: owned-but-not-installed games stay in the Library.
         // One tile per game: a second store's copy is in the lead copy's tile.
-        let games: Vec<Game> = library_state
-            .and_then(Result::ok)
-            .unwrap_or_default()
+        let everything = library_state.clone().and_then(Result::ok).unwrap_or_default();
+        // A favorite set on another store's copy (one not installed) counts for the game.
+        let favorite_ids: std::collections::HashSet<String> = everything.iter().filter(|g| g.favorite).map(|g| g.id.clone()).collect();
+        let is_favorite = |g: &Game| g.favorite || library.copies_of(&g.id).iter().any(|id| favorite_ids.contains(id));
+        let games: Vec<Game> = everything
             .into_iter()
             .filter(|g| g.next_step != cerberus_shared::NextStep::Install && !library.is_extra_copy(&g.id))
             .collect();
@@ -176,7 +178,7 @@ pub fn Home() -> impl IntoView {
 
         let slider = (!features.is_empty()).then(|| view! { <Slider features /> });
         let recent = (!recent.is_empty()).then(|| view! { <Shelf title=tr!("Jogue de novo").to_string() tiles=recent /> });
-        let favorites: Vec<TileInfo> = games.iter().filter(|g| g.favorite && !g.hidden && g.part_ids.is_empty()).map(|g| game_tile(g, library)).collect();
+        let favorites: Vec<TileInfo> = games.iter().filter(|g| is_favorite(g) && !g.hidden && g.part_ids.is_empty()).map(|g| game_tile(g, library)).collect();
         let favorites = (!favorites.is_empty()).then(|| view! { <Shelf title=tr!("Favoritos").to_string() tiles=favorites see_all=Route::Library /> });
         let found = (!found.is_empty()).then(|| {
             view! {

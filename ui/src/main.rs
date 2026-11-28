@@ -206,7 +206,13 @@ impl Library {
     fn push_toast(self, text: String, error: bool) -> u64 {
         // Messages kept in Portuguese (like a cancelled install) show in the player's language.
         let text = cerberus_shared::i18n::translate(&text);
-        let id = js_sys::Date::now() as u64 ^ (text.len() as u64);
+        // A counter: two notices in the same millisecond never share an id (and a timer).
+        thread_local! { static NEXT: std::cell::Cell<u64> = const { std::cell::Cell::new(1) }; }
+        let id = NEXT.with(|n| {
+            let id = n.get();
+            n.set(id + 1);
+            id
+        });
         self.toasts.update(|all| all.push(Toast { id, text, error }));
         id
     }

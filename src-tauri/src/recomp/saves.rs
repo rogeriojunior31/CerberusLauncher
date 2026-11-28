@@ -419,8 +419,10 @@ fn manifest_in(zip: &mut zip::ZipArchive<fs::File>) -> Result<Manifest, String> 
 /// Without a limit it grew by one per session forever, and each Play read more.
 const CLOUD_KEEP: usize = 20;
 
-pub(super) fn prune_cloud(folder: &Path) {
-    for old in list(folder).into_iter().skip(CLOUD_KEEP) {
+/// `just_sent` always stays: a PC whose clock is behind would otherwise delete
+/// its own upload at once, and the anchor would point at a copy that's gone.
+pub(super) fn prune_cloud(folder: &Path, just_sent: &str) {
+    for old in list(folder).into_iter().skip(CLOUD_KEEP).filter(|o| o.name != just_sent) {
         let _ = fs::remove_file(folder.join(old.name));
     }
 }

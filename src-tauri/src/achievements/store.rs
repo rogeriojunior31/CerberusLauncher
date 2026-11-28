@@ -94,14 +94,36 @@ pub fn copy_to(data: &Path, to: &Path) -> Result<(), String> {
 /// one doesn't have, and the larger play time. Nothing here is taken away,
 /// and this PC's sync times (stamps) stay its own.
 pub fn merge_from(data: &Path, other: &Path) -> Result<(), String> {
+    // The copy may be from an older version: brought to this schema first, so
+    // its revoked marks come along (a copy from before them has none).
+    drop(Store::with(Connection::open(other).map_err(|e| e.to_string())?)?);
     let mut db = Store::open(data)?;
     db.0.execute("ATTACH DATABASE ?1 AS other", params![other.to_string_lossy()]).map_err(|e| e.to_string())?;
     let result = (|| {
         let tx = db.0.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
         tx.execute_batch(
             "INSERT OR IGNORE INTO games(source, account, key, data) SELECT source, account, key, data FROM other.games;
+             -- The first time a game reached 100% is the earliest either side knew. A date
+             -- only the copy has counts while this PC still has as many unlocks (after a
+             -- stats reset here, the old platinum doesn't come back).
+             UPDATE games SET data = json_set(data, '$.completed_at',
+                    (SELECT json_extract(o.data, '$.completed_at') FROM other.games o
+                      WHERE o.source = games.source AND o.account = games.account AND o.key = games.key))
+              WHERE EXISTS (SELECT 1 FROM other.games o
+                      WHERE o.source = games.source AND o.account = games.account AND o.key = games.key
+                        AND json_extract(o.data, '$.completed_at') IS NOT NULL
+                        AND ((json_extract(games.data, '$.completed_at') IS NULL
+                              AND COALESCE(json_extract(games.data, '$.unlocked'), 0) >= COALESCE(json_extract(o.data, '$.unlocked'), 0))
+                             OR json_extract(o.data, '$.completed_at') < json_extract(games.data, '$.completed_at')));
              INSERT OR IGNORE INTO lists(source, account, game, played, data) SELECT source, account, game, played, data FROM other.lists;
-             INSERT OR IGNORE INTO unlocks(source, account, game, id, unlocked_at, data) SELECT source, account, game, id, unlocked_at, data FROM other.unlocks;
+             -- Same date rule as a sync: a real date beats an unknown one, the earliest wins.
+             -- An unlock this PC has keeps its own revoked mark (it is the newer knowledge).
+             INSERT INTO unlocks(source, account, game, id, unlocked_at, data, revoked_at)
+                SELECT source, account, game, id, unlocked_at, data, revoked_at FROM other.unlocks WHERE true
+                ON CONFLICT(source, account, game, id) DO UPDATE SET
+                   unlocked_at = CASE WHEN unlocked_at <= 1 THEN excluded.unlocked_at
+                                      WHEN excluded.unlocked_at <= 1 THEN unlocked_at
+                                      ELSE MIN(unlocked_at, excluded.unlocked_at) END;
              INSERT INTO played(source, account, key, seconds, last) SELECT source, account, key, seconds, last FROM other.played WHERE true
                 ON CONFLICT(source, account, key) DO UPDATE SET seconds=MAX(seconds, excluded.seconds), last=MAX(last, excluded.last);",
         )
@@ -580,6 +602,52 @@ mod tests {
         assert!(!db.due_now(&scope, true));
         db.set_stamp(&scope, "wait_until", now() - 1);
         assert_eq!(db.status(&scope).wait_until, None, "a wait that's over isn't shown");
+    }
+
+    #[test]
+    fn restoring_a_copy_keeps_revoked_marks_first_platinum_and_real_dates() {
+        let dir = tempfile::tempdir().unwrap();
+        let (here, copy) = (dir.path().join("here"), dir.path().join("copy"));
+        std::fs::create_dir_all(&copy).unwrap();
+        let db = Store::open(&here).unwrap();
+        db.0.execute_batch(
+            "INSERT INTO games VALUES('epic', 'p', 'g', '{\"name\":\"G\",\"unlocked\":5,\"completed_at\":null}');
+             INSERT INTO games VALUES('epic', 'p', 'reset', '{\"name\":\"R\",\"unlocked\":3,\"completed_at\":null}');
+             INSERT INTO unlocks(source, account, game, id, unlocked_at, data) VALUES('epic', 'p', 'g', 'a', 1, '{}');",
+        )
+        .unwrap();
+        drop(db);
+        // A copy from version 2 (before revoked marks): it gets the column on the way in.
+        let c = Connection::open(copy.join("achievements.db")).unwrap();
+        c.execute_batch(MIGRATIONS[0]).unwrap();
+        c.execute_batch(MIGRATIONS[1]).unwrap();
+        c.execute_batch(
+            "PRAGMA user_version = 2;
+             INSERT INTO games VALUES('epic', 'p', 'g', '{\"name\":\"G\",\"unlocked\":5,\"completed_at\":50}');
+             INSERT INTO games VALUES('epic', 'p', 'reset', '{\"name\":\"R\",\"unlocked\":50,\"completed_at\":40}');
+             INSERT INTO unlocks VALUES('epic', 'p', 'g', 'a', 90, '{}');
+             INSERT INTO unlocks VALUES('epic', 'p', 'g', 'b', 70, '{}');",
+        )
+        .unwrap();
+        drop(c);
+        merge_from(&here, &copy.join("achievements.db")).unwrap();
+        let db = Store::open(&here).unwrap();
+        let at = |id: &str| db.0.query_row("SELECT unlocked_at, revoked_at FROM unlocks WHERE id=?1", [id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))).unwrap();
+        assert_eq!(at("a"), (90, 0), "a real date replaces an unknown one");
+        assert_eq!(at("b"), (70, 0), "an unlock only the copy had comes back, not revoked");
+        let done = |key: &str| -> Option<i64> { db.0.query_row("SELECT json_extract(data, '$.completed_at') FROM games WHERE key=?1", [key], |r| r.get(0)).unwrap() };
+        assert_eq!(done("g"), Some(50), "the copy's first 100% is kept");
+        assert_eq!(done("reset"), None, "stats reset here since the copy: its platinum doesn't come back");
+
+        // A copy that knew an unlock was taken back keeps it apart.
+        let c = Connection::open(copy.join("achievements.db")).unwrap();
+        c.execute("INSERT INTO unlocks VALUES('epic', 'p', 'g', 'c', 60, '{}', 99)", []).unwrap();
+        drop(c);
+        drop(db);
+        merge_from(&here, &copy.join("achievements.db")).unwrap();
+        let db = Store::open(&here).unwrap();
+        let revoked: i64 = db.0.query_row("SELECT revoked_at FROM unlocks WHERE id='c'", [], |r| r.get(0)).unwrap();
+        assert_eq!(revoked, 99);
     }
 
     #[test]

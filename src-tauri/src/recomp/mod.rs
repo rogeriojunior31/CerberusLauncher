@@ -196,6 +196,13 @@ impl Installing {
         ids
     }
 
+    /// This recomp is downloading or installing right now (a paused one is not:
+    /// installing it again is how it resumes).
+    pub fn is_active(&self, id: &str) -> bool {
+        let key = find(id).map(|entry| entry.id).unwrap_or_else(|| id.to_owned());
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).contains_key(&key)
+    }
+
     /// A recomp is downloading or installing right now.
     pub fn any_active(&self) -> bool {
         !self.0.lock().unwrap_or_else(|p| p.into_inner()).is_empty()
@@ -273,6 +280,11 @@ pub fn pull_from_cloud(folders: &Folders, recomp_id: &str, install_dir: &Path) -
     let places = saves::places(&entry.saves);
     let local_dir = folders.backups_dir(recomp_id);
     let here = saves::current_fingerprint(&places, install_dir);
+    // No saves here (reinstalled, or a new PC): nothing to lose, the cloud's come
+    // down. Otherwise the game would start empty and that save would win upstairs.
+    if here.is_none() {
+        return bring_down(folders, recomp_id, install_dir, &cloud, &cloud_newest.name, &cloud_print, &places);
+    }
     if here.as_deref() == Some(cloud_print.as_str()) {
         saves::set_anchor(&local_dir, &cloud, &cloud_print);
         return Ok(None);
@@ -1138,6 +1150,12 @@ pub(crate) fn fill_folder(dir: &Path, fill: impl FnOnce(&Path) -> Result<(), Str
         return Err(e);
     }
     let old = beside(dir, ".cerberus-old");
+    if !dir.exists() && old.is_dir() {
+        // A crash between the two renames left the old folder as the only copy
+        // (saves may be in it): set aside under its own name, never deleted.
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+        let _ = fs::rename(&old, beside(dir, &format!(".cerberus-recovered-{secs}")));
+    }
     let _ = fs::remove_dir_all(&old);
     if dir.exists() {
         if let Err(e) = fs::rename(dir, &old) {
@@ -2028,9 +2046,14 @@ pub fn sweep_removed(folders: &Folders) {
 /// written over, or deleted on uninstall.
 fn free_install_dir(folders: &Folders, recomp_id: &str) -> PathBuf {
     let first = folders.install_dir(recomp_id);
-    // Only our own marker counts here (not the old "default folder" allowance).
+    // Empty, or holding nothing but our marker. A folder of ours with files in it
+    // was kept when the game left the library (saves, mods, configs inside): a
+    // new install would replace it whole, so it goes beside it instead.
     let ours = |dir: &Path| fs::read_to_string(dir.join(MARKER)).is_ok_and(|id| id.trim() == recomp_id);
-    let usable = |dir: &Path| !dir.exists() || ours(dir) || fs::read_dir(dir).is_ok_and(|mut d| d.next().is_none());
+    let only = |dir: &Path, allowed: &[&str]| {
+        fs::read_dir(dir).is_ok_and(|d| d.flatten().all(|e| allowed.iter().any(|a| e.file_name() == *a)))
+    };
+    let usable = |dir: &Path| !dir.exists() || only(dir, &[]) || (ours(dir) && only(dir, &[MARKER]));
     if usable(&first) {
         return first;
     }
@@ -2122,8 +2145,13 @@ mod tests {
         let picked = free_install_dir(&folders, "zelda");
         assert_ne!(picked, theirs);
         assert!(picked.ends_with("zelda-2"));
-        // Ours (marked) or empty: used as is.
+        // Ours, but kept with files in it when the game left the library: never replaced either.
         fs::write(theirs.join(MARKER), "zelda").unwrap();
+        assert!(free_install_dir(&folders, "zelda").ends_with("zelda-2"));
+        // Ours with nothing else, or empty: used as is.
+        fs::remove_file(theirs.join("texture-pack.zip")).unwrap();
+        assert_eq!(free_install_dir(&folders, "zelda"), theirs);
+        fs::remove_file(theirs.join(MARKER)).unwrap();
         assert_eq!(free_install_dir(&folders, "zelda"), theirs);
     }
 
@@ -2539,6 +2567,18 @@ mod tests {
 
         // Same saves on both: nothing more to do.
         assert!(pull_from_cloud(&laptop, "shipwright", &laptop_game).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_reinstalled_game_without_saves_gets_the_cloud_ones() {
+        let root = temp("cloud-reinstalled");
+        let cloud = root.join("OneDrive");
+        let (pc_, game) = pc(&root.join("pc"), &cloud, "level 9");
+        backup_saves(&pc_, "shipwright", &game, "Depois de jogar").unwrap();
+        // Uninstalled and installed again: the folder has no saves, the anchor is still there.
+        fs::remove_dir_all(game.join("Save")).unwrap();
+        assert!(pull_from_cloud(&pc_, "shipwright", &game).unwrap().is_some());
+        assert_eq!(fs::read_to_string(game.join("Save/file1.sav")).unwrap(), "level 9");
     }
 
     #[test]

@@ -147,9 +147,11 @@ fn read_manifest(path: &Path, library: &Path, covers: &Path) -> Option<Game> {
         return None;
     }
     // Bit 4 is "fully installed": a game still downloading for the first time
-    // isn't ready to play yet. (An update on top keeps the bit.)
+    // isn't ready to play yet. An update being downloaded can clear the bit too;
+    // that game already has a build (a first download has build 0) and stays.
     if let Some(flags) = first_value(&text, "stateflags").and_then(|f| f.parse::<u32>().ok()) {
-        if flags & 4 == 0 {
+        let has_build = first_value(&text, "buildid").and_then(|b| b.parse::<u64>().ok()).is_some_and(|b| b > 0);
+        if flags & 4 == 0 && !has_build {
             return None;
         }
     }
@@ -349,5 +351,11 @@ mod tests {
         assert!(read_manifest(&file, dir.path(), dir.path()).is_some());
         fs::write(&file, manifest(6)).unwrap();
         assert!(read_manifest(&file, dir.path(), dir.path()).is_some(), "installed, with an update waiting");
+        fs::write(&file, manifest(1026).replace("\"installdir\"", "\"buildid\"		\"0\"
+	\"installdir\"")).unwrap();
+        assert!(read_manifest(&file, dir.path(), dir.path()).is_none(), "first download: no build yet");
+        fs::write(&file, manifest(1026).replace("\"installdir\"", "\"buildid\"		\"8123456\"
+	\"installdir\"")).unwrap();
+        assert!(read_manifest(&file, dir.path(), dir.path()).is_some(), "an update downloading: still installed");
     }
 }
