@@ -234,16 +234,29 @@ pub fn set_extras(sources: Vec<Vec<CatalogEntry>>) {
 fn rebuild() {
     let base = if site_on() { BASE.read().unwrap_or_else(|p| p.into_inner()).clone() } else { None };
     let mut list = base.unwrap_or_else(bundled);
-    for source in EXTRAS.read().unwrap_or_else(|p| p.into_inner()).iter() {
-        for game in source {
-            let known = list.iter().any(|e| e.id == game.id || (!game.repo.is_empty() && e.repo.eq_ignore_ascii_case(&game.repo)));
-            if !known {
-                list.push(game.clone());
-            }
-        }
-    }
+    merge_extras(&mut list, &EXTRAS.read().unwrap_or_else(|p| p.into_inner()));
     known_handoffs(&mut list);
     *STORE.write().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(list));
+}
+
+/// The sources' games after the main list, leaving out one already listed
+/// (same id, or same repository whatever its case). Looked up in sets: the
+/// lists hold tens of thousands of games, and scanning the list for each one
+/// took a second at every start.
+fn merge_extras(list: &mut Vec<CatalogEntry>, sources: &[Vec<CatalogEntry>]) {
+    let mut ids: std::collections::HashSet<String> = list.iter().map(|e| e.id.clone()).collect();
+    let mut repos: std::collections::HashSet<String> = list.iter().filter(|e| !e.repo.is_empty()).map(|e| e.repo.to_ascii_lowercase()).collect();
+    for game in sources.iter().flatten() {
+        let repo = game.repo.to_ascii_lowercase();
+        if ids.contains(&game.id) || (!repo.is_empty() && repos.contains(&repo)) {
+            continue;
+        }
+        ids.insert(game.id.clone());
+        if !repo.is_empty() {
+            repos.insert(repo);
+        }
+        list.push(game.clone());
+    }
 }
 
 /// Ports that need the original game's files but whose listing doesn't say
@@ -810,6 +823,19 @@ pub fn bytes_of(size_text: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn extras_already_listed_by_id_or_repo_are_left_out() {
+        let entry = |id: &str, repo: &str| super::CatalogEntry { id: id.into(), repo: repo.into(), ..Default::default() };
+        let mut list = vec![entry("zelda", "Zelda64Recomp/Zelda64Recomp")];
+        let sources = vec![
+            vec![entry("zelda", ""), entry("other", "zelda64recomp/ZELDA64RECOMP"), entry("new", "a/b")],
+            vec![entry("new", ""), entry("again", "A/B"), entry("free", "")],
+        ];
+        super::merge_extras(&mut list, &sources);
+        let ids: Vec<&str> = list.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["zelda", "new", "free"], "same id or same repo (any case) is left out, also between sources");
+    }
     use super::*;
 
     #[test]
